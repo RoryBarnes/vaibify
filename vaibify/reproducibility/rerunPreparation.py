@@ -30,7 +30,10 @@ first:
   false pass this module exists to prevent.
 
 The deletion runs as ONE program inside the shadow, because only there
-can symlinks be resolved against the shadow's own filesystem. It
+can symlinks be resolved against the shadow's own filesystem. That
+program is ``rerunProcedure``'s ``clear``, the same code a reader's
+``reproduce.sh`` runs from the rendered assessor, so the two lanes
+clear by one implementation. It
 validates every target before it deletes anything, so a refusal leaves
 the shadow untouched, and it never follows a symlink out of a directory
 it clears.
@@ -58,7 +61,9 @@ __all__ = [
     "RerunPreparationRefusedError",
     "fdictClassifyRerunPaths",
     "fdictClearShadowBeforeRerun",
+    "flistResolveScratchRepoPaths",
     "flistSelectStepsTheRerunExecutes",
+    "fnRefuseUnsafeClassification",
     "fsetDeclaredOutputRepoPaths",
 ]
 
@@ -72,86 +77,7 @@ class RerunPreparationRefusedError(Exception):
 
 
 _S_JOB_RELATIVE_PATH = ".vaibify/rerunPreparationJob.json"
-_S_RESULT_PREFIX = "VAIBIFY_RERUN_PREPARATION "
 _F_PREPARATION_TIMEOUT_SECONDS = 900.0
-
-# Runs inside the shadow. Plain standard library, Python 3.8 or newer.
-# Every target is validated before any is deleted.
-_S_PREPARATION_PROGRAM = """\
-import json
-import os
-import shutil
-import sys
-
-sJobPath = sys.argv[1]
-with open(sJobPath) as fileJob:
-    dictJob = json.load(fileJob)
-os.remove(sJobPath)
-sRoot = os.path.realpath(dictJob["sRepoRoot"])
-
-
-def fsLocate(sRelative):
-    sJoined = os.path.join(sRoot, sRelative)
-    return os.path.join(
-        os.path.realpath(os.path.dirname(sJoined)),
-        os.path.basename(sJoined))
-
-
-def fbIsWithin(sInner, sOuter):
-    return sInner == sOuter or sInner.startswith(sOuter + os.sep)
-
-
-def flistFindRefusals(sKind, sRelative, sLocated, dictProtectedNames):
-    if sLocated == sRoot or not fbIsWithin(sLocated, sRoot):
-        return [sKind + " " + repr(sRelative) + " is not inside the repository"]
-    listRefusals = []
-    for sProtected, sName in dictProtectedNames.items():
-        if fbIsWithin(sProtected, sLocated):
-            listRefusals.append(
-                sKind + " " + repr(sRelative) + " is or contains the "
-                "protected file " + repr(sName))
-        elif fbIsWithin(sLocated, sProtected):
-            listRefusals.append(
-                sKind + " " + repr(sRelative) + " lies inside the "
-                "protected path " + repr(sName))
-    return listRefusals
-
-
-def fbRemove(sLocated):
-    if os.path.islink(sLocated) or os.path.isfile(sLocated):
-        os.remove(sLocated)
-    elif os.path.isdir(sLocated):
-        shutil.rmtree(sLocated)
-    else:
-        return False
-    return True
-
-
-dictProtectedNames = {
-    fsLocate(sPath): sPath for sPath in dictJob["listProtected"]}
-listTargets = [
-    ("output", sPath) for sPath in dictJob["listProduced"]
-] + [
-    ("scratch directory", sPath) for sPath in dictJob["listScratch"]]
-listRefusals = []
-for sKind, sRelative in listTargets:
-    listRefusals.extend(flistFindRefusals(
-        sKind, sRelative, fsLocate(sRelative), dictProtectedNames))
-dictResult = {
-    "listRefusals": listRefusals,
-    "listDeletedOutputs": [],
-    "listClearedScratch": [],
-}
-if not listRefusals:
-    for sKind, sRelative in listTargets:
-        if fbRemove(fsLocate(sRelative)):
-            sKey = (
-                "listDeletedOutputs" if sKind == "output"
-                else "listClearedScratch")
-            dictResult[sKey].append(sRelative)
-print(PREFIX + json.dumps(dictResult))
-"""
-
 
 def flistSelectStepsTheRerunExecutes(dictWorkflow):
     """Return the steps the unattended rerun runs, in workflow order.
@@ -260,6 +186,17 @@ def _fnRefuseUnsafeProducedPaths(setProduced):
         )
 
 
+def fnRefuseUnsafeClassification(dictClassification):
+    """Raise the host-side refusals for a classification nothing may clear.
+
+    Shared by the shadow's clearing and the assessment plan, so a
+    reader's ``reproduce.sh`` can never carry a job the shadow would
+    refuse.
+    """
+    _fnRefuseAmbiguousOverlap(dictClassification)
+    _fnRefuseUnsafeProducedPaths(dictClassification["setProduced"])
+
+
 def fdictClearShadowBeforeRerun(
     dictWorkflow, filesRepo, dictClassification,
 ):
@@ -272,8 +209,7 @@ def fdictClearShadowBeforeRerun(
     attestation as the evidence that the outputs graded afterwards were
     absent when the run began.
     """
-    _fnRefuseAmbiguousOverlap(dictClassification)
-    _fnRefuseUnsafeProducedPaths(dictClassification["setProduced"])
+    fnRefuseUnsafeClassification(dictClassification)
     sRepoRoot = fsRepoRootOf(filesRepo)
     dictJob = {
         "sRepoRoot": sRepoRoot,
@@ -294,20 +230,30 @@ def fdictClearShadowBeforeRerun(
 
 
 def _fdictRunPreparationProgram(filesRepo, dictJob):
-    """Ship the job into the shadow, run the program, parse its answer."""
+    """Ship the job into the shadow, run the shared clearing, parse its answer.
+
+    A refusal is answered with exit 4 AND the result line naming every
+    refused target; anything else without the line is an unexplained
+    failure, and the rerun is not attempted.
+    """
+    from vaibify.reproducibility.rerunAssessment import (
+        fsBuildProcedureProgram,
+    )
+    from vaibify.reproducibility.rerunProcedure import (
+        S_CLEARING_RESULT_PREFIX,
+    )
     filesRepo.fnWriteTextAtomic(_S_JOB_RELATIVE_PATH, json.dumps(dictJob))
     sJobPath = posixpath.join(dictJob["sRepoRoot"], _S_JOB_RELATIVE_PATH)
     iExitCode, sOutput, sErrors = filesRepo.ftRunCommand(
         [
-            "python3", "-c",
-            _S_PREPARATION_PROGRAM.replace("PREFIX", repr(_S_RESULT_PREFIX)),
-            sJobPath,
+            "python3", "-I", "-c", fsBuildProcedureProgram(),
+            "clear", "--repo", dictJob["sRepoRoot"], "--job", sJobPath,
         ],
         _F_PREPARATION_TIMEOUT_SECONDS,
     )
     for sLine in reversed((sOutput or "").splitlines()):
-        if sLine.startswith(_S_RESULT_PREFIX) and iExitCode == 0:
-            return json.loads(sLine[len(_S_RESULT_PREFIX):])
+        if sLine.startswith(S_CLEARING_RESULT_PREFIX) and iExitCode in (0, 4):
+            return json.loads(sLine[len(S_CLEARING_RESULT_PREFIX):])
     raise RerunPreparationRefusedError(
         "the shadow could not be prepared for the rerun (exit "
         f"{iExitCode}); the rerun was not attempted. "

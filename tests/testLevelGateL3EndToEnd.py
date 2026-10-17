@@ -14,6 +14,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from tests.levelGateStubs import (
+    S_RERUN_ASSESSOR_PATH,
+    fdictCurrentAssessmentFields,
+    fsWriteRerunAssessor,
+)
+
 from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
 )
@@ -52,6 +58,7 @@ _LIST_COMPARED = [
     "MANIFEST.sha256",
     "requirements.lock",
     S_REPRODUCE_SCRIPT_FILENAME,
+    ".vaibify/rerunAssessment.py",
     ".vaibify/environment.json",
     S_DOCKERFILE_FILENAME,
 ]
@@ -134,6 +141,7 @@ def _fnWriteL3EnvelopeFiles(tmp_path):
         fsRenderReproduceScript(_fdictBuildLevel3Workflow()),
     )
     pathScript.chmod(0o755)
+    fsWriteRerunAssessor(tmp_path, _fdictBuildLevel3Workflow())
     (tmp_path / "requirements.lock").write_text(
         "click==8.1.7 \\\n    --hash=sha256:" + "b" * 64 + "\n"
     )
@@ -211,13 +219,10 @@ def _fdictBuildLevel3Workflow():
             },
         },
         "dictDeterminism": {
-            # All three questions answered (2026-08-30 ruling).
-            # A lone waiver used to satisfy the gate; it is now
-            # one answer of three, so a fixture carrying only it
-            # builds a project that is NOT L3-ready.
-            "sBlasVarianceAnswer": "accepted",
-            "sOmpThreadsAnswer": "unpinned",
-            "sMklModeAnswer": "not-used",
+            # The determinism question answered: one question since
+            # 2026-10-17, and either answer passes.
+            "sRepeatabilityAnswer": "speed",
+            "sExecutionProfile": "speed-v1",
         },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
@@ -252,8 +257,9 @@ def fixtureLevel3Repo(tmp_path):
     # environment let a reproducer verify everything except what
     # produced it.
     _fnWriteManifest(tmp_path, [
-        S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME,
-        "requirements.lock", ".vaibify/environment.json",
+        S_REPRODUCE_SCRIPT_FILENAME, S_RERUN_ASSESSOR_PATH,
+        S_DOCKERFILE_FILENAME, "requirements.lock",
+        ".vaibify/environment.json",
     ])
     _fnWriteSyncStatus(tmp_path)
     return tmp_path
@@ -269,6 +275,7 @@ def test_end_to_end_l3_with_attestation(fixtureLevel3Repo):
     fnWriteAttestation(sRepo, fdictBuildAttestation(
         S_STATUS_PASSED, sDigest, "img@sha256:" + "c" * 64,
         12.0, 2, 2, [], "",
+        dictAssessmentFields=fdictCurrentAssessmentFields(),
     ))
     assert fbAtLeastLevel3(dictWorkflow, sRepo, False)
     assert fiProofLevel(dictWorkflow, sRepo, bHostProject=False) == 3

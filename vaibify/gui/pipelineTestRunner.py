@@ -28,7 +28,7 @@ def _flistResolveTestCommands(dictStep):
 async def _fiRunTestCommands(
     connectionDocker, sContainerId, dictStep,
     sStepDirectory, dictVariables, fnStatusCallback,
-    iStepNumber,
+    iStepNumber, sStepLabel="",
 ):
     """Run test commands per category and emit results."""
     listTestCommands = _flistResolveTestCommands(dictStep)
@@ -40,6 +40,7 @@ async def _fiRunTestCommands(
     dictCategoryResults = await _fdictRunTestsByCategory(
         connectionDocker, sContainerId, dictStep,
         sStepDirectory, dictVariables, fnStatusCallback,
+        sStepLabel=sStepLabel,
     )
     listAllLog = _flistCollectCategoryLogs(dictCategoryResults)
     await _fnWriteTestLog(
@@ -54,7 +55,7 @@ async def _fiRunTestCommands(
 
 async def _fdictRunTestsByCategory(
     connectionDocker, sContainerId, dictStep,
-    sStepDirectory, dictVariables, fnStatusCallback,
+    sStepDirectory, dictVariables, fnStatusCallback, sStepLabel="",
 ):
     """Run each test group separately, return {sGroupKey: dict}."""
     dictResults = {}
@@ -63,13 +64,30 @@ async def _fdictRunTestsByCategory(
         dictResults[sGroupKey] = await _fdictRunOneCategoryCommands(
             connectionDocker, sContainerId, listCommands,
             sStepDirectory, dictVariables, fnStatusCallback,
+            sInvocationScope=_fsGroupInvocationScope(sStepLabel, sGroupKey),
         )
     return dictResults
 
 
+# Each test group's commands, named as the rerun's invocation sections.
+_DICT_GROUP_INVOCATION_SECTIONS = {
+    "dictIntegrity": "integrity",
+    "dictQualitative": "qualitative",
+    "dictQuantitative": "quantitative",
+    workflowManager.S_LEGACY_TEST_GROUP: "legacy",
+}
+
+
+def _fsGroupInvocationScope(sStepLabel, sGroupKey):
+    """Return ``<step label>.<section>`` for a group, or "" without a label."""
+    if not sStepLabel:
+        return ""
+    return f"{sStepLabel}.{_DICT_GROUP_INVOCATION_SECTIONS[sGroupKey]}"
+
+
 async def _fdictRunOneCategoryCommands(
     connectionDocker, sContainerId, listCommands,
-    sStepDirectory, dictVariables, fnStatusCallback,
+    sStepDirectory, dictVariables, fnStatusCallback, sInvocationScope="",
 ):
     """Run commands for one test category, return result dict."""
     from .pipelineLogger import ffBuildLoggingCallback
@@ -80,6 +98,7 @@ async def _fdictRunOneCategoryCommands(
     iExitCode, _ = await _ftRunCommandList(
         connectionDocker, sContainerId, listCommands,
         sStepDirectory, dictVariables, fnLog,
+        sInvocationScope=sInvocationScope,
     )
     return {
         "iExitCode": iExitCode,

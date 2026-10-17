@@ -92,7 +92,7 @@ You will see an alert in the top right that tells you that some files did not ma
 Your run passed every *scientific test* (the unit tests) the project defines, but did
 not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the rules that govern computing standards (defined by the IEEE) allow changes in the last digits of some functions, like transcendentals. Thus, progress from here requires rerunning the work in the *exact same environment* that the author used.
 
-This next section, which describes how to generate byte-identical results, is technically optional, but encouraged. While `vaibify`'s behavior is the same in both "host mode" and "container mode", the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use `vaibify` on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!
+This next section, which describes how to rerun the work in the author's own environment and have the result assessed, is technically optional, but encouraged. While `vaibify`'s behavior is the same in both "host mode" and "container mode", the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use `vaibify` on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!
 
 ## 7. Containerize the same project
 
@@ -124,8 +124,9 @@ You will then see a dialog box that shows the log of the download of the 733 MB 
 
 When the conversion finishes, you return to the Environments Hub and the ai-greenhouse environment will look the same except the `host-mode` badges become `contained`. The steps still do the
 same things, but now they do them in the pinned environment, and the
-PROOF tab's Level 3 row stops saying the project has no image and instead reports on whether the reproducibility rules have been answered, and
-whether a rebuild from that image reproduces the outputs.
+PROOF tab's Level 3 row stops saying the project has no image and instead reports on whether the author answered the determinism question
+(how much speed vaibify should trade for repeatable files), and whether a rerun from that image passes its assessment. The author's answer is
+recorded with the project, so every rerun of it uses the same execution settings.
 
 This process does not create a second project. Your clone stays on your host machine — the same directory, the same git history, the same outputs you
 just produced; only the runtime settings in its `vaibify.yml` change. The difference is that there is now an exact duplicate in a new Docker container whose environment is identical to the one the author used. Furthermore, your `vaibify` interactions will now take place inside this container leaving your own computer safe.
@@ -144,14 +145,22 @@ environment.
 2. From the **Run** menu, choose **Run All Steps**. This time every step runs inside the author's environment,
    and the run log notes that it used the date the author recorded, so
    any figure with a date inside it comes out the same. Each step's Researcher marker now reads stale because the plot's bytes changed. Click it once and the badge reads "Passed".
-3. Choose **Check Files Against Manifest** again. Every file now
-   matches: in the author's environment, your run produced the
-   author's bytes.
+3. Choose **Check Files Against Manifest** again. On a processor like
+   the author's, every file now matches: in the author's environment,
+   your run produced the author's bytes. On a different processor, a
+   few data files and figures can still differ in their last digits,
+   because math libraries choose their fastest code for the processor
+   they find; the verification below judges those by the author's
+   published comparisons, the tests that ship with the project.
 
 Finally, from the **Run** menu choose **Verify Level 3
 Reproducibility**. It makes a throwaway copy of the container from
-the author's image, reruns every step there with no network, compares
-every file, and then deletes the copy. It leaves your files alone, and
+the author's image, deletes the outputs the steps regenerate, reruns
+every step and its tests there with no network, assesses every file,
+and then deletes the copy. The verdict names what it found, followed
+by its tally: "Reproduced: every file byte-identical", or, where some
+bytes differ but every published comparison passed, "Reproduced:
+published comparisons passed; N of M files differ in their bytes". It leaves your files alone, and
 it only starts once your files match the manifest, which is why it
 comes after step 3. While running, you will see an orange **Reproducing** badge pulse. When it finishes, a **Reproduced** badge will appear along the top of the window and both the original MANIFEST.sha256 file and the just-reproduced version will appear in the viewing windows. (In cases where reproduction is unsuccessful, the badge does not persist and you instead see an error message.) The result is saved in `.vaibify/reproductions/` in your aigreenhouse clone. 
 
@@ -163,8 +172,13 @@ Level 3 is the author's job; confirming it is yours, and the Reproduced badge is
 Anyone can run the same check starting from nothing but the project's
 URL: in the hub, press **+** and choose **Reproduce a published
 project**. A reader without `vaibify` can run `./reproduce.sh` inside
-the clone. Both obtain the author's image, rerun every step inside it,
-and compare the bytes.
+the clone. It first lists the declared outputs it is about to delete
+and how to restore them (`git checkout -- <paths>`, or the project's
+archived deposit), then regenerates them in the clone. Both obtain the
+author's image, rerun every step and its tests inside it under the
+author's recorded execution settings, and give the same verdict, tally
+and exit code (0 reproduced, 1 not reproduced, 3 published inputs
+changed, 4 could not run, 5 not enough evidence).
 
 
 ## 8. When something is wrong

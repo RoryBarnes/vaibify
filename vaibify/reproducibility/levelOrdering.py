@@ -259,7 +259,7 @@ def fdictJudgeOrderedRequirements(
         # sandbox gate used to hang here, where the row carries
         # neither remedy: the buttons that fix a sandbox deposit live
         # on the two archive rows.
-        "rebuildAttestation": fbL3AttestationCurrent(filesRepo),
+        "rebuildAttestation": fbL3AttestationCurrent(filesRepo, dictWorkflow),
         "envelopeMirror": levelGates.fbEnvelopeMatchesGithubMirror(
             filesRepo,
         ),

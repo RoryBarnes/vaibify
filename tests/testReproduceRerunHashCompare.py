@@ -32,6 +32,7 @@ from vaibify.cli import commandReproduce
 from vaibify.reproducibility.rerunVerification import (
     fdictVerifyRerunOutputs,
 )
+from tests.levelGateStubs import fsWriteRerunAssessor
 
 
 S_OUTPUT_FILENAME = "result.txt"
@@ -56,6 +57,8 @@ def fixtureReadyRepo(tmp_path):
     pathReproduce = tmp_path / "reproduce.sh"
     pathReproduce.write_text("#!/usr/bin/env bash\nset -e\n")
     pathReproduce.chmod(0o755)
+    # The assessor the script runs, pinned beside it.
+    sAssessor = fsWriteRerunAssessor(tmp_path, {"listSteps": []})
     (tmp_path / "requirements.lock").write_text(
         "click==8.1.7 \\\n    --hash=sha256:" + "a" * 64 + "\n"
     )
@@ -75,7 +78,7 @@ def fixtureReadyRepo(tmp_path):
         f"{hashlib.sha256(pathFile.read_bytes()).hexdigest()}  "
         f"{pathFile.relative_to(tmp_path).as_posix()}\n"
         for pathFile in (
-            pathOutput, pathReproduce, pathDocker,
+            pathOutput, pathReproduce, tmp_path / sAssessor, pathDocker,
             tmp_path / "requirements.lock",
             pathVaibify / "environment.json",
         )
@@ -85,13 +88,10 @@ def fixtureReadyRepo(tmp_path):
     (pathWorkflows / "wf.json").write_text(json.dumps({
         "listSteps": [],
         "dictDeterminism": {
-            # All three questions answered (2026-08-30 ruling).
-            # A lone waiver used to satisfy the gate; it is now
-            # one answer of three, so a fixture carrying only it
-            # builds a project that is NOT L3-ready.
-            "sBlasVarianceAnswer": "accepted",
-            "sOmpThreadsAnswer": "unpinned",
-            "sMklModeAnswer": "not-used",
+            # The determinism question answered: one question since
+            # 2026-10-17, and either answer passes.
+            "sRepeatabilityAnswer": "speed",
+            "sExecutionProfile": "speed-v1",
         },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
@@ -161,18 +161,19 @@ def test_divergent_rerun_attestation_names_the_diverged_file(
 def test_divergent_rerun_attestation_counts_matched_below_total(
     fixtureReadyRepo,
 ):
-    """Four of the five pinned artefacts still match; the record says so.
+    """Five of the six pinned artefacts still match; the record says so.
 
-    Five since 2026-09-14: the manifest pins the dependency lock and
-    the environment snapshot alongside the three artifacts, so a
-    reproducer verifies what PRODUCED the results too.
+    Six: the manifest pins the dependency lock and the environment
+    snapshot alongside the three artifacts (since 2026-09-14), so a
+    reproducer verifies what PRODUCED the results too, and the rerun
+    assessor that grades them (2026-10-17).
     """
     _resultClick, dictAttestation = _fdictInvokeRerunWithDivergentStep(
         fixtureReadyRepo, "answer = 43\n",
     )
     assert dictAttestation is not None, "no attestation was written"
-    assert dictAttestation["iOutputHashesTotal"] == 5
-    assert dictAttestation["iOutputHashesMatched"] == 4, (
+    assert dictAttestation["iOutputHashesTotal"] == 6
+    assert dictAttestation["iOutputHashesMatched"] == 5, (
         "matched must be derived from the re-hash, not asserted from "
         "the pipeline exit code"
     )
@@ -186,5 +187,5 @@ def test_faithful_rerun_still_attests_pass(fixtureReadyRepo):
     assert resultClick.exit_code == 0, resultClick.output
     assert dictAttestation["sStatus"] == "passed"
     assert dictAttestation["listDivergedHashes"] == []
-    assert dictAttestation["iOutputHashesMatched"] == 5
-    assert dictAttestation["iOutputHashesTotal"] == 5
+    assert dictAttestation["iOutputHashesMatched"] == 6
+    assert dictAttestation["iOutputHashesTotal"] == 6

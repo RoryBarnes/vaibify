@@ -478,6 +478,24 @@ var VaibifyReproducePublished = (function () {
         return dictReport.sVerdictRendered || dictReport.sVerdict || "";
     }
 
+    /* The colour of a verdict the server reached. "reproduced" and
+       "diverged" are the byte-only verifier's words, kept for reports
+       written before the assessed rerun; "not enough evidence" is
+       neither a pass nor a failure and wears its own colour. */
+    var _DICT_VERDICT_CLASSES = {
+        "reproduced": "reproduced",
+        "byte-identical": "reproduced",
+        "comparisons-passed": "reproduced",
+        "diverged": "diverged",
+        "not-reproduced": "diverged",
+        "inputs-changed": "diverged",
+        "insufficient-evidence": "insufficient",
+    };
+
+    function _fsVerdictClass(sVerdict) {
+        return _DICT_VERDICT_CLASSES[sVerdict] || "none";
+    }
+
     function _fnRenderResult(dictJob) {
         var dictReport = dictJob.dictReport || null;
         var elVerdict = _felById("reproduceResultVerdict");
@@ -492,12 +510,13 @@ var VaibifyReproducePublished = (function () {
         var sVerdict = _fsRenderVerdict(dictReport);
         elVerdict.textContent = sVerdict;
         elVerdict.className = "reproduce-verdict reproduce-verdict-" +
-            (dictReport.sVerdict === "reproduced" ? "reproduced"
-                : dictReport.sVerdict === "diverged" ? "diverged" : "none");
+            _fsVerdictClass(dictReport.sVerdict);
         var dictPlatform = dictReport.dictPlatform || {};
         var listCarried = dictReport.listCarriedPaths || [];
         elBody.innerHTML =
             '<table class="reproduce-facts">' +
+            (dictReport.sTallyRendered ?
+                _fsFactRow("Tally", dictReport.sTallyRendered) : "") +
             _fsFactRow("Outputs regenerated identically",
                 dictReport.iOutputHashesMatched +
                 " of " + dictReport.iOutputHashesTotal +

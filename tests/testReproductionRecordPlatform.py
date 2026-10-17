@@ -116,7 +116,7 @@ def test_the_record_names_the_architecture_the_daemon_reported(
     dictRecord = _fdictWriteReproductionRecord(
         pathContainerRepository, _DaemonThatAnswersItsArchitecture(),
     )
-    assert dictRecord["sVerdict"] == "reproduced"
+    assert dictRecord["sVerdict"] == "byte-identical"
     assert dictRecord["dictPlatform"]["sDaemonArchitecture"] == "arm64"
     assert "sDaemonArchitectureUnknownReason" not in dictRecord["dictPlatform"]
 

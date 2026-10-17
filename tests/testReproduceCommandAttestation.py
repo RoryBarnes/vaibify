@@ -14,6 +14,8 @@ import subprocess
 from unittest.mock import patch
 
 import pytest
+
+from tests.levelGateStubs import fsWriteRerunAssessor
 from click.testing import CliRunner
 
 from vaibify.cli import commandReproduce
@@ -65,6 +67,8 @@ def fixtureRepo(tmp_path):
     pathRepro.write_text("#!/usr/bin/env bash\nset -e\n")
     pathRepro.chmod(0o755)
     sReproHash = hashlib.sha256(pathRepro.read_bytes()).hexdigest()
+    # The assessor the script runs, pinned beside it (2026-10-17).
+    fsWriteRerunAssessor(tmp_path, {"listSteps": []})
     # requirements.lock with one hash-pinned dependency.
     (tmp_path / "requirements.lock").write_text(
         "click==8.1.7 \\\n"
@@ -88,13 +92,10 @@ def fixtureRepo(tmp_path):
     (pathWorkflows / "wf.json").write_text(json.dumps({
         "listSteps": [],
         "dictDeterminism": {
-            # All three questions answered (2026-08-30 ruling).
-            # A lone waiver used to satisfy the gate; it is now
-            # one answer of three, so a fixture carrying only it
-            # builds a project that is NOT L3-ready.
-            "sBlasVarianceAnswer": "accepted",
-            "sOmpThreadsAnswer": "unpinned",
-            "sMklModeAnswer": "not-used",
+            # The determinism question answered: one question since
+            # 2026-10-17, and either answer passes.
+            "sRepeatabilityAnswer": "speed",
+            "sExecutionProfile": "speed-v1",
         },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
@@ -104,8 +105,8 @@ def fixtureRepo(tmp_path):
     # the outputs is a project vaibify would no longer produce and
     # tier 4 reports it incomplete.
     _fnWriteManifestOver(tmp_path, [
-        "result.txt", "reproduce.sh", "Dockerfile",
-        "requirements.lock", ".vaibify/environment.json",
+        "result.txt", "reproduce.sh", ".vaibify/rerunAssessment.py",
+        "Dockerfile", "requirements.lock", ".vaibify/environment.json",
     ])
     return tmp_path
 
@@ -282,17 +283,17 @@ def test_write_attestation_from_run_writes_passed_record(fixtureRepo):
     assert dictPayload["sStatus"] == "passed"
     assert dictPayload["listDivergedHashes"] == []
     assert dictPayload["fDurationSeconds"] == 2.5
-    # Five since 2026-09-14: the three artifacts plus the dependency
-    # lock and the environment snapshot the manifest now pins.
-    assert dictPayload["iOutputHashesMatched"] == 5
-    assert dictPayload["iOutputHashesTotal"] == 5
+    # Six: the three artifacts, the dependency lock and the environment
+    # snapshot (since 2026-09-14), and the rerun assessor (2026-10-17).
+    assert dictPayload["iOutputHashesMatched"] == 6
+    assert dictPayload["iOutputHashesTotal"] == 6
 
 
 def test_write_attestation_from_run_writes_failed_record(fixtureRepo):
     """A non-zero pipeline exit is named in listDivergedHashes.
 
     The artefacts on disk are untouched here, so the re-hash honestly
-    reports 5 of 5 matching; the rerun itself is what failed, and that
+    reports 6 of 6 matching; the rerun itself is what failed, and that
     fact is the first diverged entry rather than a zeroed count.
     """
     dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), False)
@@ -308,7 +309,7 @@ def test_write_attestation_from_run_writes_failed_record(fixtureRepo):
     assert dictPayload["listDivergedHashes"] == [
         S_DIVERGENCE_PIPELINE_FAILED
     ]
-    assert dictPayload["iOutputHashesMatched"] == 5
+    assert dictPayload["iOutputHashesMatched"] == 6
 
 
 def test_a_rerun_that_reached_no_verdict_writes_nothing(fixtureRepo):
@@ -509,13 +510,10 @@ def test_aggregate_returns_workflow_with_determinism_only(tmp_path):
     (pathDir / "wf.json").write_text(json.dumps({
         "listSteps": [],
         "dictDeterminism": {
-            # All three questions answered (2026-08-30 ruling).
-            # A lone waiver used to satisfy the gate; it is now
-            # one answer of three, so a fixture carrying only it
-            # builds a project that is NOT L3-ready.
-            "sBlasVarianceAnswer": "accepted",
-            "sOmpThreadsAnswer": "unpinned",
-            "sMklModeAnswer": "not-used",
+            # The determinism question answered: one question since
+            # 2026-10-17, and either answer passes.
+            "sRepeatabilityAnswer": "speed",
+            "sExecutionProfile": "speed-v1",
         },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],

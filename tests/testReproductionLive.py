@@ -66,17 +66,19 @@ _S_PROBE_DOCKERFILE = (
 )
 
 
-def _fimageBuildProbeImage(dockerDisposable):
+def _fimageBuildProbeImage(
+    dockerDisposable, sDockerfile=_S_PROBE_DOCKERFILE, sTag=S_PROBE_TAG,
+):
     """Build the probe image from a stock base; return the SDK image."""
     bufferContext = io.BytesIO()
     with tarfile.open(fileobj=bufferContext, mode="w") as fileTar:
-        baDockerfile = _S_PROBE_DOCKERFILE.encode("utf-8")
+        baDockerfile = sDockerfile.encode("utf-8")
         infoMember = tarfile.TarInfo("Dockerfile")
         infoMember.size = len(baDockerfile)
         fileTar.addfile(infoMember, io.BytesIO(baDockerfile))
     bufferContext.seek(0)
     imageProbe, _iterLogs = dockerDisposable.images.build(
-        fileobj=bufferContext, custom_context=True, tag=S_PROBE_TAG, rm=True,
+        fileobj=bufferContext, custom_context=True, tag=sTag, rm=True,
     )
     return imageProbe
 
@@ -174,7 +176,7 @@ def test_a_deposit_loaded_image_runs_the_staged_snapshot_end_to_end(
     assert result.exit_code == 0, result.output
     assert "registry pull: failed" in result.output
     assert "archived deposit: served" in result.output
-    assert "Verdict: reproduced" in result.output
+    assert "Verdict: Reproduced: every file byte-identical" in result.output
     sReportsDirectory = reproductionReport.fsReportsDirectory()
     listReports = sorted(
         sName for sName in os.listdir(sReportsDirectory)

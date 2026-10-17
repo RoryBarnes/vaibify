@@ -20,10 +20,12 @@ probe would.
 """
 
 import os
+import pathlib
 import subprocess
 
 import pytest
 
+from tests.levelGateStubs import fsWriteRerunAssessor
 from vaibify.reproducibility import levelGates
 from vaibify.reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME, fsRenderReproduceScript,
@@ -62,10 +64,16 @@ def sProjectRepo(tmp_path):
 
 
 def _fnWriteScript(sProjectRepo, sText):
+    """Write ``reproduce.sh`` beside the assessor rendered for it now.
+
+    The assessor is current in every case here, so the script is the
+    only file whose staleness is under test.
+    """
     with open(
         os.path.join(sProjectRepo, S_REPRODUCE_SCRIPT_FILENAME), "w",
     ) as fileOut:
         fileOut.write(sText)
+    fsWriteRerunAssessor(pathlib.Path(sProjectRepo), _fdictBuildWorkflow())
 
 
 @pytest.mark.falsification
@@ -90,6 +98,25 @@ def test_the_script_the_generator_writes_now_passes(sProjectRepo):
     assert levelGates.fbVerifyReproduceScriptCurrent(
         sProjectRepo, dictWorkflow,
     ) is True
+
+
+@pytest.mark.falsification
+def test_a_hand_edited_assessor_is_caught(sProjectRepo):
+    """The assessor the script runs is held to the generator too.
+
+    A current ``reproduce.sh`` beside an assessor someone edited grades
+    the rerun under rules vaibify did not write, so the pair is stale.
+
+    Kills: comparing only ``reproduce.sh`` against its render.
+    """
+    dictWorkflow = _fdictBuildWorkflow()
+    _fnWriteScript(sProjectRepo, fsRenderReproduceScript(dictWorkflow))
+    pathAssessor = pathlib.Path(sProjectRepo) / ".vaibify/rerunAssessment.py"
+    pathAssessor.write_text(pathAssessor.read_text().replace(
+        "I_IMAGE_LEVEL_THRESHOLD = 2", "I_IMAGE_LEVEL_THRESHOLD = 255"))
+    assert levelGates.fbVerifyReproduceScriptCurrent(
+        sProjectRepo, dictWorkflow,
+    ) is False
 
 
 def test_a_stale_script_slips_past_every_older_check(sProjectRepo):

@@ -198,7 +198,7 @@ def fsPublishAuthorsProject(sRepo, dictOutputs, sTarballSha, iTarballBytes,
             fileOut.write(dictOutputs[sRelative])
     from vaibify.reproducibility import determinismGate
     from vaibify.reproducibility.reproduceScriptGenerator import (
-        fsRenderReproduceScript,
+        ftRenderReproductionFiles,
     )
     fnWriteText(
         sRepo, "requirements.lock",
@@ -211,9 +211,9 @@ def fsPublishAuthorsProject(sRepo, dictOutputs, sTarballSha, iTarballBytes,
         "sWorkflowName": "Journey", "sPlotDirectory": "figures",
         "bNoStandaloneBinaries": True, "listDeclaredBinaries": [],
         "dictDeterminism": {
-            determinismGate.S_BLAS_ANSWER_KEY: determinismGate.S_BLAS_ACCEPTED,
-            determinismGate.S_OMP_ANSWER_KEY: determinismGate.S_OMP_UNPINNED,
-            determinismGate.S_MKL_ANSWER_KEY: determinismGate.S_MKL_NOT_USED,
+            determinismGate.S_REPEATABILITY_ANSWER_KEY: (
+                determinismGate.S_REPEATABILITY_SPEED),
+            "sExecutionProfile": "speed-v1",
         },
         "listSteps": [{
             "sName": "Make Grid", "sStepId": "make-grid",
@@ -226,7 +226,8 @@ def fsPublishAuthorsProject(sRepo, dictOutputs, sTarballSha, iTarballBytes,
         }],
     }
     fnWriteJson(sRepo, ".vaibify/projects/project.json", dictWorkflow)
-    fnWriteText(sRepo, "reproduce.sh", fsRenderReproduceScript(dictWorkflow))
+    for sRelative, sText in ftRenderReproductionFiles(dictWorkflow):
+        fnWriteText(sRepo, sRelative, sText)
     fnWriteJson(sRepo, ".vaibify/environment.json", {
         "iSourceDateEpoch": I_RECORDED_EPOCH,
         "dictContainer": {
@@ -599,7 +600,11 @@ def test_the_readers_journey_through_the_real_hub(
     assert dictLabel["bEmulated"] is False
     assert dictLabel["sPlatform"] == "linux/" + dictPublished["sArchitecture"]
     dictRecord = dictSettled["dictLatestReproduction"]
-    assert dictRecord["sVerdict"] == "reproduced"
+    # Every output regenerates byte for byte, so the comparison policy's
+    # verdict is the strongest one it gives (design, "Verdicts as shown").
+    assert dictRecord["sVerdict"] == "byte-identical"
+    assert dictRecord["sVerdictRendered"] == (
+        "Reproduced: every file byte-identical")
     assert dictRecord["bBaselineKnown"] is True
     assert dictRecord["dictSource"]["sResolvedCommit"] == (
         dictPublished["sHeadCommit"])

@@ -7019,7 +7019,7 @@ def testTheDeterminismDeclarationCommitsSynchronously(tclientLevelThree):
     client, connectionDocker = tclientLevelThree
     client.post(
         f"/api/workflow/{S_CONTAINER_ID}/determinism/declare",
-        json={"dOmpNumThreads": 1},
+        json={"sRepeatabilityAnswer": "speed"},
     )
     _fnAssertTheDeclarationSavedSynchronously(connectionDocker)
 

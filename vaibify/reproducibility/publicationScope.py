@@ -162,7 +162,12 @@ S_PROJECTS_DIRECTORY = ".vaibify/projects"
 #      absence from that cache's divergence list is not evidence of
 #      agreement, and the stamp's badge would read matched by
 #      omission -- the same reasoning as version 5, one file later.
-I_PUBLICATION_SCOPE_VERSION = 6
+#   7  .vaibify/rerunAssessment.py joins the ENVELOPE (2026-10-17):
+#      the rendered assessor reproduce.sh runs, which records the
+#      comparison policy a reproduction grades under. A ladder change,
+#      covered by the researcher's approval of the assessed Level 3
+#      design. A version-6 cache never compared it.
+I_PUBLICATION_SCOPE_VERSION = 7
 
 # The reproducibility envelope: what a third party needs in order to
 # re-fetch and re-execute. Their presence is already checked by the L3
@@ -177,6 +182,11 @@ TUPLE_LEVEL3_ENVELOPE_PATHS = (
     "requirements.txt",
     "environment.yml",
     "pyproject.toml",
+    # The assessor reproduce.sh runs, and the record of the comparison
+    # policy the project's reproductions grade under. Pinned beside the
+    # script, so a stranger's run is integrity-checked against it, and
+    # protected from the rerun's clearing like every envelope file.
+    ".vaibify/rerunAssessment.py",
 )
 
 # Compared against every remote, and required by no criterion IN THIS

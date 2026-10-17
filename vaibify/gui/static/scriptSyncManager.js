@@ -3138,9 +3138,21 @@ var VaibifySyncManager = (function () {
         var sExtra = iIncomplete > 0
             ? " Plus " + iIncomplete + " not pinned."
             : "";
+        // Explained by recorded hardware or settings: the server's
+        // words and its option, never an error (design F5).
+        var dictExplain = dict.dictContextExplanation || {};
+        if (dictExplain.bOnlyContextDifferences) {
+            VaibifyApp.fnShowToast(
+                "Manifest: " + iMatching + "/" + iTotal + " match. " +
+                dictExplain.sSummary + " " + dictExplain.sOption + sExtra,
+                "info");
+            return;
+        }
         VaibifyApp.fnShowToast(
             "Manifest mismatch: " + iMatching + "/" + iTotal +
-            " match. " + sList + sExtra, "error");
+            " match. " + sList + sExtra +
+            (dictExplain.sSummary ? " " + dictExplain.sSummary : ""),
+            "error");
     }
 
     function _fsBuildMismatchSummary(listMismatches) {

@@ -62,6 +62,7 @@ from click.testing import CliRunner
 
 from vaibify.cli import commandReproduce
 from vaibify.docker.dockerConnection import DockerConnection
+from tests.levelGateStubs import fsWriteRerunAssessor
 
 
 S_OUTPUT_FILENAME = "result.txt"
@@ -285,6 +286,7 @@ def _fnSeedEnvelope(pathRepo):
     pathReproduce = pathRepo / "reproduce.sh"
     pathReproduce.write_text("#!/usr/bin/env bash\nset -e\n")
     pathReproduce.chmod(0o755)
+    sAssessor = fsWriteRerunAssessor(pathRepo, {"listSteps": []})
     # Pinned to a package the LOCAL python3 actually has, at the
     # version it actually has, read through the same enumeration the
     # lock-satisfaction gate runs. This harness executes real commands
@@ -308,7 +310,7 @@ def _fnSeedEnvelope(pathRepo):
     # them, so tier 4 reported an incomplete manifest on a fixture
     # meant to pass every tier.
     _fnWriteManifestFor(pathRepo, (
-        pathOutput, pathReproduce, pathDocker,
+        pathOutput, pathReproduce, pathRepo / sAssessor, pathDocker,
         pathRepo / "requirements.lock",
         pathVaibify / "environment.json",
     ))
@@ -322,13 +324,10 @@ def _fnSeedEnvelope(pathRepo):
             "saOutputDataFiles": [S_OUTPUT_FILENAME],
         }],
         "dictDeterminism": {
-            # All three questions answered (2026-08-30 ruling).
-            # A lone waiver used to satisfy the gate; it is now
-            # one answer of three, so a fixture carrying only it
-            # builds a project that is NOT L3-ready.
-            "sBlasVarianceAnswer": "accepted",
-            "sOmpThreadsAnswer": "unpinned",
-            "sMklModeAnswer": "not-used",
+            # The determinism question answered: one question since
+            # 2026-10-17, and either answer passes.
+            "sRepeatabilityAnswer": "speed",
+            "sExecutionProfile": "speed-v1",
         },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
@@ -488,13 +487,10 @@ def _fdictWorkflowFor(pathRepo, sName):
             "saOutputDataFiles": [S_OUTPUT_FILENAME],
         }],
         "dictDeterminism": {
-            # All three questions answered (2026-08-30 ruling).
-            # A lone waiver used to satisfy the gate; it is now
-            # one answer of three, so a fixture carrying only it
-            # builds a project that is NOT L3-ready.
-            "sBlasVarianceAnswer": "accepted",
-            "sOmpThreadsAnswer": "unpinned",
-            "sMklModeAnswer": "not-used",
+            # The determinism question answered: one question since
+            # 2026-10-17, and either answer passes.
+            "sRepeatabilityAnswer": "speed",
+            "sExecutionProfile": "speed-v1",
         },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
@@ -660,7 +656,9 @@ def test_container_side_byte_change_fails_even_though_the_clone_is_clean(
             "the rerun wrote into the RESEARCHER's own container "
             "repository; the shadow lane exists so that it does not"
         )
-    assert resultClick.exit_code == 1, (
+    # Changed bytes that no published comparison covers: "Not enough
+    # evidence", exit 5 (design D6) -- never a pass.
+    assert resultClick.exit_code == 5, (
         "reproduce --rerun certified a reproduction whose shadow-side "
         "output changed; the verification hashed a tree the rerun never "
         f"touched. Output was:\n{resultClick.output}"
@@ -720,14 +718,14 @@ def test_faithful_container_rerun_still_attests_a_pass(fixtureTwoRoots):
 
     assert resultClick.exit_code == 0, resultClick.output
     assert dictAttestation["sStatus"] == "passed"
-    # One declared output was regenerated; the other four pinned files
-    # (the reproduce script, Dockerfile, dependency lock and environment
-    # snapshot, which pin what PRODUCED the results) are checked
-    # unchanged and counted apart.
+    # One declared output was regenerated; the other five pinned files
+    # (the reproduce script and its assessor, Dockerfile, dependency
+    # lock and environment snapshot, which pin what PRODUCED the
+    # results) are checked unchanged and counted apart.
     assert dictAttestation["iOutputHashesMatched"] == 1
     assert dictAttestation["iOutputHashesTotal"] == 1
-    assert dictAttestation["iPinnedInputsUnchanged"] == 4
-    assert dictAttestation["iPinnedInputsTotal"] == 4
+    assert dictAttestation["iPinnedInputsUnchanged"] == 5
+    assert dictAttestation["iPinnedInputsTotal"] == 5
     assert dictAttestation["dictPreRerunClearing"][
         "listDeletedOutputs"] == [S_OUTPUT_FILENAME]
 
@@ -831,7 +829,9 @@ def test_a_step_that_rewrites_the_manifest_cannot_bless_its_own_change(
     finally:
         fnStop()
 
-    assert resultClick.exit_code == 1, (
+    # A manifest that moved during the run is a changed published
+    # input: exit 3 (design D6).
+    assert resultClick.exit_code == 3, (
         "a rerun that re-pinned the manifest over its own changed output "
         "was certified as a reproduction; the expected hashes must be "
         f"frozen before the run. Output was:\n{resultClick.output}"
@@ -945,7 +945,8 @@ def test_cli_refuses_to_guess_when_the_container_holds_two_workflows(
         "the CLI picked a workflow out of an ambiguous container "
         f"instead of refusing; output was:\n{resultClick.output}"
     )
-    assert resultClick.exit_code == 1
+    # Refused before any step: "Could not run", exit 4 (design D6).
+    assert resultClick.exit_code == 4
     assert "--workflow" in resultClick.output, (
         "the refusal must tell the researcher how to disambiguate; got:"
         f"\n{resultClick.output}"

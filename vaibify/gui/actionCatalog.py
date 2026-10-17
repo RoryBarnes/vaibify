@@ -632,11 +632,11 @@ LIST_AGENT_ACTIONS = [
                      "of the L3 readiness card. Returns the same JSON "
                      "as check-l3-readiness; read bDeterminismDeclared "
                      "for the verdict and listDeterminismIssues for "
-                     "what produced it (a missing dictDeterminism "
-                     "block or BLAS waiver, and any step flagged "
+                     "what produced it (the repeatability question not "
+                     "yet answered, and any step flagged "
                      "bUnseededRandomnessWarning). A project with no "
-                     "RNG still needs the declaration or the waiver: "
-                     "the gate asks what you assert, not what the "
+                     "RNG still answers the question: the gate asks "
+                     "what the researcher chooses, not what the "
                      "scripts happen to do. Does not modify the "
                      "workflow or the project repo."},
     {"sName": "generate-l3-envelope", "sCategory": "verification",
@@ -780,20 +780,18 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/determinism/declare",
      "bAgentSafe": False,
-     "sDescription": "Record the researcher's answer to ONE of the "
-                     "three determinism questions (2026-08-30 ruling: "
-                     "each must be answered; answering is the "
-                     "criterion, not any particular answer). Args: "
-                     "one of {sBlasVarianceAnswer: accepted|rejected, "
-                     "sOmpThreadsAnswer: pinned|unpinned, "
-                     "sMklModeAnswer: pinned|not-used}, plus "
-                     "dOmpNumThreads: number or sMklCbwr: str when "
-                     "that answer is 'pinned' (a pinned answer with "
-                     "no value does not count). Keys merge, so send "
-                     "one question at a time; send null to clear a "
-                     "value. User-only: these are claims about the "
-                     "researcher's own science and an agent must not "
-                     "make them on their behalf."},
+     "sDescription": "Record the researcher's answer to the one "
+                     "determinism question: how much speed vaibify "
+                     "should trade for repeatable files (answering is "
+                     "the criterion, not any particular answer). Args: "
+                     "{sRepeatabilityAnswer: speed|across}, or null to "
+                     "withdraw it. The route records the newest "
+                     "execution profile for the answer "
+                     "(sExecutionProfile); a caller never names one. "
+                     "Changing the answer retires the current Level 3 "
+                     "attestation. User-only: this is a choice about "
+                     "the researcher's own work and an agent must not "
+                     "make it on their behalf."},
     {"sName": "answer-environment-archive", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/environment-archive/answer",

@@ -32,6 +32,7 @@ __all__ = [
     "ffilesEnsureRepoFiles",
     "fnInjectManifestTextIntoSnapshot",
     "fsRepoRootOf",
+    "fnRequirePathBesideRepository",
     "fsShellQuotePosix",
     "TUPLE_SNAPSHOT_CONTENT_PATHS",
     "TUPLE_SNAPSHOT_SKIP_TEXT_PATHS",
@@ -94,6 +95,32 @@ def _fnRequireWritableRelativePath(sRootPath, sRelPath):
         raise ValueError(
             f"refusing to write outside the repository root: '{sRelPath}'"
         )
+
+
+S_BESIDE_REPOSITORY_PREFIX = "vaibifyRerun"
+
+
+def fnRequirePathBesideRepository(sRootPath, sTargetPath):
+    """Raise ValueError unless a target is a file in a vaibify run directory.
+
+    The only writes an adapter makes OUTSIDE its repository are the
+    attestation rerun's own: a file directly inside a directory named
+    ``vaibifyRerun...`` that sits beside the repository root. Anything
+    else -- inside the repository, deeper, or anywhere further away -- is
+    refused before any IO happens.
+    """
+    sRoot = posixpath.normpath(sRootPath or "")
+    sTarget = posixpath.normpath(sTargetPath or "")
+    sDirectory = posixpath.dirname(sTarget)
+    if (not sRootPath or not posixpath.isabs(sTarget)
+            or posixpath.dirname(sDirectory) != posixpath.dirname(sRoot)
+            or sDirectory == sRoot
+            or not posixpath.basename(sDirectory).startswith(
+                S_BESIDE_REPOSITORY_PREFIX)
+            or posixpath.basename(sTarget) in ("", ".", "..")):
+        raise ValueError(
+            f"refusing to write {sTargetPath!r}: it is not a file in a "
+            f"vaibify run directory beside {sRootPath!r}")
 
 
 class _RepoLockHolder:
@@ -173,6 +200,16 @@ class HostRepoFiles:
             sRelPath,
             json.dumps(dictPayload, indent=2, sort_keys=True),
         )
+
+    def fnWriteBesideRepository(self, sAbsolutePath, sContent):
+        """Create one file in a vaibify run directory beside the repository.
+
+        Exclusive: an existing file is refused, because every such file
+        belongs to one run. See :func:`fnRequirePathBesideRepository`.
+        """
+        fnRequirePathBesideRepository(self.sRootPath, sAbsolutePath)
+        with open(sAbsolutePath, "x", encoding="utf-8", newline="\n") as f:
+            f.write(sContent)
 
     def fbRemoveFile(self, sRelPath):
         """Remove the file; return True iff a file was actually removed."""
@@ -590,9 +627,7 @@ class ContainerRepoFiles:
         self._ftExec(
             "mkdir -p " + fsShellQuotePosix(posixpath.dirname(sAbsolute)),
         )
-        self.connectionDocker.fnWriteFile(
-            self.sContainerId, sTempPath, sContent.encode("utf-8"),
-        )
+        self._fnWriteThroughConnection(sTempPath, sContent)
         iExitCode, sStdout = self._ftExec(
             "mv -f " + fsShellQuotePosix(sTempPath)
             + " " + fsShellQuotePosix(sAbsolute),
@@ -608,6 +643,23 @@ class ContainerRepoFiles:
             sRelPath,
             json.dumps(dictPayload, indent=2, sort_keys=True),
         )
+
+    def _fnWriteThroughConnection(self, sAbsolutePath, sContent):
+        """Make the adapter's one write: the connection's confined write,
+        as the container user."""
+        self.connectionDocker.fnWriteFile(
+            self.sContainerId, sAbsolutePath, sContent.encode("utf-8"),
+        )
+
+    def fnWriteBesideRepository(self, sAbsolutePath, sContent):
+        """Write one file in a vaibify run directory beside the repository.
+
+        The attestation rerun's rendered assessor and invocation ledger,
+        and nothing else: :func:`fnRequirePathBesideRepository` refuses
+        every other target before any IO happens.
+        """
+        fnRequirePathBesideRepository(self.sRootPath, sAbsolutePath)
+        self._fnWriteThroughConnection(sAbsolutePath, sContent)
 
     def fbRemoveFile(self, sRelPath):
         """Remove the container file; True iff a file was removed."""
@@ -820,6 +872,8 @@ TUPLE_SNAPSHOT_CONTENT_PATHS = (
     "pyproject.toml",
     "Dockerfile",
     "reproduce.sh",
+    ".vaibify/rerunAssessment.py",
+    ".vaibify/outputProvenance.json",
     ".vaibify/environment.json",
     ".vaibify/l3_attestation.json",
     ".vaibify/syncStatus.json",
@@ -885,6 +939,9 @@ def _fsBuildSnapshotScriptCommand(
     from vaibify.docker.dockerConnection import (
         S_REPO_SNAPSHOT_PROGRAM_CORE,
     )
+    from vaibify.reproducibility.reproductionReport import (
+        flistDecisiveVerdicts,
+    )
     listHashPaths = _flistSnapshotHashPaths(
         listScriptRelPaths, listHashRelPaths,
     )
@@ -898,6 +955,7 @@ def _fsBuildSnapshotScriptCommand(
             "dictCachedKeys": dict(dictCachedKeys or {}),
             "bHashManifestEntries": bool(bHashManifestEntries),
             "bReadReproductions": bool(bReadReproductions),
+            "listDecisiveVerdicts": flistDecisiveVerdicts(),
         },
     )
 

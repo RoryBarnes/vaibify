@@ -50,7 +50,11 @@ import json
 import posixpath
 from datetime import datetime
 
-from vaibify.reproducibility import gitEvidence, l3Attestation
+from vaibify.reproducibility import (
+    gitEvidence,
+    l3Attestation,
+    reproductionReport,
+)
 from vaibify.reproducibility.manifestWriter import flistParseManifestText
 from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
 
@@ -70,8 +74,6 @@ S_STATE_DIVERGED = "diverged"
 S_STATE_STALE = "evidence-changed"
 S_STATE_UNREADABLE = "unreadable"
 
-_S_VERDICT_REPRODUCED = "reproduced"
-_S_VERDICT_DIVERGED = "diverged"
 _S_MANIFEST_PATH = "MANIFEST.sha256"
 
 
@@ -88,6 +90,7 @@ def _fdictLabel(sState, sReason="", **dictFields):
         "bShow": False, "sState": sState, "sReason": sReason,
         "bEmulated": False, "sPlatform": "", "sRecordedIso": "",
         "sLatestAttemptIso": "", "sLatestAttemptVerdict": "",
+        "sVerdictRendered": "",
     }
     dictLabel.update(dictFields)
     return dictLabel
@@ -113,15 +116,19 @@ def _flistParseRecords(dictRecordTexts):
 
 
 def fdictBuildReproductionLabel(
-    filesPoll, sWorkflowRelativePath, dictLastNoVerdict=None,
+    filesPoll, dictWorkflow, sWorkflowRelativePath, dictLastNoVerdict=None,
 ):
-    """Return the label payload for one poll of one workflow."""
+    """Return the label payload for one poll of one workflow.
+
+    ``dictWorkflow`` is what the author's label is judged against: their
+    attestation is current only under the profile the workflow asks for.
+    """
     if not isinstance(filesPoll, SnapshotRepoFiles):
         return _fdictLabel(S_STATE_ABSENT)
     if gitEvidence.fsManifestOwnershipFromSnapshotFacts(
         filesPoll.dictOwnershipFacts,
     ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:
-        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)
+        return _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict)
     dictRecordTexts = filesPoll.dictReproductionRecords
     if dictRecordTexts is None:
         # A snapshot that did not carry the records did not READ them:
@@ -157,15 +164,19 @@ def _fdictLabelFromRecords(
     listDecisive = [
         dictRecord for dictRecord in listForWorkflow
         if dictRecord.get("sVerdict") in (
-            _S_VERDICT_REPRODUCED, _S_VERDICT_DIVERGED,
-        )
+            reproductionReport.SET_VERDICTS_THAT_REPRODUCE
+            | reproductionReport.SET_VERDICTS_THAT_DO_NOT_REPRODUCE)
     ]
     if not listDecisive:
         return _fdictLabel(S_STATE_ABSENT)
     dictNewest = listDecisive[0]
-    if dictNewest.get("sVerdict") == _S_VERDICT_DIVERGED:
+    if dictNewest.get("sVerdict") in (
+            reproductionReport.SET_VERDICTS_THAT_DO_NOT_REPRODUCE):
         return _fdictLabel(
-            S_STATE_DIVERGED, "the newest reproduction did not match",
+            S_STATE_DIVERGED,
+            reproductionReport.fsRenderVerdict(dictNewest)
+            if dictNewest.get("sVerdictRendered")
+            else "the newest reproduction did not match",
         )
     sOwnership = gitEvidence.fsManifestOwnershipFromSnapshotFacts(
         filesPoll.dictOwnershipFacts)
@@ -189,15 +200,18 @@ def _fdictLabelForReproduced(dictRecord, dictLastNoVerdict):
         S_STATE_REPRODUCED, bShow=True, sRecordedIso=sRecordedIso,
         bEmulated=bool(dictPlatform.get("bEmulated")),
         sPlatform=str(dictPlatform.get("sObtainedPlatform") or ""),
+        sVerdictRendered=(
+            reproductionReport.fsRenderVerdict(dictRecord)
+            if dictRecord.get("sVerdictRendered") else ""),
     )
     _fnNameLaterNoVerdict(dictLabel, dictLastNoVerdict, sRecordedIso)
     return dictLabel
 
 
-def _fdictLabelForAuthor(filesPoll, dictLastNoVerdict):
+def _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict):
     """Return the author's label: their own CURRENT Level 3 attestation."""
-    if not l3Attestation.fbL3AttestationCurrent(filesPoll):
-        return _fdictLabel(*_ftAuthorLabelAbsence(filesPoll))
+    if not l3Attestation.fbL3AttestationCurrent(filesPoll, dictWorkflow):
+        return _fdictLabel(*_ftAuthorLabelAbsence(filesPoll, dictWorkflow))
     dictAttestation = l3Attestation.fdictReadAttestation(filesPoll) or {}
     sRecordedIso = str(dictAttestation.get("sAttestedAtUtc") or "")
     dictProvenance = dictAttestation.get("dictReproductionProvenance")
@@ -207,12 +221,13 @@ def _fdictLabelForAuthor(filesPoll, dictLastNoVerdict):
         S_STATE_REPRODUCED, bShow=True, sRecordedIso=sRecordedIso,
         bEmulated=bool(dictProvenance.get("bEmulated")),
         sPlatform=str(dictProvenance.get("sPlatform") or ""),
+        sVerdictRendered=str(dictAttestation.get("sVerdictRendered") or ""),
     )
     _fnNameLaterNoVerdict(dictLabel, dictLastNoVerdict, sRecordedIso)
     return dictLabel
 
 
-def _ftAuthorLabelAbsence(filesPoll):
+def _ftAuthorLabelAbsence(filesPoll, dictWorkflow):
     """Return ``(sState, sReason)`` for an author with no current attestation.
 
     Only the reason is read here; whether the label shows was already
@@ -226,6 +241,16 @@ def _ftAuthorLabelAbsence(filesPoll):
             S_STATE_DIVERGED,
             "the latest Level 3 verification did not reproduce the manifest",
         )
+    if l3Attestation.fbAttestationIsHistorical(dictAttestation):
+        return (
+            S_STATE_STALE,
+            "the Level 3 attestation is from the previous check, which "
+            "the current Level 3 requirement does not accept",
+        )
+    sProfileMismatch = l3Attestation.fsDescribeProfileMismatch(
+        dictAttestation, dictWorkflow)
+    if sProfileMismatch:
+        return S_STATE_STALE, sProfileMismatch
     return (
         S_STATE_STALE,
         "the Level 3 attestation does not cover the current manifest",

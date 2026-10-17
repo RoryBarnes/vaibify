@@ -373,8 +373,8 @@ LIST_FALSIFICATIONS = [
             'test_a_version_two_cache_is_no_longer_scope_current'
         ),
         source='vaibify/reproducibility/publicationScope.py',
-        old='I_PUBLICATION_SCOPE_VERSION = 6',
-        new='I_PUBLICATION_SCOPE_VERSION = 5',
+        old='I_PUBLICATION_SCOPE_VERSION = 7',
+        new='I_PUBLICATION_SCOPE_VERSION = 6',
     ),
     # --- 2026-08-26: guards added with the publication-scope work ---
     Falsification(
@@ -1434,28 +1434,20 @@ LIST_FALSIFICATIONS = [
             'tests/testDeterminismGate.py::'
             'test_a_legacy_waiver_value_never_attests_on_its_own'
         ),
-        # Read the legacy waiver key as the blasVariance answer. Every
-        # project that ever opened the old form is silently credited,
-        # including one whose block says false.
-        source='vaibify/reproducibility/answeredQuestion.py',
-        old='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n',
-        new='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n    if dictQuestion["sKey"] == "blasVariance" and dictAnswers.get("bAcceptBlasVariance"):\n        sAnswer = "accepted"\n',
+        # the legacy waiver is read as an answer to the question
+        source='vaibify/reproducibility/determinismGate.py',
+        old='    return (dictWorkflow or {}).get("dictDeterminism") or {}\n',
+        new='    dictBlock = (dictWorkflow or {}).get("dictDeterminism") or {}\n    if dictBlock.get("bAcceptBlasVariance"):\n        return {"sRepeatabilityAnswer": "speed", "sExecutionProfile": "speed-v1"}\n    return dictBlock\n',
     ),
     Falsification(
         nodeid=(
             'tests/testDeterminismGate.py::'
             'test_mkl_cbwr_alone_no_longer_declares_determinism'
         ),
-        # Let a stored VALUE stand in for an answer -- the belief the
-        # ruling overturned, and the one this fixture can actually
-        # see. The "restore the OR" mutation is INVISIBLE here: the
-        # fixture records only `sMklCbwr` and no answers, so all three
-        # questions are open under both the OR and the AND and the
-        # gate refuses either way. It survived once for exactly that
-        # reason; testEveryQuestionMustBeAnsweredNotJustOne owns the OR.
-        source='vaibify/reproducibility/answeredQuestion.py',
-        old='    if sAnswer not in dictQuestion["tAnswers"]:\n        return False\n',
-        new='    if sAnswer not in dictQuestion["tAnswers"]:\n        return _fbValueIsPresent(dictAnswers.get(dictQuestion["sValueKey"]))\n',
+        # a stored MKL mode is read as an answer to the question
+        source='vaibify/reproducibility/determinismGate.py',
+        old='    return (dictWorkflow or {}).get("dictDeterminism") or {}\n',
+        new='    dictBlock = (dictWorkflow or {}).get("dictDeterminism") or {}\n    if dictBlock.get("sMklCbwr"):\n        return {"sRepeatabilityAnswer": "speed", "sExecutionProfile": "speed-v1"}\n    return dictBlock\n',
     ),
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_bare_imported_seed_with_clock_is_flagged',
@@ -14600,11 +14592,10 @@ LIST_FALSIFICATIONS = [
         # cross-step path, while the L3 row stays green.
         source='vaibify/reproducibility/reproduceScriptGenerator.py',
         old=(
-            '                listOut.append(\n'
-            '                    fsResolveCommand(sStripped, dictVariables),\n'
-            '                )\n'
+            '        fsResolveCommand((sCommand or "").strip(), '
+            'dictVariables)\n'
         ),
-        new='                listOut.append(sStripped)\n',
+        new='        (sCommand or "").strip()\n',
     ),
     Falsification(
         nodeid=(
@@ -15604,20 +15595,12 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testDeterminismRowMatchesItsGate.py::'
-            'testEveryQuestionMustBeAnsweredNotJustOne'
+            'testTheLegacyAnswersDoNotAnswerTheQuestion'
         ),
-        # Restore the OR: any one answer satisfies the whole gate,
-        # which is what let a project attest at Level 3 having
-        # answered a third of the question.
+        # any non-empty block reads as answered, the round-one defect
         source='vaibify/reproducibility/determinismGate.py',
-        old=(
-            '    return not flistUnansweredDeterminismQuestions'
-            '(dictWorkflow)\n'
-        ),
-        new=(
-            '    return len(flistUnansweredDeterminismQuestions('
-            'dictWorkflow)) < 3\n'
-        ),
+        old='    return answeredQuestion.flistSelectUnansweredKeys(\n        _fdictDeterminismAnswers(dictWorkflow), LIST_DETERMINISM_QUESTIONS,\n    )\n',
+        new='    if _fdictDeterminismAnswers(dictWorkflow):\n        return []\n    return answeredQuestion.flistSelectUnansweredKeys(\n        _fdictDeterminismAnswers(dictWorkflow), LIST_DETERMINISM_QUESTIONS,\n    )\n',
     ),
     Falsification(
         nodeid=(
@@ -15637,31 +15620,23 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/browser/testDeterminismRowFollowsTheGate.py::'
-            'test_each_question_gets_its_own_row_and_marker'
+            'test_the_row_renders_the_answer_and_the_profile_it_recorded'
         ),
-        # Collapse the three question rows back into one, which is the
-        # rendering the 2026-08-30 ruling replaced: one marker over
-        # three independent sources of run-to-run difference.
+        # the answer is described without the profile it recorded
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
-        old='        return listQuestions.map(function (dictQuestion) {\n',
-        new=(
-            '        return listQuestions.slice(0, 1).map('
-            'function (dictQuestion) {\n'
-        ),
+        old='            return sLabel + " (execution profile " +\n                dictQuestion.sValue + ")";\n',
+        new='            return sLabel;\n',
     ),
     Falsification(
         nodeid=(
             'tests/browser/testDeterminismRowFollowsTheGate.py::'
-            'test_the_questions_are_asked_in_words_not_schema_keys'
+            'test_the_question_is_asked_in_words_not_schema_keys'
         ),
         # Drop the plain-language question, leaving a label and no
         # explanation -- the state the section was reported in.
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
-        old=(
-            "            fnEscapeHtml(dictQuestion.sQuestion) + "
-            "'</div>';\n"
-        ),
-        new="            '</div>';\n",
+        old="            fnEscapeHtml(dictQuestion.sQuestion) + '</div>' +\n",
+        new="            '</div>' +\n",
     ),
     # Both L3 controls must SAY they are working: the button through a
     # readiness round trip nothing else marks, the row through a rerun
@@ -15690,24 +15665,13 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testDeterminismRowMatchesItsGate.py::'
-            'testAPinnedAnswerWithoutItsValueIsHalfAnAnswer'
+            'testAnAnswerWithoutItsProfileIsHalfAnAnswer'
         ),
         # Accept "pinned" with nothing pinned: a rule no rerun could
         # follow, recorded as though it were one.
         source='vaibify/reproducibility/answeredQuestion.py',
         old='    if sAnswer not in dictQuestion.get("tAnswersNeedingValue", ()):\n        return True\n',
         new='    return True\n    if False:\n        return True\n',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testDeterminismRowMatchesItsGate.py::'
-            'testTheLegacyFalseWaiverIsNotReadAsAnAnswer'
-        ),
-        # Read the legacy waiver key as the answer. Every project that
-        # ever opened the old form is silently credited.
-        source='vaibify/reproducibility/answeredQuestion.py',
-        old='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n',
-        new='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n    if dictQuestion["sKey"] == "blasVariance" and "bAcceptBlasVariance" in dictAnswers:\n        sAnswer = "accepted" if dictAnswers["bAcceptBlasVariance"] else "rejected"\n',
     ),
     Falsification(
         nodeid=(
@@ -20999,8 +20963,18 @@ LIST_FALSIFICATIONS = [
         source='vaibify/reproducibility/levelGates.py',
         # The comparison weakened to "there is some text in the file",
         # which the 29-line stale script satisfies.
-        old='    return sOnDisk == sCurrent\n',
-        new='    return bool(sOnDisk)\n',
+        old='        if sOnDisk != sCurrent:\n',
+        new='        if not sOnDisk:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleReproduceScriptIsNotRunnable.py::'
+            'test_a_hand_edited_assessor_is_caught'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # Only the script is compared; an edited assessor passes.
+        old='    for sRelativePath, sCurrent in tRendered:\n',
+        new='    for sRelativePath, sCurrent in tRendered[:1]:\n',
     ),
     Falsification(
         nodeid=(
@@ -21814,7 +21788,7 @@ LIST_FALSIFICATIONS = [
         old=(
             '    dictLock = _fdictWriteLockTier(filesRepo, sContainerName)\n'
             '    dictEnvironment = _fdictWriteEnvironmentTier(\n'
-            '        filesRepo, sContainerName, listHostBinaries,\n'
+            '        filesRepo, sContainerName, listHostBinaries, dictWorkflow,\n'
             '    )\n'
             '    return {\n'
             '        "MANIFEST.sha256": _fdictWriteManifestTier(\n'
@@ -21834,7 +21808,8 @@ LIST_FALSIFICATIONS = [
             '        ),\n'
             '        ".vaibify/environment.json": '
             '_fdictWriteEnvironmentTier(\n'
-            '            filesRepo, sContainerName, listHostBinaries,\n'
+            '            filesRepo, sContainerName, listHostBinaries, '
+            'dictWorkflow,\n'
             '        ),\n'
             '    }\n'
         ),
@@ -24754,8 +24729,10 @@ LIST_FALSIFICATIONS = [
         nodeid=(
             'tests/testRerunRegeneratesWhatItGrades.py::testAScratchDirectoryHoldingAProtectedScriptIsRefusedAndNothingDeleted'
         ),
-        source='vaibify/reproducibility/rerunPreparation.py',
-        old='        if fbIsWithin(sProtected, sLocated):\n',
+        # re-pointed 2026-10-17: the shadow's clearing is now the shared
+        # procedure's, so the guard lives there
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='        if fbPathIsWithin(sProtected, sLocated):\n',
         new='        if False:\n',
     ),
     Falsification(
@@ -25941,13 +25918,13 @@ LIST_FALSIFICATIONS = [
             '        _flistCollectPreflightWarnings,\n'
             '        connectionDocker, sContainerId, dictWorkflow,\n'
             '        dictVariables.get("sRepoRoot", ""),\n'
-            '    )\n'
+            '    ) + flistDescribeExecutionWarnings(dictVariables)\n'
         ),
         new=(
             '    listPreflightWarnings = _flistCollectPreflightWarnings(\n'
             '        connectionDocker, sContainerId, dictWorkflow,\n'
             '        dictVariables.get("sRepoRoot", ""),\n'
-            '    )\n'
+            '    ) + flistDescribeExecutionWarnings(dictVariables)\n'
         ),
     ),
     Falsification(
@@ -27712,8 +27689,8 @@ LIST_FALSIFICATIONS = [
             'tests/testMatplotlibSaltIsolation.py::testTheExitTrapNeverDeletesADirectoryAStepExportedItself'
         ),
         source='vaibify/reproducibility/reproduceScriptGenerator.py',
-        old='        "    trap \'rm -rf " + sDirectory + "\' EXIT",\n',
-        new='        "    trap \'rm -rf \\"$MPLCONFIGDIR\\"\' EXIT",\n',
+        old='        "trap \'rm -rf " + sDirectory + \' "$sVaibifyScratch" \'\n',
+        new='        "trap \'rm -rf \\"$MPLCONFIGDIR\\"" + \' "$sVaibifyScratch" \'\n',
     ),
     Falsification(
         nodeid=(
@@ -28497,7 +28474,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/static/styleMain.css',
         # the verdict is squeezed into a sliver, as the table did
-        old='.file-outcome-word {\n    white-space: nowrap;\n}\n',
+        # (re-pointed 2026-10-17: the word now wraps to carry its reason)
+        old='.file-outcome-word {\n    /* An assessed outcome carries its reason, which can be a sentence,\n       so the word wraps rather than overflowing a narrow card. */\n    white-space: normal;\n    text-align: right;\n}\n',
         new=(
             '.file-outcome-word {\n    display: inline-block;\n'
             '    width: 2ch;\n    word-break: break-all;\n}\n'
@@ -28992,8 +28970,9 @@ LIST_FALSIFICATIONS = [
             'test_a_diverged_record_shows_no_label'
         ),
         # a diverged newest record no longer clears the label
+        # (re-pointed 2026-10-17: the verdicts come from reproductionReport)
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    if dictNewest.get("sVerdict") == _S_VERDICT_DIVERGED:\n',
+        old='    if dictNewest.get("sVerdict") in (\n            reproductionReport.SET_VERDICTS_THAT_DO_NOT_REPRODUCE):\n',
         new='    if False:\n',
     ),
     Falsification(
@@ -29003,8 +28982,8 @@ LIST_FALSIFICATIONS = [
         ),
         # the newest reproduced record is picked instead of the newest decisive one
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='        if dictRecord.get("sVerdict") in (\n            _S_VERDICT_REPRODUCED, _S_VERDICT_DIVERGED,\n        )\n',
-        new='        if dictRecord.get("sVerdict") == _S_VERDICT_REPRODUCED\n',
+        old='        if dictRecord.get("sVerdict") in (\n            reproductionReport.SET_VERDICTS_THAT_REPRODUCE\n            | reproductionReport.SET_VERDICTS_THAT_DO_NOT_REPRODUCE)\n',
+        new='        if dictRecord.get("sVerdict") in reproductionReport.SET_VERDICTS_THAT_REPRODUCE\n',
     ),
     Falsification(
         nodeid=(
@@ -29077,8 +29056,8 @@ LIST_FALSIFICATIONS = [
         # records are read, so dropping that routing is what lets a
         # reader's record speak for the author.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
-        new='    ) == "never":\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict)\n',
+        new='    ) == "never":\n        return _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict)\n',
     ),
     # --- 2026-10-12: the author sees "Reproduced" for their own
     # CURRENT Level 3 attestation ---
@@ -29099,7 +29078,7 @@ LIST_FALSIFICATIONS = [
         ),
         # A passed attestation is read as current whatever the manifest now says.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll):\n',
+        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll, dictWorkflow):\n',
         new='    if (l3Attestation.fdictReadAttestation(filesPoll) or {}).get("sStatus") != "passed":\n',
     ),
     Falsification(
@@ -29109,7 +29088,7 @@ LIST_FALSIFICATIONS = [
         ),
         # Any attestation on file shows the label, failed or not.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll):\n',
+        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll, dictWorkflow):\n',
         new='    if l3Attestation.fdictReadAttestation(filesPoll) is None:\n',
     ),
     Falsification(
@@ -29119,8 +29098,8 @@ LIST_FALSIFICATIONS = [
         ),
         # The author's label never names a later attempt that reached no verdict.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='        sPlatform=str(dictProvenance.get("sPlatform") or ""),\n    )\n    _fnNameLaterNoVerdict(dictLabel, dictLastNoVerdict, sRecordedIso)\n',
-        new='        sPlatform=str(dictProvenance.get("sPlatform") or ""),\n    )\n',
+        old='        sVerdictRendered=str(dictAttestation.get("sVerdictRendered") or ""),\n    )\n    _fnNameLaterNoVerdict(dictLabel, dictLastNoVerdict, sRecordedIso)\n',
+        new='        sVerdictRendered=str(dictAttestation.get("sVerdictRendered") or ""),\n    )\n',
     ),
     Falsification(
         nodeid=(
@@ -29139,8 +29118,8 @@ LIST_FALSIFICATIONS = [
         ),
         # A reader's clone is judged by the author's attestation it carries.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
-        new='    ) != gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict)\n',
+        new='    ) != gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED:\n        return _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict)\n',
     ),
     Falsification(
         nodeid=(
@@ -33967,6 +33946,890 @@ LIST_FALSIFICATIONS = [
         old='                await _fnReleaseClaimUnlessInside(sName);\n',
         new='',
     ),
+    # --- 2026-10-17: the assessed Level 3 rerun, Phase 1 -- the two
+    # leaf modules concatenate into one runnable file ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testTheProcedureImportsOnlyTheStandardLibrary'
+        ),
+        # the procedure imports vaibify, which no reader's container has
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='import shutil\nimport sys\n',
+        new='import shutil\nimport sys\nimport vaibify.gui.pipelineUtils\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testThePolicyImportsOnlyTheStandardLibrary'
+        ),
+        # the frozen policy imports vaibify
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='import warnings\nimport xml.etree.ElementTree as etree\n',
+        new=(
+            'import warnings\nimport xml.etree.ElementTree as etree\n'
+            'import vaibify\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testTheLeafModulesDefineNoNameInCommon'
+        ),
+        # the policy rebinds a name the procedure defines
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='S_COMPARISON_POLICY = "comparison-v1"\n',
+        new=(
+            'S_COMPARISON_POLICY = "comparison-v1"\n'
+            'S_INVOCATION_LEDGER_FILENAME = "invocations.tsv"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testTheLeafModulesHaveNoFutureImportAndNoEntryPoint'
+        ),
+        # a second entry point in the policy, which would run first
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '    return fdictGradeAssessment(\n'
+            '        dictPlan, fdictExtractGradingObservations(dictReport))\n'
+        ),
+        new=(
+            '    return fdictGradeAssessment(\n'
+            '        dictPlan, fdictExtractGradingObservations(dictReport))\n'
+            '\n\nif __name__ == "__main__":\n    pass\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testTheLeafModulesParseAsPythonThreeEight'
+        ),
+        # syntax the author's older interpreter cannot run: a generic
+        # decorator, which every supported interpreter compiles (a match
+        # statement would not compile on the Python 3.9 shards)
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='def fsReadX86Level(setFlags):\n',
+        new='@(lambda fnWrapped: fnWrapped)\ndef fsReadX86Level(setFlags):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testThePolicyModuleIsFrozenAtItsPinnedBytes'
+        ),
+        # comparison-v1 changes meaning without a new policy ID
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='I_IMAGE_LEVEL_THRESHOLD = 2\n',
+        new='I_IMAGE_LEVEL_THRESHOLD = 3\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testRenderingTwiceGivesIdenticalBytes'
+        ),
+        # something that varies between calls is rendered into the file
+        source='vaibify/reproducibility/rerunAssessment.py',
+        old='    sPlanJson = json.dumps(dictPlan, sort_keys=True, indent=1)\n',
+        new=(
+            '    sPlanJson = json.dumps(dict(dictPlan, fRenderedAt=__import__('
+            '"time").time()), sort_keys=True, indent=1)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testTheProcedureParsesTheManifestAsTheWriterDoes'
+        ),
+        # the in-container copy unescapes a newline as a letter n
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='            listChars.append("\\n" if sNext == "n" else "\\\\")\n',
+        new='            listChars.append("n" if sNext == "n" else "\\\\")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testAnUnknownPolicyIsRefusedByTheRenderer'
+        ),
+        # an unknown policy is returned as nothing instead of refused
+        source='vaibify/reproducibility/rerunAssessment.py',
+        old='    if modulePolicy is None:\n        raise ComparisonPolicyUnknownError(\n',
+        new='    if False:\n        raise ComparisonPolicyUnknownError(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testAMalformedPolicyLineIsRefusedNotReadAsAbsent'
+        ),
+        # a garbled policy line is read as "none recorded"
+        source='vaibify/reproducibility/rerunAssessment.py',
+        old='    if matchHeader is None:\n        raise ValueError(\n',
+        new=(
+            '    if matchHeader is None:\n        return None\n'
+            '    if False:\n        raise ValueError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testAFileWithoutAPolicyLineRecordsNone'
+        ),
+        # a headerless file is refused as if malformed
+        source='vaibify/reproducibility/rerunAssessment.py',
+        old='            S_POLICY_HEADER_PREFIX.rstrip()):\n        return None\n',
+        new=(
+            '            S_POLICY_HEADER_PREFIX.rstrip()):\n'
+            '        raise ValueError("no policy line")\n'
+        ),
+    ),
+    # --- 2026-10-17: the per-output precedence table, on real trees ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testBytesIdenticalWithAFailingCheckIsFailed'
+        ),
+        # an executed failure no longer fails its output
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if dictCheck["sOutcome"] == S_CHECK_FAILED:\n            return (S_OUTPUT_FAILED,\n',
+        new='        if False:\n            return (S_OUTPUT_FAILED,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testBytesIdenticalWithASkippedCheckIsInsufficient'
+        ),
+        # byte equality overrides a check that did not execute
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if dictCheck["sOutcome"] != S_CHECK_PASSED:\n            return (S_OUTPUT_INSUFFICIENT,\n',
+        new='        if False:\n            return (S_OUTPUT_INSUFFICIENT,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testChangedBytesWithOnlyStructuralChecksIsInsufficient'
+        ),
+        # integrity and qualitative checks counted as agreement
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '                         if dictCheck["sTargetPath"] == dictRecord["sPath"]\n'
+            '                         and dictCheck["sCategory"] == S_AGREEMENT_CATEGORY]\n'
+        ),
+        new='                         if dictCheck["sTargetPath"] == dictRecord["sPath"]]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testChangedBytesWithNoComparisonAtAllIsInsufficient'
+        ),
+        # an output no comparison covers is treated as agreeing
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if not listAgreement:\n        return (S_OUTPUT_INSUFFICIENT,\n',
+        new='    if False:\n        return (S_OUTPUT_INSUFFICIENT,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testChangedBytesWithPassingComparisonsIsComparisonsPassed'
+        ),
+        # every byte difference is graded as a failure
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '    return (S_OUTPUT_COMPARISONS_PASSED,\n'
+            '            f"{len(listAgreement)} published comparison(s) passed")\n'
+        ),
+        new=(
+            '    return (S_OUTPUT_FAILED,\n'
+            '            f"{len(listAgreement)} published comparison(s) passed")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testAFileTheRerunNeverWroteIsFailedMissing'
+        ),
+        # an absent output graded as a byte difference
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '    if dictOutput["sObservedSha256"] is None:\n'
+            '        return (S_OUTPUT_FAILED, "missing: the rerun did not write it")\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return (S_OUTPUT_FAILED, "missing: the rerun did not write it")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testAFailedDataCommandFailsTheStepsDataAndPlotOutputs'
+        ),
+        # a section whose command failed reads as completed
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if iExit != 0:\n            return f"failed: {sId} exited {iExit}"\n',
+        new='        if False:\n            return f"failed: {sId} exited {iExit}"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testAFailedPlotCommandFailsOnlyThePlotOutputs'
+        ),
+        # the plot section's state decides the data outputs too
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    return {"data": sData, "plot": sPlot}\n',
+        new='    return {"data": sPlot, "plot": sPlot}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testFailuresAndMissingEvidenceTogetherAreFailedWithBothTallied'
+        ),
+        # missing evidence outranks a failure in the roll-up
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if listFailed:\n        return (S_VERDICT_NOT_REPRODUCED,',
+        new='    if listFailed and False:\n        return (S_VERDICT_NOT_REPRODUCED,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testADeletedPinnedTestIsPublishedInputsChanged'
+        ),
+        # a pinned input that is missing is not recorded
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='            dictResult["listMissingInputs"].append(sPath)\n',
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testAToleranceEditedDuringTheRunIsPublishedInputsChanged'
+        ),
+        # integrity is judged only before the steps ran
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old=(
+            '    listChanged = sorted(set(dictPrepared["listChangedInputs"])\n'
+            '                         | set(dictNow["listChangedInputs"]))\n'
+        ),
+        new='    listChanged = sorted(set(dictPrepared["listChangedInputs"]))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testAStandardWhoseNodeIsAbsentIsInsufficient'
+        ),
+        # a standard whose node never appeared reads as passed
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '    return (S_CHECK_NOT_EXECUTED,\n'
+            '            "absent from the reports of " + ", ".join(listGroupIds))\n'
+        ),
+        new=(
+            '    return (S_CHECK_PASSED,\n'
+            '            "absent from the reports of " + ", ".join(listGroupIds))\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testARepeatedStandardNameIsInsufficient'
+        ),
+        # a duplicate standard name is ignored
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if dictCheck["bDuplicateName"]:\n',
+        new='        if False:\n',
+    ),
+    # --- 2026-10-17: evidence is bound to its step and command ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testOneStepsPassingReportNeverSatisfiesAnothersAbsentCheck'
+        ),
+        # an expected check is looked up in every step's reports
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '        for sId in dictStep["dictTestGroups"].get(sGroup, []):\n'
+            '            fnRecordInvocationOccurrences(\n'
+        ),
+        new=(
+            '        for sId in [sAny for sAny, dictAny in dictInvocations.items()\n'
+            '                    if dictAny["sSection"] == sGroup]:\n'
+            '            fnRecordInvocationOccurrences(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testAFailureIsNotErasedByALaterPass'
+        ),
+        # the best occurrence wins instead of the worst
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    return min(\n        listOccurrences,\n',
+        new='    return max(\n        listOccurrences,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testACommandThatWritesNoReportLeavesItsChecksUnasserted'
+        ),
+        # a structured command with no report counts as passing
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='            dictOccurrences[iIndex].append((\n                S_CHECK_DID_NOT_ASSERT,\n',
+        new='            dictOccurrences[iIndex].append((\n                S_CHECK_PASSED,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testALegacyCommandWithNoReportIsJudgedByItsExitStatus'
+        ),
+        # a legacy command passes whatever its exit status
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='                "sOutcome": S_CHECK_PASSED if iExit == 0 else S_CHECK_FAILED,\n',
+        new='                "sOutcome": S_CHECK_PASSED,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testANonZeroExitWithNoFailureAssertedNothing'
+        ),
+        # a non-zero exit with no reported failure is ignored
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if iExit != 0 and not bReportedFailure:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testAPlannedCommandWithNoLedgerLineNeverRan'
+        ),
+        # a never-run invocation is graded as one that reported nothing
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '    if dictInvocation["iExitStatus"] is None:\n        return\n'
+            '    if dictInvocation["sReportState"] != S_JUNIT_READ:\n'
+        ),
+        new='    if dictInvocation["sReportState"] != S_JUNIT_READ:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testAReportWithNoLedgerLineIsNeverRead'
+        ),
+        # a report for a command that never ran is read
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if iExitStatus is None:\n        dictObserved.update(\n',
+        new='    if False:\n        dictObserved.update(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testATestcaseTwoExpectedFilesCouldClaimIsAmbiguous'
+        ),
+        # an ambiguous testcase is credited to the first file it matches
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='            bConsumed = len(listMatched) == 1\n',
+        new='            bConsumed = True\n',
+    ),
+    # --- 2026-10-17: the image check (design D2) ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testSixteenInvertedPixelsAtFullSizeAreNotWithinTheThreshold'
+        ),
+        # a figure is accepted because few of its pixels changed
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if dictImage["iLargestLevelChange"] > I_IMAGE_LEVEL_THRESHOLD:\n',
+        new='        if dictImage["iPixelsChanged"] > 1000:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testAOneLevelChangeIsWithinTheThreshold'
+        ),
+        # a threshold of zero fails every redrawn figure
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if dictImage["iLargestLevelChange"] > I_IMAGE_LEVEL_THRESHOLD:\n',
+        new='        if dictImage["iLargestLevelChange"] > 0:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testPaletteImagesWithTheSameIndicesAndDifferentPalettesDiffer'
+        ),
+        # palette images compared by index, without RGBA conversion
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        fileImageA.convert("RGBA"), fileImageB.convert("RGBA")).split()\n',
+        new='        fileImageA, fileImageB).split()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testPaletteTransparencyIsResolved'
+        ),
+        # palette transparency ignored, without RGBA conversion
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        fileImageA.convert("RGBA"), fileImageB.convert("RGBA")).split()\n',
+        new='        fileImageA, fileImageB).split()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testASixteenBitRgbPngIsNeverReducedToEightBits'
+        ),
+        # the PNG header's bit depth is not consulted
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if baImage[24] > 8:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testASixteenBitGrayscalePngCannotBeAssessed'
+        ),
+        # the PNG header's bit depth is not consulted
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if baImage[24] > 8:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testAFloatingPointTiffCannotBeAssessed'
+        ),
+        # a TIFF's bits per sample is not consulted
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if max(tBits) > 8:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testATwoFrameTiffCannotBeAssessed'
+        ),
+        # a multi-frame image is compared by its first frame
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if iFrames != 1:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testFiguresOfDifferentDimensionsCannotBeAssessed'
+        ),
+        # figures of different sizes are compared
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='            or fileReference.size != fileObserved.size\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testAChangedVectorFigureIsInsufficientWithItsRemedy'
+        ),
+        # a changed vector figure is graded as an ordinary data file
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if dictOutput["sKind"] == S_KIND_VECTOR:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testAPlotOnlyStepGetsNoExemption'
+        ),
+        # the plot section's vector figures are exempted
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if dictOutput["sKind"] == S_KIND_VECTOR:\n',
+        new=(
+            '    if dictOutput["sKind"] == S_KIND_VECTOR and '
+            'dictOutput["sSection"] != "plot":\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testAFigureWhoseBytesDifferedBeforeTheRunIsNotSetAside'
+        ),
+        # a figure is set aside without checking its manifest hash
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    if hasherFile.hexdigest() == sExpected:\n        return True\n',
+        new='    if True:\n        return True\n',
+    ),
+    # --- 2026-10-17: the rendered assessor runs standalone ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentTranscription.py::'
+            'testTheRenderedAssessorReportsWhatTheImportedModulesReport'
+        ),
+        # the rendered file cannot find its policy's entry point
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='        fdictAssessEvidence = globals().get(S_POLICY_ENTRY_POINT)\n',
+        new='        fdictAssessEvidence = None\n',
+    ),
+    # --- 2026-10-17: the assessed Level 3 rerun, Phase 2 -- the shadow
+    # lane grades with the assessor, and the host checks it ---
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testAFailingTestWithByteIdenticalOutputsIsNotReproduced'
+        ),
+        # the runner stops pointing test reports at the evidence directory
+        source='vaibify/gui/rerunEvidence.py',
+        old='    return f"export PYTEST_ADDOPTS={fsShellQuote(\'--junitxml=\' + sReport)} && "\n',
+        new='    return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testASkippedTestIsNotEnoughEvidence'
+        ),
+        # not enough evidence is counted as a pass
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='    bPassed = dictReport["iExitCode"] == 0\n',
+        new='    bPassed = dictReport["iExitCode"] in (0, 5)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testADeletedTestFileIsPublishedInputsChangedAndNothingRuns'
+        ),
+        # the steps run after a published input was found changed
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='    if dictLane["iPrepareExit"] != 0:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testAToleranceEditedDuringTheRunIsPublishedInputsChanged'
+        ),
+        # integrity is judged only before the steps ran
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    listChanged = sorted(set(dictPrepared["listChangedInputs"])\n                         | set(dictNow["listChangedInputs"]))\n',
+        new='    listChanged = sorted(set(dictPrepared["listChangedInputs"]))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testADataCommandThatWritesNothingIsFailedMissing'
+        ),
+        # the shared clearing deletes nothing
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='        if fbRemoveClearingTarget(\n',
+        new='        if False and fbRemoveClearingTarget(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testAnEarlyDataFailureStillRunsAndGradesTheLaterSteps'
+        ),
+        # the run stops at the first failed step
+        source='vaibify/gui/pipelineRunner.py',
+        old='        if iExitCode != 0:\n            iFinalExitCode = iExitCode\n    return iFinalExitCode\n',
+        new='        if iExitCode != 0:\n            return iExitCode\n    return iFinalExitCode\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testTheAuthorsPassingMarkersCannotStandInForTestsThatDidNotRun'
+        ),
+        # a standard absent from this run's reports reads as passed
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    return (S_CHECK_NOT_EXECUTED,\n            "absent from the reports of " + ", ".join(listGroupIds))\n',
+        new='    return (S_CHECK_PASSED,\n            "absent from the reports of " + ", ".join(listGroupIds))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testAForgedVerdictIsCaughtByReDerivation'
+        ),
+        # the assessor's verdict is adopted without re-deriving it
+        source='vaibify/reproducibility/assessmentLane.py',
+        old='    if not dictRederived["bConsistent"]:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testASelfConsistentForgeryOfAnExitStatusIsCaught'
+        ),
+        # no cross-check of every command's exit status
+        source='vaibify/reproducibility/assessmentLane.py',
+        old='            + flistCheckExitStatuses(dictReport, dictAssessment["listLedger"])\n',
+        new='            + []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testASelfConsistentForgeryOfAHashIsCaught'
+        ),
+        # no cross-check of every graded output's hash
+        source='vaibify/reproducibility/assessmentLane.py',
+        old='        if dictReported[sPath]["sObservedSha256"] != dictObserved.get(sPath):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testAProjectGradesUnderTheComparisonPolicyItRecorded'
+        ),
+        # a recorded project is graded under the current policy
+        source='vaibify/reproducibility/assessmentLane.py',
+        old='    return (sRecorded, _S_POLICY_SOURCE_RECORDED, "")\n',
+        new='    return (rerunAssessment.S_CURRENT_COMPARISON_POLICY,\n            _S_POLICY_SOURCE_RECORDED, "")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testAProjectWithNoRecordedPolicyGradesUnderTheCurrentOne'
+        ),
+        # a project with no record is graded under v1 regardless
+        source='vaibify/reproducibility/assessmentLane.py',
+        old='    if not filesRepo.fbIsFile(sPath):\n        return (rerunAssessment.S_CURRENT_COMPARISON_POLICY,\n',
+        new='    if not filesRepo.fbIsFile(sPath):\n        return ("comparison-v1",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testAPolicyThisVaibifyLacksIsCouldNotRunWithTheUpgradeRemedy'
+        ),
+        # an unknown recorded policy falls back to the current one
+        source='vaibify/reproducibility/assessmentLane.py',
+        old='    if sRecorded not in rerunAssessment.DICT_COMPARISON_POLICIES:\n        return ("", "", rerunAssessment.fsDescribeUnknownPolicy(sRecorded))\n',
+        new='    if sRecorded not in rerunAssessment.DICT_COMPARISON_POLICIES:\n        sRecorded = rerunAssessment.S_CURRENT_COMPARISON_POLICY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testAHistoricalAttestationNeverSatisfiesTheRebuildRequirement'
+        ),
+        # a historical attestation reads as current
+        source='vaibify/reproducibility/l3Attestation.py',
+        old='    if fbAttestationIsHistorical(dictPayload):\n        return False\n',
+        new='    if False:\n        return False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAssessedRerunLane.py::'
+            'testAnOrdinaryRunCarriesNoEvidenceExportAndNoInvocationIdentity'
+        ),
+        # commands are named without the rerun's evidence context
+        source='vaibify/gui/pipelineRunner.py',
+        old='        if (dictRerunEvidence is not None and sInvocationScope\n',
+        new='        if (sInvocationScope\n',
+    ),
+    # --- 2026-10-17: the assessed rerun's guards are anchored ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunProcedureGuards.py::'
+            'testClearingRefusesATargetThatContainsAProtectedFile'
+        ),
+        # containment answers only for identical paths
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    return sInner == sOuter or sInner.startswith(sOuter + os.sep)\n',
+        new='    return sInner == sOuter\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunProcedureGuards.py::'
+            'testHashingNeverFollowsASymlinkOutOfTheRepository'
+        ),
+        # a symlink out of the repository is hashed
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    if sReal == sRootReal or not sReal.startswith(sRootReal + os.sep):\n        return ""\n',
+        new='    if sReal == sRootReal:\n        return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunProcedureGuards.py::'
+            'testCapabilitiesRefuseAFloorKeyOutsideTheAllowlist'
+        ),
+        # any floor key a profile names is accepted
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='        if sKey not in TUPLE_EXECUTION_SETTING_KEYS:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunProcedureGuards.py::'
+            'testThePlanRefusesWhatTheShadowWouldRefuse'
+        ),
+        # the plan is built without the shadow's refusals
+        source='vaibify/reproducibility/rerunPreparation.py',
+        old='    _fnRefuseAmbiguousOverlap(dictClassification)\n    _fnRefuseUnsafeProducedPaths(dictClassification["setProduced"])\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunProcedureGuards.py::'
+            'testTheAdapterWritesOutsideItsRepositoryOnlyIntoARunDirectory'
+        ),
+        # a run directory anywhere is accepted
+        source='vaibify/reproducibility/repoFiles.py',
+        old='            or posixpath.dirname(sDirectory) != posixpath.dirname(sRoot)\n',
+        new='',
+    ),
+    # --- 2026-10-17: the assessed rerun's verdicts on screen (Phase 3) ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testAssessedVerdictsOnScreen.py::'
+            'test_a_comparison_verdict_always_carries_its_tally'
+        ),
+        # the row's verdict loses its tally
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='            (dictLast.sTallyRendered ? ". " + dictLast.sTallyRendered : "");\n',
+        new='            "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAssessedVerdictsOnScreen.py::'
+            'test_a_pass_with_byte_differences_is_worded_and_coloured_as_a_pass'
+        ),
+        # a file outcome is worded from its bytes alone
+        source='vaibify/gui/static/scriptFileOutcomes.js',
+        old='        if (dictOutcome.sOutcome) {\n            var sWord',
+        new='        if (false) {\n            var sWord',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAssessedVerdictsOnScreen.py::'
+            'test_a_failed_rebuild_names_the_failed_command'
+        ),
+        # an assessed failure is described by hash counts alone
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='            if (dictLast.sVerdictRendered) {\n                return "The last rebuild did NOT pass" +',
+        new='            if (false) {\n                return "The last rebuild did NOT pass" +',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAssessedVerdictsOnScreen.py::'
+            'test_a_byte_only_attestation_reads_as_a_previous_check'
+        ),
+        # a historical attestation is described as current
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictLast && dictLast.bHistorical === true) {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAssessedVerdictsOnScreen.py::'
+            'test_an_attestation_under_an_older_policy_reads_as_a_previous_check'
+        ),
+        # the PROOF card shows a historical verdict as current
+        source='vaibify/gui/static/scriptProofTab.js',
+        old='        if (dictRecord.bHistorical === true) {\n            return \'<div class="proof-attestation-verdict \' +',
+        new='        if (false) {\n            return \'<div class="proof-attestation-verdict \' +',
+    ),
+    # --- 2026-10-17: reproduce.sh runs the assessed rerun (Phase 4) ---
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testADataCommandThatWritesNothingIsNotReproduced'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the steps run over the published outputs, nothing cleared first
+        old='        \'if python3 -I "$sVaibifyAssessor" clear --repo /work; then\',\n',
+        new="        'if true; then',\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testAFailedFirstStepStillRunsTheSecond'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the first failed command ends the whole run
+        old='        f"{sGuard}=0",\n',
+        new='        "exit 1",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testAFailingTestIsNotReproducedWithATally'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # a failed command's record is a bare statement under set -e, so the
+        # ERR trap ends the script before the assessment
+        old='        f\'    fnVaibifyRecord {_fsShellQuote(sId)} "$iVaibifyStatus" || \'\n        f"{sGuard}=0",\n',
+        new='        f\'    fnVaibifyRecord {_fsShellQuote(sId)} "$iVaibifyStatus"\',\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testAFailedInstallIsCouldNotRun'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # a failed install carries on to the steps
+        old='        \'    echo "Could not run: requirements.lock could not be installed" >&2\',\n        "    exit 4",\n',
+        new='        \'    echo "Could not run: requirements.lock could not be installed" >&2\',\n        "    true",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testAFailureInThePreambleIsCouldNotRun'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the container half has no ERR trap, so a failed preamble command
+        # exits 1, which reads as "not reproduced"
+        old='        "set -euo pipefail",\n        "trap \'echo \\"Could not run: reproduce.sh failed at line "\n        "$LINENO\\" >&2; exit 4\' ERR",\n',
+        new='        "set -euo pipefail",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testTheLedgerNamesThePlansCommandsInOrder'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the script numbers a section's commands against the plan's order
+        old='    listIds = flistNumberInvocations(sStepLabel, sSection, listCommands)\n',
+        new='    listIds = flistNumberInvocations(sStepLabel, sSection, listCommands)[::-1]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testACarriedOutputAndThePinnedFilesSurviveTheClearing'
+        ),
+        source='vaibify/reproducibility/rerunAssessment.py',
+        # the clearing job names the protected paths as regenerated
+        old='        "listProduced": sorted(dictClassification["setProduced"]),\n',
+        new='        "listProduced": sorted(dictClassification["setProduced"]\n                               | dictClassification["setProtected"]),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testEachCommandRunsUnderBashDefaults'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # step commands run under the script's own set -euo pipefail
+        old='        f"    if ( {sCd}{sExport}set +e +u +o pipefail && {sCommand}",\n',
+        new='        f"    if ( {sCd}{sExport}{sCommand}",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptDeterminism.py::'
+            'test_an_image_no_lane_can_obtain_is_could_not_run'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the unobtainable-image exit is 2 again, outside the shared table
+        old='            echo "  could be loaded, and no local copy exists" >&2\n            exit 4\n',
+        new='            echo "  could be loaded, and no local copy exists" >&2\n            exit 2\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptDeterminism.py::'
+            'test_a_docker_run_that_fails_itself_is_could_not_run'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # every docker run status passes through, 125 included
+        old='    0|1|3|4|5) exit "$iVaibifyExit" ;;\n',
+        new='    *) exit "$iVaibifyExit" ;;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptParity.py::'
+            'testTheLaneAndTheScriptRunTheSameAssessor'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the generator writes the assessor in a form of its own
+        old='        (S_RERUN_ASSESSMENT_REPO_PATH, sAssessor),\n',
+        new='        (S_RERUN_ASSESSMENT_REPO_PATH, sAssessor + "\\n"),\n',
+    ),
     # --- 2026-10-16: the viewers belong to the project that filled them ---
     Falsification(
         nodeid=(
@@ -34027,5 +34890,414 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptFigureViewer.js',
         old='            [sContainerId, sWorkflowPath || ""]);\n',
         new='            [sWorkflowPath || ""]);\n',
+    ),
+    # --- 2026-10-17: a reader's assessed reproduction reaches the label ---
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_an_assessed_reproduction_decides_the_label'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # the snapshot keeps only the two byte-only verdicts again
+        old=(
+            '        if (dictRecord.get("sVerdict") in dictArgs.get(\n'
+            '                "listDecisiveVerdicts", [])\n'
+        ),
+        new='        if (dictRecord.get("sVerdict") in ("reproduced", "diverged")\n',
+    ),
+    # --- 2026-10-17: execution profiles (Phase 5) ---
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testEachStageSeesWhatTheOrderPromises'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        # Stage A reads the processor with the image's settings still set
+        old='    return ["env"] + listUnset + [\n',
+        new='    return ["env"] + [\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testAProcessorBelowTheLevelGetsThePinsAndNotTheFloor'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # a dropped floor key is no longer unset, so the image's value stands
+        old='            listParts.append(f"unset {sKey} && ")\n',
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheDecisionKeepsThePinsWhenTheFloorIsDropped'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # every requested setting is dropped with the floor
+        old='            if sKey not in listDropped},\n',
+        new='            if not listDropped},\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheAuthorIsWarnedBeforeARunWithoutTheFloor'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # the run-start warnings leave the profile's out
+        old='    ) + flistDescribeExecutionWarnings(dictVariables)\n',
+        new='    )\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testAProfileThisVaibifyLacksStopsTheRunBeforeAnyStep'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # a profile that cannot be looked up runs the steps anyway
+        old='    if dictVariables.get(S_EXECUTION_PROFILE_ERROR_KEY):\n        return [dictVariables[S_EXECUTION_PROFILE_ERROR_KEY]]\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testAnImageWithoutNumpyIsSaid'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # an absent NumPy is recorded as installed
+        old='        dictProbe["sNumpyState"] = "NumPy not installed"\n',
+        new='        dictProbe["sNumpyState"] = "installed"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testANumpyWithoutBundledOpenblasIsSaid'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # a bundled OpenBLAS is assumed to be there
+        old='    if not listLibraries:\n        return {"sState": "OpenBLAS not detected",\n',
+        new='    if False:\n        return {"sState": "OpenBLAS not detected",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testANumpyThatDoesNotKnowAFeatureNameSaysItWasNotApplied'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # a name NumPy does not know is judged by whether it is active
+        old='        elif sName not in setDispatch:\n',
+        new='        elif False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testANumpyThatRefusesTheSettingsIsRecordedInItsOwnWords'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # only an absent NumPy's ImportError is caught
+        old='    except Exception as error:  # noqa: BLE001 -- recorded, never raised\n',
+        new='    except ImportError as error:  # noqa: BLE001 -- recorded, never raised\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheAuthorIsWarnedWhenTheImagesNumpyIgnoresASetting'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        # the run-start warnings come from the floor decision alone
+        old='        listWarnings.extend(flistDescribeProbeConcerns(dictProbe))\n',
+        new='        listWarnings.extend([])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheShadowReplaysTheRecordedProfileNotTheTable'
+        ),
+        source='vaibify/reproducibility/rerunVerification.py',
+        # the recorded profile is looked up in the current table again
+        old='        return executionProfiles.fdictRequireValidProfile(dictRecorded), ""\n',
+        new='        return executionProfiles.fdictProfileFromTable(\n            dictRecorded["sProfileId"]), ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheEnvelopeRecordsTheProfileTheAnswerNames'
+        ),
+        source='vaibify/reproducibility/dataArchiver.py',
+        # the envelope records the default profile whatever the answer
+        old='        "dictExecutionProfile": fdictWorkflowExecutionProfile(dictWorkflow),\n',
+        new='        "dictExecutionProfile": fdictWorkflowExecutionProfile({}),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testChangingTheAnswerRetiresTheAttestationAndKeepsIt'
+        ),
+        source='vaibify/reproducibility/l3Attestation.py',
+        # the currency check ignores the record's profile
+        old='    if fsDescribeProfileMismatch(dictPayload, dictWorkflow):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheHostRefusesASettingOutsideTheAllowlist'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # any setting a recorded profile names is admitted
+        old='        if sKey not in TUPLE_EXECUTION_SETTING_KEYS:\n            listProblems.append(f"setting {sKey!r} is not allowed")\n',
+        new='        if False:\n            listProblems.append(f"setting {sKey!r} is not allowed")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheHostRefusesAValueOutsideThePattern'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # a value's type is checked and its characters are not
+        old='        elif not isinstance(sValue, str) or not _RE_SETTING_VALUE.match(sValue):\n',
+        new='        elif not isinstance(sValue, str):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheHostRefusesAFloorKeyOutsideTheAllowlist'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # any floor key a recorded profile names is admitted
+        old='        if sKey not in TUPLE_EXECUTION_SETTING_KEYS:\n            listProblems.append(f"floor key {sKey!r} is not allowed")\n',
+        new='        if False:\n            listProblems.append(f"floor key {sKey!r} is not allowed")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheScriptRefusesASettingOutsideTheAllowlist'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the script passes any recorded setting through
+        old='        *) fnRefuseTheProfile "names $sVaibifyKey, which is not allowed" ;;\n',
+        new='        *) ;;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheScriptRefusesAValueOutsideThePattern'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the script passes a recorded value unchecked
+        old='    if ! [[ "$sVaibifyValue" =~ $sVaibifyValuePattern ]]; then\n',
+        new='    if false; then\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheScriptRefusesAFloorKeyOutsideTheAllowlist'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the script passes any recorded floor key through
+        old='        *) fnRefuseTheProfile "names floor key $sVaibifyKey, which is not allowed" ;;\n',
+        new='        *) ;;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheScriptUnsetsOnlyAllowlistedKeysStageANames'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the script unsets whatever the capability reading prints
+        old='        \'        *) echo "Could not run: the capability reading named \'\n        \'$sVaibifyKey" >&2; exit 4 ;;\',\n',
+        new='        \'        *) unset "$sVaibifyKey" ;;\',\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testADashboardTestRunGetsTheProfilesSettings'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # a dashboard test command is built without the Stage A decision
+        old='    sFullCmd = fsBuildTestExecutionPrefix(\n        connectionDocker, sContainerId, dictWorkflow,\n    ) + _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds, sCategory)\n',
+        new='    sFullCmd = _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds, sCategory)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfilesLive.py::'
+            'testTheAcrossProfileReproducesTheCommittedFixture'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the validated profile never reaches the container
+        old='    ${{saProfileOptions[@]+"${{saProfileOptions[@]}}"}} \\\\\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfilesLive.py::'
+            'testTheAcrossProfileGivesTheSameBytesOnTwoCores'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # across-v1 requests no thread pin. Both go: OpenBLAS falls back
+        # to OMP_NUM_THREADS, so removing its own variable alone leaves
+        # one thread and the bytes unchanged (measured, 2026-10-17)
+        old='            "OPENBLAS_NUM_THREADS": "1",\n            "OMP_NUM_THREADS": "1",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfilesLive.py::'
+            'testANumpyOlderThanTheFeatureGroupsSaysItIgnoredOne'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # a name NumPy does not know is judged by whether it is active
+        old='        elif sName not in setDispatch:\n',
+        new='        elif False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testADashboardTestRunOfAProfileNotKnownHereIsRefused'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # a profile this vaibify lacks is let through to the test run
+        old='        raise HTTPException(409, str(error)) from error\n',
+        new='        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDeterminismRowFollowsTheGate.py::'
+            'test_a_change_that_would_retire_the_attestation_says_so_first'
+        ),
+        # the retirement is said only after the save
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictQuestion.bAnswered &&\n                dictDetail.bRebuildAttestationCurrent === true) {\n',
+        new='        if (false) {\n',
+    ),
+    # --- 2026-10-17: one determinism question (Phase 6) ---
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheAnswerRecordsTheNewestProfileForIt'
+        ),
+        # a fixed version is recorded for the answer
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old='    dictDeterminism[S_EXECUTION_PROFILE_KEY] = fsNewestProfileForAnswer(\n        sAnswer)\n',
+        new='    dictDeterminism[S_EXECUTION_PROFILE_KEY] = sAnswer + "-v1"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testACallerCannotNameAProfileOrALegacyAnswer'
+        ),
+        # the caller may name the profile
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old='_DICT_DETERMINISM_KEY_TYPES = {\n    S_REPEATABILITY_ANSWER_KEY: (str,),\n}\n',
+        new='_DICT_DETERMINISM_KEY_TYPES = {\n    S_REPEATABILITY_ANSWER_KEY: (str,),\n    S_EXECUTION_PROFILE_KEY: (str,),\n}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheV14MigrationLeavesTheQuestionOpenAndKeepsTheLegacyKeys'
+        ),
+        # the v13-to-v14 migrator writes an answer
+        source='vaibify/gui/workflowMigrations.py',
+        old='    del dictWorkflow, sProjectRepoPath\n',
+        new='    dictWorkflow.setdefault("dictDeterminism", {})["sRepeatabilityAnswer"] = "speed"\n    dictWorkflow["dictDeterminism"]["sExecutionProfile"] = "speed-v1"\n    del sProjectRepoPath\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheV14MigratorSpellsNoKeyTheGateReads'
+        ),
+        # the v13-to-v14 migrator writes an answer
+        source='vaibify/gui/workflowMigrations.py',
+        old='    del dictWorkflow, sProjectRepoPath\n',
+        new='    dictWorkflow.setdefault("dictDeterminism", {})["sRepeatabilityAnswer"] = "speed"\n    dictWorkflow["dictDeterminism"]["sExecutionProfile"] = "speed-v1"\n    del sProjectRepoPath\n',
+    ),
+    # --- 2026-10-17: production-time provenance (Phase 7) ---
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testAPlotsOnlyRunRelabelsOnlyThePlots'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        # every declared output is recorded after any section
+        old='    listPaths = _flistSectionOutputPaths(dictStep, dictTemplateValues, sSection)\n',
+        new='    listPaths = (_flistSectionOutputPaths(dictStep, dictTemplateValues, "data")\n                 + _flistSectionOutputPaths(dictStep, dictTemplateValues, "plot"))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testADataOnlyRunRelabelsOnlyTheData'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        # every declared output is recorded after any section
+        old='    listPaths = _flistSectionOutputPaths(dictStep, dictTemplateValues, sSection)\n',
+        new='    listPaths = (_flistSectionOutputPaths(dictStep, dictTemplateValues, "data")\n                 + _flistSectionOutputPaths(dictStep, dictTemplateValues, "plot"))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testAPlotOnlyStepsFullRunRelabelsOnlyThePlots'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # a skipped data section is recorded
+        old='        if not dictStep.get("bPlotOnly") or sRunMode == S_RUN_MODE_RERUN:\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testAFailedPlotSectionRelabelsOnlyTheData'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # the plot section is recorded whatever its exit status
+        old='        if iExitCode == 0:\n            await outputProvenance.fnRecordSectionProvenance(\n',
+        new='        if True:\n            await outputProvenance.fnRecordSectionProvenance(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testChangedBytesAreProductionContextUnknown'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        # a record is believed whatever the file's digest
+        old='    if not sSha256 or dictOutput.get("sSha256") != sSha256:\n',
+        new='    if not dictOutput:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testNoIdentifyingFieldIsRecorded'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # the host name is recorded with the capabilities
+        old='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n    }\n',
+        new='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sHostName": os.uname().nodename,\n    }\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testTheRerunReportsTheProductionContextBesideItsOwn'
+        ),
+        source='vaibify/reproducibility/rerunVerification.py',
+        # a byte difference is graded without its production context
+        old='        if dictFile.get("sRole") != "output" or (\n                dictFile.get("sObserved") == dictFile.get("sExpected")):\n            continue\n',
+        new='        if True:\n            continue\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testAStepProducedUnderAnotherContextIsNamedNeutrally'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        # the note compares no facts
+        old='        if jsonThere != jsonHere:\n            listDifferences.append(\n',
+        new='        if False:\n            listDifferences.append(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testAManifestMismatchExplainedByContextOffersAnOption'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        # the option is offered when only some mismatches are explained
+        old='    bOnly = bool(listMismatches) and len(listExplained) == len(listMismatches)\n',
+        new='    bOnly = bool(listExplained)\n',
     ),
 ]

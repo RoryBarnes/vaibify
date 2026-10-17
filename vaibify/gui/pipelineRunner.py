@@ -10,6 +10,7 @@ import threading
 import time
 
 from vaibify.config.registryManager import fbIsHostProject
+from . import outputProvenance
 from . import pipelineState
 from . import stateManager
 from . import workflowManager
@@ -50,6 +51,11 @@ S_RUN_MODE_RERUN = "rerun"
 # ---------------------------------------------------------------------------
 
 from .workflowMigrations import S_DIGEST_TIMESTAMP_KEY
+from .rerunEvidence import (  # noqa: F401
+    S_RERUN_EVIDENCE_KEY,
+    fsBuildScopedInvocationId,
+    fsJunitExportFor,
+)
 from .pipelineUtils import (  # noqa: F401
     fsExplainExitCode,
     fdictMapOutputTokenStems,
@@ -127,12 +133,16 @@ from .determinismEnvironment import (  # noqa: F401
     S_ENV_OVERLAY_KEY,
     S_DETERMINISM_APPLIED_KEY,
     S_MATPLOTLIB_CONFIG_ROOT,
+    S_EXECUTION_PROFILE_ERROR_KEY,
     _fiQueryHeadCommitEpoch,
     fsBuildMatplotlibSaltShell,
     _fsBuildDeterminismEnvPrefix,
     _fnInjectDeterminismEnvPrefix,
     _fnAnnounceDegradedDeterminism,
     _fnAnnounceDeterminismEpochSource,
+    _fnAnnounceExecutionSettings,
+    fdictDescribeRunContext,
+    flistDescribeExecutionWarnings,
 )
 
 # ---------------------------------------------------------------------------
@@ -169,6 +179,8 @@ def _flistValidateStepsBlocking(
         # completion merge attaches results to, and running with a
         # duplicate would attribute one step's results to another.
         return [sIdConflict]
+    if dictVariables.get(S_EXECUTION_PROFILE_ERROR_KEY):
+        return [dictVariables[S_EXECUTION_PROFILE_ERROR_KEY]]
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
         if not _fbStepIncludedInRun(
@@ -306,7 +318,7 @@ def fsRunMarkerPrefix(sContainerId):
 
 async def _ftRunCommandList(
     connectionDocker, sContainerId, listCommands,
-    sWorkdir, dictVariables, fnStatusCallback,
+    sWorkdir, dictVariables, fnStatusCallback, sInvocationScope="",
 ):
     """Execute commands, return ``(iExitCode, fTotalCpuSeconds)``.
 
@@ -316,23 +328,42 @@ async def _ftRunCommandList(
     honest: one command whose reading is ABSENT (``None``) makes the
     total absent, because a partial sum wearing the total's name is a
     measurement nobody took (see ``_ffTotalCpuTime``).
+
+    ``sInvocationScope`` (``"<step label>.<section>"``) names the
+    commands for the attestation rerun's evidence: when the rerun lane
+    put its evidence context in ``dictVariables``, every non-empty
+    command gets its identity, a test command exports its own JUnit
+    path, and every exit status is appended to the ledger.
     """
     fTotalCpu = 0.0
     sEnvPrefix = ""
     dictEnvironmentOverlay = None
+    dictRerunEvidence = None
     if dictVariables:
         sEnvPrefix = dictVariables.get(S_ENV_PREFIX_KEY, "")
         dictEnvironmentOverlay = dictVariables.get(S_ENV_OVERLAY_KEY)
+        dictRerunEvidence = dictVariables.get(S_RERUN_EVIDENCE_KEY)
+    iPosition = 0
     for sCommand in listCommands:
         sResolved = workflowManager.fsResolveCommand(
             sCommand, dictVariables
         )
+        sInvocationId = ""
+        if (dictRerunEvidence is not None and sInvocationScope
+                and (sCommand or "").strip()):
+            iPosition += 1
+            sInvocationId = fsBuildScopedInvocationId(
+                sInvocationScope, iPosition)
         iExitCode, fCpu = await _ftRunSingleCommand(
             connectionDocker, sContainerId,
             sCommand, sResolved, sWorkdir, fnStatusCallback,
-            sEnvPrefix=sEnvPrefix,
+            sEnvPrefix=sEnvPrefix + fsJunitExportFor(
+                dictRerunEvidence, sInvocationId),
             dictEnvironmentOverlay=dictEnvironmentOverlay,
         )
+        if sInvocationId:
+            dictRerunEvidence["listLedger"].append(
+                (sInvocationId, iExitCode))
         fTotalCpu = _ffTotalCpuTime(fTotalCpu, fCpu)
         if iExitCode != 0:
             return (iExitCode, fTotalCpu)
@@ -732,7 +763,7 @@ def _ffParseCpuTime(sOutput):
 async def ftRunStepCommands(
     connectionDocker, sContainerId, dictStep,
     sWorkdir, dictVariables, fnStatusCallback,
-    iStepNumber=0, sRunMode="full",
+    iStepNumber=0, sRunMode="full", sStepLabel="",
 ):
     """Run a single step's commands sequentially in its directory.
 
@@ -770,16 +801,26 @@ async def ftRunStepCommands(
             connectionDocker, sContainerId, dictStep,
             sStepDirectory, dictVariables, fnStatusCallback,
             bIgnorePlotOnly=(sRunMode == S_RUN_MODE_RERUN),
+            sInvocationScope=f"{sStepLabel}.data" if sStepLabel else "",
         )
         if iExitCode != 0:
             return (iExitCode, fCpuTime)
+        if not dictStep.get("bPlotOnly") or sRunMode == S_RUN_MODE_RERUN:
+            await outputProvenance.fnRecordSectionProvenance(
+                connectionDocker, sContainerId, dictStep, dictVariables,
+                "data")
     if sRunMode != "dataOnly":
         iExitCode, fPlotCpu = await _ftRunCommandList(
             connectionDocker, sContainerId,
             dictStep.get("saPlotCommands", []),
             sStepDirectory, dictVariables, fnStatusCallback,
+            sInvocationScope=f"{sStepLabel}.plot" if sStepLabel else "",
         )
         fCpuTime = _ffTotalCpuTime(fCpuTime, fPlotCpu)
+        if iExitCode == 0:
+            await outputProvenance.fnRecordSectionProvenance(
+                connectionDocker, sContainerId, dictStep, dictVariables,
+                "plot")
     if sRunMode == "plotsOnly":
         return (iExitCode, fCpuTime)
     if iExitCode != 0:
@@ -792,7 +833,7 @@ async def ftRunStepCommands(
     await _fiRunTestCommands(
         connectionDocker, sContainerId, dictStep,
         sStepDirectory, dictVariables, fnStatusCallback,
-        iStepNumber,
+        iStepNumber, sStepLabel=sStepLabel,
     )
     return (iExitCode, fCpuTime)
 
@@ -823,7 +864,7 @@ def _ffTotalCpuTime(fFirst, fSecond):
 async def _ftRunSetupIfNeeded(
     connectionDocker, sContainerId, dictStep,
     sStepDirectory, dictVariables, fnStatusCallback,
-    bIgnorePlotOnly=False,
+    bIgnorePlotOnly=False, sInvocationScope="",
 ):
     """Run data analysis commands unless bPlotOnly is True.
 
@@ -835,6 +876,7 @@ async def _ftRunSetupIfNeeded(
         connectionDocker, sContainerId,
         dictStep.get("saDataCommands", []),
         sStepDirectory, dictVariables, fnStatusCallback,
+        sInvocationScope=sInvocationScope,
     )
 
 
@@ -1197,6 +1239,7 @@ async def _fiRunOneStep(
         fdictCommitProvenance=fdictCommitProvenance,
         dictMarkerContext=dictMarkerContext,
         dictTaintState=dictTaintState,
+        sStepLabel=sStepLabel,
     )
 
 
@@ -1204,7 +1247,7 @@ async def _fiExecuteAndRecord(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
     sRunMode="full", fdictCommitProvenance=None, dictMarkerContext=None,
-    dictTaintState=None,
+    dictTaintState=None, sStepLabel=None,
 ):
     """Execute step commands, record timing, emit results.
 
@@ -1264,6 +1307,7 @@ async def _fiExecuteAndRecord(
         connectionDocker, sContainerId,
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
         iStepNumber=iStepNumber, sRunMode=sRunMode,
+        sStepLabel=sStepLabel or "",
     )
     _fnRecordRunStats(
         dictStep, fStartTime, fCpuTime, iExitCode=iExitCode,
@@ -1718,7 +1762,7 @@ def _fnPostHeartbeat(
 
 async def _ftPrepareLogAndVariables(
     connectionDocker, sContainerId, dictWorkflow, sWorkdir,
-    fnStatusCallback, iSourceDateEpochOverride=0,
+    fnStatusCallback, iSourceDateEpochOverride=0, dictRerunEvidence=None,
 ):
     """Set up log path, logging callback, variables, and clear output flags."""
     from .pipelineLogger import fnPruneOldLogs
@@ -1733,11 +1777,21 @@ async def _ftPrepareLogAndVariables(
     listLogLines = []
     fnLogging = ffBuildLoggingCallback(fnStatusCallback, listLogLines)
     dictVariables = _fdictBuildVariables(dictWorkflow, sWorkdir)
+    if dictRerunEvidence is not None:
+        dictVariables[S_RERUN_EVIDENCE_KEY] = dictRerunEvidence
     await _fnInjectDeterminismEnvPrefix(
         connectionDocker, sContainerId, dictWorkflow, dictVariables,
         iSourceDateEpochOverride=iSourceDateEpochOverride,
+        dictExecutionProfile=(dictRerunEvidence or {}).get(
+            "dictExecutionProfile"),
     )
+    outputProvenance.fnPrepareRunProvenance(
+        sContainerId, dictWorkflow, dictVariables)
+    if dictRerunEvidence is not None:
+        dictRerunEvidence["dictRunContext"] = fdictDescribeRunContext(
+            dictVariables)
     await _fnAnnounceDeterminismEpochSource(fnLogging, dictVariables)
+    await _fnAnnounceExecutionSettings(fnLogging, dictVariables)
     await _fnAnnounceDegradedDeterminism(fnLogging, dictVariables)
     fnClearOutputModifiedFlags(dictWorkflow)
     return sLogPath, listLogLines, fnLogging, dictVariables
@@ -1748,7 +1802,7 @@ async def _fiRunWithLogging(
     sWorkdir, fnStatusCallback, sAction, iStartStep=1,
     sWorkflowPath="", dictInteractive=None, sRunMode="full",
     setRunStepIndices=None, iSourceDateEpochOverride=0,
-    fdictCommitProvenance=None,
+    fdictCommitProvenance=None, dictRerunEvidence=None,
 ):
     """Run steps with logging wrapper, writing log file on completion."""
     sLogPath, listLogLines, fnLogging, dictVariables = (
@@ -1756,6 +1810,7 @@ async def _fiRunWithLogging(
             connectionDocker, sContainerId, dictWorkflow,
             sWorkdir, fnStatusCallback,
             iSourceDateEpochOverride=iSourceDateEpochOverride,
+            dictRerunEvidence=dictRerunEvidence,
         )
     )
     listPreflightErrors = await _flistPreflightValidate(
@@ -1773,7 +1828,7 @@ async def _fiRunWithLogging(
         _flistCollectPreflightWarnings,
         connectionDocker, sContainerId, dictWorkflow,
         dictVariables.get("sRepoRoot", ""),
-    )
+    ) + flistDescribeExecutionWarnings(dictVariables)
     for sWarning in listPreflightWarnings:
         await fnStatusCallback({
             "sType": "preflightWarning", "sMessage": sWarning,
@@ -1802,12 +1857,15 @@ async def fiRunAllSteps(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback,
     bForceRun=False, dictInteractive=None, iSourceDateEpochOverride=0,
-    fdictCommitProvenance=None, sRunMode="full",
+    fdictCommitProvenance=None, sRunMode="full", dictRerunEvidence=None,
 ):
     """Run all enabled steps with logging.
 
     ``sRunMode`` is ``full`` except for the attestation rerun, which
-    passes :data:`S_RUN_MODE_RERUN`.
+    passes :data:`S_RUN_MODE_RERUN` and ``dictRerunEvidence`` --
+    ``{sEvidenceDirectory, listLedger}`` -- so every command it runs is
+    named, every test writes its own JUnit report, and every exit
+    status is accounted for (see :data:`S_RERUN_EVIDENCE_KEY`).
 
     ``iSourceDateEpochOverride`` pins ``SOURCE_DATE_EPOCH`` and the
     figure salt to a recorded value instead of the HEAD derivation;
@@ -1826,6 +1884,7 @@ async def fiRunAllSteps(
         iSourceDateEpochOverride=iSourceDateEpochOverride,
         fdictCommitProvenance=fdictCommitProvenance,
         sRunMode=sRunMode,
+        dictRerunEvidence=dictRerunEvidence,
     )
 
 

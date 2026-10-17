@@ -342,7 +342,8 @@ def test_a_second_verification_by_the_reader_is_neither_refused_nor_degraded(
     listRecords = _fdictReadRecords(pathRepo)
     assert len(listRecords) == 2, "the second attempt wrote no record"
     dictSecondRecord = listRecords[-1]
-    assert dictSecondRecord["sVerdict"] == "reproduced"
+    # The assessed rerun's verdict: every regenerated file matched.
+    assert dictSecondRecord["sVerdict"] == "byte-identical"
     assert dictSecondRecord["bBaselineKnown"] is True
     assert dictSecondRecord["listPathsDifferingFromBaseline"] == (
         listUntracked)

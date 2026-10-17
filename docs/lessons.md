@@ -680,3 +680,20 @@ correct approach.
   general form: a red whose click sent NO request is a rebuild under
   the pointer, not a slow server, and the trace, not the selector,
   says which (`tests/browser/testAClickSurvivesAPollRender.py`).
+- **A pinned image was read as pinned results.** Level 3 promised that
+  a clean rerun in the archived image reproduced every byte, and every
+  check agreed: the shadow rerun, `reproduce.sh`, the live legs and the
+  QuickStart walkthrough. None of them had ever compared two runs made
+  on different processors or with different core counts, so none could
+  disagree. A rerun on a processor with wider vector instructions than
+  the one that made the manifest changed the last digits of every
+  regenerated data file: the image pins the software, and NumPy's bundled OpenBLAS picks its kernel
+  for the processor it finds. It is the name-vs-id bug again -- a
+  fixture in which the two things that differ in the world were the
+  same -- one level up. Level 3 now assesses a rerun instead of
+  promising bytes, and the cross-machine test compares each runner's
+  output with a committed digest made on another machine, never with a
+  second run of its own. The
+  general form: before a test confirms that two things agree, ask what
+  would have to differ between them in the world, and whether the test
+  ever lets it.
