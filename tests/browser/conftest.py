@@ -721,6 +721,14 @@ def pageDashboard(browserEngine, serverHub, request):
 
     yield page
 
+    # A polled request can be inside a route handler when the journey
+    # ends; closing the context then disposes the response the handler
+    # is still reading, and the sync API raises that handler's error at
+    # the NEXT call on the connection -- the next journey's
+    # new_context (Firefox, CI, 2026-10-16). Unrouting first, ignoring
+    # the errors of handlers already running, keeps each journey's
+    # routes from failing the one after it.
+    page.unroute_all(behavior="ignoreErrors")
     bFailed = any(
         getattr(getattr(request.node, f"report_{sPhase}", None),
                 "failed", False)
