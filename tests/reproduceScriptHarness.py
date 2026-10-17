@@ -56,7 +56,7 @@ def fsKeepRunDirectories(sBody, sKeep):
         raise AssertionError("the container half has no single exit trap")
     return sBody.replace(_S_EXIT_TRAP_OPENING, (
         "trap 'cp -R \"$sVaibifyScratch\" \"$sVaibifyEvidence\" "
-        f"\"{sKeep}\"/; chmod -R a+rwX \"{sKeep}\"; rm -rf "), 1)
+        f"\"{sKeep}\"/; chmod -R a+rwX \"{sKeep}\"/vaibify*; rm -rf "), 1)
 
 
 def fnInstallFakePip(sBin, iExitCode):

@@ -212,10 +212,23 @@ def _ftReproduce(tmp_path, sName, dictImage, dictRecordedProfile,
 # Run in one container when the fixture's digest is wrong: the fixture
 # under every setting, without each one in turn, and under none, so a
 # failure on a machine nobody here can reach names the setting at fault.
+# A crash prints the fixture line it died on (faulthandler), and the
+# kernel OpenBLAS chose is read under each variant.
 _S_DIAGNOSIS_PROGRAM = """import json, os, subprocess, sys
 dictRequested = json.loads(sys.argv[1])
 os.makedirs("/tmp/fixture", exist_ok=True)
 open("/tmp/fixture/fixture.py", "w").write(sys.argv[2])
+sCoreProgram = (
+    "import ctypes, glob, os, numpy\\n"
+    "s = os.path.dirname(os.path.dirname(numpy.__file__))\\n"
+    "l = ctypes.CDLL(sorted(glob.glob(s + '/numpy.libs/*openblas*'))[0])\\n"
+    "f = getattr(l, 'scipy_openblas_get_corename64_', None) or "
+    "getattr(l, 'openblas_get_corename64_')\\n"
+    "f.restype = ctypes.c_char_p\\n"
+    "g = getattr(l, 'scipy_openblas_get_config64_', None) or "
+    "getattr(l, 'openblas_get_config64_')\\n"
+    "g.restype = ctypes.c_char_p\\n"
+    "print(numpy.__version__, f().decode(), g().decode())\\n")
 listVariants = [("every setting", dictRequested)] + [
     ("without " + sKey, {k: v for k, v in dictRequested.items() if k != sKey})
     for sKey in dictRequested] + [("no setting", {})]
@@ -223,13 +236,20 @@ for sName, dictSettings in listVariants:
     dictEnvironment = {k: v for k, v in os.environ.items()
                        if k not in dictRequested}
     dictEnvironment.update(dictSettings)
+    completedCore = subprocess.run(
+        [sys.executable, "-c", sCoreProgram], env=dictEnvironment,
+        capture_output=True, text=True)
     completed = subprocess.run(
-        [sys.executable, "fixture.py"], env=dictEnvironment,
-        cwd="/tmp/fixture", capture_output=True, text=True)
+        [sys.executable, "-X", "faulthandler", "fixture.py"],
+        env=dictEnvironment, cwd="/tmp/fixture", capture_output=True,
+        text=True)
     sDigest = ""
     if completed.returncode == 0:
         sDigest = open("/tmp/fixture/digest.txt").read().strip()
-    print(f"{sName}: exit {completed.returncode} {sDigest}")
+    print(f"{sName}: exit {completed.returncode} {sDigest} | core "
+          f"{completedCore.stdout.strip() or completedCore.returncode}")
+    if completed.returncode != 0:
+        print("    " + "\\n    ".join(completed.stderr.splitlines()[-12:]))
 """
 
 
@@ -255,7 +275,7 @@ def _fsDescribeThisMachine(dictImage):
 
 @pytest.mark.falsification
 def testTheAcrossProfileReproducesTheCommittedFixture(
-    dictProfileImage, tmp_path,
+    dictProfileImage, dictOlderNumpyImage, tmp_path,
 ):
     """This runner regenerates the digest measured on another machine.
 
@@ -276,15 +296,17 @@ def testTheAcrossProfileReproducesTheCommittedFixture(
     if sDigest != S_ACROSS_FIXTURE_DIGEST:
         sOutput += "\nEach setting in turn:\n" + _fsDiagnoseEachSetting(
             dictProfileImage, dictProfile["dictRequested"])
+        sOutput += (f"\nEach setting in turn, NumPy {S_OLDER_NUMPY_VERSION}:\n"
+                    + _fsDiagnoseEachSetting(
+                        dictOlderNumpyImage, dictProfile["dictRequested"]))
     assert dictProbe.get("dictSettingsSeen") == dictProfile["dictRequested"], (
         sMachine, dictProbe, sOutput)
     assert {sName: dictJudged["sStatus"] for sName, dictJudged in
             dictProbe["dictNumpyDisabledFeatures"].items()} == {
         "AVX512_ICL": "applied", "X86_V4": "applied"}, (sMachine, dictProbe,
                                                         sOutput)
-    assert sDigest == S_ACROSS_FIXTURE_DIGEST, (
-        sMachine, sDigest, completed.stdout + completed.stderr)
-    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert sDigest == S_ACROSS_FIXTURE_DIGEST, (sMachine, sDigest, sOutput)
+    assert completed.returncode == 0, sOutput
     assert "Reproduced: every file byte-identical" in completed.stdout
 
 
