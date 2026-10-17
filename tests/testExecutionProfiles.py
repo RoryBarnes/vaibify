@@ -146,7 +146,8 @@ def _flistRunTheAuthorsRun(sRoot, dictWorkflow):
     return listEvents
 
 
-def _fdictRunTheProbe(tmp_path, dictEnvironment, sFakeNumpy=""):
+def _fdictRunTheProbe(tmp_path, dictEnvironment, sFakeNumpy="",
+                      dictFakeModules=None):
     """Run the probe as a step's interpreter would; return its record."""
     dictRun = dict(os.environ)
     for sKey in TUPLE_KEYS:
@@ -156,6 +157,9 @@ def _fdictRunTheProbe(tmp_path, dictEnvironment, sFakeNumpy=""):
         sPackage = tmp_path / "fakePackages" / "numpy"
         sPackage.mkdir(parents=True)
         (sPackage / "__init__.py").write_text(sFakeNumpy)
+        for sRelative, sText in (dictFakeModules or {}).items():
+            (sPackage / sRelative).parent.mkdir(parents=True, exist_ok=True)
+            (sPackage / sRelative).write_text(sText)
         dictRun["PYTHONPATH"] = str(tmp_path / "fakePackages")
     completed = subprocess.run(
         [sys.executable, "-c", rerunAssessment.fsBuildProcedureProgram(),
@@ -330,6 +334,83 @@ def testANumpyWithoutBundledOpenblasIsSaid(tmp_path):
     assert dictProbe["dictOpenblas"] == {
         "sState": "OpenBLAS not detected", "sReportedBlas": "accelerate"}
     assert dictProbe["dictSettingsSeen"] == {"OMP_NUM_THREADS": "1"}
+
+
+# The CPU features a NumPy older than 2.4 reports on an AVX-512 machine
+# with AVX512_ICL disabled: it dispatches by single feature, and has no
+# X86_V4 group to disable.
+_DICT_FEATURES_BEFORE_THE_GROUPS = {
+    "_core/__init__.py": "",
+    "_core/_multiarray_umath.py": (
+        "__cpu_baseline__ = ['SSE', 'SSE2', 'SSE3']\n"
+        "__cpu_dispatch__ = ['AVX2', 'AVX512F', 'AVX512_SKX', 'AVX512_ICL']\n"
+        "__cpu_features__ = {'SSE': True, 'SSE2': True, 'SSE3': True,\n"
+        "    'AVX2': True, 'AVX512F': True, 'AVX512_SKX': True,\n"
+        "    'AVX512_ICL': False}\n"),
+}
+
+
+@pytest.mark.falsification
+def testANumpyThatDoesNotKnowAFeatureNameSaysItWasNotApplied(tmp_path):
+    """A name NumPy ignores is "not applied", never read as applied.
+
+    NumPy before 2.4 has no ``X86_V4``, ignores the request behind an
+    ImportWarning Python hides, and keeps dispatching AVX-512 (design
+    F7: each requested feature is applied, not applied or fixed at
+    build).
+
+    Kills: judging a name outside NumPy's dispatch list by whether it
+    is active, which an unknown name never is.
+    """
+    dictProbe = _fdictRunTheProbe(
+        tmp_path, {"NPY_DISABLE_CPU_FEATURES": "AVX512_ICL,X86_V4"},
+        "__version__ = '2.1.3'\n", _DICT_FEATURES_BEFORE_THE_GROUPS)
+    assert dictProbe["dictNumpyDisabledFeatures"] == {
+        "AVX512_ICL": {"sStatus": "applied", "sReason": ""},
+        "X86_V4": {"sStatus": "not applied",
+                   "sReason": "this NumPy does not know that feature name"},
+    }
+
+
+@pytest.mark.falsification
+def testANumpyThatRefusesTheSettingsIsRecordedInItsOwnWords(tmp_path):
+    """NumPy refusing to import under a setting is a record, not a crash.
+
+    NumPy raises at import when asked to disable a feature in its own
+    baseline, so every step that imports it will fail; the probe says so.
+
+    Kills: catching only the ImportError of an absent NumPy.
+    """
+    dictProbe = _fdictRunTheProbe(
+        tmp_path, {"NPY_DISABLE_CPU_FEATURES": "SSE3"},
+        "raise RuntimeError(\"During parsing environment variable: "
+        "'NPY_DISABLE_CPU_FEATURES':\\nYou cannot disable CPU features "
+        "(SSE3), since they are part of the baseline optimizations\")\n")
+    assert dictProbe["sNumpyState"] == (
+        "NumPy refused to load under these settings: During parsing "
+        "environment variable: 'NPY_DISABLE_CPU_FEATURES': You cannot "
+        "disable CPU features (SSE3), since they are part of the baseline "
+        "optimizations")
+    assert rerunProcedure.flistDescribeProbeConcerns(dictProbe) == [
+        dictProbe["sNumpyState"] + ". Every step that imports NumPy will fail."]
+
+
+@pytest.mark.falsification
+def testTheAuthorIsWarnedWhenTheImagesNumpyIgnoresASetting(tmp_path):
+    """The probe's "not applied" reaches the run-start warnings, by name.
+
+    Kills: building the run-start warnings from the floor decision alone.
+    """
+    dictProbe = _fdictRunTheProbe(
+        tmp_path, {"NPY_DISABLE_CPU_FEATURES": "AVX512_ICL,X86_V4"},
+        "__version__ = '2.1.3'\n", _DICT_FEATURES_BEFORE_THE_GROUPS)
+    listWarnings = determinismEnvironment.flistDescribeExecutionWarnings({
+        determinismEnvironment.S_EXECUTION_PROBE_KEY: dictProbe})
+    assert listWarnings == [
+        "NumPy 2.1.3 did not apply NPY_DISABLE_CPU_FEATURES=X86_V4: this "
+        "NumPy does not know that feature name. Outputs from NumPy's "
+        "vectorized math may differ from a computer whose NumPy honors the "
+        "setting."]
 
 
 # ----------------------------------------------------------------------

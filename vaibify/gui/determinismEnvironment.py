@@ -520,17 +520,28 @@ def fdictDescribeRunContext(dictVariables):
 
 
 def flistDescribeExecutionWarnings(dictVariables):
-    """Return the run-start warning a floor this processor cannot honor earns."""
+    """Return the run-start warnings the profile's settings earn.
+
+    One for a floor this processor cannot honor, and one for each
+    setting the probe saw the image's NumPy refuse or ignore.
+    """
+    from vaibify.reproducibility.rerunProcedure import (
+        flistDescribeProbeConcerns,
+    )
     dictSettings = dictVariables.get(S_EXECUTION_SETTINGS_KEY) or {}
     dictDecision = dictSettings.get("dictDecision") or {}
-    if dictDecision.get("sFloorState") != "not applied":
-        return []
-    return [
-        dictDecision.get("sReason", "floor not applied")
-        + f". The {dictSettings.get('sProfileId', '')} profile's other "
-        "settings still apply, but outputs that depend on the processor's "
-        "instructions may differ from a computer that honors the floor."
-    ]
+    listWarnings = []
+    if dictDecision.get("sFloorState") == "not applied":
+        listWarnings.append(
+            dictDecision.get("sReason", "floor not applied")
+            + f". The {dictSettings.get('sProfileId', '')} profile's other "
+            "settings still apply, but outputs that depend on the "
+            "processor's instructions may differ from a computer that "
+            "honors the floor.")
+    dictProbe = dictVariables.get(S_EXECUTION_PROBE_KEY)
+    if isinstance(dictProbe, dict):
+        listWarnings.extend(flistDescribeProbeConcerns(dictProbe))
+    return listWarnings
 
 
 async def _fnInjectDeterminismEnvPrefix(

@@ -65,9 +65,11 @@ __all__ = [
     "fdictCheckPinnedInputs",
     "fdictClearRegeneratedPaths",
     "fdictDecideAppliedSettings",
+    "fdictJudgeNumpyDisabledFeatures",
     "fdictProbeNumericalLibraries",
     "fdictReadProcessorCapabilities",
     "fiRunMain",
+    "flistDescribeProbeConcerns",
     "flistParseManifestEntries",
     "fsBuildInvocationId",
     "fsHashRepositoryFileOrNone",
@@ -128,6 +130,13 @@ TUPLE_X86_64_LEVEL_FLAGS = (
 S_FLOOR_NOT_REQUESTED = "not requested"
 S_FLOOR_APPLIED = "applied"
 S_FLOOR_NOT_APPLIED = "not applied"
+# What became of each CPU feature NumPy was asked to disable (design F7).
+S_FEATURE_APPLIED = "applied"
+S_FEATURE_NOT_APPLIED = "not applied"
+S_FEATURE_FIXED_AT_BUILD = "fixed at build"
+S_FEATURE_NOT_CONFIRMED = "not confirmed"
+S_NUMPY_FEATURE_SETTING = "NPY_DISABLE_CPU_FEATURES"
+I_MAXIMUM_REFUSAL_CHARACTERS = 400
 
 _T_OPENBLAS_CORENAME_SYMBOLS = (
     "scipy_openblas_get_corename64_",
@@ -721,11 +730,46 @@ def fdictReadNumpyCpuFeatures():
     }
 
 
+def fdictJudgeNumpyDisabledFeatures(sRequested, dictCpuFeatures):
+    """Return what became of each CPU feature NumPy was asked to disable.
+
+    A name outside this NumPy's dispatch list is one its build does not
+    know: NumPy ignores it with an ImportWarning that Python hides by
+    default, so the request silently does nothing. NumPy before 2.4 does
+    not know ``X86_V4``, and keeps dispatching AVX-512 under it.
+    """
+    listNames = [sName for sName in (sRequested or "").split(",") if sName]
+    if "listDispatch" not in dictCpuFeatures:
+        return {sName: {"sStatus": S_FEATURE_NOT_CONFIRMED,
+                        "sReason": "NumPy's CPU features are not readable"}
+                for sName in listNames}
+    setBaseline = set(dictCpuFeatures["listBaseline"])
+    setDispatch = set(dictCpuFeatures["listDispatch"])
+    setActive = set(dictCpuFeatures["listActive"])
+    dictJudged = {}
+    for sName in listNames:
+        if sName in setBaseline:
+            dictJudged[sName] = {"sStatus": S_FEATURE_FIXED_AT_BUILD,
+                                 "sReason": "it is in this NumPy's baseline"}
+        elif sName not in setDispatch:
+            dictJudged[sName] = {
+                "sStatus": S_FEATURE_NOT_APPLIED,
+                "sReason": "this NumPy does not know that feature name"}
+        elif sName in setActive:
+            dictJudged[sName] = {"sStatus": S_FEATURE_NOT_APPLIED,
+                                 "sReason": "NumPy still reports it active"}
+        else:
+            dictJudged[sName] = {"sStatus": S_FEATURE_APPLIED, "sReason": ""}
+    return dictJudged
+
+
 def fdictProbeNumericalLibraries():
     """Load NumPy under the applied settings and report what it chose.
 
     Observations only: the probe never changes a setting, and what it
-    sees is what a probe process saw, not what every step did.
+    sees is what a probe process saw, not what every step did. NumPy
+    refuses to import at all when asked to disable a feature in its
+    baseline, and that refusal is recorded in NumPy's own words.
     """
     dictProbe = {
         "dictSettingsSeen": {
@@ -737,11 +781,35 @@ def fdictProbeNumericalLibraries():
     except ImportError:
         dictProbe["sNumpyState"] = "NumPy not installed"
         return dictProbe
+    except Exception as error:  # noqa: BLE001 -- recorded, never raised
+        dictProbe["sNumpyState"] = (
+            "NumPy refused to load under these settings: "
+            + " ".join(str(error).split())[:I_MAXIMUM_REFUSAL_CHARACTERS])
+        return dictProbe
     dictProbe["sNumpyState"] = "installed"
     dictProbe["sNumpyVersion"] = str(getattr(numpy, "__version__", ""))
     dictProbe["dictNumpyCpuFeatures"] = fdictReadNumpyCpuFeatures()
+    dictProbe["dictNumpyDisabledFeatures"] = fdictJudgeNumpyDisabledFeatures(
+        dictProbe["dictSettingsSeen"].get(S_NUMPY_FEATURE_SETTING, ""),
+        dictProbe["dictNumpyCpuFeatures"])
     dictProbe["dictOpenblas"] = fdictProbeOpenblas(numpy)
     return dictProbe
+
+
+def flistDescribeProbeConcerns(dictProbe):
+    """Return one sentence per requested setting the probe saw fail."""
+    sState = dictProbe.get("sNumpyState", "")
+    if sState.startswith("NumPy refused"):
+        return [sState + ". Every step that imports NumPy will fail."]
+    return [
+        f"NumPy {dictProbe.get('sNumpyVersion', '')} did not apply "
+        f"{S_NUMPY_FEATURE_SETTING}={sName}: {dictJudged['sReason']}. "
+        "Outputs from NumPy's vectorized math may differ from a computer "
+        "whose NumPy honors the setting."
+        for sName, dictJudged in sorted(
+            (dictProbe.get("dictNumpyDisabledFeatures") or {}).items())
+        if dictJudged["sStatus"] != S_FEATURE_APPLIED
+    ]
 
 
 def fiRunProbe(sScratch, bMachine=False):
@@ -750,6 +818,8 @@ def fiRunProbe(sScratch, bMachine=False):
     if sScratch:
         fnWriteJsonRecord(
             os.path.join(sScratch, S_PROBE_RECORD_FILENAME), dictProbe)
+    for sConcern in flistDescribeProbeConcerns(dictProbe):
+        print("vaibify: " + sConcern, file=sys.stderr)
     if bMachine:
         print(S_PROBE_RESULT_PREFIX + json.dumps(dictProbe, sort_keys=True))
     return I_PROCEDURE_EXIT_PASSED

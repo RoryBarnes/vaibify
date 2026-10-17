@@ -9,7 +9,15 @@ real daemon, in an image whose NumPy carries its bundled OpenBLAS:
   measured on an ``x86-64-v4`` machine, so every runner that reproduces
   it is cross-machine evidence (design 0e). The runner's processor is
   printed beside the result, because evidence about a machine nobody
-  named is not evidence;
+  named is not evidence. The run's own probe record is read first: the
+  settings reached the container and NumPy applied each one, so a
+  differing digest means the profile did not suffice, not that it was
+  never in force;
+* a NumPy older than 2.4 does not know ``X86_V4`` and ignores it behind
+  a warning Python hides, and the probe says so (design F7). On an
+  AVX-512 machine such a NumPy keeps dispatching AVX-512 under
+  ``across-v1``, which is why the fixture's image carries a NumPy that
+  knows the name;
 * under ``across-v1`` two visible cores give the same bytes as every
   core, because one thread is requested;
 * under ``speed-v1`` they do not, because OpenBLAS follows the cores it
@@ -26,6 +34,7 @@ Skipped automatically when no daemon is reachable, unless
 ``VAIBIFY_REQUIRE_DOCKER_DAEMON`` demands one.
 """
 
+import glob
 import json
 import os
 import pathlib
@@ -34,8 +43,10 @@ import subprocess
 
 import pytest
 
+from tests.reproduceScriptHarness import fsKeepRunDirectories
 from tests.reproductionSourceFixtures import fnWriteManifest, fnWriteText
 from tests.rerunAssessmentHarness import fdictBuildStep, fdictBuildWorkflow
+from tests.liveContainerLabels import fdictLabels
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
 from tests.testReproduceScriptDeterminism import _fbBindMountReachesTheDaemon
 from tests.testReproduceScriptParityLive import (
@@ -47,9 +58,14 @@ from tests.testReproductionLive import (
     _fimageBuildProbeImage,
 )
 from vaibify.docker import disposableContainer
-from vaibify.reproducibility import executionProfiles, rerunProcedure
+from vaibify.reproducibility import (
+    executionProfiles,
+    rerunAssessment,
+    rerunProcedure,
+)
 from vaibify.reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
+    S_REPRODUCTION_REPO_ROOT,
     ftRenderReproductionFiles,
 )
 
@@ -57,15 +73,19 @@ from vaibify.reproducibility.reproduceScriptGenerator import (
 pytestmark = pytest.mark.docker_live
 
 S_PROFILE_TAG = "vaibify-profile-probe:live"
+S_OLDER_NUMPY_TAG = "vaibify-profile-probe-older-numpy:live"
 # The base is pinned by digest so the measured bytes below cannot move
 # with a tag: a new glibc or a new Python changes them legitimately.
-_S_PROFILE_DOCKERFILE = (
+_S_PROFILE_DOCKERFILE_TEMPLATE = (
     "FROM python@sha256:"
     "a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1\n"
-    "RUN pip install --no-cache-dir numpy==2.1.3\n"
+    "RUN pip install --no-cache-dir numpy=={sNumpyVersion}\n"
     "RUN useradd --uid 1000 --create-home researcher\n"
     "USER researcher\n"
 )
+S_FIXTURE_NUMPY_VERSION = "2.5.3"
+S_OLDER_NUMPY_VERSION = "2.1.3"
+S_KEPT_DIRECTORY = ".kept"
 S_STEP = "Fixture"
 S_DIGEST_FILE = "digest.txt"
 _S_FIXTURE_PROGRAM = '''import hashlib
@@ -87,18 +107,32 @@ for part in listParts:
 open("digest.txt", "w").write(digest.hexdigest() + "\\n")
 '''
 # Measured under across-v1 on an x86-64-v4 (AVX-512) Intel machine,
-# 2026-10-17, in the image above.
+# 2026-10-17, in the image above with NumPy 2.5.3. The same machine with
+# NumPy's AVX-512 left on gives different bytes, so the NumPy setting is
+# load-bearing here and not decoration.
 S_ACROSS_FIXTURE_DIGEST = (
-    "7c454de59daac7d2aeb3004368489f19fd89525fc3c3104738e96815a7dd1857")
+    "76df2994c06a11d48ec11484358e513a052304be2b63d3301a5f669e67096c17")
 
 
 @pytest.fixture(scope="module")
 def dictProfileImage():
     """Build the fixture's image once; remove it at the end."""
+    yield from _fiterBuildImage(S_FIXTURE_NUMPY_VERSION, S_PROFILE_TAG)
+
+
+@pytest.fixture(scope="module")
+def dictOlderNumpyImage():
+    """Build an image whose NumPy predates the x86-64 feature groups."""
+    yield from _fiterBuildImage(S_OLDER_NUMPY_VERSION, S_OLDER_NUMPY_TAG)
+
+
+def _fiterBuildImage(sNumpyVersion, sTag):
+    """Yield one built image's facts; remove the image afterwards."""
     fnRequireDaemonReachable()
     dockerDisposable = disposableContainer.fdockerCreateDisposableClient()
     imageProbe = _fimageBuildProbeImage(
-        dockerDisposable, _S_PROFILE_DOCKERFILE, S_PROFILE_TAG)
+        dockerDisposable, _S_PROFILE_DOCKERFILE_TEMPLATE.format(
+            sNumpyVersion=sNumpyVersion), sTag)
     try:
         yield {
             "sImageId": imageProbe.id,
@@ -129,14 +163,33 @@ def _fsPublishTheFixture(sRoot, dictImage, dictRecordedProfile):
         "Fixture", S_STEP, saDataCommands=["python3 fixture.py"],
         saOutputDataFiles=[S_DIGEST_FILE])])
     for sRelative, sText in ftRenderReproductionFiles(dictWorkflow):
+        if sRelative == S_REPRODUCE_SCRIPT_FILENAME:
+            sText = fsKeepRunDirectories(
+                sText, f"{S_REPRODUCTION_REPO_ROOT}/{S_KEPT_DIRECTORY}")
         fnWriteText(sRoot, sRelative, sText)
+    os.makedirs(os.path.join(sRoot, S_KEPT_DIRECTORY))
     fnWriteManifest(sRoot, [f"{S_STEP}/fixture.py", f"{S_STEP}/{S_DIGEST_FILE}"])
     return sRoot
 
 
+def _fdictReadKeptProbe(sRoot):
+    """Return the probe record the run wrote into its scratch, or {}."""
+    listPaths = glob.glob(os.path.join(
+        sRoot, S_KEPT_DIRECTORY, "vaibifyScratch.*",
+        rerunProcedure.S_PROBE_RECORD_FILENAME))
+    if not listPaths:
+        return {}
+    with open(listPaths[0], encoding="utf-8") as fileIn:
+        return json.load(fileIn)
+
+
 def _ftReproduce(tmp_path, sName, dictImage, dictRecordedProfile,
                  listRunArguments=()):
-    """Run a fresh copy of the fixture's reproduce.sh; return (result, digest)."""
+    """Run a fresh copy of the fixture's reproduce.sh.
+
+    Returns the completed process, the digest it regenerated and the
+    probe record its own run kept.
+    """
     sRoot = _fsPublishTheFixture(
         str(tmp_path / sName), dictImage, dictRecordedProfile)
     if not _fbBindMountReachesTheDaemon(pathlib.Path(sRoot)):
@@ -153,7 +206,7 @@ def _ftReproduce(tmp_path, sName, dictImage, dictRecordedProfile,
         capture_output=True, text=True, timeout=900)
     sPath = os.path.join(sRoot, S_STEP, S_DIGEST_FILE)
     sDigest = open(sPath).read().strip() if os.path.isfile(sPath) else ""
-    return completed, sDigest
+    return completed, sDigest, _fdictReadKeptProbe(sRoot)
 
 
 def _fsDescribeThisMachine(dictImage):
@@ -170,14 +223,25 @@ def testTheAcrossProfileReproducesTheCommittedFixture(
 ):
     """This runner regenerates the digest measured on another machine.
 
+    The probe is read before the digest, so the kill does not depend on
+    this runner's processor: without the profile no runner's probe sees
+    the settings.
+
     Kills: reproduce.sh validating the recorded profile and never
     handing it to the container.
     """
     sMachine = _fsDescribeThisMachine(dictProfileImage)
     print("Runner processor:", sMachine)
-    completed, sDigest = _ftReproduce(
-        tmp_path, "across", dictProfileImage,
-        executionProfiles.fdictProfileFromTable(executionProfiles.S_PROFILE_ACROSS))
+    dictProfile = executionProfiles.fdictProfileFromTable(
+        executionProfiles.S_PROFILE_ACROSS)
+    completed, sDigest, dictProbe = _ftReproduce(
+        tmp_path, "across", dictProfileImage, dictProfile)
+    sOutput = completed.stdout + completed.stderr
+    assert dictProbe.get("dictSettingsSeen") == dictProfile["dictRequested"], (
+        sMachine, dictProbe, sOutput)
+    assert {sName: dictJudged["sStatus"] for sName, dictJudged in
+            dictProbe["dictNumpyDisabledFeatures"].items()} == {
+        "AVX512_ICL": "applied", "X86_V4": "applied"}, (sMachine, dictProbe)
     assert sDigest == S_ACROSS_FIXTURE_DIGEST, (
         sMachine, sDigest, completed.stdout + completed.stderr)
     assert completed.returncode == 0, completed.stdout + completed.stderr
@@ -192,9 +256,9 @@ def testTheAcrossProfileGivesTheSameBytesOnTwoCores(dictProfileImage, tmp_path):
     """
     dictProfile = executionProfiles.fdictProfileFromTable(
         executionProfiles.S_PROFILE_ACROSS)
-    _completedAll, sAll = _ftReproduce(
+    _completedAll, sAll, _dictProbeAll = _ftReproduce(
         tmp_path, "allCores", dictProfileImage, dictProfile)
-    completedTwo, sTwo = _ftReproduce(
+    completedTwo, sTwo, _dictProbeTwo = _ftReproduce(
         tmp_path, "twoCores", dictProfileImage, dictProfile,
         ["--cpuset-cpus", "0-1"])
     assert sAll and sAll == sTwo, completedTwo.stdout + completedTwo.stderr
@@ -206,8 +270,38 @@ def testTheSpeedProfileFollowsTheVisibleCores(dictProfileImage, tmp_path):
         pytest.skip(
             f"the daemon has {dictProfileImage['iDaemonCores']} cores; two "
             "visible cores against all of them needs at least four")
-    _completedAll, sAll = _ftReproduce(
+    _completedAll, sAll, _dictProbeAll = _ftReproduce(
         tmp_path, "speedAll", dictProfileImage, None)
-    _completedTwo, sTwo = _ftReproduce(
+    _completedTwo, sTwo, _dictProbeTwo = _ftReproduce(
         tmp_path, "speedTwo", dictProfileImage, None, ["--cpuset-cpus", "0-1"])
     assert sAll and sTwo and sAll != sTwo
+
+
+@pytest.mark.falsification
+def testANumpyOlderThanTheFeatureGroupsSaysItIgnoredOne(dictOlderNumpyImage):
+    """A real NumPy 2.1.3, asked for ``across-v1``, is recorded as ignoring X86_V4.
+
+    Kills: judging a name outside NumPy's dispatch list by whether it
+    is active, which an unknown name never is.
+    """
+    dictProfile = executionProfiles.fdictProfileFromTable(
+        executionProfiles.S_PROFILE_ACROSS)
+    dockerDisposable = disposableContainer.fdockerCreateDisposableClient()
+    baOutput = dockerDisposable.containers.run(
+        dictOlderNumpyImage["sImageId"],
+        ["python3", "-I", "-c", rerunAssessment.fsBuildProcedureProgram(),
+         "probe", "--machine"],
+        environment=dictProfile["dictRequested"], network_disabled=True,
+        labels=fdictLabels(), remove=True, stdout=True, stderr=False)
+    listRecords = [
+        json.loads(sLine[len(rerunProcedure.S_PROBE_RESULT_PREFIX):])
+        for sLine in baOutput.decode("utf-8", "replace").splitlines()
+        if sLine.startswith(rerunProcedure.S_PROBE_RESULT_PREFIX)]
+    assert len(listRecords) == 1, baOutput
+    dictProbe = listRecords[0]
+    assert dictProbe["sNumpyVersion"] == S_OLDER_NUMPY_VERSION
+    assert dictProbe["dictNumpyDisabledFeatures"] == {
+        "AVX512_ICL": {"sStatus": "applied", "sReason": ""},
+        "X86_V4": {"sStatus": "not applied",
+                   "sReason": "this NumPy does not know that feature name"},
+    }

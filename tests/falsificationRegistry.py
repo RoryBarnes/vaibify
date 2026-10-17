@@ -34979,6 +34979,36 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testExecutionProfiles.py::'
+            'testANumpyThatDoesNotKnowAFeatureNameSaysItWasNotApplied'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # a name NumPy does not know is judged by whether it is active
+        old='        elif sName not in setDispatch:\n',
+        new='        elif False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testANumpyThatRefusesTheSettingsIsRecordedInItsOwnWords'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # only an absent NumPy's ImportError is caught
+        old='    except Exception as error:  # noqa: BLE001 -- recorded, never raised\n',
+        new='    except ImportError as error:  # noqa: BLE001 -- recorded, never raised\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheAuthorIsWarnedWhenTheImagesNumpyIgnoresASetting'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        # the run-start warnings come from the floor decision alone
+        old='        listWarnings.extend(flistDescribeProbeConcerns(dictProbe))\n',
+        new='        listWarnings.extend([])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
             'testTheShadowReplaysTheRecordedProfileNotTheTable'
         ),
         source='vaibify/reproducibility/rerunVerification.py',
@@ -35107,6 +35137,16 @@ LIST_FALSIFICATIONS = [
         # one thread and the bytes unchanged (measured, 2026-10-17)
         old='            "OPENBLAS_NUM_THREADS": "1",\n            "OMP_NUM_THREADS": "1",\n',
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfilesLive.py::'
+            'testANumpyOlderThanTheFeatureGroupsSaysItIgnoredOne'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # a name NumPy does not know is judged by whether it is active
+        old='        elif sName not in setDispatch:\n',
+        new='        elif False:\n',
     ),
     Falsification(
         nodeid=(

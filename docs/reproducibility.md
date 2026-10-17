@@ -218,9 +218,13 @@ honor the instruction floor, so it runs without those two settings,
 keeps the thread settings, and records "floor not applied: this
 processor lacks x86-64-v3"; the dashboard warns you before such a run
 starts. Then a separate probe loads NumPy under exactly the settings the
-steps get and records what OpenBLAS chose. The probe establishes what a
-probe process saw; a step that changes its own settings is not
-detected.
+steps get, and records what OpenBLAS chose and whether NumPy applied
+each feature it was asked to disable. NumPy before version 2.4 does not
+know the name `X86_V4`; it ignores that request without a visible
+warning, and keeps using AVX-512 instructions where the processor has
+them. Vaibify says so before such a run starts, and `reproduce.sh`
+prints it. The probe establishes what a probe process saw; a step that
+changes its own settings is not detected.
 
 The cost was measured on one 8-core machine: about three to four times
 slower for dense linear algebra, and about three times slower for

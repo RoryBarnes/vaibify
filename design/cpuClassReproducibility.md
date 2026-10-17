@@ -428,6 +428,42 @@ NumPy 2.5.3; throwaway containers with `--network none`)
       transparency resolves; a two-frame TIFF reports `n_frames` 2; a
       float TIFF opens as `F` with `BitsPerSample` 32 and
       `SampleFormat` 3; a CMYK JPEG opens as `CMYK`.
+27. **D5's NumPy setting needs NumPy 2.4 or later** (2026-10-17, found
+    by the first cross-machine CI run of the committed fixture).
+    - The live fixture's image carried NumPy 2.1.3. Under `across-v1`,
+      an AMD `x86-64-v3` CI runner with 4 cores regenerated a digest
+      different from the one committed from the 8-core Intel
+      `x86-64-v4` machine.
+    - NumPy 2.1.3 and 2.3.5 do not know `X86_V4`. They ignore it with
+      an `ImportWarning`, which Python hides by default, and disable
+      only `AVX512_ICL`, so `AVX512F`, `AVX512CD`, `AVX512_SKX`,
+      `AVX512_CLX` and `AVX512_CNL` stay dispatched on an AVX-512
+      machine. NumPy 2.4.6 and 2.5.3 know the group and dispatch only
+      `X86_V3` under `across-v1`.
+    - **The cause is proven, not inferred.** With every AVX-512 feature
+      disabled by name, the Intel machine under NumPy 2.1.3 regenerated
+      exactly the AMD runner's digest.
+    - Under NumPy 2.5.3 the Intel machine gives one digest for
+      `across-v1` and for every AVX-512 group disabled, and a different
+      one with AVX-512 left on. So the NumPy setting is load-bearing.
+    - Asking NumPy to disable a feature in its baseline (`SSE3` on
+      2.1.3, `X86_V2` on 2.5.3) is a `RuntimeError` at import: every
+      step importing NumPy fails.
+    - Built: the probe now judges each requested name as F7 lists
+      (applied, not applied, fixed at build, or not confirmed when
+      NumPy's features cannot be read). The author is warned before
+      the run, `reproduce.sh` prints it, and a NumPy refusal is
+      recorded in NumPy's words. The fixture moved to NumPy 2.5.3.
+    - **Open, the researcher's decision:** `across-v1`'s value is
+      unchanged. The value
+      `AVX512F,AVX512CD,AVX512_SKX,AVX512_CLX,AVX512_CNL,AVX512_ICL,X86_V4`
+      covers both kinds of NumPy, because each ignores the names it
+      does not know. Measured: under NumPy 2.5.3 it gives the same
+      digest as today's value and dispatches only `X86_V3`. Under
+      NumPy 2.1.3 it dispatches nothing above `AVX2` and gives exactly
+      the AMD runner's digest. It is 67 characters, and the allowlist's
+      value pattern admits 64. Adopting it changes D5, so it is not
+      done here; it would be a new profile, `across-v2`.
 
 ---
 
