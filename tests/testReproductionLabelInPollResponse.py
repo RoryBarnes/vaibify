@@ -20,6 +20,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from vaibify.reproducibility.rerunAssessment import (
+    S_CURRENT_COMPARISON_POLICY,
+)
+
 from tests.reproductionSourceFixtures import (
     S_FIXTURE_OUTPUT,
     S_FIXTURE_SCRIPT,
@@ -531,6 +535,8 @@ def fnWriteAuthorAttestation(
         "sha256:" + "c" * 64, 1.0, 1, 1,
         dictReproductionProvenance=dictProvenance,
         sAttestedAtUtc=sAttestedAtUtc,
+        dictAssessmentFields={
+            "sComparisonPolicy": S_CURRENT_COMPARISON_POLICY},
     ))
 
 

@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from vaibify.gui import pipelineRunner
+from tests.rerunAssessmentHarness import fnRecordPlannedCommandsAsRun
 from vaibify.reproducibility import rerunPreparation
 from vaibify.reproducibility.l3Attestation import fdictBuildAttestation
 from vaibify.reproducibility.rerunPreparation import (
@@ -104,6 +105,8 @@ def _ffbRunThatRegenerates(pathRepo, dictRelativeToText):
             )
         for sRelative, sText in dictRelativeToText.items():
             _fnWriteFile(pathRepo, sRelative, sText)
+        fnRecordPlannedCommandsAsRun(
+            taArguments[2], dictArguments.get("dictRerunEvidence"))
         return True
     return fbRegenerate
 
@@ -415,7 +418,8 @@ def testAnOutputOutsideTheRepositoryIsRefused(pathPinnedRepo):
 def testAnUnrunnablePreparationIsRefusedNotSkipped(pathPinnedRepo):
     dictWorkflow = {"listSteps": [_fdictStep("Compute", ["result.txt"])]}
     with patch.object(
-        rerunPreparation, "_S_PREPARATION_PROGRAM", "raise SystemExit(7)",
+        rerunPreparation, "_fsBuildClearingProgram",
+        return_value="raise SystemExit(7)",
     ):
         dictOutcome = _fdictRerun(
             pathPinnedRepo, dictWorkflow, _fbRunThatWritesNothing)
@@ -563,7 +567,7 @@ def testTheAttestationRecordsThePinnedInputSplitAndTheDeletions():
         dictPreRerunClearing={
             "listDeletedOutputs": ["result.txt"], "listClearedScratch": []},
     )
-    assert dictAttestation["iSchemaVersion"] == 6
+    assert dictAttestation["iSchemaVersion"] == 7
     assert dictAttestation["iPinnedInputsUnchanged"] == 4
     assert dictAttestation["dictPreRerunClearing"][
         "listDeletedOutputs"] == ["result.txt"]

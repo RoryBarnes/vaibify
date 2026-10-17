@@ -58,6 +58,8 @@ def fdictBuildStep(
     """Return one step in the workflow's own shape."""
     return {
         "sName": sName, "sDirectory": sDirectory,
+        "sStepId": "step" + "".join(
+            sPart.capitalize() for sPart in sDirectory.split("/")),
         "bRunEnabled": True, "bInteractive": bInteractive,
         "bPlotOnly": bPlotOnly,
         "saDataCommands": list(saDataCommands),
@@ -196,6 +198,30 @@ def fnRunStepsLikeTheRunner(sRoot, dictWorkflow, dictPlan, sEvidence,
                 sRoot, dictPlanStep,
                 dictPlanStep["dictTestGroups"][sSection],
                 flistNonEmpty(listCommands), sEvidence, listLedger, True)
+
+
+def fnRecordPlannedCommandsAsRun(dictWorkflow, dictRerunEvidence,
+                                 iExitStatus=0, bIncludeTests=False):
+    """Record every planned data and plot command as having exited.
+
+    For a test that stands in for the runner: the real runner appends
+    each command's exit status to the rerun's ledger, and a stand-in
+    that writes outputs without recording that the commands ran
+    describes a rerun whose sections never ran -- which the assessment
+    grades as such. ``dictRerunEvidence`` is None when the caller is not
+    the rerun lane, and then nothing is recorded.
+    """
+    if dictRerunEvidence is None:
+        return
+    dictPlan = rerunAssessment.fdictBuildAssessmentPlan(dictWorkflow)
+    for dictPlanStep in dictPlan["listSteps"]:
+        listIds = (dictPlanStep["listDataInvocations"]
+                   + dictPlanStep["listPlotInvocations"])
+        if bIncludeTests:
+            for listGroup in dictPlanStep["dictTestGroups"].values():
+                listIds = listIds + list(listGroup)
+        for sId in listIds:
+            dictRerunEvidence["listLedger"].append((sId, iExitStatus))
 
 
 def fnWriteLedger(sEvidence, listLedger):

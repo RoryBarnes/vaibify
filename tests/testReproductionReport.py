@@ -89,7 +89,8 @@ def test_the_verdict_vocabulary_never_says_attested():
         dictRecheck, 1.5,
     )
     assert dictNoVerdict["sVerdict"] == S_VERDICT_NO_VERDICT
-    assert fsRenderVerdict(dictNoVerdict).startswith("no verdict: the rerun")
+    # The design's wording for a rerun that reached no verdict.
+    assert fsRenderVerdict(dictNoVerdict).startswith("Could not run: the rerun")
     for dictReport in (dictReproduced, dictEmulated, dictDiverged, dictNoVerdict):
         assert "attest" not in json.dumps(dictReport).lower()
 

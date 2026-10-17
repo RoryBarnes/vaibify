@@ -80,6 +80,7 @@ from ...reproducibility.l3Attestation import (
     S_ATTESTATION_FILENAME,
     S_STATUS_FAILED,
     S_STATUS_PASSED,
+    fdictAssessmentFieldsFromOutcome,
     fdictBuildAttestation,
     fdictReadAttestation,
     flistReadAttestationHistory,
@@ -1512,6 +1513,7 @@ def _fbPersistAttestation(
             ),
             sReproducedManifestPath=sReproducedManifestPath,
             sAttestedAtUtc=sTimestampUtc,
+            dictAssessmentFields=fdictAssessmentFieldsFromOutcome(dictResult),
         )
 
     try:

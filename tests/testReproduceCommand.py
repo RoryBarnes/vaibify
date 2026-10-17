@@ -495,7 +495,8 @@ def test_rerun_handles_unregistered_project_gracefully(fixtureRepo):
         result = CliRunner().invoke(
             fnReproduceCommand, ["--repo", str(fixtureRepo), "--rerun"],
         )
-    assert result.exit_code == 1
+    # A rerun that never started is "Could not run": exit 4 (design D6).
+    assert result.exit_code == 4
     assert "failed to invoke pipeline runner" in result.output
 
 

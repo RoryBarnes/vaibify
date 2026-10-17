@@ -660,7 +660,9 @@ def test_container_side_byte_change_fails_even_though_the_clone_is_clean(
             "the rerun wrote into the RESEARCHER's own container "
             "repository; the shadow lane exists so that it does not"
         )
-    assert resultClick.exit_code == 1, (
+    # Changed bytes that no published comparison covers: "Not enough
+    # evidence", exit 5 (design D6) -- never a pass.
+    assert resultClick.exit_code == 5, (
         "reproduce --rerun certified a reproduction whose shadow-side "
         "output changed; the verification hashed a tree the rerun never "
         f"touched. Output was:\n{resultClick.output}"
@@ -831,7 +833,9 @@ def test_a_step_that_rewrites_the_manifest_cannot_bless_its_own_change(
     finally:
         fnStop()
 
-    assert resultClick.exit_code == 1, (
+    # A manifest that moved during the run is a changed published
+    # input: exit 3 (design D6).
+    assert resultClick.exit_code == 3, (
         "a rerun that re-pinned the manifest over its own changed output "
         "was certified as a reproduction; the expected hashes must be "
         f"frozen before the run. Output was:\n{resultClick.output}"
@@ -945,7 +949,8 @@ def test_cli_refuses_to_guess_when_the_container_holds_two_workflows(
         "the CLI picked a workflow out of an ambiguous container "
         f"instead of refusing; output was:\n{resultClick.output}"
     )
-    assert resultClick.exit_code == 1
+    # Refused before any step: "Could not run", exit 4 (design D6).
+    assert resultClick.exit_code == 4
     assert "--workflow" in resultClick.output, (
         "the refusal must tell the researcher how to disambiguate; got:"
         f"\n{resultClick.output}"

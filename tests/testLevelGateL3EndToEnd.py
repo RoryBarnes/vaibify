@@ -14,6 +14,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from vaibify.reproducibility.rerunAssessment import (
+    S_CURRENT_COMPARISON_POLICY,
+)
+
 from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
 )
@@ -269,6 +273,7 @@ def test_end_to_end_l3_with_attestation(fixtureLevel3Repo):
     fnWriteAttestation(sRepo, fdictBuildAttestation(
         S_STATUS_PASSED, sDigest, "img@sha256:" + "c" * 64,
         12.0, 2, 2, [], "",
+        dictAssessmentFields={"sComparisonPolicy": S_CURRENT_COMPARISON_POLICY},
     ))
     assert fbAtLeastLevel3(dictWorkflow, sRepo, False)
     assert fiProofLevel(dictWorkflow, sRepo, bHostProject=False) == 3

@@ -5255,7 +5255,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # stored sign-off, the page's staleness flag reads the run's hash
     # verdict, and the content-vouched sets reach the invalidation and
     # the pencil. -> 4301: and the per-edge upstream evidence.
-    "routes/pipelineRoutes.py": 4301,
+    # 4301 -> 4313 (2026-10-17): the attestation summary carries the
+    # assessed rerun's verdict, its tally, its comparison policy and
+    # whether the record is historical, so the row can say which.
+    "routes/pipelineRoutes.py": 4313,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -6763,7 +6766,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1874 -> 1896 (2026-10-15): the step docstring states the
     # data -> plots -> tests order per mode, and a plot failure leaves
     # the tests unrun with a line that says so.
-    "pipelineRunner.py": 1896,
+    # 1896 -> 1932 (2026-10-17): the attestation rerun's evidence. The
+    # step label reaches every section as an invocation scope, and the
+    # command loop names each command, exports its JUnit path and
+    # records its exit status. The helpers that say WHAT is exported
+    # live in rerunEvidence; what is left is the runner's own threading.
+    "pipelineRunner.py": 1932,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush

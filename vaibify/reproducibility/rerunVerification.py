@@ -45,6 +45,12 @@ import posixpath
 from datetime import datetime, timezone
 
 from vaibify.gui.pipelineUtils import fbStepIsInteractive
+from vaibify.reproducibility.assessmentLane import (
+    S_INCONSISTENT_ASSESSMENT,
+    fdictOpenAssessorLane,
+    fdictRunAssessorAssess,
+    flistCrossCheckAssessment,
+)
 from vaibify.reproducibility.environmentSnapshot import (
     fiRecordedSourceDateEpoch,
 )
@@ -222,21 +228,24 @@ def fdictRerunAndVerifyWorkflow(
     if sRootRefusal:
         return fdictStampRunFacts(fdictUnrunOutcome(sRootRefusal))
     dictClassification = fdictClassifyRerunPaths(dictWorkflow)
-    try:
-        dictPreRerunClearing = fdictClearShadowBeforeRerun(
-            dictWorkflow, filesRepo, dictClassification,
-        )
-    except RerunPreparationRefusedError as errorRefused:
-        return fdictStampRunFacts(fdictUnrunOutcome(str(errorRefused)))
+    # The assessor is selected and prepared BEFORE anything is deleted:
+    # ``prepare`` sets the published figures aside and checks every
+    # pinned input, and a policy this vaibify lacks refuses the rerun
+    # before it spends any compute.
+    dictLane = fdictOpenAssessorLane(filesRepo, dictWorkflow)
+    if "sUnrunReason" in dictLane:
+        return fdictStampRunFacts(fdictUnrunOutcome(dictLane["sUnrunReason"]))
     listCarriedPaths = flistCarriedOutputRepoPaths(dictWorkflow)
     fnCollect, dictDiagnostics = ftBuildRerunDiagnosticsCollector(
         dictWorkflow, fnStatusCallback,
     )
-    bRerunSucceeded = fbRunWorkflowInContainer(
+    dictRun = _fdictClearThenRunSteps(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
-        posixpath.dirname(sWorkflowPath), fnCollect,
-        iSourceDateEpochOverride=iSourceDateEpoch,
+        filesRepo, dictClassification, dictLane, fnCollect,
+        iSourceDateEpoch,
     )
+    if "sUnrunReason" in dictRun:
+        return fdictStampRunFacts(fdictUnrunOutcome(dictRun["sUnrunReason"]))
     # The run is over and the re-hash begins. Announced because the
     # two look identical from outside -- a card that says "running"
     # through a long comparison of a large manifest is telling the
@@ -244,11 +253,50 @@ def fdictRerunAndVerifyWorkflow(
     # event ignores it, as every consumer does for every other type.
     if fnStatusCallback is not None:
         fnStatusCallback({"sType": "comparingOutputs"})
+    dictAssessment = fdictRunAssessorAssess(
+        filesRepo, dictLane, dictRun["listLedger"])
     return fdictStampRunFacts(fdictVerifyRerunOutputs(
-        filesRepo, bRerunSucceeded, dictExpectedManifest, listCarriedPaths,
-        dictDiagnostics, setProducedPaths=dictClassification["setProduced"],
-        dictPreRerunClearing=dictPreRerunClearing,
+        filesRepo, dictRun["bRerunSucceeded"], dictExpectedManifest,
+        listCarriedPaths, dictDiagnostics,
+        setProducedPaths=dictClassification["setProduced"],
+        dictPreRerunClearing=dictRun["dictPreRerunClearing"],
+        dictAssessment=dictAssessment,
     ))
+
+
+def _fdictClearThenRunSteps(
+    connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+    filesRepo, dictClassification, dictLane, fnCollect, iSourceDateEpoch,
+):
+    """Delete what the rerun regenerates, then run every step with evidence.
+
+    When ``prepare`` already found a published input changed, nothing is
+    deleted and nothing runs: the verdict is "Published inputs changed"
+    whatever the steps would do, and ``assess`` says so. Returns
+    ``{bRerunSucceeded, dictPreRerunClearing, listLedger}`` or
+    ``{sUnrunReason}`` for a refused preparation.
+    """
+    dictRerunEvidence = {
+        "sEvidenceDirectory": dictLane["sEvidence"], "listLedger": [],
+    }
+    if dictLane["iPrepareExit"] != 0:
+        return {"bRerunSucceeded": True, "dictPreRerunClearing": {},
+                "listLedger": dictRerunEvidence["listLedger"]}
+    try:
+        dictPreRerunClearing = fdictClearShadowBeforeRerun(
+            dictWorkflow, filesRepo, dictClassification,
+        )
+    except RerunPreparationRefusedError as errorRefused:
+        return {"sUnrunReason": str(errorRefused)}
+    bRerunSucceeded = fbRunWorkflowInContainer(
+        connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+        posixpath.dirname(sWorkflowPath), fnCollect,
+        iSourceDateEpochOverride=iSourceDateEpoch,
+        dictRerunEvidence=dictRerunEvidence,
+    )
+    return {"bRerunSucceeded": bRerunSucceeded,
+            "dictPreRerunClearing": dictPreRerunClearing,
+            "listLedger": dictRerunEvidence["listLedger"]}
 
 
 def fsResolveRunnerRepoRoot(dictWorkflow, sWorkflowPath):
@@ -386,6 +434,7 @@ def flistCarriedOutputRepoPaths(dictWorkflow):
 def fbRunWorkflowInContainer(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback=None, iSourceDateEpochOverride=0,
+    dictRerunEvidence=None,
 ):
     """Run every enabled step of one workflow; True iff the pipeline exits 0.
 
@@ -402,7 +451,10 @@ def fbRunWorkflowInContainer(
     artefacts were salted, instead of re-deriving from a HEAD the
     publishing commit has since moved. The runner is imported lazily so
     importing this module does not pull the GUI pipeline machinery into
-    the CLI's import graph.
+    the CLI's import graph. ``dictRerunEvidence``
+    (``{sEvidenceDirectory, listLedger}``) asks the runner to name every
+    command, point each test command's JUnit report at the evidence
+    directory, and record every exit status.
     """
     from vaibify.gui.pipelineRunner import S_RUN_MODE_RERUN, fiRunAllSteps
     iExitCode = asyncio.run(fiRunAllSteps(
@@ -410,6 +462,7 @@ def fbRunWorkflowInContainer(
         sWorkdir, fnStatusCallback or _fnDiscardStatusEvent,
         iSourceDateEpochOverride=iSourceDateEpochOverride,
         sRunMode=S_RUN_MODE_RERUN,
+        dictRerunEvidence=dictRerunEvidence,
     ))
     return iExitCode == 0
 
@@ -465,7 +518,7 @@ def fdictSnapshotWorkflowEvidence(filesRepo, sWorkflowPath):
 def fdictVerifyRerunOutputs(
     filesRepo, bRerunSucceeded, dictExpectedManifest=None,
     listCarriedPaths=(), dictRerunFailure=None,
-    setProducedPaths=None, dictPreRerunClearing=None,
+    setProducedPaths=None, dictPreRerunClearing=None, dictAssessment=None,
 ):
     """Re-hash the pinned artefacts and return the attestation's hash fields.
 
@@ -497,10 +550,33 @@ def fdictVerifyRerunOutputs(
     quiescent tree. The rerun lanes must not do that, and do not:
     :func:`fdictRerunAndVerifyWorkflow` is the only production caller
     and it always snapshots first.
+
+    ``dictAssessment`` is the rendered assessor's answer for the rerun
+    lane. With it, this function's own hashing becomes the HOST's
+    cross-check of the assessor, and the verdict is the assessment's:
+    see :func:`fdictApplyAssessment`.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if dictExpectedManifest is None:
         dictExpectedManifest = fdictSnapshotExpectedManifest(filesRepo)
+    dictCompared = _fdictCompareRerunHashes(
+        filesRepo, bRerunSucceeded, dictExpectedManifest, listCarriedPaths,
+        dictRerunFailure, setProducedPaths, dictPreRerunClearing,
+    )
+    if dictAssessment is None:
+        return dictCompared
+    return fdictApplyAssessment(
+        dictCompared, dictAssessment, dictExpectedManifest,
+        _fbManifestMovedDuringRerun(filesRepo, dictExpectedManifest),
+        bRerunSucceeded, dictRerunFailure,
+    )
+
+
+def _fdictCompareRerunHashes(
+    filesRepo, bRerunSucceeded, dictExpectedManifest, listCarriedPaths,
+    dictRerunFailure, setProducedPaths, dictPreRerunClearing,
+):
+    """Hash every frozen manifest entry and grade it by bytes alone."""
     if not dictExpectedManifest["bReadable"]:
         return _fdictNoComparisonOutcome(
             S_DIVERGENCE_MANIFEST_UNREADABLE, bRerunSucceeded,
@@ -755,6 +831,103 @@ def fdictUnrunOutcome(sReason):
         "dictRerunFailure": {},
         "listDivergedHashes": [sReason],
     }
+
+
+def fdictApplyAssessment(
+    dictCompared, dictAssessment, dictExpectedManifest, bManifestMoved,
+    bRerunSucceeded, dictRerunFailure,
+):
+    """Return the lane's outcome, graded by the assessor and checked by the host.
+
+    The assessor's verdict is adopted only after the host has found
+    nothing to disagree with: every graded output's hash, every
+    command's exit status, the pinned inputs it saw changed or missing,
+    and a re-derivation of every derived field with vaibify's own policy
+    module. Anything the rerun could not be graded on -- a refused
+    preparation, an assessor that did not answer, a preflight refusal,
+    an inconsistent report, the assessor's own "Could not run" -- is an
+    UNRUN outcome, which no lane writes as an attestation.
+
+    A rerun that ran and failed is a graded result: ``bPassed`` is the
+    assessment's exit code being zero, and ``dictRerunFailure`` is kept.
+    """
+    if "sUnrunReason" in dictAssessment:
+        return fdictUnrunOutcome(dictAssessment["sUnrunReason"])
+    if not dictCompared.get("listFileOutcomes"):
+        return fdictUnrunOutcome(dictCompared["listDivergedHashes"][-1])
+    if (dictRerunFailure or {}).get("sKind") == S_FAILURE_KIND_PREFLIGHT:
+        return fdictUnrunOutcome("; ".join(_flistDescribePreflight(
+            dictRerunFailure.get("listErrors") or [])))
+    dictObserved = {dictFile["sPath"]: dictFile["sObserved"]
+                    for dictFile in dictCompared["listFileOutcomes"]}
+    listProblems = flistCrossCheckAssessment(
+        dictAssessment, dictExpectedManifest["listEntries"], dictObserved,
+        bManifestMoved)
+    if listProblems:
+        return fdictUnrunOutcome(
+            f"{S_INCONSISTENT_ASSESSMENT}: " + "; ".join(listProblems))
+    dictReport = dictAssessment["dictReport"]
+    if dictReport["iExitCode"] == 4:
+        return fdictUnrunOutcome(
+            dictReport["sVerdictRendered"].replace("Could not run: ", "", 1))
+    return _fdictMergeAssessment(
+        dictCompared, dictReport, dictAssessment, bRerunSucceeded,
+        dictRerunFailure)
+
+
+def _fdictMergeAssessment(
+    dictCompared, dictReport, dictAssessment, bRerunSucceeded,
+    dictRerunFailure,
+):
+    """Return the hash outcome carrying the assessment's verdict and report."""
+    dictOutcome = dict(dictCompared)
+    bPassed = dictReport["iExitCode"] == 0
+    listLines = []
+    if not bPassed:
+        listLines = [dictReport["sVerdictRendered"]]
+        if not bRerunSucceeded:
+            listLines += ([S_DIVERGENCE_PIPELINE_FAILED]
+                          + _flistExplainTheFailure(dictRerunFailure))
+        listLines += [dictFile["sPath"]
+                      for dictFile in dictCompared["listFileOutcomes"]
+                      if dictFile["sStatus"] in (
+                          S_FILE_DIVERGED, S_FILE_MISSING)]
+    dictOutcome.update({
+        "bPassed": bPassed,
+        "bRerunAttempted": True,
+        "iAssessmentExitCode": dictReport["iExitCode"],
+        "sVerdict": dictReport["sVerdict"],
+        "sVerdictRendered": dictReport["sVerdictRendered"],
+        "sTallyRendered": dictReport["sTallyRendered"],
+        "dictTally": dict(dictReport["dictTally"]),
+        "sComparisonPolicy": dictReport["sComparisonPolicy"],
+        "sComparisonPolicySource": dictReport["sComparisonPolicySource"],
+        "dictAssessmentReport": dictReport,
+        "listFileOutcomes": _flistAttachOutputOutcomes(
+            dictCompared["listFileOutcomes"], dictReport),
+        "listDivergedHashes": listLines,
+    })
+    return dictOutcome
+
+
+def _flistAttachOutputOutcomes(listFileOutcomes, dictReport):
+    """Add each file's graded outcome to the per-file list, in its order.
+
+    A regenerated or carried output takes the assessment's outcome; a
+    pinned input reads ``unchanged``, ``changed`` or ``missing``.
+    """
+    dictGraded = {dictOutput["sPath"]: dictOutput["sOutcome"]
+                  for dictOutput in dictReport["listOutputs"]}
+    dictInputWords = {S_FILE_MATCHED: "unchanged", S_FILE_DIVERGED: "changed",
+                      S_FILE_MISSING: "missing"}
+    listAttached = []
+    for dictFile in listFileOutcomes:
+        dictWithOutcome = dict(dictFile)
+        dictWithOutcome["sOutcome"] = dictGraded.get(
+            dictFile["sPath"],
+            dictInputWords.get(dictFile["sStatus"], dictFile["sStatus"]))
+        listAttached.append(dictWithOutcome)
+    return listAttached
 
 
 def _fdictNoComparisonOutcome(

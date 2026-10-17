@@ -12,6 +12,10 @@ import time
 
 import pytest
 
+from vaibify.reproducibility.rerunAssessment import (
+    S_CURRENT_COMPARISON_POLICY,
+)
+
 from vaibify.reproducibility.l3Attestation import (
     I_SCHEMA_VERSION,
     S_ATTESTATION_FILENAME,
@@ -69,6 +73,7 @@ def test_attestation_current_requires_matching_manifest(tmp_path):
     dictAtt = fdictBuildAttestation(
         S_STATUS_PASSED, sDigest, "img@sha256:def",
         1.0, 1, 1, [], "",
+        dictAssessmentFields={"sComparisonPolicy": S_CURRENT_COMPARISON_POLICY},
     )
     fnWriteAttestation(str(tmp_path), dictAtt)
     assert fbL3AttestationCurrent(str(tmp_path))

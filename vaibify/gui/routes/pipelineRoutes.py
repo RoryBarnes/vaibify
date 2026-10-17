@@ -2789,11 +2789,23 @@ def _fdictSummarizeAttestation(filesRepo):
     how to say it, and a second phrasing here would be a second
     authority on what the attestation means.
     """
-    from ...reproducibility.l3Attestation import fdictReadAttestation
+    from ...reproducibility.l3Attestation import (
+        fbAttestationIsHistorical,
+        fdictReadAttestation,
+    )
     dictAttestation = fdictReadAttestation(filesRepo)
     if not dictAttestation:
         return None
     return {
+        # The assessed rerun's verdict, worded by the policy that graded
+        # it and always shipped with its tally. A historical record --
+        # the byte-only verifier's, or one graded under a policy that is
+        # no longer current -- says so, and is never shown as current.
+        "sVerdict": dictAttestation.get("sVerdict"),
+        "sVerdictRendered": dictAttestation.get("sVerdictRendered"),
+        "dictTally": dictAttestation.get("dictTally"),
+        "sComparisonPolicy": dictAttestation.get("sComparisonPolicy"),
+        "bHistorical": fbAttestationIsHistorical(dictAttestation),
         "sStatus": dictAttestation.get("sStatus") or "",
         "sAttestedAtUtc": dictAttestation.get("sAttestedAtUtc") or "",
         "iOutputHashesMatched": dictAttestation.get(

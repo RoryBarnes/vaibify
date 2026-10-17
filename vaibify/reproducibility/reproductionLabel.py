@@ -50,7 +50,11 @@ import json
 import posixpath
 from datetime import datetime
 
-from vaibify.reproducibility import gitEvidence, l3Attestation
+from vaibify.reproducibility import (
+    gitEvidence,
+    l3Attestation,
+    reproductionReport,
+)
 from vaibify.reproducibility.manifestWriter import flistParseManifestText
 from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
 
@@ -70,8 +74,6 @@ S_STATE_DIVERGED = "diverged"
 S_STATE_STALE = "evidence-changed"
 S_STATE_UNREADABLE = "unreadable"
 
-_S_VERDICT_REPRODUCED = "reproduced"
-_S_VERDICT_DIVERGED = "diverged"
 _S_MANIFEST_PATH = "MANIFEST.sha256"
 
 
@@ -157,15 +159,19 @@ def _fdictLabelFromRecords(
     listDecisive = [
         dictRecord for dictRecord in listForWorkflow
         if dictRecord.get("sVerdict") in (
-            _S_VERDICT_REPRODUCED, _S_VERDICT_DIVERGED,
-        )
+            reproductionReport.SET_VERDICTS_THAT_REPRODUCE
+            | reproductionReport.SET_VERDICTS_THAT_DO_NOT_REPRODUCE)
     ]
     if not listDecisive:
         return _fdictLabel(S_STATE_ABSENT)
     dictNewest = listDecisive[0]
-    if dictNewest.get("sVerdict") == _S_VERDICT_DIVERGED:
+    if dictNewest.get("sVerdict") in (
+            reproductionReport.SET_VERDICTS_THAT_DO_NOT_REPRODUCE):
         return _fdictLabel(
-            S_STATE_DIVERGED, "the newest reproduction did not match",
+            S_STATE_DIVERGED,
+            reproductionReport.fsRenderVerdict(dictNewest)
+            if dictNewest.get("sVerdictRendered")
+            else "the newest reproduction did not match",
         )
     sOwnership = gitEvidence.fsManifestOwnershipFromSnapshotFacts(
         filesPoll.dictOwnershipFacts)
