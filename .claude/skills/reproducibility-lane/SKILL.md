@@ -13,25 +13,34 @@ that cover the lane you are touching before you edit it.
 The repository-wide rules in `AGENTS.md` still apply; this file is
 the detail for this subsystem.
 
-**Determinism is THREE questions, and answering is the criterion.**
-The L3 determinism gate was an OR until 2026-08-30 — any one of a BLAS
-waiver, a pinned thread count or an MKL mode satisfied it — so a
-project could attest at Level 3 having answered a third of the
-question. The researcher's ruling made them three requirements with
-three markers. A DECLINING answer passes ("I do not accept last-digit
-differences", "the thread count is not fixed", "this project does not
-use Intel MKL"); only silence fails, exactly as for Personal AI
-Configuration. Two things not to undo: answers live in their own keys
-because a VALUE cannot express consideration (`bAcceptBlasVariance:
-false` is what the old form wrote when nothing was ticked, so it means
-"unanswered" and "declined" at once), and an answer naming a pinned
-value must carry it. The schema-v13 migration promotes only
-unambiguous legacy values — never the `false` waiver — and spells the
-key names as literals because this module may import only leaf
-modules, so `testTheMigrationSpellsTheSameKeysTheGateReads` pins them
-to the gate's constants. Researcher-facing wording lives in
-`LIST_DETERMINISM_QUESTIONS` beside the gate and must never carry a
-schema key.
+**Determinism is ONE question, and answering is the criterion
+(2026-10-17, superseding the three-question ruling of 2026-08-30).**
+The block asks how much speed vaibify should trade for repeatable
+files. `sRepeatabilityAnswer` is `speed` or `across`; either passes and
+only silence fails, exactly as for Personal AI Configuration. The
+answer changes how steps run, never what Level 3 requires. Four things
+not to undo:
+
+- **The researcher never names a profile.** The SERVER writes
+  `sExecutionProfile` as the newest table version for the answer
+  (`executionProfiles.fsNewestProfileForAnswer`), and a request naming a
+  profile or a legacy answer is refused
+  (`testACallerCannotNameAProfileOrALegacyAnswer`). An answer without
+  its profile is half an answer.
+- **The answer lives in its own key**, because a VALUE cannot express
+  consideration — the lesson of the old `bAcceptBlasVariance: false`,
+  which meant "unanswered" and "declined" at once. The three legacy
+  answers are kept on disk and answer nothing
+  (`testTheLegacyAnswersDoNotAnswerTheQuestion`).
+- **The schema-v14 migration is a no-op**: three old answers imply
+  neither new one, so the question opens again. It spells no key the
+  gate reads (`testTheV14MigratorSpellsNoKeyTheGateReads`); the v13
+  migration and its literal-key pin stand as they were.
+- **Researcher-facing wording** (`listChoices`, `sWhy`, `sConsequence`)
+  lives in `LIST_DETERMINISM_QUESTIONS` beside the gate, travels on the
+  poll, and never carries a schema key. Changing the answer retires
+  the current attestation, which stays on file as history
+  (`testChangingTheAnswerRetiresTheAttestationAndKeepsIt`).
 
 **`reproduce.sh` carries the SAME determinism guarantees the runner
 does, and it reads the epoch from the ENVELOPE.** The runner prefixes
@@ -80,6 +89,44 @@ DISTINCT, so a re-derivation cannot pass; its `docker_live` leg reads
 the guarantees back out of a real container. A string assertion that
 the preamble mentions `SOURCE_DATE_EPOCH` is necessary and nowhere near
 sufficient — it passes against a script exporting the wrong value.
+
+**Since 2026-10-17 `reproduce.sh` runs the same PROCEDURE the shadow
+lane does, and ends in the same assessor.** It no longer closes with
+`sha256sum -c`. Inside the container it runs, in this order:
+the assessor's `prepare` (checks every published input, sets the
+published figures aside), `clear` (deletes the declared outputs through
+`rerunPreparation`, after listing them and how to restore them, because
+it regenerates in the reader's own directory), `capabilities`, then
+the case-checked unsets of the floor keys Stage A dropped, `probe`, then
+each step as the runner runs it — data, plot, then each test group,
+every command under its invocation ID with its JUnit report, and the
+next step regardless of a failure in this one — and finally
+`assess --machine`, whose exit code becomes the script's. Five things
+not to undo:
+
+- **The execution profile is REPLAYED from the envelope's
+  `dictExecutionProfile`**, never looked up from the answer, and the
+  host half validates every key against the allowlist and every value
+  against its pattern in bash, BEFORE anything reaches `docker run -e`
+  (`testTheScriptRefusesASettingOutsideTheAllowlist` and its two
+  siblings; the Python half has its own). A later vaibify must not
+  change what a published profile asked for.
+- **Capabilities come FIRST, in a process that loads no math
+  library** (`env -u <allowlist> python3 -I`), because OpenBLAS reads
+  its settings once, at load; then the probe runs under the exact
+  prefix the steps get. `testEachStageSeesWhatTheOrderPromises`.
+- **An empty tests block renders nothing**, never `if … then fi`,
+  which bash refuses — found by the live leg, not by a string check.
+- **The image no lane can obtain, and a `docker run` that fails
+  itself, are "Could not run" (exit 4)**, never a verdict about the
+  project (`tests/testReproduceScriptDeterminism.py`).
+- **Both lanes give one verdict on one tree.**
+  `tests/testReproduceScriptParity.py::testBothLanesGradeOneTreeAlike`
+  drives five outcomes through both; the `docker_live` copy runs a real
+  shadow and a real `reproduce.sh` against one image.
+  `testTheLaneAndTheScriptRunTheSameAssessor` kills a generator that
+  writes the assessor in any form other than the shadow lane's own
+  render of it.
 
 **A container registry is a convenience, never a PROOF rung (ruled
 2026-09-05, superseding that morning's ruling that publishing the image
@@ -479,16 +526,80 @@ switch. Carrying a disabled step's outputs would let anyone silence a
 step and still attest around it. The AI Declaration needs no case of
 its own — it is an interactive step, and the general rule covers it.
 
-**The rerun grades only bytes it regenerated (2026-10-01 ruling).** The
-shadow rerun runs every executed step's data commands whatever
-`bPlotOnly` says, and deletes every path an executed step produces
-before running anything, so a file left over from the original run can
-never be graded as reproduced. An output the rerun did not write is
-`missing`, never `matched`. A path that is both carried (human-made) and
-produced by an executed step is an ambiguous overlap, and the rerun is
-refused by name rather than silently keeping the file. Pinned inputs
-(`reproduce.sh`, `Dockerfile`, `requirements.lock`, `environment.json`,
-scripts) are counted separately from declared outputs.
+**The rerun grades only outputs it regenerated (2026-10-01 ruling,
+graded by assessment since 2026-10-17).** The shadow rerun runs every
+executed step's data commands whatever `bPlotOnly` says, and deletes
+every path an executed step produces before running anything, so a file
+left over from the original run can never be graded as reproduced. An
+output the rerun did not write is FAILED (missing), never byte-identical.
+A path that is both carried (human-made) and produced by an executed
+step is an ambiguous overlap, and the rerun is refused by name rather
+than silently keeping the file. Pinned inputs (`reproduce.sh`,
+`Dockerfile`, `requirements.lock`, `environment.json`, scripts, tests,
+their standards, the rendered assessor) are INTEGRITY, checked before
+and after the run, and never graded as outputs.
+
+**Level 3 is an assessment, and its contracts are these (design D1–D8,
+I1–I11).** Integrity is exact; agreement is graded per output as
+failed, byte-identical, comparisons passed, or insufficient evidence;
+byte identity is reported whenever it holds and is never the
+criterion. Each of these was built against a falsification test, and
+each is a way to turn a verdict back into a claim nobody earned:
+
+- **Two leaf modules, one rendered file.** `rerunProcedure` and the
+  frozen `comparisonPolicyV1` import only the standard library, parse
+  as Python 3.8, and share no name, because they are concatenated into
+  the project's rendered assessor (`S_RERUN_ASSESSMENT_REPO_PATH`)
+  (`tests/testRerunAssessmentStructure.py`). Both reproduction lanes
+  run the same bytes for the same policy and workflow.
+- **The policy is frozen at its pinned hash.** A fix is a new policy
+  version, never an edit
+  (`testThePolicyModuleIsFrozenAtItsPinnedBytes`). A reproduction
+  grades under the policy the project RECORDED (line 2 of the rendered
+  file), using vaibify's own module for it, never the repository's
+  copy (`testAProjectGradesUnderTheComparisonPolicyItRecorded`); an ID
+  this vaibify lacks is "Could not run", naming the upgrade.
+- **Evidence is JUnit only, bound to its step, its test file and its
+  command identity**, and every planned command is accounted for: a
+  command with no ledger line never ran, a report with no ledger line
+  is never read, a skip and a missing report assert nothing, and one
+  step's passing report never satisfies another's absent check
+  (`tests/testRerunAssessmentEvidence.py`). The author's committed
+  passing markers never stand in for tests that did not run.
+- **A structural check never establishes agreement.** It can fail an
+  output; changed bytes with only structural checks are insufficient
+  evidence (`testChangedBytesWithOnlyStructuralChecksIsInsufficient`).
+- **The precedence is a table in the policy, worst first**: could not
+  run, published inputs changed, not reproduced, insufficient evidence,
+  then comparisons passed or byte-identical. A later pass never erases
+  an earlier failure (`tests/testRerunAssessmentPrecedence.py`). Every
+  verdict ships with its tally, and the dashboard renders the server's
+  sentence.
+- **The image check is narrow and labeled as vaibify's**: a single
+  frame, at most 8 bits per sample, the same format, size and mode,
+  and no RGBA channel moving by more than 2 levels. A higher-precision
+  image is never reduced to fit, and a vector figure is never assessed
+  by it (`tests/testRerunAssessmentImageCheck.py`).
+- **The host re-derives the verdict from the raw evidence** and never
+  trusts the container's report; a self-consistent forgery of an exit
+  status or a hash is caught (`tests/testAssessedRerunLane.py`).
+- **A historical attestation stays true and stops counting.** An
+  attestation made by the byte-only verifier, or under another policy or
+  profile, reads as a previous check and never satisfies the rebuild
+  requirement (`testAHistoricalAttestationNeverSatisfiesTheRebuildRequirement`).
+- **The execution profile is frozen in the envelope**, its keys on a
+  closed allowlist checked in both languages, and a profile this vaibify
+  lacks stops the run before any step
+  (`testAProfileThisVaibifyLacksStopsTheRunBeforeAnyStep`).
+- **Provenance is recorded per SECTION, only after it completed.** A
+  tests-only run, a failed section and a skipped one relabel nothing;
+  an identical rerun leaves the record byte-identical; no processor
+  model or computer name is ever recorded
+  (`tests/testOutputProvenance.py`). A difference explained by
+  provenance is information, never a failure, and never red.
+- **Ordinary runs are unchanged.** Without `dictRerunEvidence`, no
+  command carries an evidence export or an invocation identity
+  (`testAnOrdinaryRunCarriesNoEvidenceExportAndNoInvocationIdentity`).
 
 **A verification produces a FILE, and the per-file outcomes are the
 authority (2026-09-11).** The rerun keeps every observed hash in

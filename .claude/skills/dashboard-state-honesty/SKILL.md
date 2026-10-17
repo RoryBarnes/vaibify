@@ -72,6 +72,24 @@ than pointing at a tab. Guarded by
 `tests/testDeterminismRowMatchesItsGate.py` and
 `tests/browser/testDeterminismRowFollowsTheGate.py`.
 
+Since 2026-10-17 the question is ONE row, and the rule holds in two
+more places. The form renders the backend's `listChoices`, `sWhy` and
+`sConsequence` verbatim and sends only the answer: the server, never
+the page, decides which execution profile an answer records, and the
+row shows the profile the poll says was recorded, not one JavaScript
+would pick. And a Level 3 verdict is shown as the SERVER's sentence
+WITH its tally ("Reproduced: published comparisons passed; N of M
+files differ in their bytes"), never recomputed from per-file outcomes
+in the page, and a pass with byte differences is worded and coloured as
+a pass. An attestation made by the byte-only verifier, or under another
+policy or profile, renders as a previous check — true about what it
+checked, not accepted now — and its staleness reason
+(`sProfileMismatch`) comes from the poll.
+`tests/browser/testAssessedVerdictsOnScreen.py` guards the verdict
+half. A step whose outputs were made under other settings or hardware
+carries the server's neutral note (`dictOutputContextNotes`), never
+red (`tests/browser/testOutputContextNoteIsNeutral.py`).
+
 **A level CELL and the rows beneath it must fail on the same set.**
 The Project header's L2 cell counts criteria from a fixed tuple
 (`_T_WORKFLOW_LEVEL2_BASE_CRITERIA`) and INTERSECTS the live blocker
