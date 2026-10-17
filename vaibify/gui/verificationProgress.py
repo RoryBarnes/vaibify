@@ -43,20 +43,31 @@ had. A task that finished without settling its phase is recorded as
 ``stopped``, never as the live phase it was abandoned in.
 """
 
+import threading
+from collections import deque
 from datetime import datetime, timezone
 
+from vaibify.gui.pipelineUtils import fsLabelFromStepIndex
+from vaibify.reproducibility.credentialRedactor import fsRedactCredentials
+
 __all__ = [
+    "DICT_LIVE_OUTPUT",
     "DICT_LAST_NO_VERDICT",
     "DICT_LAST_SETTLED",
     "DICT_UNSETTLED_TEARDOWN",
     "DICT_VERIFY_TASKS",
     "fbVerificationIsLive",
     "fdictReadLastSettled",
+    "fdictReadLiveOutput",
+    "ffnBuildRerunRecorder",
     "fdictReadNoVerdict",
     "fdictReadStatus",
     "fdictReadUnsettledTeardown",
+    "fdictReadVerificationRecords",
     "fsProjectOfLiveVerification",
     "fnForgetNoVerdict",
+    "fnOpenLiveOutput",
+    "fnRecordRerunEvent",
     "fnRecordNoVerdict",
     "fnRecordUnsettledTeardown",
     "fnRegisterTask",
@@ -85,6 +96,19 @@ DICT_LAST_SETTLED = {}
 # 2026-09-01). Cleared when a later rerun tears down cleanly.
 DICT_UNSETTLED_TEARDOWN = {}
 
+# What the rerun is printing, per (container id, project): the last
+# lines of the shadow's output and the step running, so the PROOF tab
+# can show the run as it happens. Written from the rerun's worker
+# thread and read by the poll on the hub's loop, hence the lock; kept
+# OUT of the status dict, which is serialized raw and copied at
+# settle. The record outlives its run so the last lines stay readable
+# after it ends; the next launch for the project replaces it. Every
+# line is redacted and capped before it is kept.
+DICT_LIVE_OUTPUT = {}
+_LOCK_LIVE_OUTPUT = threading.Lock()
+I_LIVE_OUTPUT_LINES = 200
+_I_LINE_CHARACTERS = 2000
+
 # The phases a verification passes through before it settles. A phase
 # outside this set is a settled one, so a caller cannot make the row
 # pulse forever by inventing a name.
@@ -104,6 +128,10 @@ def fnRegisterTask(sContainerId, taskWorker, dictStatus):
     DICT_VERIFY_TASKS[sContainerId] = {
         "task": taskWorker, "dictStatus": dictStatus,
     }
+    fnOpenLiveOutput(
+        sContainerId, dictStatus.get("sProjectRepoPath"),
+        dictStatus.get("sAttemptId", ""),
+    )
 
     def fnEvictOnDone(taskCompleted):
         _fnRecordSettled(sContainerId, dictStatus)
@@ -220,3 +248,104 @@ def fnRecordUnsettledTeardown(sContainerId, sOutcome, sReason):
 def fdictReadUnsettledTeardown(sContainerId):
     """Return the unsettled-teardown record for a container, or ``None``."""
     return DICT_UNSETTLED_TEARDOWN.get(sContainerId)
+
+
+def fnOpenLiveOutput(sContainerId, sProjectRepoPath, sAttemptId):
+    """Start an empty output record for a verification about to launch."""
+    with _LOCK_LIVE_OUTPUT:
+        DICT_LIVE_OUTPUT[(sContainerId, sProjectRepoPath)] = {
+            "sAttemptId": sAttemptId,
+            "dequeLines": deque(maxlen=I_LIVE_OUTPUT_LINES),
+            "iLineCount": 0, "sStepLabel": "", "sStepName": "",
+        }
+
+
+def ffnBuildRerunRecorder(sContainerId, sProjectRepoPath, dictWorkflow):
+    """Return the status callback that keeps what one rerun prints.
+
+    SYNCHRONOUS on purpose: the shadow lane runs in a worker thread and
+    calls it straight; the record it writes takes a threading lock.
+    """
+    def fnRecordEvent(dictEvent):
+        fnRecordRerunEvent(sContainerId, sProjectRepoPath, dictEvent, dictWorkflow)
+    return fnRecordEvent
+
+
+def fnRecordRerunEvent(sContainerId, sProjectRepoPath, dictEvent, dictWorkflow):
+    """Fold one rerun status event into the project's output record.
+
+    SYNCHRONOUS: the rerun calls it from its own worker thread.
+    """
+    sType = str((dictEvent or {}).get("sType") or "")
+    listLines = _flistLinesOfEvent(sType, dictEvent, dictWorkflow)
+    with _LOCK_LIVE_OUTPUT:
+        dictRecord = DICT_LIVE_OUTPUT.get((sContainerId, sProjectRepoPath))
+        if dictRecord is None:
+            return
+        if sType == "stepStarted":
+            dictRecord.update(_fdictDescribeStep(dictEvent, dictWorkflow))
+        for sLine in listLines:
+            dictRecord["dequeLines"].append(
+                fsRedactCredentials(sLine)[:_I_LINE_CHARACTERS],
+            )
+            dictRecord["iLineCount"] += 1
+
+
+def _flistLinesOfEvent(sType, dictEvent, dictWorkflow):
+    """The display lines one event contributes; most events contribute none."""
+    if sType == "outputBatch":
+        return [str(sLine) for sLine in dictEvent.get("listLines") or []]
+    if sType == "output":
+        return [str(dictEvent.get("sLine") or "")]
+    if sType == "stepStarted":
+        dictStep = _fdictDescribeStep(dictEvent, dictWorkflow)
+        return [f"--- Step {dictStep['sStepLabel']}: {dictStep['sStepName']} ---"]
+    if sType == "comparingOutputs":
+        return ["--- Every step has run; comparing the outputs with the manifest ---"]
+    if sType == "tearingDownShadow":
+        return ["--- Destroying the throwaway container ---"]
+    return []
+
+
+def _fdictDescribeStep(dictEvent, dictWorkflow):
+    """The label and name of the step a ``stepStarted`` event names."""
+    iStepIndex = max(int(dictEvent.get("iStepNumber") or 1) - 1, 0)
+    listSteps = (dictWorkflow or {}).get("listSteps") or []
+    if iStepIndex >= len(listSteps):
+        return {"sStepLabel": str(iStepIndex + 1), "sStepName": ""}
+    return {
+        "sStepLabel": fsLabelFromStepIndex(dictWorkflow, iStepIndex),
+        "sStepName": str(listSteps[iStepIndex].get("sName") or ""),
+    }
+
+
+def fdictReadLiveOutput(sContainerId, sProjectRepoPath):
+    """Return a copy of this project's rerun output record, or ``None``."""
+    with _LOCK_LIVE_OUTPUT:
+        dictRecord = DICT_LIVE_OUTPUT.get((sContainerId, sProjectRepoPath))
+        if dictRecord is None:
+            return None
+        return {
+            "sAttemptId": dictRecord["sAttemptId"],
+            "saTailLines": list(dictRecord["dequeLines"]),
+            "iLineCount": dictRecord["iLineCount"],
+            "sStepLabel": dictRecord["sStepLabel"],
+            "sStepName": dictRecord["sStepName"],
+        }
+
+
+def fdictReadVerificationRecords(sContainerId, sProjectRepoPath):
+    """Return every in-process record of this project's verifications.
+
+    The attestation poll's view of them, under the keys the PROOF tab
+    reads: the run in flight, how the last one settled, why the last one
+    reached no verdict, a shadow not proven destroyed, and the output
+    the latest run printed.
+    """
+    return {
+        "dictInFlight": fdictReadStatus(sContainerId, sProjectRepoPath),
+        "dictLastNoVerdict": fdictReadNoVerdict(sContainerId, sProjectRepoPath),
+        "dictLastSettled": fdictReadLastSettled(sContainerId, sProjectRepoPath),
+        "dictUnsettledTeardown": fdictReadUnsettledTeardown(sContainerId),
+        "dictLiveOutput": fdictReadLiveOutput(sContainerId, sProjectRepoPath),
+    }

@@ -430,11 +430,16 @@ def test_out_of_band_cancel_leaves_supervisor_as_single_releaser():
     async def _fnDrive():
         appState, _, dictLaneTuple = _ftBuildOwnedAppState()
         eventCancelSeen = threading.Event()
+        eventRecordObserved = threading.Event()
 
         def fnWorker(supervisor):
+            # Alive until the test has read the journal, not for a fixed
+            # 0.3 s: on a loaded runner the read came after the worker
+            # had finished and the supervisor had removed the record,
+            # which raised KeyError instead of testing anything.
             supervisor.eventCancelRequested.wait(5)
             eventCancelSeen.set()
-            time.sleep(0.3)
+            eventRecordObserved.wait(5)
             return "aborted-cleanly"
 
         taskRequest = asyncio.get_running_loop().create_task(
@@ -463,6 +468,7 @@ def test_out_of_band_cancel_leaves_supervisor_as_single_releaser():
             supervisor.sOperationId
         ]["sState"] == "CANCEL_REQUESTED"
         assert not taskCompeting.done()
+        eventRecordObserved.set()
         dictOutcome = await asyncio.wait_for(taskRequest, 5)
         assert dictOutcome["bCancelRequested"] is True
         await asyncio.wait_for(taskCompeting, 2)

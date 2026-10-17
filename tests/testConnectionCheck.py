@@ -238,17 +238,23 @@ def test_the_route_refuses_a_path_as_an_id_and_answers_for_a_held_download(
     assert responseHttp.json()["listObservations"][0].startswith("Reached 127.0.0.1.")
 
 
-def test_the_check_runs_the_resolver_probe_only_after_the_file_probe(
+def test_the_check_runs_the_resolver_probe_before_the_file_probe(
     fnPointEverythingAt,
 ):
-    """The order is the report's: the service first, the resolver second."""
+    """The resolver first, under its own bound; the service after it.
+
+    The service probe waits as long as the download does for a slow
+    handshake, so run first it could spend the whole budget and leave
+    the resolver -- the probe that tells "offline" from "Zenodo is
+    unreachable" -- unasked.
+    """
     with FaultInjectingDepositServer(b"z" * 2048) as serverFault:
         fnPointEverythingAt(serverFault)
         connectionCheck.fdictProbeArchiveConnection(_fdictSidecarFor(serverFault))
         listPaths = [dictRequest["sPath"] for dictRequest in serverFault.listRequests]
-    assert listPaths[0].startswith("/files/") or listPaths[0] == serverFault.sFileUrl.split(
+    assert listPaths[0] == "/doi/"
+    assert listPaths[-1].startswith("/files/") or listPaths[-1] == serverFault.sFileUrl.split(
         serverFault.sBase)[1].split("?")[0]
-    assert listPaths[-1] == "/doi/"
 
 
 def test_cancel_wakes_a_blocked_probe(fnPointEverythingAt, fnShortenTheBounds):

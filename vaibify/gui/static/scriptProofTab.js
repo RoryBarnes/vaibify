@@ -590,10 +590,12 @@ var VaibifyProofTab = (function () {
         if (!_dictLastReadiness) return;
         var iLevel = _dictLastReadiness.iProofLevel || 0;
         _fnSeedExpandedLevels(iLevel);
+        var dictTailScroll = _fdictReadVerifyTailScroll(elContent);
         elContent.innerHTML = _fsRenderHeaderCard(iLevel) +
             _fsRenderLevelSection(1) +
             _fsRenderLevelSection(2) +
             _fsRenderLevelSection(3);
+        _fnRestoreVerifyTailScroll(elContent, dictTailScroll);
         _fnBindGapFixLinks();
         _fnBindLevelSectionHeaders();
         _fnBindGenerateTemplateButton();
@@ -1033,7 +1035,57 @@ var VaibifyProofTab = (function () {
             '<span class="proof-card-summary pulsing">running</span>' +
             '</div><div class="proof-card-body">' +
             fnEscapeHtml(sPhase) +
+            _fsRenderVerifyOutput(dictInFlight) +
             '</div></div>';
+    }
+
+    function _fdictLiveOutputOfThisRun(dictInFlight) {
+        /* The hub keeps the last run's lines after it ends; only the
+           lines of the run in flight belong under this card. */
+        var dictLive = (_dictLastL3Attestation &&
+            _dictLastL3Attestation.dictLiveOutput) || null;
+        if (!dictLive || !dictInFlight ||
+                dictLive.sAttemptId !== dictInFlight.sAttemptId) {
+            return null;
+        }
+        return dictLive;
+    }
+
+    function _fsRenderVerifyOutput(dictInFlight) {
+        var dictLive = _fdictLiveOutputOfThisRun(dictInFlight);
+        if (!dictLive || !dictLive.iLineCount) return "";
+        var saLines = dictLive.saTailLines || [];
+        var sStep = dictLive.sStepLabel
+            ? '<div class="proof-verify-step">Step ' +
+              fnEscapeHtml(dictLive.sStepLabel) +
+              (dictLive.sStepName ? ": " + fnEscapeHtml(dictLive.sStepName) : "") +
+              '</div>'
+            : "";
+        return sStep +
+            '<pre class="proof-verify-tail">' +
+            fnEscapeHtml(saLines.join("\n")) + '</pre>' +
+            '<div class="proof-verify-caption">The last ' + saLines.length +
+            ' of ' + dictLive.iLineCount + ' lines the throwaway container ' +
+            'has printed.</div>';
+    }
+
+    function _fdictReadVerifyTailScroll(elContent) {
+        /* Each poll rebuilds the tab. At the newest line the log follows
+           new lines; scrolled back, it stays where the reader is. */
+        var elTail = elContent.querySelector(".proof-verify-tail");
+        if (!elTail) return {bFollowing: true, iScrollTop: 0};
+        return {
+            bFollowing: elTail.scrollHeight - elTail.scrollTop -
+                elTail.clientHeight < 8,
+            iScrollTop: elTail.scrollTop,
+        };
+    }
+
+    function _fnRestoreVerifyTailScroll(elContent, dictScroll) {
+        var elTail = elContent.querySelector(".proof-verify-tail");
+        if (!elTail) return;
+        elTail.scrollTop = dictScroll.bFollowing
+            ? elTail.scrollHeight : dictScroll.iScrollTop;
     }
 
     function _fsRenderNoVerdictCard() {

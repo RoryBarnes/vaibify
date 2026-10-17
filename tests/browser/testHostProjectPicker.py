@@ -558,6 +558,61 @@ def testTheHostCreateWizardSkipsEveryContainerPage(
     )
 
 
+@pytest.mark.falsification
+def testTheDirectoryIsNotChosenUntilTheOpenedFolderHasArrived(
+    pageDashboard, serverHub,
+):
+    """A confirm while a folder is loading cannot choose its parent.
+
+    The browse is a round trip, and until it answers the picker's
+    current path is still the directory being left. The confirm button
+    stayed enabled through that gap, so a quick "Use This Directory"
+    created the project one level up -- caught in the browser lane as
+    a 200 from the create route and no vaibify.yml in the folder the
+    researcher had opened.
+
+    Kills: leaving the confirm button enabled while a browse is in
+    flight.
+    """
+    _fnOpenTheAddDialog(pageDashboard, serverHub)
+    pageDashboard.click("#btnChoiceKindHost")
+    pageDashboard.click("#btnChoiceCreateNew")
+    pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
+    pageDashboard.click("#btnWizardChooseDirectory")
+    pageDashboard.wait_for_selector(
+        ".directory-entry", state="visible", timeout=5000,
+    )
+    listHeldRoutes = []
+
+    def fbIsAFolderBrowse(sUrl):
+        return "/api/host-directories?sPath=" in sUrl
+
+    pageDashboard.route(
+        fbIsAFolderBrowse, lambda route: listHeldRoutes.append(route),
+    )
+    elementFolder = pageDashboard.locator(".directory-entry").first
+    sOpenedPath = elementFolder.get_attribute("data-path")
+    elementFolder.click()
+    pageDashboard.wait_for_function(
+        "() => document.getElementById('directoryEntries')"
+        ".textContent.includes('Loading')",
+        timeout=5000,
+    )
+    assert pageDashboard.is_disabled("#btnAddContainerConfirm"), (
+        "the folder being left could be chosen while the opened one "
+        "was still loading"
+    )
+    for route in listHeldRoutes:
+        route.continue_()
+    pageDashboard.unroute(fbIsAFolderBrowse)
+    pageDashboard.wait_for_function(
+        "(sPath) => document.getElementById('directoryCurrentPath')"
+        ".textContent === sPath",
+        arg=sOpenedPath, timeout=5000,
+    )
+    assert pageDashboard.listPageErrors == []
+
+
 def testTheContainerCreateWizardStillWalksEveryPage(
     pageDashboard, serverHub,
 ):

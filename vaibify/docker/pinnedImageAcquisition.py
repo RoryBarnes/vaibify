@@ -167,6 +167,10 @@ def fdictObtainAndStage(
         dictProject, dictPinned, bEmulationConsented, fnReport,
         dockerDisposable, dictDownloadControl,
     )
+    if dictDownloadControl is not None:
+        from vaibify.reproducibility import resumableDownload
+        from vaibify.reproducibility.imageAcquisition import S_STAGE_PREPARING
+        resumableDownload.fnEnterStage(dictDownloadControl, S_STAGE_PREPARING)
     sBaseImageId = dictAcquired["sImageId"]
     dictBase = disposableContainer.fdictInspectImage(dockerDisposable, sBaseImageId)
     listProven = flistProveOverlayBaseline(
@@ -255,7 +259,7 @@ def _fdictObtain(
     try:
         dictAcquired = fdictAcquirePinnedImage(
             dictEnvironment, dictPinned["sRequiredPlatform"],
-            lambda dictEvent: fnReport(_fsDescribeAcquisitionEvent(dictEvent)),
+            _ffnReportAcquisitionEventsTo(fnReport),
             bEmulationConsented, dockerDisposable, **dictKeywords,
         )
     except ImageAcquisitionRefusedError as error:
@@ -271,6 +275,27 @@ def _fdictObtain(
     return dictAcquired
 
 
+def _ffnReportAcquisitionEventsTo(fnReport):
+    """Return the chain's status callback, writing one log line per event worth one.
+
+    The window's header shows the live bytes, rate and time left, so
+    the log keeps a single line per tenth of the download -- enough to
+    show it advancing -- rather than a line every few megabytes
+    repeating the header.
+    """
+    dictLastTenth = {"iTenth": None}
+
+    def fnReportEvent(dictEvent):
+        if dictEvent.get("sPhase") == "downloading":
+            iTotal = int(dictEvent.get("iTotalBytes") or 0)
+            iTenth = 10 * int(dictEvent.get("iBytes") or 0) // iTotal if iTotal else 0
+            if iTenth == dictLastTenth["iTenth"]:
+                return
+            dictLastTenth["iTenth"] = iTenth
+        fnReport(_fsDescribeAcquisitionEvent(dictEvent))
+    return fnReportEvent
+
+
 def _fsDescribeAcquisitionEvent(dictEvent):
     """Render one chain event as a progress line."""
     sPhase = str(dictEvent.get("sPhase") or "")
@@ -278,8 +303,16 @@ def _fsDescribeAcquisitionEvent(dictEvent):
         return _fsDescribeAttempt(dictEvent)
     if sPhase == "downloading":
         return _fsDescribeDownloading(dictEvent)
-    if sPhase in ("downloadRetrying", "downloadRestarting", "downloadSlow"):
+    if sPhase in (
+        "downloadRetrying", "downloadRestarting", "downloadSlow",
+        "locatingRetrying",
+    ):
         return str(dictEvent.get("sSentence") or sPhase)
+    if sPhase == "locating":
+        return (
+            "asking Zenodo where the archived image is (try "
+            f"{int(dictEvent.get('iAttempt') or 1)})"
+        )
     if sPhase == "resuming":
         return (
             "resuming a download interrupted earlier: "
@@ -305,7 +338,7 @@ def _fsDescribeAcquisitionEvent(dictEvent):
 
 
 def _fsDescribeDownloading(dictEvent):
-    """One progress line: bytes, the share done, the rate and the time left."""
+    """One progress line: the bytes and the share done (the header has the rest)."""
     iBytes = int(dictEvent.get("iBytes") or 0)
     iTotal = int(dictEvent.get("iTotalBytes") or 0)
     sLine = (
@@ -314,12 +347,6 @@ def _fsDescribeDownloading(dictEvent):
     )
     if iTotal:
         sLine += f" ({100 * iBytes // iTotal}%)"
-    fRate = float(dictEvent.get("fBytesPerSecond") or 0.0)
-    if fRate > 0:
-        sLine += f", {fRate / 1e6:.1f} MB/s"
-    fRemaining = dictEvent.get("fSecondsRemaining")
-    if fRemaining:
-        sLine += f", about {max(1, int(float(fRemaining) // 60))} min left"
     return sLine
 
 

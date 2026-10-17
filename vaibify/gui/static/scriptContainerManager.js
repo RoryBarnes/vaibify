@@ -20,6 +20,11 @@ var VaibifyContainerManager = (function () {
     /* Names whose deletion this tab requested and has not heard back
        about; every render reads it, so mutate it, never reassign it. */
     var _setNamesBeingDeleted = new Set();
+    /* The container whose start the readiness banners describe. They
+       are drawn only when a start is checked, so entering any other
+       project -- or the same project after its container was removed,
+       which leaves no container to describe -- must clear them. */
+    var _sReadinessBannersContainerId = "";
 
     async function fnLoadContainers() {
         try {
@@ -285,7 +290,6 @@ var VaibifyContainerManager = (function () {
             _fsRenderContainmentChip(dictContainer, bHost) +
             _fsRenderContainerizingChip(dictContainer, bHost) +
             _fsRenderHeldChip(dictContainer) +
-            _fsRenderImageTrustChip(dictContainer, bHost) +
             _fsRenderHostTileNote(dictContainer, bHost) +
             "</div>" +
             '<button class="btn-icon container-tile-actions" ' +
@@ -342,24 +346,6 @@ var VaibifyContainerManager = (function () {
             "held by this tab</span>";
     }
 
-    function _fsRenderImageTrustChip(dictContainer, bHost) {
-        /* An image the project obtained, or one the researcher has
-           answered for, wears the answer. "Not confirmed" is shown
-           rather than hidden: the start will ask. */
-        var dictAnswer = dictContainer.dictImageTrust;
-        if (bHost || !(dictAnswer || _fbImageObtained(dictContainer))) {
-            return "";
-        }
-        return '<span class="containment-chip containment-chip--imagetrust" ' +
-            'data-image-trust="' +
-            VaibifyUtilities.fnEscapeHtml(
-                (dictAnswer && dictAnswer.sChoice) || "") + '" title="' +
-            VaibifyUtilities.fnEscapeHtml(
-                (dictAnswer && dictAnswer.sImageDigest) || "") + '">' +
-            VaibifyUtilities.fnEscapeHtml(
-                VaibifyImageTrust.fsBadgeText(dictAnswer)) + "</span>";
-    }
-
     function _fsRenderReleaseMenuItem(dictContainer) {
         if (dictContainer.bOwnedByThisSession !== true) return "";
         return '<div class="container-menu-item" data-action="release">' +
@@ -393,12 +379,9 @@ var VaibifyContainerManager = (function () {
         var dictPending = dictContainer.dictPendingConversion;
         if (!bHost || !dictPending) return "";
         var sState = dictPending.sState || "obtaining";
+        /* The progress itself lives in the window the chip opens; the
+           chip only names the state, so the two never disagree. */
         var sLabel = _DICT_CONTAINERIZING_LABELS[sState] || "Containerizing…";
-        if (sState === "obtaining" && dictPending.iTotalBytes > 0) {
-            sLabel = "Containerizing… " +
-                Math.round(dictPending.iBytes / 1e6) + " of " +
-                Math.round(dictPending.iTotalBytes / 1e6) + " MB";
-        }
         return (
             '<button type="button" class="containment-chip ' +
             'containment-chip--containerizing" data-pending-conversion-state="' +
@@ -947,7 +930,7 @@ var VaibifyContainerManager = (function () {
         _fnShowInitializingOverlay();
         var dictReadiness = await _fdictWaitForContainerReady(sTargetId);
         _fnHideInitializingOverlay();
-        _fnSurfaceReadinessOutcome(dictReadiness);
+        _fnSurfaceReadinessOutcome(dictReadiness, sTargetId);
         if (!dictReadiness || !dictReadiness.bReady) {
             var sStatus = dictReadiness ? dictReadiness.sStatus : "";
             if (sStatus !== "failed" && sStatus !== "stalled") {
@@ -2054,6 +2037,7 @@ var VaibifyContainerManager = (function () {
             );
             if (await _fnFollowStartToItsOutcome(sName, dictStart)) {
                 await _fnCopyPendingFilesIntoContainer(sName);
+                await _fnReleaseClaimUnlessInside(sName);
             }
         } catch (error) {
             _fnForgetPendingStart();
@@ -2067,6 +2051,19 @@ var VaibifyContainerManager = (function () {
         } finally {
             fnLoadContainers();
         }
+    }
+
+    async function _fnReleaseClaimUnlessInside(sName) {
+        /* A start claims the container for this tab, because copying a
+           converted project's files in needs the claim. A start that
+           does not open the container has no use for it afterwards, and
+           holding it left the tile "held by this tab" for a project
+           nobody had opened (researcher-reported, 2026-10-15). Opening
+           claims it again, so only a container this tab is inside keeps
+           its claim. */
+        var sInsideId = VaibifyApp.fsGetContainerId();
+        if (sInsideId && _fsContainerNameById(sInsideId) === sName) return;
+        await fnReleaseClaim(sName);
     }
 
     function _fbOfferImageTrust(error, sName) {
@@ -2656,7 +2653,8 @@ var VaibifyContainerManager = (function () {
         };
     }
 
-    function _fnSurfaceReadinessOutcome(dictReadiness) {
+    function _fnSurfaceReadinessOutcome(dictReadiness, sContainerId) {
+        _sReadinessBannersContainerId = sContainerId || "";
         _fnRenderBuildWarningsBanner(
             (dictReadiness && dictReadiness.saWarnings) || []
         );
@@ -2962,6 +2960,9 @@ var VaibifyContainerManager = (function () {
            the container fills it in; waiting for the search first left
            the researcher on the previous screen with no sign that the
            click had registered. */
+        if (sId !== _sReadinessBannersContainerId) {
+            _fnSurfaceReadinessOutcome(null, "");
+        }
         _sSelectedContainerId = sId;
         _sSelectedContainerName = _fsContainerNameById(sId);
         _sSelectedContainerDirectory = _fsContainerDirectoryById(sId);

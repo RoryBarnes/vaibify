@@ -164,13 +164,10 @@ def fnAnnotateListingWithPendingConversions(listContainers):
         dictView = fdictReadConversionView(dictProject.get("sName") or "")
         if dictView is None:
             continue
-        dictDownload = dictView.get("dictDownload") or {}
         dictProject["dictPendingConversion"] = {
             "sState": dictView["sState"],
             "sNewName": dictView["sNewName"],
             "bLive": dictView["bLive"],
-            "iBytes": int(dictDownload.get("iBytes") or 0),
-            "iTotalBytes": int(dictDownload.get("iTotalBytes") or 0),
         }
 
 

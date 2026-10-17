@@ -140,6 +140,10 @@ var VaibifyDirectoryBrowser = (function () {
         var elEntries = document.getElementById("directoryEntries");
         elEntries.innerHTML =
             '<p class="muted-text" style="text-align:center;">Loading...</p>';
+        /* Until the answer arrives the current path is still the
+           directory being left, so a confirm in that gap chose the
+           parent of the folder the researcher had just opened. */
+        document.getElementById("btnAddContainerConfirm").disabled = true;
         try {
             var sUrl = "/api/host-directories";
             if (sPath) sUrl += "?sPath=" + encodeURIComponent(sPath);

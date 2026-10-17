@@ -10377,6 +10377,20 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/browser/testHostProjectPicker.py::'
+            'testTheDirectoryIsNotChosenUntilTheOpenedFolderHasArrived'
+        ),
+        source='vaibify/gui/static/scriptDirectoryBrowser.js',
+        # The confirm stays enabled while a browse is in flight, so it
+        # chooses the directory being left -- the opened folder's parent.
+        old=(
+            '        document.getElementById("btnAddContainerConfirm")'
+            '.disabled = true;\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
             'testAHostTileOffersNoContainerLifecycleAction'
         ),
         source='vaibify/gui/static/scriptContainerManager.js',
@@ -25862,10 +25876,10 @@ LIST_FALSIFICATIONS = [
         new='            "<td>" + sValue + "</td></tr>";',
     ),
     Falsification(
-        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testTheBadgeAndTheSettingsReflectTheStoredChoice',
+        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testTheSettingsReflectTheStoredChoiceAndTheTileCarriesNoBadge',
         source='vaibify/gui/static/scriptContainerManager.js',
-        old='                VaibifyImageTrust.fsBadgeText(dictAnswer)) + "</span>";',
-        new='                VaibifyImageTrust.fsBadgeText(null)) + "</span>";',
+        old='                VaibifyImageTrust.fsBadgeText(dictSettings.dictImageTrust)) +',
+        new='                VaibifyImageTrust.fsBadgeText(null)) +',
     ),
     Falsification(
         nodeid='tests/testImageTrustLive.py::testARestrictedLaunchOfAnImageThatNeedsRootFailsToStartAndIsNeverRunning',
@@ -33639,5 +33653,318 @@ LIST_FALSIFICATIONS = [
             '        _fnUpdateModTimeBaseline(\n'
             '            dictCtx, sContainerId, dictModTimes, dictWorkflow)\n'
         ),
+    ),
+    # --- 2026-10-15: finding the deposit on Zenodo is patient,
+    # cancellable and honest (a 10 s handshake bound refused a slow
+    # Zenodo before the download began)
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_a_lookup_that_gets_no_answer_is_tried_again_and_the_image_loads'
+        ),
+        # the first unanswered try spends the whole budget
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old=(
+            '        if time.monotonic() + fWaitSeconds - fStarted >= '
+            '_F_LOCATE_BUDGET_SECONDS:\n'
+        ),
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_a_zenodo_that_answers_503_is_asked_again_not_followed_to_a_dead_url'
+        ),
+        # a DOI hop that lands on a 5xx is read as the record's address
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    if iStatus == 429 or iStatus >= 500:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_cancel_ends_a_try_blocked_on_a_silent_zenodo_within_a_second'
+        ),
+        # the try runs on the caller's thread, so Cancel waits it out
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    threadLookup.start()\n    while threadLookup.is_alive():\n',
+        new='    fnRunLookup()\n    while False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_a_spent_lookup_budget_keeps_the_bytes_an_earlier_attempt_downloaded'
+        ),
+        # the unreachable refusal says nothing is worth keeping
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old=(
+            '            "sFailureClass": S_FAILURE_ZENODO_UNREACHABLE,\n'
+            '            "bPartialKept": True,'
+        ),
+        new=(
+            '            "sFailureClass": S_FAILURE_ZENODO_UNREACHABLE,\n'
+            '            "bPartialKept": False,'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_the_poll_reads_the_lookup_stage_and_counts_down_to_the_next_try'
+        ),
+        # the lookup stamps no stage and no deadline on the control
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old=(
+            '    resumableDownload.fnEnterStage(\n'
+            '        dictControl, S_STAGE_LOCATING, _F_LOCATE_BUDGET_SECONDS,\n'
+        ),
+        new=(
+            '    (lambda *aArgs, **kwargs: None)(\n'
+            '        dictControl, S_STAGE_LOCATING, _F_LOCATE_BUDGET_SECONDS,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testTheWindowNamesTheLookupAndCountsItsTimers'
+        ),
+        # the window infers its stage from the byte counts again
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        old=(
+            '        var dictDownload = dictView.dictDownload || {};\n'
+            '        var sStage = dictDownload.sStage || "";\n'
+            '        var dictScroll = _fdictReadTailScroll();\n'
+        ),
+        new=(
+            '        var dictDownload = dictView.dictDownload || {};\n'
+            '        dictDownload.sStage = (dictDownload.iTotalBytes || 0) > 0\n'
+            '            ? "downloading" : "preparing";\n'
+            '        var sStage = dictDownload.sStage || "";\n'
+            '        var dictScroll = _fdictReadTailScroll();\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_the_poll_names_the_deposit_by_doi_file_and_record_title'
+        ),
+        # the record's title is never passed on to the window's heading
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='        fnNoteTitle(_fsReadDepositTitle(dictPublished))\n',
+        new='        fnNoteTitle("")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testTheLogFollowsNewLinesAndStaysWhereTheReaderScrolled'
+        ),
+        # the log's scroll is never put back after a poll rebuilds it
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        old='        _fnRestoreTailScroll(dictScroll);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testAFinishedConversionAsksBeforeStartingAndStartsNothingOnItsOwn'
+        ),
+        # the window starts (and so claims) the converted container itself
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        old='        await VaibifyContainerManager.fnLoadContainers();\n',
+        new=(
+            '        await VaibifyContainerManager.fnLoadContainers();\n'
+            '        await VaibifyContainerManager.fnStartContainer(sNewName);\n'
+        ),
+    ),
+    # --- 2026-10-15: a running L3 rerun streams its output to the PROOF
+    # tab; the collector honors the synchronous callbacks lanes pass
+    Falsification(
+        nodeid=(
+            'tests/testRerunDiagnostics.py::'
+            'test_a_synchronous_forward_receives_every_event'
+        ),
+        # the collector awaits whatever the forward returned
+        source='vaibify/reproducibility/rerunDiagnostics.py',
+        old=(
+            '        if inspect.iscoroutinefunction(fnForwardTo):\n'
+            '            await fnForwardTo(dictEvent)\n'
+            '        else:\n'
+            '            fnForwardTo(dictEvent)\n'
+        ),
+        new='        await fnForwardTo(dictEvent)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunDiagnostics.py::'
+            'test_the_published_tail_carries_no_credential'
+        ),
+        # the failing step's output is kept as printed
+        source='vaibify/reproducibility/rerunDiagnostics.py',
+        old=(
+            '    listRecent.extend(fsRedactCredentials(str(sLine)) '
+            'for sLine in listLines)\n'
+        ),
+        new='    listRecent.extend(str(sLine) for sLine in listLines)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVerificationLiveOutput.py::'
+            'test_the_route_gives_the_rerun_a_recorder_that_fills_the_record'
+        ),
+        # the shadow rerun is run with no status callback
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        filesRepo, fnStatusCallback=verificationProgress.'
+            'ffnBuildRerunRecorder(\n'
+            '            sContainerId, fsRepoRootOf(filesRepo), dictWorkflow,\n'
+            '        ),\n'
+        ),
+        new='        filesRepo,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheVerificationShowsItsOutput.py::'
+            'testTheCardShowsTheStepAndTheNewestLines'
+        ),
+        # the progress card renders none of the hub's output record
+        source='vaibify/gui/static/scriptProofTab.js',
+        old='            _fsRenderVerifyOutput(dictInFlight) +\n',
+        new='',
+    ),
+    # --- 2026-10-16: a project copied in from the researcher's directory
+    # starts with the image's repository list, less its own entry ---
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_a_seeded_project_starts_with_its_own_reference_entry_removed'
+        ),
+        # the start leaves the baked list in place for a copied-in folder
+        source='vaibify/docker/containerManager.py',
+        old='    _fnMountRepositoryListWithoutSeededFolder(config, saRunArgs, dictPosture)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_the_list_is_read_from_a_container_that_never_runs_and_is_removed'
+        ),
+        # the reader container is left on the daemon
+        source='vaibify/docker/containerManager.py',
+        old='        _ftRunProbeCommand(["docker", "rm", "-f", sReaderId])\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_a_list_that_cannot_be_read_refuses_the_start_by_name'
+        ),
+        # a failed read starts anyway, with an empty list
+        source='vaibify/docker/containerManager.py',
+        old='    if not sReaderId:\n        raise RuntimeError(_fsDescribeUnreadRepositoryList(\n',
+        new='    if not sReaderId:\n        return ""\n        raise RuntimeError(_fsDescribeUnreadRepositoryList(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_an_image_whose_list_is_a_symlink_is_refused'
+        ),
+        # a link member is accepted as the list
+        source='vaibify/docker/containerManager.py',
+        old='        if len(listMembers) != 1 or not listMembers[0].isreg():\n',
+        new='        if len(listMembers) != 1:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_a_project_the_image_clones_keeps_the_baked_list'
+        ),
+        # every container project is treated as copied in
+        source='vaibify/config/registryManager.py',
+        old='    if not (dictEntry.get(S_WORKSPACE_SEEDED_KEY)\n            or dictEntry.get(S_PENDING_SEED_KEY)):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_only_the_reference_entry_landing_in_the_folder_is_removed'
+        ),
+        # an installed entry is dropped by name, losing its install
+        source='vaibify/config/containerConfig.py',
+        old='    return listFields[3] == "reference" and sDirectoryName in (\n',
+        new='    return sDirectoryName in (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_an_entry_moved_into_the_folder_is_removed'
+        ),
+        # the destination is ignored, so the move deletes the copied folder
+        source='vaibify/config/containerConfig.py',
+        old='        sName, sDestination)\n',
+        new='        sName,)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_a_conversion_that_copies_files_records_the_folder'
+        ),
+        # the conversion records nothing once the pending copy is cleared
+        source='vaibify/config/registryManager.py',
+        old='            dictEntry[S_WORKSPACE_SEEDED_KEY] = True\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_an_image_that_carries_no_list_starts_with_nothing_mounted'
+        ),
+        # an image without a list is refused for a list it never had
+        source='vaibify/docker/containerManager.py',
+        old='    if bListAbsent:\n        return ""\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_a_copy_the_daemon_fails_for_another_reason_refuses_the_start'
+        ),
+        # every failed copy reads as an image without a list
+        source='vaibify/docker/containerManager.py',
+        old='    return (None, sStderr.startswith(_S_DAEMON_FILE_ABSENT_PREFIX))\n',
+        new='    return (None, True)\n',
+    ),
+    # --- 2026-10-16: a container's start banners never follow the
+    # researcher into a project without that container ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testStartBannersBelongToTheirContainer.py::'
+            'test_opening_a_project_without_that_container_clears_its_start_banners'
+        ),
+        # entering a project leaves another container's banners up
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (sId !== _sReadinessBannersContainerId) {\n            _fnSurfaceReadinessOutcome(null, "");\n        }\n',
+        new='',
+    ),
+    # --- 2026-10-16: a finished conversion is announced once ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testAFinishedConversionIsAnnouncedOnceHoweverManyPollsWereWaiting'
+        ),
+        # every poll in flight when the record vanishes announces it
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        old='            if (_sWatchedHost !== sHostName) return;\n            if (error && error.iStatus === 404) {\n',
+        new="            if (error && error.iStatus === 404) {\n",
+    ),
+    # --- 2026-10-16: a finished conversion offers Start container; a
+    # start that does not open the container releases its claim ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testStartContainerStartsWithoutOpeningAndLeavesTheTileUnheld'
+        ),
+        # the start keeps this tab's claim on a container nobody opened
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                await _fnReleaseClaimUnlessInside(sName);\n',
+        new='',
     ),
 ]

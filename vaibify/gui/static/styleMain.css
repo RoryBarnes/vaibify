@@ -805,6 +805,7 @@ html, body {
 }
 
 .acquisition-held,
+.acquisition-deposit,
 .acquisition-note {
     font-size: 13px;
     color: var(--text-secondary);
@@ -826,7 +827,8 @@ html, body {
 }
 
 .acquisition-details pre,
-.acquisition-tail {
+.acquisition-tail,
+.proof-verify-tail {
     max-height: 240px;
     overflow: auto;
     padding: 10px;
@@ -838,6 +840,17 @@ html, body {
     white-space: pre-wrap;
     word-break: break-word;
     margin-top: 8px;
+}
+
+.proof-verify-step {
+    font-size: 13px;
+    margin-top: 8px;
+}
+
+.proof-verify-caption {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
 }
 
 .quarantine-records {
@@ -9719,12 +9732,6 @@ body.council-workspace-open #mainLayout {
 }
 
 /* ---- Image-trust modal (scriptImageTrust.js) ---- */
-
-.containment-chip--imagetrust {
-    background: transparent;
-    border: 1px solid var(--color-orange, var(--color-blue));
-    color: var(--color-orange, var(--color-blue));
-}
 
 .image-trust-modal {
     max-width: 640px;

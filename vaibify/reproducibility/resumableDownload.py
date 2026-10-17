@@ -64,6 +64,9 @@ __all__ = [
     "S_FAILURE_WRITE_FAILED",
     "fdictCreateDownloadControl",
     "fdictReadDownloadProgress",
+    "fnEnterStage",
+    "fnRecordDeposit",
+    "fnStampAttempt",
     "ffRetryAfterSeconds",
     "fnRequestCancel",
     "fsDescribeBytes",
@@ -87,6 +90,7 @@ from datetime import datetime, timezone
 from vaibify.config import keepAliveManager
 from vaibify.reproducibility import downloadPartial
 from vaibify.reproducibility import rangedHttpTransport
+from vaibify.reproducibility import zenodoClient
 
 
 logger = logging.getLogger("vaibify")
@@ -110,7 +114,7 @@ _I_ATTEMPTS_WITHOUT_ADVANCE = 6
 _F_BACKOFF_BASE_SECONDS = 5.0
 _F_BACKOFF_CAP_SECONDS = 120.0
 _F_RETRY_AFTER_CAP_SECONDS = 600.0
-_F_READ_TIMEOUT_SECONDS = 60.0
+_F_READ_TIMEOUT_SECONDS = zenodoClient.F_READ_TIMEOUT_SECONDS
 _F_RATE_WINDOW_SECONDS = 30.0
 _F_SLOW_RATE_BYTES_PER_SECOND = 100_000.0
 _F_SLOW_RATE_NOTICE_SECONDS = 120.0
@@ -188,8 +192,60 @@ def fdictCreateDownloadControl(dictPurpose=None):
             "sLastFailure": "", "socketLive": None, "iCurrentToken": 0,
             "sAcquisitionId": "", "fSlowSinceMonotonic": 0.0,
             "bSlowNoticeGiven": False, "bFinished": False,
+            "sStage": "", "fStageStartedMonotonic": 0.0,
+            "fGiveUpAtMonotonic": 0.0, "iRetriesLeft": None,
+            "dictDeposit": {},
         },
     }
+
+
+def fnRecordDeposit(dictControl, dictDeposit):
+    """Name the deposit the work is fetching, for the window's heading.
+
+    ``{"sDoi", "sFileName", "sTitle"}``: the DOI and file name come from
+    the project's envelope, the title from Zenodo's record when it has
+    been read. Kept across stages, because the deposit does not change.
+    """
+    _fnStampLive(dictControl, {"dictDeposit": dict(dictDeposit)})
+
+
+def fnEnterStage(dictControl, sStage, fSecondsUntilGiveUp=0.0, sAcquisitionId=""):
+    """Record that the work this control watches has begun a new stage.
+
+    The stage is what the progress window names in its title, so it is
+    stamped at the moment the stage begins -- never inferred from the
+    byte counts, which are zero both before a download starts and after
+    the registry served the image without one. The attempt counters
+    belong to the stage they were counted in and start over with it.
+    ``fSecondsUntilGiveUp`` is the stage's own deadline, 0 for none.
+    ``sAcquisitionId`` names the download directory the stage works for,
+    when it has one, so a connection check can be asked of it before
+    the first byte.
+    """
+    fNow = time.monotonic()
+    if sAcquisitionId:
+        _fnStampLive(dictControl, {"sAcquisitionId": sAcquisitionId})
+    _fnStampLive(dictControl, {
+        "sStage": sStage, "fStageStartedMonotonic": fNow,
+        "fGiveUpAtMonotonic": fNow + fSecondsUntilGiveUp if fSecondsUntilGiveUp else 0.0,
+        "iAttempt": 0, "sAttemptState": "", "fRetryAtMonotonic": 0.0,
+        "sLastFailure": "", "iRetriesLeft": None,
+    })
+
+
+def fnStampAttempt(dictControl, iAttempt, sLastFailure="", fRetryInSeconds=0.0):
+    """Record a try of the current stage, or the wait after one that failed.
+
+    For a stage whose tries are not this module's own download -- the
+    chain's lookup of the deposit's file -- so its attempts and its
+    countdown reach the poll through the same counters.
+    """
+    _fnStampLive(dictControl, {
+        "iAttempt": iAttempt, "sLastFailure": sLastFailure,
+        "fRetryAtMonotonic": (
+            time.monotonic() + fRetryInSeconds if fRetryInSeconds > 0 else 0.0
+        ),
+    })
 
 
 def fnRequestCancel(dictControl):
@@ -213,6 +269,17 @@ def fdictReadDownloadProgress(dictControl):
     fRetryIn = max(0.0, dictLive["fRetryAtMonotonic"] - fNow) if (
         dictLive["fRetryAtMonotonic"] > fNow) else 0.0
     return {
+        "sStage": dictLive["sStage"],
+        "fSecondsInStage": (
+            fNow - dictLive["fStageStartedMonotonic"]
+            if dictLive["fStageStartedMonotonic"] else None
+        ),
+        "fSecondsUntilGiveUp": (
+            max(0.0, dictLive["fGiveUpAtMonotonic"] - fNow)
+            if dictLive["fGiveUpAtMonotonic"] else None
+        ),
+        "iRetriesLeft": dictLive["iRetriesLeft"],
+        "dictDeposit": dict(dictLive["dictDeposit"]),
         "iBytes": dictLive["iBytesOnDisk"],
         "iTotalBytes": dictLive["iExpectedBytes"],
         "fBytesPerSecond": fRate,
@@ -676,6 +743,7 @@ def _fnWaitBeforeRetrying(error, dictAcquisition, dictControl, dictRun, fnStatus
     )
     _fnStampLive(dictControl, {
         "sAttemptState": sState, "fRetryAtMonotonic": time.monotonic() + fWait,
+        "iRetriesLeft": _I_ATTEMPTS_WITHOUT_ADVANCE - dictRun["iWithoutAdvance"],
     })
     fnStatus({
         "sPhase": "downloadRetrying", "sSentence": sState,

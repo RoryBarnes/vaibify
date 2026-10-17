@@ -57,9 +57,13 @@ authority for disposable work, and this module composes them.
 import gzip
 import json
 import os
+import random
 import re
 import tempfile
+import threading
+import time
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 import requests
 
@@ -81,15 +85,34 @@ __all__ = [
     "ImageAcquisitionRefusedError",
     "fsDownloadVerifiedTarball",
     "S_FAILURE_DAEMON_LOAD",
+    "S_FAILURE_ZENODO_UNREACHABLE",
     "S_LINK_ARCHIVE",
     "S_LINK_LOCAL",
     "S_LINK_REGISTRY",
     "S_OBTAINED_ARCHIVE",
     "S_OBTAINED_LOCAL",
     "S_OBTAINED_REGISTRY",
+    "S_STAGE_DOWNLOADING",
+    "S_STAGE_LOADING",
+    "S_STAGE_LOCAL",
+    "S_STAGE_LOCATING",
+    "S_STAGE_PREPARING",
+    "S_STAGE_REGISTRY",
     "fdictAcquirePinnedImage",
     "fsArchitectureOfPlatform",
 ]
+
+
+class _ZenodoDidNotAnswer(Exception):
+    """One try at locating the deposit met a failure another try may cure.
+
+    The message is the researcher's sentence; ``sTechnicalDetail`` keeps
+    the library's own words for the collapsed details.
+    """
+
+    def __init__(self, sSentence, sTechnicalDetail):
+        super().__init__(sSentence)
+        self.sTechnicalDetail = sTechnicalDetail
 
 
 class ImageAcquisitionRefusedError(Exception):
@@ -128,7 +151,42 @@ S_FAILURE_DAEMON_LOAD = "daemon-load"
 # checked against the client's table. Module-level so a test can point
 # it at a loopback server.
 _S_DOI_RESOLVER = zenodoClient.S_DOI_RESOLVER_BASE
-_T_HTTP_TIMEOUT_SECONDS = (10, 60)
+_T_HTTP_TIMEOUT_SECONDS = (
+    zenodoClient.F_CONNECT_TIMEOUT_SECONDS, zenodoClient.F_READ_TIMEOUT_SECONDS,
+)
+# Finding the deposit's file is retried for this long before the chain
+# stops and asks the researcher. One try can itself wait out both
+# requests' timeouts, so the budget allows several slow tries, not
+# several fast ones. The waits between tries are exponential with full
+# jitter (Brooker, "Exponential Backoff and Jitter", AWS Architecture
+# Blog, 2015), the policy the download's own retries follow.
+_F_LOCATE_BUDGET_SECONDS = 30 * 60.0
+_F_LOCATE_BACKOFF_BASE_SECONDS = 5.0
+_F_LOCATE_BACKOFF_CAP_SECONDS = 120.0
+_F_CANCEL_POLL_SECONDS = 0.1
+# How many of the last tries a spent budget's refusal describes.
+_I_TRIES_DESCRIBED = 5
+# The longest deposit title the window's heading shows.
+_I_TITLE_CHARACTERS = 120
+# A try that met one of these may succeed next time: the connection
+# never opened, stalled or dropped, or Zenodo said its own side failed.
+_T_TRANSIENT_LOOKUP_ERRORS = (
+    requests.ConnectionError, requests.Timeout,
+    requests.exceptions.ChunkedEncodingError,
+    zenodoClient.ZenodoRateLimitError, zenodoClient.ZenodoServerError,
+)
+# The failure class of a deposit Zenodo would not say where to find.
+S_FAILURE_ZENODO_UNREACHABLE = "zenodo-unreachable"
+
+# The stage the acquisition is in, stamped on the download control as
+# each begins (``resumableDownload.fnEnterStage``) so the progress
+# window names the work under way rather than inferring it from bytes.
+S_STAGE_REGISTRY = "registry"
+S_STAGE_LOCATING = "locating"
+S_STAGE_DOWNLOADING = "downloading"
+S_STAGE_LOADING = "loading"
+S_STAGE_LOCAL = "local"
+S_STAGE_PREPARING = "preparing"
 # A deposit already downloaded, verified and loaded here is not fetched
 # again while the daemon still holds the image it produced. Without
 # this, every retry after a later step failed (an agent overlay, a
@@ -256,6 +314,7 @@ def _ftFollowTheChain(
     listAttempts, fnStatus, dictDownloadControl=None,
 ):
     """Try the three links in the published order; return what served."""
+    _fnEnterStage(dictDownloadControl, S_STAGE_REGISTRY)
     if _fbRegistryServes(
         dockerDisposable, sPinnedReference, sRequiredPlatform, listAttempts,
         fnStatus,
@@ -267,6 +326,7 @@ def _ftFollowTheChain(
     )
     if sLoadedId:
         return sLoadedId, S_OBTAINED_ARCHIVE
+    _fnEnterStage(dictDownloadControl, S_STAGE_LOCAL)
     if _fbLocalCopyServes(
         dockerDisposable, sPinnedReference, listAttempts, fnStatus,
     ):
@@ -277,6 +337,12 @@ def _ftFollowTheChain(
         dictFailure=_fdictArchiveLinkFailure(listAttempts),
         listAttempts=listAttempts,
     )
+
+
+def _fnEnterStage(dictDownloadControl, sStage):
+    """Stamp the stage on the caller's control; a caller with none watches nothing."""
+    if dictDownloadControl is not None:
+        resumableDownload.fnEnterStage(dictDownloadControl, sStage)
 
 
 def _fdictArchiveLinkFailure(listAttempts):
@@ -428,6 +494,7 @@ def _fsDownloadAndLoad(
     except ImageAcquisitionRefusedError as error:
         dictOutcome["bKeepPartial"] = bool(error.dictFailure.get("bPartialKept"))
         raise
+    _fnEnterStage(dictControl, S_STAGE_LOADING)
     # A complete, verified tarball is kept until the daemon has loaded
     # it: a daemon that is down costs a retry, never a second download.
     dictOutcome["bKeepPartial"] = True
@@ -551,7 +618,10 @@ def fsDownloadVerifiedTarball(
             "download could not be bounded; nothing was fetched"
         )
     dictControl = dictControl or resumableDownload.fdictCreateDownloadControl()
-    sFileUrl = _fsResolveDepositFileUrl(dictRecord, sDoi, sName)
+    sFileUrl = _fsLocateDepositFileUrl(
+        dictRecord, sDoi, sName, fnStatus, dictControl, dictAcquisition,
+    )
+    resumableDownload.fnEnterStage(dictControl, S_STAGE_DOWNLOADING)
     fnStatus({
         "sPhase": "downloading", "sDoi": sDoi,
         "iBytes": downloadPartial.fiBytesOnDisk(dictAcquisition),
@@ -615,7 +685,7 @@ def _fsDownloadOrRefuse(dictAcquisition, sFileUrl, fnStatus, dictControl):
         ) from error
 
 
-def _fsResolveDepositFileUrl(dictRecord, sDoi, sTarballName):
+def _fsResolveDepositFileUrl(dictRecord, sDoi, sTarballName, fnNoteTitle=None):
     """Name the tarball's URL under the record the DOI identifies.
 
     The record page is fetched through the BOUNDED client
@@ -644,8 +714,21 @@ def _fsResolveDepositFileUrl(dictRecord, sDoi, sTarballName):
     recorded size, hashed as it lands, and reported to the card. Using
     the client for it would be a downgrade, so the split is: the
     client fetches the untrusted JSON, this module fetches the bytes.
+
+    A record fetch that could not get an answer at all -- the
+    connection never opened, stalled, or Zenodo's side failed -- still
+    falls through to the DOI-follow, and raises
+    :class:`_ZenodoDidNotAnswer` only when the DOI-follow could not get
+    one either, naming both, so the caller may try again.
+    ``fnNoteTitle`` is told the record's title when the record is read.
     """
-    sFileUrl = _fsFileUrlFromPublishedRecord(dictRecord, sDoi, sTarballName)
+    try:
+        sFileUrl = _fsFileUrlFromPublishedRecord(
+            dictRecord, sDoi, sTarballName, fnNoteTitle,
+        )
+        listUnanswered = []
+    except _ZenodoDidNotAnswer as error:
+        sFileUrl, listUnanswered = "", [error]
     if sFileUrl:
         return sFileUrl
     try:
@@ -654,17 +737,236 @@ def _fsResolveDepositFileUrl(dictRecord, sDoi, sTarballName):
             bStream=True, tTimeout=_T_HTTP_TIMEOUT_SECONDS,
         )
         sRecordUrl = responseDoi.url
+        iStatus = int(responseDoi.status_code)
         responseDoi.close()
     except zenodoClient.ZenodoRedirectRefusedError as error:
         raise ImageAcquisitionRefusedError(
             f"the DOI {sDoi} resolves outside Zenodo, so no deposit was "
             f"fetched: {error}"
         ) from error
+    except _T_TRANSIENT_LOOKUP_ERRORS as error:
+        listUnanswered.append(_ferrorDescribeUnanswered(
+            error, "following the DOI", urlsplit(_S_DOI_RESOLVER).hostname,
+        ))
+        raise _ferrorJoinUnanswered(listUnanswered) from error
     except requests.RequestException as error:
         raise ImageAcquisitionRefusedError(
             f"the DOI {sDoi} could not be resolved: {error}"
         ) from error
+    if iStatus == 429 or iStatus >= 500:
+        # The hop landed on a server whose own side failed: a URL built
+        # from that page names nothing, so this is a try to repeat.
+        sHost = urlsplit(sRecordUrl).hostname or "Zenodo"
+        listUnanswered.append(_ZenodoDidNotAnswer(
+            f"{sHost} answered {iStatus} while the DOI was being followed",
+            f"following the DOI: HTTP {iStatus} from {sHost}",
+        ))
+        raise _ferrorJoinUnanswered(listUnanswered)
     return f"{sRecordUrl.rstrip('/')}/files/{sTarballName}?download=1"
+
+
+def _ferrorJoinUnanswered(listUnanswered):
+    """One try's unanswered requests as one failure; a repeated sentence once."""
+    return _ZenodoDidNotAnswer(
+        "; ".join(dict.fromkeys(str(errorEach) for errorEach in listUnanswered)),
+        "; ".join(errorEach.sTechnicalDetail for errorEach in listUnanswered),
+    )
+
+
+def _ferrorDescribeUnanswered(error, sAsking, sHostAsked="Zenodo"):
+    """Say in a sentence why one request got no answer from Zenodo.
+
+    The host is read off the failed request -- a DOI-follow that reached
+    Zenodo and stalled there names Zenodo -- and ``sHostAsked`` names the
+    first host asked when the error carries no request.
+    """
+    sHost = _fsReadHostOfFailedRequest(error) or sHostAsked
+    if isinstance(error, requests.ConnectTimeout):
+        sSentence = (
+            f"{sHost} did not accept a connection within "
+            f"{zenodoClient.F_CONNECT_TIMEOUT_SECONDS:.0f} s"
+        )
+    elif isinstance(error, requests.Timeout):
+        sSentence = (
+            f"{sHost} did not answer within "
+            f"{zenodoClient.F_READ_TIMEOUT_SECONDS:.0f} s"
+        )
+    elif isinstance(error, zenodoClient.ZenodoRateLimitError):
+        sSentence = "Zenodo asked vaibify to slow down (it answered 429)"
+    elif isinstance(error, zenodoClient.ZenodoServerError):
+        sSentence = "Zenodo reported a failure on its own side (a 5xx answer)"
+    else:
+        sSentence = f"the connection to {sHost} failed or dropped"
+    return _ZenodoDidNotAnswer(
+        sSentence, f"{sAsking}: {type(error).__name__}: {error}",
+    )
+
+
+def _fsReadHostOfFailedRequest(error):
+    """The host a failed request was sent to, or "" when it carries none."""
+    sUrl = str(getattr(getattr(error, "request", None), "url", "") or "")
+    return urlsplit(sUrl).hostname or ""
+
+
+def _fsLocateDepositFileUrl(
+    dictRecord, sDoi, sTarballName, fnStatus, dictControl, dictAcquisition,
+):
+    """Ask Zenodo where the deposit's file is, patiently; return its URL.
+
+    Zenodo is often slow and sometimes briefly unreachable, and a
+    single try once turned a slow handshake into a refusal before the
+    download had started. A try that got no answer is repeated after a
+    jittered wait until :data:`_F_LOCATE_BUDGET_SECONDS` have passed;
+    every try and every wait is reported, and stamped on the control so
+    the window can count them down. Any other answer -- a refused
+    redirect, an unknown service -- is final at once. Each try runs on
+    a worker the caller abandons on Cancel, so Cancel never waits out
+    a try's timeouts.
+    """
+    resumableDownload.fnEnterStage(
+        dictControl, S_STAGE_LOCATING, _F_LOCATE_BUDGET_SECONDS,
+        sAcquisitionId=dictAcquisition["sAcquisitionId"],
+    )
+    dictDeposit = {"sDoi": sDoi, "sFileName": sTarballName, "sTitle": ""}
+    resumableDownload.fnRecordDeposit(dictControl, dictDeposit)
+
+    def fnNoteTitle(sTitle):
+        resumableDownload.fnRecordDeposit(dictControl, dict(dictDeposit, sTitle=sTitle))
+
+    fStarted = time.monotonic()
+    listUnanswered = []
+    while True:
+        iAttempt = len(listUnanswered) + 1
+        resumableDownload.fnStampAttempt(dictControl, iAttempt)
+        fnStatus({"sPhase": "locating", "sDoi": sDoi, "iAttempt": iAttempt})
+        try:
+            return _fsRunUnlessCancelled(
+                lambda: _fsResolveDepositFileUrl(
+                    dictRecord, sDoi, sTarballName, fnNoteTitle,
+                ),
+                dictControl, dictAcquisition,
+            )
+        except _ZenodoDidNotAnswer as error:
+            listUnanswered.append(error)
+        fWaitSeconds = random.uniform(0.0, min(
+            _F_LOCATE_BACKOFF_CAP_SECONDS,
+            _F_LOCATE_BACKOFF_BASE_SECONDS * (2 ** (iAttempt - 1)),
+        ))
+        if time.monotonic() + fWaitSeconds - fStarted >= _F_LOCATE_BUDGET_SECONDS:
+            raise _ferrorBuildZenodoUnreachable(
+                listUnanswered, time.monotonic() - fStarted, dictAcquisition,
+                sDoi,
+            )
+        _fnWaitBeforeLocatingAgain(
+            listUnanswered[-1], iAttempt, fWaitSeconds, fnStatus, dictControl,
+            dictAcquisition,
+        )
+
+
+def _fnWaitBeforeLocatingAgain(
+    errorLast, iAttempt, fWaitSeconds, fnStatus, dictControl, dictAcquisition,
+):
+    """Report the try that got no answer, then wait, cancellably."""
+    resumableDownload.fnStampAttempt(
+        dictControl, iAttempt, sLastFailure=str(errorLast),
+        fRetryInSeconds=fWaitSeconds,
+    )
+    fnStatus({
+        "sPhase": "locatingRetrying",
+        "sSentence": (
+            f"Finding the archived image on Zenodo: {errorLast}. Trying "
+            f"again in {fWaitSeconds:.0f} s (attempt {iAttempt + 1})"
+        ),
+        "iAttempt": iAttempt, "fWaitSeconds": fWaitSeconds,
+    })
+    if dictControl["eventCancel"].wait(fWaitSeconds):
+        raise _ferrorBuildCancelledWhileLocating(dictAcquisition)
+
+
+def _fsRunUnlessCancelled(fsLookupFileUrl, dictControl, dictAcquisition):
+    """Run one blocking try on a worker thread; refuse at once on Cancel.
+
+    ``requests`` cannot be interrupted inside a connect or a handshake,
+    and one try may wait minutes, so the try runs on a daemon thread
+    that the caller stops waiting for when Cancel is requested. The
+    abandoned thread ends on its own timeouts, writes nothing, and its
+    answer is dropped.
+    """
+    dictOutcome = {}
+
+    def fnRunLookup():
+        try:
+            dictOutcome["sFileUrl"] = fsLookupFileUrl()
+        except BaseException as error:  # noqa: BLE001 -- re-raised by the caller
+            dictOutcome["error"] = error
+
+    threadLookup = threading.Thread(
+        target=fnRunLookup, name="vaibify-locate-deposit", daemon=True,
+    )
+    threadLookup.start()
+    while threadLookup.is_alive():
+        if dictControl["eventCancel"].is_set():
+            raise _ferrorBuildCancelledWhileLocating(dictAcquisition)
+        threadLookup.join(_F_CANCEL_POLL_SECONDS)
+    if "error" in dictOutcome:
+        raise dictOutcome["error"]
+    return dictOutcome["sFileUrl"]
+
+
+def _ferrorBuildCancelledWhileLocating(dictAcquisition):
+    """The researcher gave up before the download began."""
+    return ImageAcquisitionRefusedError(
+        "The download was canceled.",
+        dictFailure={
+            "sFailureClass": resumableDownload.S_FAILURE_CANCELLED,
+            "bPartialKept": False, "sSentence": "The download was canceled.",
+            "sAcquisitionId": dictAcquisition["sAcquisitionId"],
+        },
+    )
+
+
+def _ferrorBuildZenodoUnreachable(
+    listUnanswered, fSecondsTried, dictAcquisition, sDoi,
+):
+    """The refusal after every try in the budget went unanswered.
+
+    The partial is KEPT: bytes an earlier attempt downloaded are still
+    good, and Try again resumes from them once Zenodo answers.
+    """
+    iTries = len(listUnanswered)
+    sSentence = (
+        "vaibify could not reach Zenodo to find the archived image. It "
+        f"tried {iTries} time{'s' if iTries != 1 else ''} over "
+        f"{_fsDescribeMinutes(fSecondsTried)}; the last try failed "
+        f"because {listUnanswered[-1]}. Zenodo is often slow or briefly "
+        "unavailable. Try again starts a new round of tries; Check "
+        "connection shows whether this network or Zenodo is the slow side."
+    )
+    sTechnical = "; ".join(
+        f"try {iIndex + 1}: {listUnanswered[iIndex].sTechnicalDetail}"
+        for iIndex in range(max(0, iTries - _I_TRIES_DESCRIBED), iTries)
+    )
+    return ImageAcquisitionRefusedError(
+        f"Zenodo did not answer {iTries} tries to locate the deposit "
+        f"{sDoi} over {_fsDescribeMinutes(fSecondsTried)} ({sTechnical})",
+        dictFailure={
+            "sFailureClass": S_FAILURE_ZENODO_UNREACHABLE,
+            "bPartialKept": True, "sSentence": sSentence,
+            "sAcquisitionId": dictAcquisition["sAcquisitionId"],
+            "iBytesOnDisk": downloadPartial.fiBytesOnDisk(dictAcquisition),
+            "iExpectedBytes": int(
+                dictAcquisition["dictSidecar"].get("iExpectedBytes") or 0,
+            ),
+            "sTechnicalDetail": sTechnical,
+        },
+    )
+
+
+def _fsDescribeMinutes(fSeconds):
+    """Render a duration the way the refusal says it."""
+    if fSeconds < 90:
+        return f"{max(1, round(fSeconds))} s"
+    return f"{round(fSeconds / 60)} minutes"
 
 
 def _flistDoiFollowOrigins():
@@ -697,14 +999,16 @@ def _fsDepositService(dictRecord, sDoi):
     return sRecorded
 
 
-def _fsFileUrlFromPublishedRecord(dictRecord, sDoi, sTarballName):
+def _fsFileUrlFromPublishedRecord(dictRecord, sDoi, sTarballName, fnNoteTitle=None):
     """Return the tarball's URL from the bounded record fetch, or "".
 
     Empty rather than raising: a record the client cannot fetch is not
-    an error here, it is the case the DOI-follow above exists for. The
-    one exception is a fetch REFUSED at the allowlist -- that names a
-    record page redirecting off Zenodo, which no fallback should paper
-    over. The client is built with an EMPTY token so no host keyring is
+    an error here, it is the case the DOI-follow above exists for. Two
+    exceptions: a fetch REFUSED at the allowlist -- that names a record
+    page redirecting off Zenodo, which no fallback should paper over --
+    and a fetch that got NO answer, raised as
+    :class:`_ZenodoDidNotAnswer` so a slow Zenodo is retried rather
+    than silently read as a record without the file. The client is built with an EMPTY token so no host keyring is
     touched -- a published record is public, and a reproduction is
     somebody reading a stranger's deposit.
     """
@@ -720,9 +1024,28 @@ def _fsFileUrlFromPublishedRecord(dictRecord, sDoi, sTarballName):
         raise ImageAcquisitionRefusedError(
             f"the record page for {sDoi} could not be fetched: {error}"
         ) from error
+    except _T_TRANSIENT_LOOKUP_ERRORS as error:
+        raise _ferrorDescribeUnanswered(error, "fetching the record") from error
     except Exception:  # noqa: BLE001 - the DOI-follow is the fallback
         return ""
+    if fnNoteTitle is not None:
+        fnNoteTitle(_fsReadDepositTitle(dictPublished))
     return zenodoClient._fsFindFileUrlOrNone(dictPublished, sTarballName)
+
+
+def _fsReadDepositTitle(dictPublished):
+    """The record's title as one bounded line of text, or "".
+
+    Zenodo's record is third-party text: it is shown as text, never
+    markup, and only to NAME the deposit -- which deposit is fetched is
+    decided by the envelope's DOI, never by this.
+    """
+    dictMetadata = (dictPublished or {}).get("metadata") or {}
+    sTitle = " ".join(str(dictMetadata.get("title") or "").split())
+    sPrintable = "".join(sCharacter for sCharacter in sTitle if sCharacter.isprintable())
+    if len(sPrintable) > _I_TITLE_CHARACTERS:
+        return sPrintable[:_I_TITLE_CHARACTERS - 1].rstrip() + "…"
+    return sPrintable
 
 
 def _fsLoadTarball(dockerDisposable, sTarballPath, fnStatus):

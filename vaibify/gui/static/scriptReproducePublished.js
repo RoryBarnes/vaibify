@@ -388,6 +388,8 @@ var VaibifyReproducePublished = (function () {
         var sPhase = dictJob.sPhase || "";
         if (sPhase === "pulling") return "Pulling the pinned image from " +
             "the registry…";
+        if (sPhase === "locating") return "Finding the archived " +
+            "deposit on Zenodo (Zenodo is often slow to answer)…";
         if (sPhase === "downloading") {
             var iTotal = dictJob.iTotalBytes || 0;
             return "Downloading the archived deposit" + (iTotal

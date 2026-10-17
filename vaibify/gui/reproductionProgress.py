@@ -49,6 +49,7 @@ __all__ = [
     "S_PHASE_COMPARING",
     "S_PHASE_TEARING_DOWN",
     "S_PHASE_LOADING",
+    "S_PHASE_LOCATING",
     "S_PHASE_PULLING",
     "S_PHASE_RUNNING",
     "S_PHASE_SETTLED",
@@ -91,6 +92,7 @@ S_PHASE_STAGING = "staging"
 S_PHASE_VALIDATING = "validating"
 S_PHASE_STAGED = "staged"
 S_PHASE_PULLING = "pulling"
+S_PHASE_LOCATING = "locating"
 S_PHASE_DOWNLOADING = "downloading"
 S_PHASE_LOADING = "loading"
 S_PHASE_RUNNING = "running"
@@ -109,7 +111,7 @@ S_PHASE_WAITING_DOWNLOAD = "waiting-download"
 # NOT live: a staged job is waiting for the researcher, not working.
 T_LIVE_PHASES = (
     S_PHASE_STAGING, S_PHASE_VALIDATING, S_PHASE_PULLING,
-    S_PHASE_DOWNLOADING, S_PHASE_LOADING, S_PHASE_RUNNING,
+    S_PHASE_LOCATING, S_PHASE_DOWNLOADING, S_PHASE_LOADING, S_PHASE_RUNNING,
     S_PHASE_COMPARING, S_PHASE_TEARING_DOWN,
 )
 
@@ -145,6 +147,10 @@ _DICT_PHASE_BY_LANE_EVENT = {
 
 _DICT_PHASE_BY_ACQUISITION_EVENT = {
     "pulling": S_PHASE_PULLING,
+    # Asking Zenodo where the deposit's file is comes before any byte,
+    # and can take minutes; it is its own phase, never "downloading".
+    "locating": S_PHASE_LOCATING,
+    "locatingRetrying": S_PHASE_LOCATING,
     "downloading": S_PHASE_DOWNLOADING,
     # A resumed, retrying or restarted download is still the download
     # phase; the sentence it carries is reported beside the bytes.
