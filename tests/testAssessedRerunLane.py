@@ -487,7 +487,13 @@ def testAPolicyThisVaibifyLacksIsCouldNotRunWithTheUpgradeRemedy(tmp_path):
 
 @pytest.mark.falsification
 def testAHistoricalAttestationNeverSatisfiesTheRebuildRequirement(tmp_path):
-    """The byte-only verifier's pass is history, even for an unchanged manifest.
+    """A previous check's pass is history, whatever else it matches.
+
+    The byte-only verifier's record migrates to historical with no
+    assessment fields at all. The record that isolates the rule is a
+    current-schema one graded under another comparison policy: it names
+    the unchanged manifest AND the execution profile the workflow asks
+    for, so being historical is the only thing that can retire it.
 
     Kills: reading a historical attestation as current.
     """
@@ -500,6 +506,12 @@ def testAHistoricalAttestationNeverSatisfiesTheRebuildRequirement(tmp_path):
     }))
     dictRead = l3Attestation.fdictReadAttestation(sRoot)
     assert dictRead["bHistorical"] is True
+    assert fbL3AttestationCurrent(sRoot, {}) is False
+    fnWriteAttestation(sRoot, fdictBuildAttestation(
+        "passed", sDigest, "img@sha256:i", 1.0, 1, 1,
+        dictAssessmentFields=dict(
+            fdictCurrentAssessmentFields(),
+            sComparisonPolicy="comparison-v0")))
     assert fbL3AttestationCurrent(sRoot, {}) is False
     fnWriteAttestation(sRoot, fdictBuildAttestation(
         "passed", sDigest, "img@sha256:i", 1.0, 1, 1,
