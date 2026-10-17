@@ -33967,4 +33967,65 @@ LIST_FALSIFICATIONS = [
         old='                await _fnReleaseClaimUnlessInside(sName);\n',
         new='',
     ),
+    # --- 2026-10-16: the viewers belong to the project that filled them ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testViewersBelongToTheirProject.py::'
+            'testReturningFromTheProjectsHubKeepsTheViewers'
+        ),
+        # every dashboard entry empties the viewers, the same project too
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='        if (sProjectKey === sViewerProjectKey) return;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testViewersBelongToTheirProject.py::'
+            'testReturningFromTheEnvironmentsHubKeepsTheViewers'
+        ),
+        # leaving for the Environments Hub empties the viewers
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        _fnCancelAllTimers();\n'
+            '        VaibifyTerminal.fnCloseAll();\n'
+        ),
+        new=(
+            '        _fnCancelAllTimers();\n'
+            '        VaibifyFigureViewer.fnBindViewersToProject(null, "");\n'
+            '        VaibifyTerminal.fnCloseAll();\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testViewersBelongToTheirProject.py::'
+            'testLeavingAProjectForNoProjectEmptiesTheViewers'
+        ),
+        # the no-project dashboard never asks whose files the viewers hold
+        source='vaibify/gui/static/scriptApplication.js',
+        old='            VaibifyFigureViewer.fnBindViewersToProject(sId, "");\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testViewersBelongToTheirProject.py::'
+            'testOpeningAProjectAfterNoProjectEmptiesTheViewers'
+        ),
+        # a project's dashboard never asks whose files the viewers hold
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        VaibifyFigureViewer.fnBindViewersToProject('
+            'sId, data.sWorkflowPath);\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testViewersBelongToTheirProject.py::'
+            'testAnotherEnvironmentEmptiesTheViewers'
+        ),
+        # the viewers' project is identified by its path alone
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='            [sContainerId, sWorkflowPath || ""]);\n',
+        new='            [sWorkflowPath || ""]);\n',
+    ),
 ]
