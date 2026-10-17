@@ -146,8 +146,8 @@ def _fnSeedReadyL3Repo(sProjectRepo):
     """Seed a project repo so it passes every L3 readiness verifier.
 
     Sets up MANIFEST.sha256, requirements.lock, .vaibify/environment.json,
-    Dockerfile, and reproduce.sh — all the artefacts the L3 readiness
-    composition needs to return True.
+    Dockerfile, reproduce.sh and the rerun assessor beside it — all the
+    artefacts the L3 readiness composition needs to return True.
     """
     import hashlib
     pathDir = os.path.join(sProjectRepo, ".vaibify")
@@ -181,6 +181,11 @@ def _fnSeedReadyL3Repo(sProjectRepo):
     # 2026-09-14, so one naming only reproduce.sh and the Dockerfile
     # reads as incomplete and the readiness route refuses.
     sReproHash = hashlib.sha256(sReproBody.encode()).hexdigest()
+    from tests.levelGateStubs import fsWriteRerunAssessor
+    import pathlib
+    sAssessor = fsWriteRerunAssessor(pathlib.Path(sProjectRepo), {"listSteps": []})
+    with open(os.path.join(sProjectRepo, sAssessor), "rb") as fileAssessor:
+        sAssessorHash = hashlib.sha256(fileAssessor.read()).hexdigest()
     sDockerHash = hashlib.sha256(sDockerBody.encode()).hexdigest()
     sLockHash = hashlib.sha256(sLockBody.encode()).hexdigest()
     with open(
@@ -189,6 +194,7 @@ def _fnSeedReadyL3Repo(sProjectRepo):
         sEnvelopeHash = hashlib.sha256(fileEnvelope.read()).hexdigest()
     sManifestBody = (
         f"{sReproHash}  reproduce.sh\n"
+        f"{sAssessorHash}  {sAssessor}\n"
         f"{sDockerHash}  Dockerfile\n"
         f"{sLockHash}  requirements.lock\n"
         f"{sEnvelopeHash}  .vaibify/environment.json\n"

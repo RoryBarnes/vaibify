@@ -1153,10 +1153,13 @@ var VaibifyProofTab = (function () {
            and never shown as current (design F11, D7). */
         var bHistorical = dictCurrent.bHistorical === true;
         var sSummary = bHistorical ? "previous check" : sStatus;
+        if (bHistorical) {
+            sStatus = "historical";
+        }
         // sStatus comes from an agent-writable JSON file; it must be
         // escaped in the attribute context too, not just as text.
         return '<div class="proof-card proof-attestation-card status-' +
-            fnEscapeHtml(bHistorical ? "historical" : sStatus) + '">' +
+            fnEscapeHtml(sStatus) + '">' +
             '<div class="proof-card-header">' +
             '<span class="proof-card-title">Level 3 Attestation</span>' +
             '<span class="proof-card-summary">' +
