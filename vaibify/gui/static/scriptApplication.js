@@ -4004,14 +4004,12 @@ const VaibifyApp = (function () {
     }
 
     function _fdictDescribeDeterminismScan(dictSafe) {
-        /* The scan answers TWO of the three determinism questions'
-           worth of evidence, and the toast used to report only one.
-           A researcher who ran it to settle the MKL question read
-           "none of the known non-determinism patterns found" and
-           reasonably concluded the scan had told them nothing —
-           because about MKL it had (reported 2026-08-30). The maths
-           library reading rides every branch now, in the short form
-           the backend authors beside the long one. */
+        /* The scan reports the script anti-patterns AND which maths
+           library the lock declares, because the profiles cover
+           OpenBLAS and not Intel MKL -- a toast reporting only the
+           first told a researcher nothing about the second (reported
+           2026-08-30). The maths library reading rides every branch,
+           in the short form the backend authors beside the long one. */
         var sMaths = (dictSafe.dictMathsLibrary || {}).sHeadline || "";
         var sSuffix = sMaths ? " " + sMaths : "";
         var listIssues = dictSafe.listIssues || [];
@@ -4653,17 +4651,12 @@ const VaibifyApp = (function () {
     }
 
     function _fdictReadDeterminismForm(elButton) {
-        /* Read ONE question's answer from the form the button sits
-           in. Each question is now its own row with its own Save, so
-           a body carries one answer and the endpoint's key merge
-           leaves the other two alone.
+        /* Read the question's answer from the form the button sits in.
 
-           An unanswered form submits NOTHING rather than a default.
-           The previous version sent `bAcceptBlasVariance: false` for
-           an unticked box, which recorded a block that satisfied no
-           gate while turning the row green — the defect this whole
-           change came from. A researcher who saves without choosing
-           now gets told to choose. */
+           An unanswered form submits NOTHING rather than a default: an
+           older form sent a value for an unticked box, which recorded a
+           block that satisfied no gate while turning the row green. A
+           researcher who saves without choosing is told to choose. */
         var elForm = elButton.closest(".determinism-form");
         if (!elForm) return null;
         var elChecked = elForm.querySelector(
@@ -4677,21 +4670,10 @@ const VaibifyApp = (function () {
     }
 
     function _fdictBuildDeterminismBody(elForm, sAnswer) {
-        // The answer, plus the value that answer needs. A value is
-        // sent as null when the chosen answer does not want one, so a
-        // thread count survives no longer than the decision to pin.
+        // The answer and nothing else: the server records the
+        // execution profile it names, so no profile ID is ever sent.
         var dictBody = {};
         dictBody[elForm.dataset.answerKey] = sAnswer;
-        var sValueKey = elForm.dataset.valueKey || "";
-        if (!sValueKey) return dictBody;
-        var elValue = elForm.querySelector(".determinism-value");
-        var sRaw = elValue ? String(elValue.value).trim() : "";
-        if (sRaw === "" || sAnswer !== "pinned") {
-            dictBody[sValueKey] = null;
-            return dictBody;
-        }
-        dictBody[sValueKey] = (sValueKey === "dOmpNumThreads")
-            ? parseInt(sRaw, 10) : sRaw;
         return dictBody;
     }
 

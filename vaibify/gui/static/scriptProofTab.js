@@ -288,10 +288,10 @@ var VaibifyProofTab = (function () {
              sFixLabel: "Open the Main tab"},
             {sStateKey: "bDeterminismDeclared",
              sLabel: "Determinism declared",
-             sWhat: "You have stated how exactly a rerun must match " +
-                 "your numbers — random seeding and numeric-library " +
-                 "variance rules.",
-             sHow: "Declare the rules in the Determinism section of " +
+             sWhat: "You have answered how much speed vaibify should " +
+                 "trade for repeatable files, which chooses the " +
+                 "execution settings every rerun replays.",
+             sHow: "Answer the question in the Determinism section of " +
                  "the Project block.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},

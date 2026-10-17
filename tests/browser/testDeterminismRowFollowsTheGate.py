@@ -1,31 +1,21 @@
-"""Each determinism question gets its own row, marker, and answer.
+"""The determinism question renders as the gate asks it, and as it was answered.
 
-Reported 2026-08-30, in two rounds. First: the researcher declared
-their project had nothing non-deterministic, the row went green, and
-the Level 3 verify refused — because the form wrote
-``{bAcceptBlasVariance: false}`` when submitted with nothing ticked,
-which the row read as "a declaration exists" and the gate read as
-nothing. Then, looking at the repaired row: the section was still
-unreadable, and it was not clear that three separate things were being
-asked at all.
-
-So determinism became three separately-answered questions (the 2026-08-30
-ruling), each with its own row and marker. ANSWERING is the criterion,
-never a particular answer — "I do not accept last-digit differences",
-"the thread count is not fixed" and "this project does not use Intel
-MKL" all pass. Only silence fails.
+History: on 2026-08-30 the row read green over a block that declared
+nothing, and then, repaired, was unreadable. Determinism became three
+separately-answered questions; on 2026-10-17 those became ONE (design
+ruling 2): how much speed vaibify should trade for repeatable files. The
+answer chooses an execution profile, which vaibify records.
 
 These assertions are about the SCREEN, so a Python test of the gate
-proves none of them. Four properties:
+proves none of them:
 
-* Three rows, not one, each carrying its own marker.
-* An unanswered question reads RED and an answered one GREEN,
-  independently — the whole point of splitting them.
-* The researcher-facing text names no schema keys. The old copy put
-  ``bAcceptBlasVariance`` in front of a scientist as if it were a word,
-  and left BLAS undefined.
-* Saving without choosing records NOTHING. The default-writing form is
-  what manufactured the original bug.
+* one row, red until answered, offering both answers with neither
+  chosen, the recommended one marked and its cost stated;
+* an answered row shows the answer in its own words AND the profile it
+  recorded -- the ID a reproduction replays;
+* the text is the design's wording, with no schema key in it;
+* when a current attestation is on file, the form says BEFORE saving
+  that a different answer retires it.
 """
 
 import pytest
@@ -58,21 +48,17 @@ def fixtureDropClaimsBetweenTests(serverHub):
     serverHub.app.state.dictSessionOwner.clear()
 
 
-# The payload the backend sends for a half-answered project: the BLAS
-# question answered, the other two still open.
-_S_DRIVE_ROWS = """(listQuestions) => {
+_S_DRIVE_ROW = """(dictArgs) => {
     const sHtml = VaibifyWorkflowRequirements.fsRenderProjectBlock({
         dictWorkflowEnvelopeDetail: {
-            dictDeterminism: {sBlasVarianceAnswer: 'accepted'},
-            bDeterminismDeclared: false,
-            listDeterminismQuestions: listQuestions,
+            dictDeterminism: dictArgs.dictDeterminism,
+            bDeterminismDeclared: dictArgs.bDeclared,
+            bRebuildAttestationCurrent: dictArgs.bAttestationCurrent,
+            listDeterminismQuestions: dictArgs.listQuestions,
         },
         dictRemoteChecks: {},
         setExpandedRequirementGroups: new Set(['determinism']),
-        setExpandedRequirementRows: new Set([
-            'determinism-blasVariance', 'determinism-ompThreads',
-            'determinism-mklMode',
-        ]),
+        setExpandedRequirementRows: new Set(['determinism-repeatability']),
         setToggledFileGroups: new Set(),
     });
     const elHost = document.createElement('div');
@@ -88,142 +74,143 @@ _S_DRIVE_ROWS = """(listQuestions) => {
         sKey: elRow.querySelector('.requirement-row-header').dataset.req,
         sMarkup: elRow.querySelector(
             '.requirement-row-header').innerHTML,
-        sText: elRow.textContent,
     }));
-    const sGroupText = elGroup.textContent;
+    const listRadios = Array.from(elGroup.querySelectorAll(
+        '.determinism-answer')).map((el) => ({
+        sValue: el.value, bChecked: el.checked}));
+    const elWhy = elGroup.querySelector('.determinism-why');
+    const dictSeen = {
+        listRows: listRows, listRadios: listRadios,
+        sGroupText: elGroup.textContent,
+        bWhyClosed: Boolean(elWhy) && !elWhy.open,
+        bRawClosed: (() => {
+            const elRaw = elGroup.querySelector('.determinism-raw-disclosure');
+            return Boolean(elRaw) && !elRaw.open;
+        })(),
+    };
     elHost.remove();
-    return {listRows: listRows, sGroupText: sGroupText};
+    return dictSeen;
 }"""
 
 
-def _flistQuestionPayload():
-    """The wire shape the backend actually builds, from the backend."""
+def _fdictDriveTheRow(pageDashboard, dictDeterminism, bAttestationCurrent):
+    """Render the row from the wire shape the backend actually builds."""
     from vaibify.gui.routes.pipelineRoutes import (
         _flistEnvelopeDeterminismQuestions,
     )
-    return _flistEnvelopeDeterminismQuestions(
-        {"dictDeterminism": {"sBlasVarianceAnswer": "accepted"}},
+    from vaibify.reproducibility.determinismGate import (
+        fbWorkflowDeclaresDeterminism,
     )
+    dictWorkflow = {"dictDeterminism": dictDeterminism}
+    return pageDashboard.evaluate(_S_DRIVE_ROW, {
+        "dictDeterminism": dictDeterminism or None,
+        "bDeclared": fbWorkflowDeclaresDeterminism(dictWorkflow),
+        "bAttestationCurrent": bAttestationCurrent,
+        "listQuestions": _flistEnvelopeDeterminismQuestions(dictWorkflow),
+    })
+
+
+def test_an_unanswered_question_is_one_red_row_offering_both_answers(
+    pageDashboard, serverHub,
+):
+    """Neither answer is chosen for the researcher, and the cost is stated."""
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
+    dictSeen = _fdictDriveTheRow(pageDashboard, {}, False)
+    assert [d["sKey"] for d in dictSeen["listRows"]] == [
+        "determinism-repeatability"]
+    assert "level-cell-none" in dictSeen["listRows"][0]["sMarkup"]
+    assert dictSeen["listRadios"] == [
+        {"sValue": "speed", "bChecked": False},
+        {"sValue": "across", "bChecked": False}]
+    sText = dictSeen["sGroupText"]
+    assert "Recommended for most projects." in sText
+    assert "several times slower" in sText
+    assert dictSeen["bWhyClosed"], "the explanation is missing or open"
+    assert pageDashboard.listPageErrors == []
 
 
 @pytest.mark.falsification
-def test_each_question_gets_its_own_row_and_marker(
+def test_the_row_renders_the_answer_and_the_profile_it_recorded(
     pageDashboard, serverHub,
 ):
-    """Three independent sources of difference, three lights.
+    """The answer in its own words, beside the ID a reproduction replays.
 
-    One light over an OR could not say which of the three was open —
-    and pinning a thread count says nothing about whether last-digit
-    variance is acceptable.
-
-    Kills: collapsing _flistDeterminismRows back to a single row, which
-    puts one marker back in front of three questions.
+    Kills: describing the answer without the execution profile it
+    recorded.
     """
     fnOpenTheSeededHostWorkflow(
         pageDashboard, serverHub, bAwaitProjectBlock=True,
     )
-    dictSeen = pageDashboard.evaluate(
-        _S_DRIVE_ROWS, _flistQuestionPayload())
-    listRows = dictSeen["listRows"]
-
-    assert len(listRows) == 3, (
-        f"the determinism section renders {len(listRows)} row(s), so "
-        "one marker still stands for three questions"
-    )
-    dictByKey = {d["sKey"]: d for d in listRows}
-    assert "level-cell-attained" in (
-        dictByKey["determinism-blasVariance"]["sMarkup"]
-    ), "the answered question is not credited"
-    for sKey in ("determinism-ompThreads", "determinism-mklMode"):
-        assert "level-cell-none" in dictByKey[sKey]["sMarkup"], (
-            f"{sKey} is unanswered and does not read red: "
-            f"{dictByKey[sKey]['sMarkup'][:300]}"
-        )
+    dictSeen = _fdictDriveTheRow(pageDashboard, {
+        "sRepeatabilityAnswer": "across",
+        "sExecutionProfile": "across-v1"}, False)
+    assert "level-cell-attained" in dictSeen["listRows"][0]["sMarkup"]
+    assert ("Your answer: Repeatable across computers (execution profile "
+            "across-v1)") in dictSeen["sGroupText"]
+    assert {"sValue": "across", "bChecked": True} in dictSeen["listRadios"]
+    assert pageDashboard.listPageErrors == []
 
 
 @pytest.mark.falsification
-def test_the_questions_are_asked_in_words_not_schema_keys(
+def test_the_question_is_asked_in_words_not_schema_keys(
     pageDashboard, serverHub,
 ):
-    """A scientist is being asked about their science.
+    """A researcher is being asked about their work, not about a schema.
 
-    The old copy showed `bAcceptBlasVariance` and `dOmpNumThreads` as
-    if they were words, and left BLAS undefined entirely.
-
-    Kills: dropping sPlainQuestion from the row detail, which leaves
-    the researcher with a label and no question.
+    Kills: dropping the question from the row detail, which leaves the
+    researcher with a label and no question.
     """
     fnOpenTheSeededHostWorkflow(
         pageDashboard, serverHub, bAwaitProjectBlock=True,
     )
-    sText = pageDashboard.evaluate(
-        _S_DRIVE_ROWS, _flistQuestionPayload())["sGroupText"]
-
-    for sKey in ("bAcceptBlasVariance", "dOmpNumThreads", "sMklCbwr"):
+    sText = _fdictDriveTheRow(pageDashboard, {}, False)["sGroupText"]
+    assert ("How much speed should vaibify trade for repeatable files?"
+            in sText), sText[:400]
+    for sKey in ("sRepeatabilityAnswer", "sExecutionProfile",
+                 "bAcceptBlasVariance", "dOmpNumThreads"):
         assert sKey not in sText, (
-            f"the researcher-facing text still shows {sKey}"
-        )
-    # No BARE acronym reaches the screen. Asserted as the property
-    # rather than as a phrase: this copy was rewritten once for being
-    # unreadable ("MKL is not defined", 2026-08-30) and a test pinned
-    # to a sentence would have been rewritten with it. "OpenBLAS" is a
-    # product name and is matched as a whole word so it does not
-    # demand an expansion of its own.
-    import re as reModule
-    for sAcronym, sExpansion in (
-        ("MKL", "Math Kernel Library"),
-        ("BLAS", "Basic Linear Algebra"),
-    ):
-        if reModule.search(r"\b" + sAcronym + r"\b", sText):
-            assert sExpansion in sText, (
-                f"{sAcronym} reaches the screen unexpanded: "
-                f"{sText[:400]}"
-            )
-    assert "final digits" in sText, (
-        "the questions never say what the variance actually IS, which "
-        f"is what a researcher needs in order to answer: {sText[:400]}"
-    )
+            f"the researcher-facing text shows {sKey}")
+    assert "last digits" in sText, (
+        "the text never says what can differ, which is what a "
+        f"researcher needs in order to answer: {sText[:400]}")
+    assert pageDashboard.listPageErrors == []
 
+
+@pytest.mark.falsification
+def test_a_change_that_would_retire_the_attestation_says_so_first(
+    pageDashboard, serverHub,
+):
+    """With a current attestation on file, the form names the retirement.
+
+    Kills: telling the researcher only after the save, from a row that
+    turned orange.
+    """
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
+    dictAnswered = {"sRepeatabilityAnswer": "speed",
+                    "sExecutionProfile": "speed-v1"}
+    sCurrent = _fdictDriveTheRow(
+        pageDashboard, dictAnswered, True)["sGroupText"]
+    assert "Saving a different answer retires it" in sCurrent
+    sNoAttestation = _fdictDriveTheRow(
+        pageDashboard, dictAnswered, False)["sGroupText"]
+    assert "Saving a different answer retires it" not in sNoAttestation
     assert pageDashboard.listPageErrors == []
 
 
 def test_the_stored_entry_is_available_but_not_in_the_way(
     pageDashboard, serverHub,
 ):
-    """Raw JSON belongs behind a disclosure, not mid-row.
-
-    A researcher publishing a project is entitled to see the exact
-    bytes their declaration became; they should not have to read past
-    them to answer a question.
-    """
+    """Raw JSON belongs behind a disclosure, not mid-row."""
     fnOpenTheSeededHostWorkflow(
         pageDashboard, serverHub, bAwaitProjectBlock=True,
     )
-    bClosed = pageDashboard.evaluate(
-        """(listQuestions) => {
-            const sHtml =
-                VaibifyWorkflowRequirements.fsRenderProjectBlock({
-                dictWorkflowEnvelopeDetail: {
-                    dictDeterminism: {sBlasVarianceAnswer: 'accepted'},
-                    listDeterminismQuestions: listQuestions,
-                },
-                dictRemoteChecks: {},
-                setExpandedRequirementGroups: new Set(['determinism']),
-                setExpandedRequirementRows:
-                    new Set(['determinism-blasVariance']),
-                setToggledFileGroups: new Set(),
-            });
-            const elHost = document.createElement('div');
-            elHost.innerHTML = sHtml;
-            document.body.appendChild(elHost);
-            const elRaw = elHost.querySelector(
-                '.determinism-raw-disclosure');
-            const bResult = Boolean(elRaw) && !elRaw.open;
-            elHost.remove();
-            return bResult;
-        }""", _flistQuestionPayload())
-    assert bClosed, (
-        "the raw project.json entry is missing or open by default"
-    )
-
+    dictSeen = _fdictDriveTheRow(pageDashboard, {
+        "sRepeatabilityAnswer": "speed",
+        "sExecutionProfile": "speed-v1"}, False)
+    assert dictSeen["bRawClosed"], (
+        "the raw project.json entry is missing or open by default")
     assert pageDashboard.listPageErrors == []

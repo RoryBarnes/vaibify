@@ -68,7 +68,9 @@ def test_the_run_all_lane_signals_each_group_and_not_the_legacy_one():
             from types import SimpleNamespace
             return SimpleNamespace(iExitCode=0, sStdout="", sStderr="")
 
-    dictCtx = {"docker": DockerRecorder()}
+    # The live workflows ride every route context; this one has none, so
+    # the run asks for no execution settings.
+    dictCtx = {"docker": DockerRecorder(), "workflows": {}}
     for sGroup in ("dictIntegrity", "dictQuantitative", "legacy"):
         testRoutes._fdictRunOneTestCategory(
             dictCtx, "cid", "/workspace/proj/StepA", ["pytest tests"],

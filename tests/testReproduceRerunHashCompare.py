@@ -88,13 +88,10 @@ def fixtureReadyRepo(tmp_path):
     (pathWorkflows / "wf.json").write_text(json.dumps({
         "listSteps": [],
         "dictDeterminism": {
-            # All three questions answered (2026-08-30 ruling).
-            # A lone waiver used to satisfy the gate; it is now
-            # one answer of three, so a fixture carrying only it
-            # builds a project that is NOT L3-ready.
-            "sBlasVarianceAnswer": "accepted",
-            "sOmpThreadsAnswer": "unpinned",
-            "sMklModeAnswer": "not-used",
+            # The determinism question answered: one question since
+            # 2026-10-17, and either answer passes.
+            "sRepeatabilityAnswer": "speed",
+            "sExecutionProfile": "speed-v1",
         },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],

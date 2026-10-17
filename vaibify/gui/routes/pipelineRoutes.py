@@ -2966,21 +2966,18 @@ def _fdictBuildWorkflowEnvelopeDetail(
             (dictWorkflow or {}).get("dictDeterminism") or None,
         # The VERDICT, not the raw block, because the row must not
         # re-derive it. The frontend used to paint green for any
-        # non-empty dictDeterminism — and the declare form writes
-        # `{"bAcceptBlasVariance": false}` when submitted with nothing
-        # ticked, which is non-empty and declares NOTHING. So the row
-        # went green, the researcher believed the requirement met, and
-        # the L3 verify refused them with a readiness error they had no
-        # way to connect to it (reported 2026-08-30). One authority.
+        # non-empty dictDeterminism — and an old form wrote a block that
+        # was non-empty and declared NOTHING. So the row went green, the
+        # researcher believed the requirement met, and the L3 verify
+        # refused them with a readiness error they had no way to connect
+        # to it (reported 2026-08-30). One authority.
         "bDeterminismDeclared":
             determinismGate.fbWorkflowDeclaresDeterminism(dictWorkflow),
         "listDeterminismIssues":
             determinismGate.flistAuditWorkflow(dictWorkflow),
-        # Per QUESTION, since the 2026-08-30 ruling made determinism
-        # three separately-answered requirements rather than one
-        # satisfiable three ways. Each gets its own row and its own
-        # marker, so a researcher can see which of the three is open
-        # instead of one light standing for all of them.
+        # Per QUESTION, in the gate's own words. One question since
+        # 2026-10-17, so one row; the shape stays a list because the
+        # row is rendered from whatever the gate asks.
         "listDeterminismQuestions": _flistEnvelopeDeterminismQuestions(
             dictWorkflow,
         ),
@@ -3176,6 +3173,10 @@ def _flistEnvelopeDeterminismQuestions(dictWorkflow):
             "sKey": dictQuestion["sKey"],
             "sLabel": dictQuestion["sLabel"],
             "sQuestion": dictQuestion["sPlainQuestion"],
+            "listChoices": [dict(dictChoice) for dictChoice in
+                            dictQuestion.get("listChoices", ())],
+            "sWhy": dictQuestion.get("sWhy", ""),
+            "sConsequence": dictQuestion.get("sConsequence", ""),
             "bAnswered": dictQuestion["sKey"] not in setUnanswered,
             "sAnswer": dictDeterminism.get(
                 dictQuestion["sAnswerKey"],

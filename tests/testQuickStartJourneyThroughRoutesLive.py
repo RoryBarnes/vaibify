@@ -211,9 +211,9 @@ def fsPublishAuthorsProject(sRepo, dictOutputs, sTarballSha, iTarballBytes,
         "sWorkflowName": "Journey", "sPlotDirectory": "figures",
         "bNoStandaloneBinaries": True, "listDeclaredBinaries": [],
         "dictDeterminism": {
-            determinismGate.S_BLAS_ANSWER_KEY: determinismGate.S_BLAS_ACCEPTED,
-            determinismGate.S_OMP_ANSWER_KEY: determinismGate.S_OMP_UNPINNED,
-            determinismGate.S_MKL_ANSWER_KEY: determinismGate.S_MKL_NOT_USED,
+            determinismGate.S_REPEATABILITY_ANSWER_KEY: (
+                determinismGate.S_REPEATABILITY_SPEED),
+            "sExecutionProfile": "speed-v1",
         },
         "listSteps": [{
             "sName": "Make Grid", "sStepId": "make-grid",

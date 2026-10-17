@@ -188,7 +188,7 @@ def testTheAcrossProfileReproducesTheCommittedFixture(
 def testTheAcrossProfileGivesTheSameBytesOnTwoCores(dictProfileImage, tmp_path):
     """One thread is requested, so the visible cores cannot reach the bytes.
 
-    Kills: ``across-v1`` requesting no OpenBLAS thread pin.
+    Kills: ``across-v1`` requesting no thread pin.
     """
     dictProfile = executionProfiles.fdictProfileFromTable(
         executionProfiles.S_PROFILE_ACROSS)

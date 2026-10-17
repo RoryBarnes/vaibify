@@ -2,7 +2,8 @@
 
 Covers the four new anti-pattern detectors (clock-derived seeds,
 explicit torch opt-outs, /dev/urandom reads, ``secrets`` module use)
-plus the workflow-level BLAS / OMP declaration helper.
+plus the workflow-level repeatability question, which since 2026-10-17
+is the one determinism question (design ruling 2).
 """
 
 import textwrap
@@ -103,13 +104,11 @@ def test_missing_script_returns_explicit_issue(tmp_path):
 
 
 def test_a_single_pinned_value_does_not_declare_determinism():
-    """One value satisfied the whole gate until the 2026-08-30 ruling.
+    """A legacy value declares nothing.
 
-    Both of these asserted the opposite. They are inverted rather than
-    removed because "a pinned thread count is a determinism
-    declaration" is the belief the ruling overturned: it says nothing
-    about whether last-digit variance is acceptable, and the two are
-    independent sources of run-to-run difference.
+    One value satisfied the whole gate until the 2026-08-30 ruling, and
+    none does now: the one question asks which execution profile runs,
+    and a pinned thread count or a waiver does not say.
     """
     assert not fbWorkflowDeclaresDeterminism(
         {"dictDeterminism": {S_OMP_NUM_THREADS_KEY: 1}},
@@ -119,14 +118,18 @@ def test_a_single_pinned_value_does_not_declare_determinism():
     )
 
 
-def test_answering_all_three_questions_declares_determinism():
-    """The passing shape, so the inversions above are not the whole story.
+def test_either_answer_declares_determinism():
+    """The passing shapes, so the inversions above are not the whole story.
 
-    Every answer here is the DECLINING one, which must pass: the gate
-    asks that each question be answered, never that it be answered a
-    particular way.
+    Either answer passes: the gate asks that the question be answered,
+    never that it be answered a particular way. The three legacy
+    answers, all given, do not answer it (design D7).
     """
-    assert fbWorkflowDeclaresDeterminism({"dictDeterminism": {
+    for sAnswer, sProfile in (("speed", "speed-v1"), ("across", "across-v1")):
+        assert fbWorkflowDeclaresDeterminism({"dictDeterminism": {
+            "sRepeatabilityAnswer": sAnswer, "sExecutionProfile": sProfile,
+        }})
+    assert not fbWorkflowDeclaresDeterminism({"dictDeterminism": {
         "sBlasVarianceAnswer": "rejected",
         "sOmpThreadsAnswer": "unpinned",
         "sMklModeAnswer": "not-used",
@@ -155,23 +158,16 @@ def test_audit_surfaces_unseeded_step_warning():
 @pytest.mark.parametrize("waiverValue", [True, "false", 1, "no"])
 @pytest.mark.falsification
 def test_a_legacy_waiver_value_never_attests_on_its_own(waiverValue):
-    """The legacy waiver KEY satisfies nothing after the 2026-08-30 ruling.
+    """The legacy waiver KEY answers nothing.
 
-    It used to be one arm of an OR, and this test used to pin that
-    only a literal ``True`` took that arm. Determinism is now three
-    separately-answered questions, so a stored VALUE — of any truthiness,
-    including the literal True a real waiver wrote — is not an answer.
-    Only the recorded answer keys are. A hand-edited ``"no"`` and a
-    genuine tick are equally powerless here, which is stricter than the
-    branch this replaces.
+    It used to be one arm of an OR. A stored VALUE -- of any
+    truthiness, including the literal True a real waiver wrote -- is
+    not an answer to the one question, which chooses an execution
+    profile a waiver never named. A hand-edited ``"no"`` and a genuine
+    tick are equally powerless here.
 
-    The literal-True case is where the value still matters: the
-    migration promotes it to an answer. That is asserted in
-    ``testDeterminismRowMatchesItsGate`` where the migration lives, not
-    here where the gate does.
-
-    Kills: reading the legacy waiver key as the blasVariance answer,
-    which silently credits every project that opened the old form.
+    Kills: reading the legacy waiver as an answer to the question,
+    which silently credits every project that opened an old form.
     """
     from vaibify.reproducibility.determinismGate import (
         flistUnansweredDeterminismQuestions,
@@ -179,13 +175,7 @@ def test_a_legacy_waiver_value_never_attests_on_its_own(waiverValue):
     dictWorkflow = {
         "dictDeterminism": {S_ACCEPT_BLAS_WAIVER_KEY: waiverValue},
     }
-    # Asserted PER QUESTION, not on the aggregate gate. With three
-    # questions ANDed together, a mutation that wrongly answers one of
-    # them leaves the other two open and the gate still refuses -- so
-    # `fbWorkflowDeclaresDeterminism(...) is False` is true of the bug
-    # and the fix alike, and this test survived exactly that mutation
-    # before the assertion moved down here.
-    assert "blasVariance" in flistUnansweredDeterminismQuestions(
+    assert "repeatability" in flistUnansweredDeterminismQuestions(
         dictWorkflow,
     ), "the legacy waiver value was read as an answer"
     assert fbWorkflowDeclaresDeterminism(dictWorkflow) is False
@@ -193,16 +183,14 @@ def test_a_legacy_waiver_value_never_attests_on_its_own(waiverValue):
 
 @pytest.mark.falsification
 def test_mkl_cbwr_alone_no_longer_declares_determinism():
-    """One answer does not carry the other two (2026-08-30 ruling).
+    """A stored MKL mode answers nothing.
 
-    This test asserted the opposite until the gate became an AND: an
-    MKL pin alone satisfied the whole requirement, so a project could
-    attest at Level 3 having said nothing about numeric variance or
-    thread count. Inverted rather than deleted, because "MKL alone is
-    enough" is precisely the belief the ruling overturned and the one
-    a future reader is most likely to restore.
+    An MKL pin alone satisfied the whole requirement until 2026-08-30.
+    It is inverted rather than deleted, because "MKL alone is enough"
+    is the belief a future reader is most likely to restore -- and no
+    profile covers MKL at all.
 
-    Kills: restoring the OR in fbWorkflowDeclaresDeterminism.
+    Kills: reading a stored MKL mode as an answer to the question.
     """
     from vaibify.reproducibility.determinismGate import (
         flistUnansweredDeterminismQuestions,
@@ -210,15 +198,12 @@ def test_mkl_cbwr_alone_no_longer_declares_determinism():
     dictWorkflow = {
         "dictDeterminism": {S_MKL_CBWR_KEY: "COMPATIBLE"},
     }
-    # Per question, for the reason given above: an AND over three
-    # hides any mutation that flips only one of them, and this test
-    # survived one before the assertion moved down here.
-    assert "mklMode" in flistUnansweredDeterminismQuestions(
+    assert "repeatability" in flistUnansweredDeterminismQuestions(
         dictWorkflow,
-    ), "a stored MKL value was read as an answer to the MKL question"
+    ), "a stored MKL value was read as an answer to the question"
     assert fbWorkflowDeclaresDeterminism(dictWorkflow) is False
     assert flistAuditWorkflow(dictWorkflow), (
-        "a workflow answering one question of three reports no issue"
+        "a workflow with only a legacy value reports no issue"
     )
 
 
@@ -263,14 +248,12 @@ def test_bare_os_urandom_outside_seed_is_flagged(tmp_path):
 def test_missing_determinism_block_is_an_issue():
     """A workflow with no determinism declaration surfaces issues.
 
-    One per unanswered question since 2026-08-30, and the assertion
-    moved off the key name deliberately: the issue text is
-    researcher-facing and must not contain ``dictDeterminism`` at all,
-    so matching on it would now pin the very thing the copy fix
-    removed.
+    One per unanswered question, and the assertion is off the key name
+    deliberately: the issue text is researcher-facing and must not
+    contain ``dictDeterminism`` at all.
 
     Kills: flistAuditWorkflow returning no issues for an unanswered
-    workflow, which leaves the three rows red with nothing to act on.
+    workflow, which leaves the row red with nothing to act on.
     """
     from vaibify.reproducibility.determinismGate import (
         LIST_DETERMINISM_QUESTIONS,

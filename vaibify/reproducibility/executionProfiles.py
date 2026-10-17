@@ -39,6 +39,7 @@ __all__ = [
     "DICT_EXECUTION_PROFILES",
     "ExecutionProfileError",
     "fsSelectedProfileId",
+    "fsNewestProfileForAnswer",
     "fdictProfileFromTable",
     "fdictWorkflowExecutionProfile",
     "flistDescribeProfileProblems",
@@ -89,6 +90,25 @@ def fsSelectedProfileId(dictWorkflow):
         return S_DEFAULT_EXECUTION_PROFILE
     return dictDeterminism.get(S_EXECUTION_PROFILE_KEY) or (
         S_DEFAULT_EXECUTION_PROFILE)
+
+
+def fsNewestProfileForAnswer(sAnswer):
+    """Return the newest profile ID for an answer: ``across`` -> ``across-vN``.
+
+    The researcher answers in words, and vaibify writes the ID: the
+    newest version in the table for that answer, so a later table entry
+    is what a fresh answer chooses while an envelope that recorded an
+    earlier one keeps replaying it.
+    """
+    listVersions = []
+    for sProfileId in DICT_EXECUTION_PROFILES:
+        sStem, _sSeparator, sVersion = sProfileId.rpartition("-v")
+        if sStem == sAnswer and sVersion.isdigit():
+            listVersions.append((int(sVersion), sProfileId))
+    if not listVersions:
+        raise ExecutionProfileError(
+            f"no execution profile answers {sAnswer!r}")
+    return max(listVersions)[1]
 
 
 def fdictProfileFromTable(sProfileId):

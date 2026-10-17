@@ -7721,9 +7721,33 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     color: var(--text-secondary);
 }
 
-.determinism-value-row {
+/* Each answer's own words, under its radio. */
+.determinism-choice-description {
     margin-left: 20px;
     color: var(--text-muted);
+}
+
+.determinism-recommended {
+    color: var(--text-secondary);
+}
+
+/* What an answer changes, said before saving. */
+.determinism-consequence {
+    margin-top: 4px;
+}
+
+/* An answer change retires a current attestation: a consequence the
+   researcher is choosing, so orange rather than a muted footnote. */
+.determinism-retires-attestation {
+    margin: 4px 0;
+    font-size: 12px;
+    color: var(--color-orange);
+}
+
+.determinism-why {
+    margin: 4px 0;
+    font-size: 12px;
+    color: var(--text-secondary);
 }
 
 /* The raw project.json entry, closed by default. It used to sit open

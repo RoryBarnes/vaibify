@@ -552,80 +552,70 @@ var VaibifyWorkflowRequirements = (function () {
 
 
 
-    // The controls for one question: the two answers as radios, plus
-    // the value field the pinned answer needs. Rendered per question
-    // so each row is self-contained -- a researcher answering the
-    // thread question should not have to scroll past the MKL one.
-    var _DICT_DETERMINISM_CONTROLS = {
-        blasVariance: [
-            ["accepted", "Accept last-digit differences"],
-            ["rejected", "Do not accept them"],
-        ],
-        ompThreads: [
-            ["pinned", "Fix the thread count"],
-            ["unpinned", "Leave it free"],
-        ],
-        mklMode: [
-            ["pinned", "Set the reproducibility mode"],
-            ["not-used", "This project does not use Intel MKL"],
-        ],
-    };
-
-    var _DICT_DETERMINISM_VALUE_FIELDS = {
-        ompThreads: {
-            sType: "number", sPlaceholder: "e.g. 8",
-            sHint: "How many threads a rerun must use.",
-        },
-        mklMode: {
-            sType: "text", sPlaceholder: "e.g. COMPATIBLE",
-            sHint: "The mode name a rerun must set.",
-        },
-    };
-
-    function _fsRenderDeterminismQuestionForm(dictQuestion) {
-        var listChoices =
-            _DICT_DETERMINISM_CONTROLS[dictQuestion.sKey] || [];
+    // The controls for the question: its answers as radios, in the
+    // backend's words, with nothing chosen until the researcher
+    // chooses. The profile an answer names is written by the server,
+    // so the form sends the answer and nothing else.
+    function _fsRenderDeterminismQuestionForm(dictQuestion, dictDetail) {
         var sName = "determinism-answer-" + dictQuestion.sKey;
         var sHtml = '<div class="determinism-form" ' +
             'data-question="' + fnEscapeHtml(dictQuestion.sKey) + '" ' +
             'data-answer-key="' +
-            fnEscapeHtml(dictQuestion.sAnswerKey) + '" ' +
-            'data-value-key="' +
-            fnEscapeHtml(dictQuestion.sValueKey || "") + '">';
-        listChoices.forEach(function (aChoice) {
+            fnEscapeHtml(dictQuestion.sAnswerKey) + '">';
+        (dictQuestion.listChoices || []).forEach(function (dictChoice) {
             sHtml += '<label class="determinism-form-row">' +
                 '<input type="radio" name="' + fnEscapeHtml(sName) +
                 '" class="determinism-answer" value="' +
-                fnEscapeHtml(aChoice[0]) + '"' +
-                (dictQuestion.sAnswer === aChoice[0] ? ' checked' : '') +
-                '> ' + fnEscapeHtml(aChoice[1]) + '</label>';
+                fnEscapeHtml(dictChoice.sAnswer) + '"' +
+                (dictQuestion.sAnswer === dictChoice.sAnswer
+                    ? ' checked' : '') +
+                '> <strong>' + fnEscapeHtml(dictChoice.sLabel) +
+                '</strong>' +
+                (dictChoice.bRecommended
+                    ? ' <em class="determinism-recommended">' +
+                      'Recommended for most projects.</em>' : '') +
+                '<div class="determinism-choice-description">' +
+                fnEscapeHtml(dictChoice.sDescription || "") +
+                '</div></label>';
         });
-        sHtml += _fsRenderDeterminismValueField(dictQuestion);
-        return sHtml + _fsRenderActionButton(
+        return sHtml + _fsRenderDeterminismConsequence(
+            dictQuestion, dictDetail) + _fsRenderActionButton(
             "declare-determinism", "", "Save this answer") + '</div>';
     }
 
-    function _fsRenderDeterminismValueField(dictQuestion) {
-        var dictField =
-            _DICT_DETERMINISM_VALUE_FIELDS[dictQuestion.sKey];
-        if (!dictField) return "";
-        return '<label class="determinism-form-row ' +
-            'determinism-value-row">' +
-            fnEscapeHtml(dictField.sHint) + ' ' +
-            '<input type="' + dictField.sType + '" ' +
-            (dictField.sType === "number" ? 'min="1" ' : '') +
-            'class="determinism-value" placeholder="' +
-            fnEscapeHtml(dictField.sPlaceholder) + '" value="' +
-            fnEscapeHtml(dictQuestion.sValue || "") + '"></label>';
+    function _fsRenderDeterminismConsequence(dictQuestion, dictDetail) {
+        /* What an answer does, said BEFORE saving: it changes how steps
+           run, not what Level 3 requires, and changing it retires a
+           current attestation -- named here when one is on file, so
+           the researcher learns it from the form and not from a row
+           that turned orange after the click. */
+        var sHtml = '<div class="requirement-row-howto ' +
+            'determinism-consequence">' +
+            fnEscapeHtml(dictQuestion.sConsequence || "") + '</div>';
+        if (dictQuestion.bAnswered &&
+                dictDetail.bRebuildAttestationCurrent === true) {
+            sHtml += '<div class="determinism-retires-attestation">' +
+                "You have a current Level 3 attestation. Saving a " +
+                "different answer retires it; the record is kept as " +
+                "history.</div>";
+        }
+        return sHtml;
     }
 
-    function _fsRenderMathsLibraryEvidence(dictQuestion, dictDetail) {
-        /* Shown on the MKL row only, because it is the one question a
-           researcher cannot answer by reading their own code. The
-           backend reads it from the dependency lock and states its own
-           limits; this renders that verbatim rather than summarising
-           it into a claim the evidence does not support. */
-        if (dictQuestion.sKey !== "mklMode") return "";
+    function _fsRenderDeterminismWhy(dictQuestion) {
+        if (!dictQuestion.sWhy) return "";
+        return '<details class="determinism-why">' +
+            '<summary>Why does this matter?</summary>' +
+            '<div class="requirement-row-howto">' +
+            fnEscapeHtml(dictQuestion.sWhy) + '</div></details>';
+    }
+
+    function _fsRenderMathsLibraryEvidence(dictDetail) {
+        /* Which maths library is underneath NumPy, read from the
+           dependency lock: the profiles cover OpenBLAS and not Intel
+           MKL, and the backend says which this project declares, with
+           its own limits. Rendered verbatim rather than summarised
+           into a claim the evidence does not support. */
         var dictMaths = dictDetail.dictMathsLibrary;
         if (!dictMaths || !dictMaths.sNote) return "";
         return '<div class="determinism-evidence">' +
@@ -638,8 +628,7 @@ var VaibifyWorkflowRequirements = (function () {
             'random seeds taken from the clock, or values read from ' +
             'the operating system\u2019s randomness source. A clean ' +
             'scan means none of those were found; it is not proof ' +
-            'that the project is repeatable, so the answers above are ' +
-            'still yours to give.</div>' +
+            'that the project is repeatable.</div>' +
             _fsRenderActionButton("scan-determinism", "",
                 "Scan scripts for non-determinism") +
             _fsRenderDeterminismRecordedEntry(dictDetail);
@@ -1955,22 +1944,15 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     function _flistDeterminismRows(dictDetail) {
-        /* One row per QUESTION since the 2026-08-30 ruling. They used
-           to be one row over an OR — any one of three values satisfied
-           the gate — so a single light stood for three independent
-           sources of run-to-run difference and a researcher could not
-           see which was open. Pinning a thread count says nothing
-           about whether last-digit variance is acceptable.
-
-           The labels and question text come from the BACKEND, beside
-           the gate that asks them. A second copy here would be a
-           second account of what is being asked. */
+        /* One row per QUESTION the gate asks -- one since 2026-10-17.
+           The labels, the question and every choice's words come from
+           the BACKEND, beside the gate that asks them. A second copy
+           here would be a second account of what is being asked. */
         /* An empty list means the payload predates the per-question
            shape (or the poll shipped no envelope at all). Rendering
-           NO rows is right: the previous single row's form submitted
-           key names this build no longer reads, so offering it would
-           be a Save button that quietly does nothing — which is the
-           class of defect this change exists to remove. */
+           NO rows is right: an older form submitted key names this
+           build no longer reads, so offering it would be a Save button
+           that quietly does nothing. */
         var listQuestions = dictDetail.listDeterminismQuestions || [];
         return listQuestions.map(function (dictQuestion) {
             return {
@@ -1986,19 +1968,18 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
 
-    var _DICT_DETERMINISM_ANSWER_LABELS = {
-        accepted: "Accepted — a rerun may differ in the last digits",
-        rejected: "Not accepted — a rerun must match exactly",
-        pinned: "Fixed",
-        unpinned: "Not fixed — a rerun may use any thread count",
-        "not-used": "Not used by this project",
-    };
-
     function _fsDescribeDeterminismAnswer(dictQuestion) {
-        var sLabel = _DICT_DETERMINISM_ANSWER_LABELS[
-            dictQuestion.sAnswer] || dictQuestion.sAnswer;
+        /* The choice in its own words, and the profile it recorded --
+           the ID a reproduction replays. */
+        var listMatching = (dictQuestion.listChoices || []).filter(
+            function (dictChoice) {
+                return dictChoice.sAnswer === dictQuestion.sAnswer;
+            });
+        var sLabel = listMatching.length
+            ? listMatching[0].sLabel : dictQuestion.sAnswer;
         if (dictQuestion.sValue) {
-            return sLabel + ": " + dictQuestion.sValue;
+            return sLabel + " (execution profile " +
+                dictQuestion.sValue + ")";
         }
         return sLabel;
     }
@@ -2008,21 +1989,20 @@ var VaibifyWorkflowRequirements = (function () {
     ) {
         /* The question in plain words, then the answer or the
            controls to give one. No key names: a researcher is being
-           asked about their science, and the old copy put
-           `bAcceptBlasVariance` in front of them as if it were a
-           word. */
+           asked about their work, not about a schema. */
         var sHtml = '<div class="requirement-row-detail">' +
             '<div class="requirement-row-status">' +
-            fnEscapeHtml(dictQuestion.sQuestion) + '</div>';
+            fnEscapeHtml(dictQuestion.sQuestion) + '</div>' +
+            _fsRenderDeterminismWhy(dictQuestion);
         if (dictQuestion.bAnswered) {
             sHtml += '<div class="determinism-answer">Your answer: ' +
                 fnEscapeHtml(
                     _fsDescribeDeterminismAnswer(dictQuestion)) +
                 '</div>';
         }
-        sHtml += _fsRenderMathsLibraryEvidence(
-            dictQuestion, dictDetail);
-        return sHtml + _fsRenderDeterminismQuestionForm(dictQuestion) +
+        sHtml += _fsRenderMathsLibraryEvidence(dictDetail);
+        return sHtml +
+            _fsRenderDeterminismQuestionForm(dictQuestion, dictDetail) +
             _fsRenderDeterminismScanHint(dictDetail) + '</div>';
     }
 

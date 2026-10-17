@@ -241,65 +241,46 @@ def test_add_step_unknown_container_returns_404(fixtureClient):
 def test_declare_determinism_writes_dict_and_saves(
     fixtureClient, fixtureWorkflow, fixtureSaves,
 ):
+    """The answer is recorded beside the newest profile it names, and saved."""
+    assert fbWorkflowDeclaresDeterminism(fixtureWorkflow) is False
     response = fixtureClient.post(S_DETERMINISM_URL, json={
-        "bAcceptBlasVariance": False,
-        "dOmpNumThreads": 1,
-        "sMklCbwr": "COMPATIBLE",
+        "sRepeatabilityAnswer": "across",
     })
     assert response.status_code == 200
     dictDeterminism = fixtureWorkflow["dictDeterminism"]
     assert dictDeterminism == {
-        "bAcceptBlasVariance": False,
-        "dOmpNumThreads": 1,
-        "sMklCbwr": "COMPATIBLE",
+        "sRepeatabilityAnswer": "across", "sExecutionProfile": "across-v1",
     }
     assert response.json()["dictDeterminism"] == dictDeterminism
-    # Values are still WRITTEN — a rerun acts on them — but since the
-    # 2026-08-30 ruling they are not ANSWERS, so writing all three
-    # satisfies nothing. This assertion used to read `is True`; the
-    # pair below is what the route now guarantees.
-    assert fbWorkflowDeclaresDeterminism(fixtureWorkflow) is False
-    fixtureClient.post(S_DETERMINISM_URL, json={
-        "sBlasVarianceAnswer": "rejected",
-        "sOmpThreadsAnswer": "pinned",
-        "sMklModeAnswer": "pinned",
-    })
-    assert fbWorkflowDeclaresDeterminism(fixtureWorkflow) is True, (
-        "answering all three questions, with the values already "
-        "pinned above, still does not declare determinism"
-    )
+    assert fbWorkflowDeclaresDeterminism(fixtureWorkflow) is True
     assert fixtureSaves and fixtureSaves[-1][0] == S_CONTAINER_ID
 
 
-def test_declare_determinism_single_key_merges_with_existing(
+def test_declare_determinism_keeps_the_legacy_record(
     fixtureClient, fixtureWorkflow,
 ):
+    """An answer is added beside what was declared before; nothing is lost (D7)."""
     fixtureWorkflow["dictDeterminism"] = {"sMklCbwr": "AUTO"}
     response = fixtureClient.post(
-        S_DETERMINISM_URL, json={"dOmpNumThreads": 4},
+        S_DETERMINISM_URL, json={"sRepeatabilityAnswer": "speed"},
     )
     assert response.status_code == 200
     assert fixtureWorkflow["dictDeterminism"] == {
-        "sMklCbwr": "AUTO", "dOmpNumThreads": 4,
+        "sMklCbwr": "AUTO", "sRepeatabilityAnswer": "speed",
+        "sExecutionProfile": "speed-v1",
     }
 
 
-def test_declare_determinism_null_value_removes_the_key(
+def test_declare_determinism_null_withdraws_the_answer_and_its_profile(
     fixtureClient, fixtureWorkflow,
 ):
-    """A null value retracts a declared key.
-
-    The endpoint merges keys, so before nulls were accepted a
-    mistaken pin (an OpenMP thread count the researcher cleared in
-    the form) survived every re-declaration — the GUI showed the old
-    pin forever.
-    """
+    """A null answer is a withdrawal, and its profile goes with it."""
     fixtureWorkflow["dictDeterminism"] = {
-        "bAcceptBlasVariance": True, "dOmpNumThreads": 1,
+        "bAcceptBlasVariance": True, "sRepeatabilityAnswer": "across",
+        "sExecutionProfile": "across-v1",
     }
     response = fixtureClient.post(
-        S_DETERMINISM_URL,
-        json={"bAcceptBlasVariance": True, "dOmpNumThreads": None},
+        S_DETERMINISM_URL, json={"sRepeatabilityAnswer": None},
     )
     assert response.status_code == 200
     assert fixtureWorkflow["dictDeterminism"] == {
@@ -327,13 +308,14 @@ def test_declare_determinism_rejects_unknown_key(
 
 
 @pytest.mark.parametrize("dictBadBody", [
-    {"bAcceptBlasVariance": "yes"},
-    {"bAcceptBlasVariance": 1},
-    {"dOmpNumThreads": True},
-    {"dOmpNumThreads": "4"},
-    {"sMklCbwr": 5},
-    {"sMklCbwr": ["COMPATIBLE"]},
-    {"bAcceptBlasVariance": {"bNested": True}},
+    {"sRepeatabilityAnswer": 1},
+    {"sRepeatabilityAnswer": True},
+    {"sRepeatabilityAnswer": ["speed"]},
+    {"sRepeatabilityAnswer": {"bNested": True}},
+    {"sRepeatabilityAnswer": "fastest"},
+    {"sExecutionProfile": "across-v1"},
+    {"bAcceptBlasVariance": False},
+    {"dOmpNumThreads": 4},
 ])
 def test_declare_determinism_rejects_wrong_types(
     fixtureClient, fixtureWorkflow, dictBadBody,

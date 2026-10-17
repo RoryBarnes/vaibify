@@ -47,7 +47,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 13
+I_CURRENT_WORKFLOW_VERSION = 14
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 # The remote-data timestamp, named for what the code actually observes.
@@ -780,6 +780,26 @@ def _fnAnswerFromLegacyValue(
         dictDeterminism[sAnswerKey] = sAnswer
 
 
+def _fnMigrateV13ToV14(dictWorkflow, sProjectRepoPath):
+    """Leave the new determinism question unanswered (design D7).
+
+    The three determinism questions became one on 2026-10-17: how much
+    speed vaibify should trade for repeatable files. None of the three
+    legacy answers says which, so none is read as an answer to it --
+    each recorded a claim about a mechanism, and the new answer chooses
+    what runs. A v13 project therefore arrives with the question open,
+    which the researcher closes in one click, and its legacy keys are
+    KEPT exactly as they were: they are the record of what was declared
+    then.
+
+    Nothing is written. In particular the migrator never sets the
+    answer key or the profile key; ``tests/testDeterminismRowMatchesItsGate.py``
+    pins that this source spells neither, so a later edit cannot start
+    fabricating an answer the researcher never gave.
+    """
+    del dictWorkflow, sProjectRepoPath
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
@@ -794,4 +814,5 @@ T_MIGRATORS = (
     (10, _fnMigrateV10ToV11),
     (11, _fnMigrateV11ToV12),
     (12, _fnMigrateV12ToV13),
+    (13, _fnMigrateV13ToV14),
 )

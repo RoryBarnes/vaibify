@@ -51,14 +51,12 @@ def _fdictBuildWorkflow(sProjectRepo):
         "sProjectRepoPath": sProjectRepo,
         "dictRemotes": {},
         "listSteps": [],
-        # All three determinism questions answered (2026-08-30
-        # ruling). A lone waiver used to satisfy the gate; it is
-        # now one answer of three, so a fixture carrying only it
-        # would exercise the REFUSAL path in every test below.
+        # The determinism question answered (one question since
+        # 2026-10-17); an unanswered fixture would exercise the
+        # REFUSAL path in every test below.
         "dictDeterminism": {
-            "sBlasVarianceAnswer": "accepted",
-            "sOmpThreadsAnswer": "unpinned",
-            "sMklModeAnswer": "not-used",
+            "sRepeatabilityAnswer": "speed",
+            "sExecutionProfile": "speed-v1",
         },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],

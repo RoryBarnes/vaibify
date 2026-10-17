@@ -1434,28 +1434,20 @@ LIST_FALSIFICATIONS = [
             'tests/testDeterminismGate.py::'
             'test_a_legacy_waiver_value_never_attests_on_its_own'
         ),
-        # Read the legacy waiver key as the blasVariance answer. Every
-        # project that ever opened the old form is silently credited,
-        # including one whose block says false.
-        source='vaibify/reproducibility/answeredQuestion.py',
-        old='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n',
-        new='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n    if dictQuestion["sKey"] == "blasVariance" and dictAnswers.get("bAcceptBlasVariance"):\n        sAnswer = "accepted"\n',
+        # the legacy waiver is read as an answer to the question
+        source='vaibify/reproducibility/determinismGate.py',
+        old='    return (dictWorkflow or {}).get("dictDeterminism") or {}\n',
+        new='    dictBlock = (dictWorkflow or {}).get("dictDeterminism") or {}\n    if dictBlock.get("bAcceptBlasVariance"):\n        return {"sRepeatabilityAnswer": "speed", "sExecutionProfile": "speed-v1"}\n    return dictBlock\n',
     ),
     Falsification(
         nodeid=(
             'tests/testDeterminismGate.py::'
             'test_mkl_cbwr_alone_no_longer_declares_determinism'
         ),
-        # Let a stored VALUE stand in for an answer -- the belief the
-        # ruling overturned, and the one this fixture can actually
-        # see. The "restore the OR" mutation is INVISIBLE here: the
-        # fixture records only `sMklCbwr` and no answers, so all three
-        # questions are open under both the OR and the AND and the
-        # gate refuses either way. It survived once for exactly that
-        # reason; testEveryQuestionMustBeAnsweredNotJustOne owns the OR.
-        source='vaibify/reproducibility/answeredQuestion.py',
-        old='    if sAnswer not in dictQuestion["tAnswers"]:\n        return False\n',
-        new='    if sAnswer not in dictQuestion["tAnswers"]:\n        return _fbValueIsPresent(dictAnswers.get(dictQuestion["sValueKey"]))\n',
+        # a stored MKL mode is read as an answer to the question
+        source='vaibify/reproducibility/determinismGate.py',
+        old='    return (dictWorkflow or {}).get("dictDeterminism") or {}\n',
+        new='    dictBlock = (dictWorkflow or {}).get("dictDeterminism") or {}\n    if dictBlock.get("sMklCbwr"):\n        return {"sRepeatabilityAnswer": "speed", "sExecutionProfile": "speed-v1"}\n    return dictBlock\n',
     ),
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_bare_imported_seed_with_clock_is_flagged',
@@ -15603,20 +15595,12 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testDeterminismRowMatchesItsGate.py::'
-            'testEveryQuestionMustBeAnsweredNotJustOne'
+            'testTheLegacyAnswersDoNotAnswerTheQuestion'
         ),
-        # Restore the OR: any one answer satisfies the whole gate,
-        # which is what let a project attest at Level 3 having
-        # answered a third of the question.
+        # any non-empty block reads as answered, the round-one defect
         source='vaibify/reproducibility/determinismGate.py',
-        old=(
-            '    return not flistUnansweredDeterminismQuestions'
-            '(dictWorkflow)\n'
-        ),
-        new=(
-            '    return len(flistUnansweredDeterminismQuestions('
-            'dictWorkflow)) < 3\n'
-        ),
+        old='    return answeredQuestion.flistSelectUnansweredKeys(\n        _fdictDeterminismAnswers(dictWorkflow), LIST_DETERMINISM_QUESTIONS,\n    )\n',
+        new='    if _fdictDeterminismAnswers(dictWorkflow):\n        return []\n    return answeredQuestion.flistSelectUnansweredKeys(\n        _fdictDeterminismAnswers(dictWorkflow), LIST_DETERMINISM_QUESTIONS,\n    )\n',
     ),
     Falsification(
         nodeid=(
@@ -15636,31 +15620,23 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/browser/testDeterminismRowFollowsTheGate.py::'
-            'test_each_question_gets_its_own_row_and_marker'
+            'test_the_row_renders_the_answer_and_the_profile_it_recorded'
         ),
-        # Collapse the three question rows back into one, which is the
-        # rendering the 2026-08-30 ruling replaced: one marker over
-        # three independent sources of run-to-run difference.
+        # the answer is described without the profile it recorded
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
-        old='        return listQuestions.map(function (dictQuestion) {\n',
-        new=(
-            '        return listQuestions.slice(0, 1).map('
-            'function (dictQuestion) {\n'
-        ),
+        old='            return sLabel + " (execution profile " +\n                dictQuestion.sValue + ")";\n',
+        new='            return sLabel;\n',
     ),
     Falsification(
         nodeid=(
             'tests/browser/testDeterminismRowFollowsTheGate.py::'
-            'test_the_questions_are_asked_in_words_not_schema_keys'
+            'test_the_question_is_asked_in_words_not_schema_keys'
         ),
         # Drop the plain-language question, leaving a label and no
         # explanation -- the state the section was reported in.
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
-        old=(
-            "            fnEscapeHtml(dictQuestion.sQuestion) + "
-            "'</div>';\n"
-        ),
-        new="            '</div>';\n",
+        old="            fnEscapeHtml(dictQuestion.sQuestion) + '</div>' +\n",
+        new="            '</div>' +\n",
     ),
     # Both L3 controls must SAY they are working: the button through a
     # readiness round trip nothing else marks, the row through a rerun
@@ -15689,24 +15665,13 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testDeterminismRowMatchesItsGate.py::'
-            'testAPinnedAnswerWithoutItsValueIsHalfAnAnswer'
+            'testAnAnswerWithoutItsProfileIsHalfAnAnswer'
         ),
         # Accept "pinned" with nothing pinned: a rule no rerun could
         # follow, recorded as though it were one.
         source='vaibify/reproducibility/answeredQuestion.py',
         old='    if sAnswer not in dictQuestion.get("tAnswersNeedingValue", ()):\n        return True\n',
         new='    return True\n    if False:\n        return True\n',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testDeterminismRowMatchesItsGate.py::'
-            'testTheLegacyFalseWaiverIsNotReadAsAnAnswer'
-        ),
-        # Read the legacy waiver key as the answer. Every project that
-        # ever opened the old form is silently credited.
-        source='vaibify/reproducibility/answeredQuestion.py',
-        old='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n',
-        new='    sAnswer = dictAnswers.get(dictQuestion["sAnswerKey"])\n    if dictQuestion["sKey"] == "blasVariance" and "bAcceptBlasVariance" in dictAnswers:\n        sAnswer = "accepted" if dictAnswers["bAcceptBlasVariance"] else "rejected"\n',
     ),
     Falsification(
         nodeid=(
@@ -35138,8 +35103,10 @@ LIST_FALSIFICATIONS = [
             'testTheAcrossProfileGivesTheSameBytesOnTwoCores'
         ),
         source='vaibify/reproducibility/executionProfiles.py',
-        # across-v1 requests no OpenBLAS thread pin
-        old='            "OPENBLAS_NUM_THREADS": "1",\n',
+        # across-v1 requests no thread pin. Both go: OpenBLAS falls back
+        # to OMP_NUM_THREADS, so removing its own variable alone leaves
+        # one thread and the bytes unchanged (measured, 2026-10-17)
+        old='            "OPENBLAS_NUM_THREADS": "1",\n            "OMP_NUM_THREADS": "1",\n',
         new='',
     ),
     Falsification(
@@ -35151,5 +35118,56 @@ LIST_FALSIFICATIONS = [
         # a profile this vaibify lacks is let through to the test run
         old='        raise HTTPException(409, str(error)) from error\n',
         new='        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDeterminismRowFollowsTheGate.py::'
+            'test_a_change_that_would_retire_the_attestation_says_so_first'
+        ),
+        # the retirement is said only after the save
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictQuestion.bAnswered &&\n                dictDetail.bRebuildAttestationCurrent === true) {\n',
+        new='        if (false) {\n',
+    ),
+    # --- 2026-10-17: one determinism question (Phase 6) ---
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheAnswerRecordsTheNewestProfileForIt'
+        ),
+        # a fixed version is recorded for the answer
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old='    dictDeterminism[S_EXECUTION_PROFILE_KEY] = fsNewestProfileForAnswer(\n        sAnswer)\n',
+        new='    dictDeterminism[S_EXECUTION_PROFILE_KEY] = sAnswer + "-v1"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testACallerCannotNameAProfileOrALegacyAnswer'
+        ),
+        # the caller may name the profile
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old='_DICT_DETERMINISM_KEY_TYPES = {\n    S_REPEATABILITY_ANSWER_KEY: (str,),\n}\n',
+        new='_DICT_DETERMINISM_KEY_TYPES = {\n    S_REPEATABILITY_ANSWER_KEY: (str,),\n    S_EXECUTION_PROFILE_KEY: (str,),\n}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheV14MigrationLeavesTheQuestionOpenAndKeepsTheLegacyKeys'
+        ),
+        # the v13-to-v14 migrator writes an answer
+        source='vaibify/gui/workflowMigrations.py',
+        old='    del dictWorkflow, sProjectRepoPath\n',
+        new='    dictWorkflow.setdefault("dictDeterminism", {})["sRepeatabilityAnswer"] = "speed"\n    dictWorkflow["dictDeterminism"]["sExecutionProfile"] = "speed-v1"\n    del sProjectRepoPath\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDeterminismRowMatchesItsGate.py::'
+            'testTheV14MigratorSpellsNoKeyTheGateReads'
+        ),
+        # the v13-to-v14 migrator writes an answer
+        source='vaibify/gui/workflowMigrations.py',
+        old='    del dictWorkflow, sProjectRepoPath\n',
+        new='    dictWorkflow.setdefault("dictDeterminism", {})["sRepeatabilityAnswer"] = "speed"\n    dictWorkflow["dictDeterminism"]["sExecutionProfile"] = "speed-v1"\n    del sProjectRepoPath\n',
     ),
 ]

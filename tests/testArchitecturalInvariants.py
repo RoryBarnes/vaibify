@@ -4273,6 +4273,12 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
+    # NEW at 818 (2026-10-17): the v13 -> v14 migrator, which writes
+    # nothing on purpose (design D7: the one determinism question
+    # starts unanswered) and says why at the length that needs. One
+    # cohesive responsibility -- every schema step in one ordered
+    # chain -- so the module is not split around it.
+    "workflowMigrations.py": 818,
     # NEW at 801 (2026-10-14): the interrupted-download classifier joins
     # the remnant scanner. The module's stated purpose is one classifier
     # per kind of leftover, each worded with its evidence and tier, and
@@ -5262,7 +5268,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4316 -> 4325 (2026-10-17): the attestation summary names a
     # changed execution profile in the server's words (F8), and the
     # currency check and the label are handed the workflow.
-    "routes/pipelineRoutes.py": 4325,
+    # 4325 -> 4326 (2026-10-17): the determinism question ships its
+    # choices, its reason and its consequence in the gate's words.
+    "routes/pipelineRoutes.py": 4326,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -7719,7 +7727,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2388 -> 2390 (2026-10-17): the attestation payload carries the
     # server's judgement of which records are previous checks, so the
     # PROOF tab labels them without deciding what counts as one.
-    "routes/reproducibilityRoutes.py": 2390,
+    # 2390 -> 2394 (2026-10-17): the declare route records the one
+    # answer beside the newest execution profile it names.
+    "routes/reproducibilityRoutes.py": 2394,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

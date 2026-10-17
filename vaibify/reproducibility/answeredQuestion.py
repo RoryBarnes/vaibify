@@ -2,11 +2,11 @@
 
 Three requirements on the ladder ask the researcher something rather
 than demanding an artifact, and all three pass on any answer: Personal
-AI Configuration (``none`` / ``declared-private`` / ``included``), each
-of the three determinism questions ("I do not accept last-digit
-differences" is a complete answer), and the environment archive
-("declined" is a complete answer). ANSWERING is the criterion; only
-silence fails.
+AI Configuration (``none`` / ``declared-private`` / ``included``), the
+determinism question ("Prioritize speed" and "Repeatable across
+computers" both pass; until 2026-10-17 it was three questions), and the
+environment archive ("declined" is a complete answer). ANSWERING is the
+criterion; only silence fails.
 
 Two properties are load-bearing and were re-derived independently in
 each of the first two, which is what makes this the rule-of-three
@@ -17,10 +17,10 @@ extraction rather than a tidy-up:
   when submitted with nothing ticked, so it means "unanswered" and
   "declined" at once, and reading it as a deliberate "no" attests a
   claim the researcher never made.
-- **An answer naming a value must CARRY that value.** "The thread count
-  is pinned" with no count is half an answer, and a rerun could not act
-  on it. Which answers need one is a property of the question, so it
-  travels in the question rather than in each gate.
+- **An answer naming a value must CARRY that value.** An answer with
+  no execution profile beside it names nothing a rerun could replay.
+  Which answers need one is a property of the question, so it travels
+  in the question rather than in each gate.
 
 A question is a plain dict so it can be shipped to the browser as-is::
 
