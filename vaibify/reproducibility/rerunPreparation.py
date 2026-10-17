@@ -58,7 +58,9 @@ __all__ = [
     "RerunPreparationRefusedError",
     "fdictClassifyRerunPaths",
     "fdictClearShadowBeforeRerun",
+    "flistResolveScratchRepoPaths",
     "flistSelectStepsTheRerunExecutes",
+    "fnRefuseUnsafeClassification",
     "fsetDeclaredOutputRepoPaths",
 ]
 
@@ -260,6 +262,17 @@ def _fnRefuseUnsafeProducedPaths(setProduced):
         )
 
 
+def fnRefuseUnsafeClassification(dictClassification):
+    """Raise the host-side refusals for a classification nothing may clear.
+
+    Shared by the shadow's clearing and the assessment plan, so a
+    reader's ``reproduce.sh`` can never carry a job the shadow would
+    refuse.
+    """
+    _fnRefuseAmbiguousOverlap(dictClassification)
+    _fnRefuseUnsafeProducedPaths(dictClassification["setProduced"])
+
+
 def fdictClearShadowBeforeRerun(
     dictWorkflow, filesRepo, dictClassification,
 ):
@@ -272,8 +285,7 @@ def fdictClearShadowBeforeRerun(
     attestation as the evidence that the outputs graded afterwards were
     absent when the run began.
     """
-    _fnRefuseAmbiguousOverlap(dictClassification)
-    _fnRefuseUnsafeProducedPaths(dictClassification["setProduced"])
+    fnRefuseUnsafeClassification(dictClassification)
     sRepoRoot = fsRepoRootOf(filesRepo)
     dictJob = {
         "sRepoRoot": sRepoRoot,

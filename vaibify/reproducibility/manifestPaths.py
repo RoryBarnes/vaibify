@@ -195,10 +195,16 @@ def fsResolveWorkflowTokens(sPath, dictTemplateValues):
     return sResolved
 
 
-def flistStepOutputRepoPaths(dictStep, dictTemplateValues=None):
+def flistStepOutputRepoPaths(
+    dictStep, dictTemplateValues=None, tOutputKeys=TUPLE_OUTPUT_KEYS,
+):
     """Return repo-relative declared output paths for one step.
 
-    Covers every ``TUPLE_OUTPUT_KEYS`` entry. Non-templated entries
+    Covers every ``tOutputKeys`` entry -- by default all of
+    ``TUPLE_OUTPUT_KEYS``; a caller that needs one section's files (the
+    rerun's assessment plan, production-time provenance) passes that
+    section's key, so every section resolves through this one
+    derivation. Non-templated entries
     resolve against the step directory (where the step writes them).
     Templated entries (``{sPlotDirectory}/foo.pdf``) resolve to
     repo-relative paths via ``dictTemplateValues`` — the workflow's
@@ -216,7 +222,7 @@ def flistStepOutputRepoPaths(dictStep, dictTemplateValues=None):
     """
     sDirectory = dictStep.get("sDirectory", "") or ""
     listPaths = []
-    for sKey in TUPLE_OUTPUT_KEYS:
+    for sKey in tOutputKeys:
         for sFile in dictStep.get(sKey, []) or []:
             if not sFile:
                 continue

@@ -33967,4 +33967,522 @@ LIST_FALSIFICATIONS = [
         old='                await _fnReleaseClaimUnlessInside(sName);\n',
         new='',
     ),
+    # --- 2026-10-17: the assessed Level 3 rerun, Phase 1 -- the two
+    # leaf modules concatenate into one runnable file ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testTheProcedureImportsOnlyTheStandardLibrary'
+        ),
+        # the procedure imports vaibify, which no reader's container has
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='import shutil\nimport sys\n',
+        new='import shutil\nimport sys\nimport vaibify.gui.pipelineUtils\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testThePolicyImportsOnlyTheStandardLibrary'
+        ),
+        # the frozen policy imports vaibify
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='import warnings\nimport xml.etree.ElementTree as etree\n',
+        new=(
+            'import warnings\nimport xml.etree.ElementTree as etree\n'
+            'import vaibify\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testTheLeafModulesDefineNoNameInCommon'
+        ),
+        # the policy rebinds a name the procedure defines
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='S_COMPARISON_POLICY = "comparison-v1"\n',
+        new=(
+            'S_COMPARISON_POLICY = "comparison-v1"\n'
+            'S_INVOCATION_LEDGER_FILENAME = "invocations.tsv"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testTheLeafModulesHaveNoFutureImportAndNoEntryPoint'
+        ),
+        # a second entry point in the policy, which would run first
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '    return fdictGradeAssessment(\n'
+            '        dictPlan, fdictExtractGradingObservations(dictReport))\n'
+        ),
+        new=(
+            '    return fdictGradeAssessment(\n'
+            '        dictPlan, fdictExtractGradingObservations(dictReport))\n'
+            '\n\nif __name__ == "__main__":\n    pass\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testTheLeafModulesParseAsPythonThreeEight'
+        ),
+        # syntax the author's older interpreter cannot parse
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    sLevel = ""\n    for sCandidate, tFlags in TUPLE_X86_64_LEVEL_FLAGS:\n',
+        new=(
+            '    match setFlags:\n        case _:\n            pass\n'
+            '    sLevel = ""\n    for sCandidate, tFlags in TUPLE_X86_64_LEVEL_FLAGS:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testThePolicyModuleIsFrozenAtItsPinnedBytes'
+        ),
+        # comparison-v1 changes meaning without a new policy ID
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='I_IMAGE_LEVEL_THRESHOLD = 2\n',
+        new='I_IMAGE_LEVEL_THRESHOLD = 3\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testRenderingTwiceGivesIdenticalBytes'
+        ),
+        # something that varies between calls is rendered into the file
+        source='vaibify/reproducibility/rerunAssessment.py',
+        old='    sPlanJson = json.dumps(dictPlan, sort_keys=True, indent=1)\n',
+        new=(
+            '    sPlanJson = json.dumps(dict(dictPlan, fRenderedAt=__import__('
+            '"time").time()), sort_keys=True, indent=1)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testTheProcedureParsesTheManifestAsTheWriterDoes'
+        ),
+        # the in-container copy unescapes a newline as a letter n
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='            listChars.append("\\n" if sNext == "n" else "\\\\")\n',
+        new='            listChars.append("n" if sNext == "n" else "\\\\")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testAnUnknownPolicyIsRefusedByTheRenderer'
+        ),
+        # an unknown policy is returned as nothing instead of refused
+        source='vaibify/reproducibility/rerunAssessment.py',
+        old='    if modulePolicy is None:\n        raise ComparisonPolicyUnknownError(\n',
+        new='    if False:\n        raise ComparisonPolicyUnknownError(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testAMalformedPolicyLineIsRefusedNotReadAsAbsent'
+        ),
+        # a garbled policy line is read as "none recorded"
+        source='vaibify/reproducibility/rerunAssessment.py',
+        old='    if matchHeader is None:\n        raise ValueError(\n',
+        new=(
+            '    if matchHeader is None:\n        return None\n'
+            '    if False:\n        raise ValueError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentStructure.py::'
+            'testAFileWithoutAPolicyLineRecordsNone'
+        ),
+        # a headerless file is refused as if malformed
+        source='vaibify/reproducibility/rerunAssessment.py',
+        old='            S_POLICY_HEADER_PREFIX.rstrip()):\n        return None\n',
+        new=(
+            '            S_POLICY_HEADER_PREFIX.rstrip()):\n'
+            '        raise ValueError("no policy line")\n'
+        ),
+    ),
+    # --- 2026-10-17: the per-output precedence table, on real trees ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testBytesIdenticalWithAFailingCheckIsFailed'
+        ),
+        # an executed failure no longer fails its output
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if dictCheck["sOutcome"] == S_CHECK_FAILED:\n            return (S_OUTPUT_FAILED,\n',
+        new='        if False:\n            return (S_OUTPUT_FAILED,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testBytesIdenticalWithASkippedCheckIsInsufficient'
+        ),
+        # byte equality overrides a check that did not execute
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if dictCheck["sOutcome"] != S_CHECK_PASSED:\n            return (S_OUTPUT_INSUFFICIENT,\n',
+        new='        if False:\n            return (S_OUTPUT_INSUFFICIENT,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testChangedBytesWithOnlyStructuralChecksIsInsufficient'
+        ),
+        # integrity and qualitative checks counted as agreement
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '                         if dictCheck["sTargetPath"] == dictRecord["sPath"]\n'
+            '                         and dictCheck["sCategory"] == S_AGREEMENT_CATEGORY]\n'
+        ),
+        new='                         if dictCheck["sTargetPath"] == dictRecord["sPath"]]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testChangedBytesWithNoComparisonAtAllIsInsufficient'
+        ),
+        # an output no comparison covers is treated as agreeing
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if not listAgreement:\n        return (S_OUTPUT_INSUFFICIENT,\n',
+        new='    if False:\n        return (S_OUTPUT_INSUFFICIENT,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testChangedBytesWithPassingComparisonsIsComparisonsPassed'
+        ),
+        # every byte difference is graded as a failure
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '    return (S_OUTPUT_COMPARISONS_PASSED,\n'
+            '            f"{len(listAgreement)} published comparison(s) passed")\n'
+        ),
+        new=(
+            '    return (S_OUTPUT_FAILED,\n'
+            '            f"{len(listAgreement)} published comparison(s) passed")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testAFileTheRerunNeverWroteIsFailedMissing'
+        ),
+        # an absent output graded as a byte difference
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '    if dictOutput["sObservedSha256"] is None:\n'
+            '        return (S_OUTPUT_FAILED, "missing: the rerun did not write it")\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return (S_OUTPUT_FAILED, "missing: the rerun did not write it")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testAFailedDataCommandFailsTheStepsDataAndPlotOutputs'
+        ),
+        # a section whose command failed reads as completed
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if iExit != 0:\n            return f"failed: {sId} exited {iExit}"\n',
+        new='        if False:\n            return f"failed: {sId} exited {iExit}"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testAFailedPlotCommandFailsOnlyThePlotOutputs'
+        ),
+        # the plot section's state decides the data outputs too
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    return {"data": sData, "plot": sPlot}\n',
+        new='    return {"data": sPlot, "plot": sPlot}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testFailuresAndMissingEvidenceTogetherAreFailedWithBothTallied'
+        ),
+        # missing evidence outranks a failure in the roll-up
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if listFailed:\n        return (S_VERDICT_NOT_REPRODUCED,',
+        new='    if listFailed and False:\n        return (S_VERDICT_NOT_REPRODUCED,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testADeletedPinnedTestIsPublishedInputsChanged'
+        ),
+        # a pinned input that is missing is not recorded
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='            dictResult["listMissingInputs"].append(sPath)\n',
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testAToleranceEditedDuringTheRunIsPublishedInputsChanged'
+        ),
+        # integrity is judged only before the steps ran
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old=(
+            '    listChanged = sorted(set(dictPrepared["listChangedInputs"])\n'
+            '                         | set(dictNow["listChangedInputs"]))\n'
+        ),
+        new='    listChanged = sorted(set(dictPrepared["listChangedInputs"]))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testAStandardWhoseNodeIsAbsentIsInsufficient'
+        ),
+        # a standard whose node never appeared reads as passed
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '    return (S_CHECK_NOT_EXECUTED,\n'
+            '            "absent from the reports of " + ", ".join(listGroupIds))\n'
+        ),
+        new=(
+            '    return (S_CHECK_PASSED,\n'
+            '            "absent from the reports of " + ", ".join(listGroupIds))\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentPrecedence.py::'
+            'testARepeatedStandardNameIsInsufficient'
+        ),
+        # a duplicate standard name is ignored
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if dictCheck["bDuplicateName"]:\n',
+        new='        if False:\n',
+    ),
+    # --- 2026-10-17: evidence is bound to its step and command ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testOneStepsPassingReportNeverSatisfiesAnothersAbsentCheck'
+        ),
+        # an expected check is looked up in every step's reports
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '        for sId in dictStep["dictTestGroups"].get(sGroup, []):\n'
+            '            fnRecordInvocationOccurrences(\n'
+        ),
+        new=(
+            '        for sId in [sAny for sAny, dictAny in dictInvocations.items()\n'
+            '                    if dictAny["sSection"] == sGroup]:\n'
+            '            fnRecordInvocationOccurrences(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testAFailureIsNotErasedByALaterPass'
+        ),
+        # the best occurrence wins instead of the worst
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    return min(\n        listOccurrences,\n',
+        new='    return max(\n        listOccurrences,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testACommandThatWritesNoReportLeavesItsChecksUnasserted'
+        ),
+        # a structured command with no report counts as passing
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='            dictOccurrences[iIndex].append((\n                S_CHECK_DID_NOT_ASSERT,\n',
+        new='            dictOccurrences[iIndex].append((\n                S_CHECK_PASSED,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testALegacyCommandWithNoReportIsJudgedByItsExitStatus'
+        ),
+        # a legacy command passes whatever its exit status
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='                "sOutcome": S_CHECK_PASSED if iExit == 0 else S_CHECK_FAILED,\n',
+        new='                "sOutcome": S_CHECK_PASSED,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testANonZeroExitWithNoFailureAssertedNothing'
+        ),
+        # a non-zero exit with no reported failure is ignored
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if iExit != 0 and not bReportedFailure:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testAPlannedCommandWithNoLedgerLineNeverRan'
+        ),
+        # a never-run invocation is graded as one that reported nothing
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old=(
+            '    if dictInvocation["iExitStatus"] is None:\n        return\n'
+            '    if dictInvocation["sReportState"] != S_JUNIT_READ:\n'
+        ),
+        new='    if dictInvocation["sReportState"] != S_JUNIT_READ:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testAReportWithNoLedgerLineIsNeverRead'
+        ),
+        # a report for a command that never ran is read
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if iExitStatus is None:\n        dictObserved.update(\n',
+        new='    if False:\n        dictObserved.update(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentEvidence.py::'
+            'testATestcaseTwoExpectedFilesCouldClaimIsAmbiguous'
+        ),
+        # an ambiguous testcase is credited to the first file it matches
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='            bConsumed = len(listMatched) == 1\n',
+        new='            bConsumed = True\n',
+    ),
+    # --- 2026-10-17: the image check (design D2) ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testSixteenInvertedPixelsAtFullSizeAreNotWithinTheThreshold'
+        ),
+        # a figure is accepted because few of its pixels changed
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if dictImage["iLargestLevelChange"] > I_IMAGE_LEVEL_THRESHOLD:\n',
+        new='        if dictImage["iPixelsChanged"] > 1000:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testAOneLevelChangeIsWithinTheThreshold'
+        ),
+        # a threshold of zero fails every redrawn figure
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if dictImage["iLargestLevelChange"] > I_IMAGE_LEVEL_THRESHOLD:\n',
+        new='        if dictImage["iLargestLevelChange"] > 0:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testPaletteImagesWithTheSameIndicesAndDifferentPalettesDiffer'
+        ),
+        # palette images compared by index, without RGBA conversion
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        fileImageA.convert("RGBA"), fileImageB.convert("RGBA")).split()\n',
+        new='        fileImageA, fileImageB).split()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testPaletteTransparencyIsResolved'
+        ),
+        # palette transparency ignored, without RGBA conversion
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        fileImageA.convert("RGBA"), fileImageB.convert("RGBA")).split()\n',
+        new='        fileImageA, fileImageB).split()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testASixteenBitRgbPngIsNeverReducedToEightBits'
+        ),
+        # the PNG header's bit depth is not consulted
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if baImage[24] > 8:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testASixteenBitGrayscalePngCannotBeAssessed'
+        ),
+        # the PNG header's bit depth is not consulted
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if baImage[24] > 8:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testAFloatingPointTiffCannotBeAssessed'
+        ),
+        # a TIFF's bits per sample is not consulted
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='        if max(tBits) > 8:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testATwoFrameTiffCannotBeAssessed'
+        ),
+        # a multi-frame image is compared by its first frame
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if iFrames != 1:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testFiguresOfDifferentDimensionsCannotBeAssessed'
+        ),
+        # figures of different sizes are compared
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='            or fileReference.size != fileObserved.size\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testAChangedVectorFigureIsInsufficientWithItsRemedy'
+        ),
+        # a changed vector figure is graded as an ordinary data file
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if dictOutput["sKind"] == S_KIND_VECTOR:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testAPlotOnlyStepGetsNoExemption'
+        ),
+        # the plot section's vector figures are exempted
+        source='vaibify/reproducibility/comparisonPolicyV1.py',
+        old='    if dictOutput["sKind"] == S_KIND_VECTOR:\n',
+        new=(
+            '    if dictOutput["sKind"] == S_KIND_VECTOR and '
+            'dictOutput["sSection"] != "plot":\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentImageCheck.py::'
+            'testAFigureWhoseBytesDifferedBeforeTheRunIsNotSetAside'
+        ),
+        # a figure is set aside without checking its manifest hash
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    if hasherFile.hexdigest() == sExpected:\n        return True\n',
+        new='    if True:\n        return True\n',
+    ),
+    # --- 2026-10-17: the rendered assessor runs standalone ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunAssessmentTranscription.py::'
+            'testTheRenderedAssessorReportsWhatTheImportedModulesReport'
+        ),
+        # the rendered file cannot find its policy's entry point
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='        fdictAssessEvidence = globals().get(S_POLICY_ENTRY_POINT)\n',
+        new='        fdictAssessEvidence = None\n',
+    ),
 ]
