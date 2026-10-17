@@ -821,6 +821,7 @@ const VaibifyApp = (function () {
         VaibifyPolling.fnStopDiscoveryPolling();
         _fnRecordViewerLeaseFromConnect(sId, data);
         _dictSessionState.sContainerId = sId;
+        VaibifyFigureViewer.fnBindViewersToProject(sId, data.sWorkflowPath);
         _dictWorkflowState.dictWorkflow = data.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
         _dictWorkflowState.iWorkflowEpoch =
@@ -1106,6 +1107,7 @@ const VaibifyApp = (function () {
             _fnRecordViewerLeaseFromConnect(sId, dictConnect);
             _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;
+            VaibifyFigureViewer.fnBindViewersToProject(sId, "");
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
             _fnRenderActiveResource(dictConnect.sProjectMode);
             fnApplyProjectMode(dictConnect.sProjectMode);
@@ -1557,7 +1559,6 @@ const VaibifyApp = (function () {
             "proof-level-1", "proof-level-2", "proof-level-3",
         );
         _fnCancelAllTimers();
-        VaibifyFigureViewer.fnReleaseResources();
         VaibifyTerminal.fnCloseAll();
         fnShowContainerLanding();
         VaibifyContainerManager.fnLoadContainers();
