@@ -10,7 +10,8 @@ the code under test:
 * a processor below the profile's level drops the floor keys, keeps the
   thread pins, says why, and the author is told before the run;
 * the probe reports an absent NumPy or an undetectable OpenBLAS as such
-  and changes nothing;
+  and changes nothing, and a matrix product that crashes under the
+  settings is recorded and announced before any step;
 * the shadow replays the envelope's recorded profile, never the table's
   current entry (F9);
 * a recorded profile naming a setting, value or floor key outside the
@@ -411,6 +412,90 @@ def testTheAuthorIsWarnedWhenTheImagesNumpyIgnoresASetting(tmp_path):
         "NumPy does not know that feature name. Outputs from NumPy's "
         "vectorized math may differ from a computer whose NumPy honors the "
         "setting."]
+
+
+# A NumPy whose matrix product dies the way OpenBLAS 0.3.34 does under a
+# forced Haswell kernel on an AMD x86-64-v4 processor (design fact 28):
+# by a real SIGSEGV, in whichever process multiplies.
+_S_NUMPY_WHOSE_PRODUCT_CRASHES = (
+    "import os, signal\n"
+    "__version__ = '2.5.3'\n"
+    "class _CrashingMatrix:\n"
+    "    def __matmul__(self, other):\n"
+    "        os.kill(os.getpid(), signal.SIGSEGV)\n"
+    "def ones(shape):\n"
+    "    return _CrashingMatrix()\n")
+
+
+@pytest.mark.falsification
+def testAMatrixProductThatCrashesIsRecordedAsACrash(tmp_path):
+    """A product killed by a signal is "crashed", and names the signal.
+
+    The product runs in a process of its own, so the probe outlives the
+    crash and writes its record.
+
+    Kills: reading a death by signal as an ordinary failure.
+    """
+    dictProbe = _fdictRunTheProbe(
+        tmp_path, {"OPENBLAS_CORETYPE": "Haswell"},
+        _S_NUMPY_WHOSE_PRODUCT_CRASHES)
+    assert dictProbe["dictMatrixProduct"] == {
+        "sState": "crashed", "iExitCode": -11,
+        "sReason": "was killed by SIGSEGV"}
+    assert dictProbe["dictSettingsSeen"] == {"OPENBLAS_CORETYPE": "Haswell"}
+
+
+@pytest.mark.falsification
+def testTheAuthorIsWarnedWhenTheMatrixProductCrashes(tmp_path):
+    """The crash reaches the run-start warnings before any step runs.
+
+    Kills: announcing only the NumPy feature judgments.
+    """
+    dictProbe = _fdictRunTheProbe(
+        tmp_path, {"OPENBLAS_CORETYPE": "Haswell"},
+        _S_NUMPY_WHOSE_PRODUCT_CRASHES)
+    listWarnings = determinismEnvironment.flistDescribeExecutionWarnings({
+        determinismEnvironment.S_EXECUTION_PROBE_KEY: dictProbe})
+    assert listWarnings == [
+        "Multiplying two 1000x1000 matrices with NumPy 2.5.3 was killed by "
+        "SIGSEGV under these settings. Steps that multiply matrices with "
+        "NumPy can fail the same way on this processor under this "
+        "execution profile."]
+
+
+def testAMatrixProductThatRaisesIsRecordedAndNotAnnounced(tmp_path):
+    """A product that raises is a step's own traceback, not a warning."""
+    dictProbe = _fdictRunTheProbe(
+        tmp_path, {"OMP_NUM_THREADS": "1"}, "__version__ = '2.5.3'\n")
+    assert dictProbe["dictMatrixProduct"] == {
+        "sState": "failed", "iExitCode": 1,
+        "sReason": "AttributeError: module 'numpy' has no attribute 'ones'"}
+    assert rerunProcedure.flistDescribeProbeConcerns(dictProbe) == []
+
+
+def testAMatrixProductThatHangsIsStoppedAndAnnounced(tmp_path, monkeypatch):
+    """A product still running at the deadline is "timed out", and said."""
+    sPackage = tmp_path / "numpy"
+    sPackage.mkdir()
+    (sPackage / "__init__.py").write_text(
+        "import time\n"
+        "class _SlowMatrix:\n"
+        "    def __matmul__(self, other):\n"
+        "        time.sleep(60)\n"
+        "def ones(shape):\n"
+        "    return _SlowMatrix()\n")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    monkeypatch.setattr(
+        rerunProcedure, "F_MATRIX_PRODUCT_TIMEOUT_SECONDS", 2.0)
+    dictProduct = rerunProcedure.fdictExerciseMatrixProduct()
+    assert dictProduct == {"sState": "timed out", "iExitCode": None,
+                           "sReason": "did not finish within 2 seconds"}
+    assert rerunProcedure.flistDescribeProbeConcerns({
+        "sNumpyVersion": "2.5.3", "dictMatrixProduct": dictProduct}) == [
+        "Multiplying two 1000x1000 matrices with NumPy 2.5.3 did not finish "
+        "within 2 seconds under these settings. Steps that multiply "
+        "matrices with NumPy can fail the same way on this processor under "
+        "this execution profile."]
 
 
 # ----------------------------------------------------------------------

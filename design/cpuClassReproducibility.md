@@ -464,6 +464,33 @@ NumPy 2.5.3; throwaway containers with `--network none`)
       the AMD runner's digest. It is 67 characters, and the allowlist's
       value pattern admits 64. Adopting it changes D5, so it is not
       done here; it would be a new profile, `across-v2`.
+28. **D5's forced OpenBLAS kernel crashes OpenBLAS 0.3.34 on an AMD
+    `x86-64-v4` processor** (2026-10-17, found by CI).
+    - On an AMD `x86-64-v4` CI runner with 4 cores, under NumPy 2.5.3
+      (bundled OpenBLAS 0.3.34), the fixture died with a segmentation
+      fault at its first matrix product (two 1000x1000 matrices) under
+      `across-v1`.
+    - Measured on that runner, one setting at a time: every variant
+      that keeps `OPENBLAS_CORETYPE=Haswell` crashes; without it the
+      fixture completes, and OpenBLAS chooses `SkylakeX`.
+      `NPY_DISABLE_CPU_FEATURES` and the two thread pins make no
+      difference. Under NumPy 2.1.3 (OpenBLAS 0.3.27) every variant
+      completes on the same runner.
+    - The same profile completes on an Intel `x86-64-v4` machine under
+      OpenBLAS 0.3.34.
+    - Not established: which OpenBLAS release after 0.3.27 introduced
+      the crash, and which other AMD processors it affects. OpenBLAS's
+      changelog names no matching change.
+    - Built (the researcher's ruling, 2026-10-17): the probe multiplies
+      two 1000x1000 matrices in a child process under the applied
+      settings, and records how that ended: completed, crashed (with
+      the signal), failed, or timed out. A crash or a timeout is
+      announced before the steps, in both lanes, naming the OpenBLAS
+      kernel. `across-v1`'s value is unchanged. The live fixture
+      asserts the digest where the product completes, and the
+      announcement and a failed verdict where it crashes.
+    - Open, with fact 27's question: whether `across-v2` should stop
+      forcing the kernel on processors where it crashes.
 
 ---
 

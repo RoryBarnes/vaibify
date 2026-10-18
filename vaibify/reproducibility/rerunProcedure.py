@@ -34,7 +34,8 @@ the file from its scratch directory, the script from ``/work``.
 * ``capabilities`` reads the processor in a process that has loaded no
   numerical library and decides which requested settings apply
   (Stage A); ``probe`` then loads NumPy under exactly those settings and
-  records what it finds (Stage B). Neither changes a setting.
+  records what it finds, including whether a matrix product survives
+  them in a process of its own (Stage B). Neither changes a setting.
 * ``assess`` hashes again and hands the observations to the policy,
   which grades them; it prints the verdict and the tally and exits with
   the policy's code.
@@ -51,6 +52,8 @@ import json
 import os
 import re
 import shutil
+import signal
+import subprocess
 import sys
 
 
@@ -65,6 +68,7 @@ __all__ = [
     "fdictCheckPinnedInputs",
     "fdictClearRegeneratedPaths",
     "fdictDecideAppliedSettings",
+    "fdictExerciseMatrixProduct",
     "fdictJudgeNumpyDisabledFeatures",
     "fdictProbeNumericalLibraries",
     "fdictReadProcessorCapabilities",
@@ -137,6 +141,21 @@ S_FEATURE_FIXED_AT_BUILD = "fixed at build"
 S_FEATURE_NOT_CONFIRMED = "not confirmed"
 S_NUMPY_FEATURE_SETTING = "NPY_DISABLE_CPU_FEATURES"
 I_MAXIMUM_REFUSAL_CHARACTERS = 400
+# How a matrix product ended under the applied settings. OpenBLAS can
+# crash under a forced kernel on a processor it was not tuned for, and a
+# step meets that as a bare exit 139; the product runs in a process of
+# its own so that a crash still leaves the probe a record to write.
+S_PRODUCT_COMPLETED = "completed"
+S_PRODUCT_CRASHED = "crashed"
+S_PRODUCT_FAILED = "failed"
+S_PRODUCT_TIMED_OUT = "timed out"
+I_MATRIX_PRODUCT_SIZE = 1000
+F_MATRIX_PRODUCT_TIMEOUT_SECONDS = 300.0
+_S_MATRIX_PRODUCT_PROGRAM = (
+    "import numpy\n"
+    f"daMatrix = numpy.ones(({I_MATRIX_PRODUCT_SIZE}, "
+    f"{I_MATRIX_PRODUCT_SIZE}))\n"
+    "daMatrix @ daMatrix\n")
 
 _T_OPENBLAS_CORENAME_SYMBOLS = (
     "scipy_openblas_get_corename64_",
@@ -763,6 +782,42 @@ def fdictJudgeNumpyDisabledFeatures(sRequested, dictCpuFeatures):
     return dictJudged
 
 
+def fsNameSignal(iSignal):
+    """Return a signal's name, such as ``SIGSEGV``, or its number."""
+    try:
+        return signal.Signals(iSignal).name
+    except ValueError:
+        return f"signal {iSignal}"
+
+
+def fdictExerciseMatrixProduct():
+    """Multiply two matrices with NumPy in a child process; say how it ended.
+
+    The child inherits this process's settings, which are the steps'.
+    """
+    try:
+        processResult = subprocess.run(
+            [sys.executable, "-c", _S_MATRIX_PRODUCT_PROGRAM],
+            capture_output=True, text=True,
+            timeout=F_MATRIX_PRODUCT_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return {"sState": S_PRODUCT_TIMED_OUT, "iExitCode": None,
+                "sReason": "did not finish within "
+                           f"{int(F_MATRIX_PRODUCT_TIMEOUT_SECONDS)} seconds"}
+    except OSError as error:
+        return {"sState": S_PRODUCT_FAILED, "iExitCode": None,
+                "sReason": str(error)[:I_MAXIMUM_REFUSAL_CHARACTERS]}
+    iExitCode = processResult.returncode
+    if iExitCode == 0:
+        return {"sState": S_PRODUCT_COMPLETED, "iExitCode": 0, "sReason": ""}
+    if iExitCode < 0:
+        return {"sState": S_PRODUCT_CRASHED, "iExitCode": iExitCode,
+                "sReason": "was killed by " + fsNameSignal(-iExitCode)}
+    listLines = processResult.stderr.strip().splitlines() or [""]
+    return {"sState": S_PRODUCT_FAILED, "iExitCode": iExitCode,
+            "sReason": listLines[-1][:I_MAXIMUM_REFUSAL_CHARACTERS]}
+
+
 def fdictProbeNumericalLibraries():
     """Load NumPy under the applied settings and report what it chose.
 
@@ -793,15 +848,36 @@ def fdictProbeNumericalLibraries():
         dictProbe["dictSettingsSeen"].get(S_NUMPY_FEATURE_SETTING, ""),
         dictProbe["dictNumpyCpuFeatures"])
     dictProbe["dictOpenblas"] = fdictProbeOpenblas(numpy)
+    dictProbe["dictMatrixProduct"] = fdictExerciseMatrixProduct()
     return dictProbe
 
 
+def fsDescribeMatrixProductConcern(dictProbe):
+    """Return the sentence for a matrix product that crashed or hung, or "".
+
+    A product that raised is recorded and not announced: a step meets
+    that as a Python traceback that already names its cause.
+    """
+    dictProduct = dictProbe.get("dictMatrixProduct") or {}
+    if dictProduct.get("sState") not in (S_PRODUCT_CRASHED,
+                                         S_PRODUCT_TIMED_OUT):
+        return ""
+    sCoreName = (dictProbe.get("dictOpenblas") or {}).get("sCoreName", "")
+    sKernel = f" (OpenBLAS kernel {sCoreName})" if sCoreName else ""
+    return (
+        f"Multiplying two {I_MATRIX_PRODUCT_SIZE}x{I_MATRIX_PRODUCT_SIZE} "
+        f"matrices with NumPy {dictProbe.get('sNumpyVersion', '')} "
+        f"{dictProduct['sReason']} under these settings{sKernel}. Steps "
+        "that multiply matrices with NumPy can fail the same way on this "
+        "processor under this execution profile.")
+
+
 def flistDescribeProbeConcerns(dictProbe):
-    """Return one sentence per requested setting the probe saw fail."""
+    """Return one sentence per thing the probe saw fail under the settings."""
     sState = dictProbe.get("sNumpyState", "")
     if sState.startswith("NumPy refused"):
         return [sState + ". Every step that imports NumPy will fail."]
-    return [
+    listConcerns = [
         f"NumPy {dictProbe.get('sNumpyVersion', '')} did not apply "
         f"{S_NUMPY_FEATURE_SETTING}={sName}: {dictJudged['sReason']}. "
         "Outputs from NumPy's vectorized math may differ from a computer "
@@ -810,6 +886,10 @@ def flistDescribeProbeConcerns(dictProbe):
             (dictProbe.get("dictNumpyDisabledFeatures") or {}).items())
         if dictJudged["sStatus"] != S_FEATURE_APPLIED
     ]
+    sProductConcern = fsDescribeMatrixProductConcern(dictProbe)
+    if sProductConcern:
+        listConcerns.append(sProductConcern)
+    return listConcerns
 
 
 def fiRunProbe(sScratch, bMachine=False):

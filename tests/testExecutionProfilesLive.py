@@ -287,6 +287,30 @@ def _fsDiagnoseEachSetting(listImages, dictRequested):
     return "\n".join(listSummaries + listDetails) + "\n"
 
 
+# What the probe announces when OpenBLAS dies multiplying matrices under
+# the profile: OpenBLAS 0.3.34's forced Haswell kernel does on an AMD
+# x86-64-v4 processor (design fact 28). There the fixture's bytes cannot
+# be regenerated, and the honest claim is that the run said why.
+_S_PRODUCT_CRASH_ANNOUNCEMENT = (
+    "vaibify: Multiplying two 1000x1000 matrices with NumPy")
+
+
+def _fbTheProductCrashed(dictProbe):
+    """Return whether this run's probe saw its matrix product crash."""
+    return ((dictProbe.get("dictMatrixProduct") or {}).get("sState")
+            == rerunProcedure.S_PRODUCT_CRASHED)
+
+
+def _fnAssertTheCrashWasAnnounced(completed, sMachine, capsys):
+    """The run names the crash before its steps, and grades it failed."""
+    with capsys.disabled():
+        print(f"\nOpenBLAS crashed under the profile on {sMachine}; "
+              "asserting the run announced it.")
+    sOutput = completed.stdout + completed.stderr
+    assert _S_PRODUCT_CRASH_ANNOUNCEMENT in sOutput, (sMachine, sOutput)
+    assert completed.returncode == 1, (sMachine, sOutput)
+
+
 def _fsDescribeThisMachine(dictImage):
     """Return the processor facts the record keeps: vendor, level, cores."""
     dictCapabilities = rerunProcedure.fdictReadProcessorCapabilities()
@@ -316,7 +340,8 @@ def testTheAcrossProfileReproducesTheCommittedFixture(
     completed, sDigest, dictProbe = _ftReproduce(
         tmp_path, "across", dictProfileImage, dictProfile)
     sOutput = completed.stdout + completed.stderr
-    if sDigest != S_ACROSS_FIXTURE_DIGEST:
+    if sDigest != S_ACROSS_FIXTURE_DIGEST and not _fbTheProductCrashed(
+            dictProbe):
         sOutput = _fsDiagnoseEachSetting(
             [dictProfileImage, dictOlderNumpyImage],
             dictProfile["dictRequested"]) + sOutput
@@ -326,24 +351,41 @@ def testTheAcrossProfileReproducesTheCommittedFixture(
             dictProbe["dictNumpyDisabledFeatures"].items()} == {
         "AVX512_ICL": "applied", "X86_V4": "applied"}, (sMachine, dictProbe,
                                                         sOutput)
+    if _fbTheProductCrashed(dictProbe):
+        _fnAssertTheCrashWasAnnounced(completed, sMachine, capsys)
+        return
     assert sDigest == S_ACROSS_FIXTURE_DIGEST, (sMachine, sDigest, sOutput)
     assert completed.returncode == 0, sOutput
     assert "Reproduced: every file byte-identical" in completed.stdout
 
 
 @pytest.mark.falsification
-def testTheAcrossProfileGivesTheSameBytesOnTwoCores(dictProfileImage, tmp_path):
+def testTheAcrossProfileGivesTheSameBytesOnTwoCores(
+    dictProfileImage, tmp_path, capsys,
+):
     """One thread is requested, so the visible cores cannot reach the bytes.
+
+    The probe's own OpenBLAS thread count is read first, so the kill does
+    not depend on whether this runner's OpenBLAS survives the profile.
 
     Kills: ``across-v1`` requesting no thread pin.
     """
     dictProfile = executionProfiles.fdictProfileFromTable(
         executionProfiles.S_PROFILE_ACROSS)
-    _completedAll, sAll, _dictProbeAll = _ftReproduce(
+    completedAll, sAll, dictProbeAll = _ftReproduce(
         tmp_path, "allCores", dictProfileImage, dictProfile)
-    completedTwo, sTwo, _dictProbeTwo = _ftReproduce(
+    completedTwo, sTwo, dictProbeTwo = _ftReproduce(
         tmp_path, "twoCores", dictProfileImage, dictProfile,
         ["--cpuset-cpus", "0-1"])
+    sMachine = _fsDescribeThisMachine(dictProfileImage)
+    for dictProbe in (dictProbeAll, dictProbeTwo):
+        assert (dictProbe.get("dictOpenblas") or {}).get("iThreads") == 1, (
+            sMachine, dictProbe)
+    if _fbTheProductCrashed(dictProbeAll) or _fbTheProductCrashed(
+            dictProbeTwo):
+        for completed in (completedAll, completedTwo):
+            _fnAssertTheCrashWasAnnounced(completed, sMachine, capsys)
+        return
     sOutput = completedTwo.stdout + completedTwo.stderr
     if not (sAll and sAll == sTwo):
         sOutput = _fsDiagnoseEachSetting(

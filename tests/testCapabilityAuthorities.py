@@ -163,6 +163,25 @@ DICT_NAMED_AUTHORITIES = {
             "daemon itself reported, its own argv element, so it cannot "
             "become an option or a second command.",
         ),
+    # -- the rerun procedure, inside a reproduction container ------------
+    "reproducibility/rerunProcedure.py|<module>|process-launch|"
+    "subprocess|import|0":
+        _fdictAuthority(
+            ["reproduction-container"],
+            "The Stage B probe's matrix product. rerunProcedure is "
+            "rendered verbatim into the rerun assessment file, and the "
+            "launch runs only when that file's probe runs inside a "
+            "reproduction container (a shadow's or a reader's "
+            "reproduce.sh run); the hub imports the module only to "
+            "render it and to word the probe's concerns, and calls no "
+            "launch. One launch site, fdictExerciseMatrixProduct: "
+            "sys.executable, -c and a module-constant program that "
+            "multiplies two constant matrices, with no shell and no "
+            "value from a request, a file or the workflow. It writes "
+            "nothing and runs under a timeout; only its exit status is "
+            "kept, because OpenBLAS can crash under a forced kernel and "
+            "a step meets that as a bare exit 139.",
+        ),
     # -- reproducing a published project ---------------------------------
     "reproducibility/reproductionSource.py|<module>|process-launch|"
     "subprocess|import|0":

@@ -590,9 +590,12 @@ TUPLE_REVIEWER_FIELDS = (
 # route" and "route wrapper" would be two different answers to one
 # question, and neither could be checked.
 DICT_REVIEWER_ENUMS = {
+    # ``reproduction-container`` is code vaibify renders into a file that
+    # runs only inside a reproduction container (the rerun procedure), so
+    # no hub lane reaches it.
     "listExecutionLanes": frozenset({
         "http", "websocket", "background", "startup", "shutdown",
-        "host-cli", "host-control-socket",
+        "host-cli", "host-control-socket", "reproduction-container",
     }),
     "listLockOwners": frozenset({
         "route-wrapper", "carrier-supervisor", "lifecycle-transaction",

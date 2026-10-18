@@ -33955,8 +33955,8 @@ LIST_FALSIFICATIONS = [
         ),
         # the procedure imports vaibify, which no reader's container has
         source='vaibify/reproducibility/rerunProcedure.py',
-        old='import shutil\nimport sys\n',
-        new='import shutil\nimport sys\nimport vaibify.gui.pipelineUtils\n',
+        old='import subprocess\nimport sys\n',
+        new='import subprocess\nimport sys\nimport vaibify.gui.pipelineUtils\n',
     ),
     Falsification(
         nodeid=(
@@ -35005,6 +35005,26 @@ LIST_FALSIFICATIONS = [
         # the run-start warnings come from the floor decision alone
         old='        listWarnings.extend(flistDescribeProbeConcerns(dictProbe))\n',
         new='        listWarnings.extend([])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testAMatrixProductThatCrashesIsRecordedAsACrash'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # a death by signal is read as an ordinary failure
+        old='    if iExitCode < 0:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheAuthorIsWarnedWhenTheMatrixProductCrashes'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # the probe announces only the NumPy feature judgments
+        old='        listConcerns.append(sProductConcern)\n',
+        new='        listConcerns.extend([])\n',
     ),
     Falsification(
         nodeid=(

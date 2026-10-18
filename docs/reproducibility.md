@@ -223,8 +223,15 @@ each feature it was asked to disable. NumPy before version 2.4 does not
 know the name `X86_V4`; it ignores that request without a visible
 warning, and keeps using AVX-512 instructions where the processor has
 them. Vaibify says so before such a run starts, and `reproduce.sh`
-prints it. The probe establishes what a probe process saw; a step that
-changes its own settings is not detected.
+prints it. The probe also multiplies two matrices with NumPy, in a
+process of its own, because OpenBLAS can crash under a forced kernel on
+a processor it was not tuned for: OpenBLAS 0.3.34, which NumPy 2.5.3
+bundles, dies with a segmentation fault under `across-v1` on an AMD
+`x86-64-v4` processor, where OpenBLAS 0.3.27 does not. When the product
+crashes, vaibify names the crash and the kernel before the steps run,
+in the dashboard and in `reproduce.sh`. The probe establishes what a
+probe process saw; a step that changes its own settings is not
+detected.
 
 The cost was measured on one 8-core machine: about three to four times
 slower for dense linear algebra, and about three times slower for
@@ -465,6 +472,10 @@ its maintainers to fix. Never work around it by unpinning. To check published wo
   profile reduces the processor's, and cannot remove it.
 - **Settings are requested and confirmed in a probe process**, not
   observed in every step's process.
+- **`across-v1` cannot run on every processor.** Where OpenBLAS crashes
+  under its forced kernel, every step that multiplies matrices fails,
+  and the rerun grades those outputs failed. It says why, but the
+  result cannot be regenerated there under that profile.
 - **The image check is narrow** (above): passing it is not proof that a
   figure carries the same science.
 - **`reproduce.sh` regenerates in the reader's own directory**, and

@@ -114,7 +114,13 @@ not to undo:
 - **Capabilities come FIRST, in a process that loads no math
   library** (`env -u <allowlist> python3 -I`), because OpenBLAS reads
   its settings once, at load; then the probe runs under the exact
-  prefix the steps get. `testEachStageSeesWhatTheOrderPromises`.
+  prefix the steps get. `testEachStageSeesWhatTheOrderPromises`. The
+  probe's matrix product runs in a CHILD process
+  (`fdictExerciseMatrixProduct`), because OpenBLAS can segfault under
+  a forced kernel (design fact 28) and a crash inside the probe would
+  leave no record; a crash or a timeout is announced before the steps,
+  an exception only recorded.
+  `testAMatrixProductThatCrashesIsRecordedAsACrash`.
 - **An empty tests block renders nothing**, never `if … then fi`,
   which bash refuses — found by the live leg, not by a string check.
 - **The image no lane can obtain, and a `docker run` that fails
