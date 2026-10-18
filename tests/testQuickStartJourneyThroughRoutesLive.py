@@ -345,6 +345,11 @@ def hubClient(dictPublished, tmp_path, monkeypatch):
         def __init__(self):
             self.session = requests.Session()
             self.session.headers["X-Session-Token"] = sCredential
+            # uvicorn closes a connection idle for its keep-alive
+            # timeout, and a request sent on it in that instant is
+            # reset; requests never retries a POST. A browser retries;
+            # this client opens a connection per request instead.
+            self.session.headers["Connection"] = "close"
             self.sCredential = sCredential
             self.iPort = iPort
 

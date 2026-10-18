@@ -215,6 +215,11 @@ def hubHost(monkeypatch, request):
         sCredential = fsBootstrapCredential(appHub)
         sessionHttp = requests.Session()
         sessionHttp.headers["X-Session-Token"] = sCredential
+        # uvicorn closes a connection idle for its keep-alive timeout
+        # (five seconds by default), and a request sent on it in that
+        # instant is reset; requests never retries a POST. A browser
+        # retries; this client opens a connection per request instead.
+        sessionHttp.headers["Connection"] = "close"
         sBaseUrl = f"http://127.0.0.1:{iPort}"
 
         class HubClient:
