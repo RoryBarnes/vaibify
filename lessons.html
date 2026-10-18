@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lessons from past sessions &mdash; Vaibify 0.1.4.dev2 documentation</title>
+  <title>Lessons from past sessions &mdash; Vaibify 0.1.4.dev26 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1546fae8"></script>
+      <script src="_static/documentation_options.js?v=ba0b7039"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -788,6 +788,23 @@ so a release the page never hears about cannot freeze a panel. The
 general form: a red whose click sent NO request is a rebuild under
 the pointer, not a slow server, and the trace, not the selector,
 says which (<code class="docutils literal notranslate"><span class="pre">tests/browser/testAClickSurvivesAPollRender.py</span></code>).</p></li>
+<li><p><strong>A pinned image was read as pinned results.</strong> Level 3 promised that
+a clean rerun in the archived image reproduced every byte, and every
+check agreed: the shadow rerun, <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>, the live legs and the
+QuickStart walkthrough. None of them had ever compared two runs made
+on different processors or with different core counts, so none could
+disagree. A rerun on a processor with wider vector instructions than
+the one that made the manifest changed the last digits of every
+regenerated data file: the image pins the software, and NumPy’s bundled OpenBLAS picks its kernel
+for the processor it finds. It is the name-vs-id bug again – a
+fixture in which the two things that differ in the world were the
+same – one level up. Level 3 now assesses a rerun instead of
+promising bytes, and the cross-machine test compares each runner’s
+output with a committed digest made on another machine, never with a
+second run of its own. The
+general form: before a test confirms that two things agree, ask what
+would have to differ between them in the world, and whether the test
+ever lets it.</p></li>
 </ul>
 </section>
 

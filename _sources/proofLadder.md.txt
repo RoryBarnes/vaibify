@@ -38,7 +38,7 @@ Each level includes everything below it. Each also states what it does
 |---|---|---|---|
 | 1 | Self-Consistent | Version control; every step tested and approved | Anything outside the researcher's own machine |
 | 2 | Published | Public release of data and a declaration of AI use | How others can exactly reproduce the results |
-| 3 | Reproducible | Instructions and environment for a byte-identical rerun, attested by the authors | That inputs trace to raw data, or a public record of all AI assistance |
+| 3 | Reproducible | A preserved environment and procedure, and a clean rerun assessed against published criteria, attested by the authors | Byte-identical results on other computers; that inputs trace to raw data, or a public record of all AI assistance |
 | 4 | Traceable | Public chain of events from raw data to publication, including prompts | That a different AI would reach the same result |
 | 5 | Regenerated | The same science reproduced with a different AI | That anyone besides the researcher has done so |
 | 6 | Attested | Independent, publicly verifiable attestations | That the result describes the universe correctly |
@@ -73,15 +73,24 @@ researchers can exactly reproduce the results.
 
 ### Level 3: Reproducible
 
-Level 3 adds published instructions for reproducing the results at the
-bit level, and an attestation that the original authors have performed
-that reproduction. A Level 3 product collects all dependencies in a
-clean, well-defined environment, regenerates the results exactly as in
-the original experiment, and includes hashes, such as SHA-256, that let
-others verify that every byte of their recreation matches. A
-reproducible result does *not* have to contain the raw observational
-data behind it, nor a public record of how the data and software were
-assisted by AI.
+Level 3 adds a preserved execution environment and procedure, with a
+recorded clean rerun assessed against published criteria, and an
+attestation that the original authors made that rerun. A Level 3
+product collects all dependencies in a clean, well-defined environment,
+pins every published input with a hash such as SHA-256, deletes and
+regenerates its outputs, and grades each regenerated output: identical
+bytes, or the author's own published comparisons (the tests that ship
+with the project) passing over it.
+
+Byte identity is valuable evidence, and the verdict reports it whenever
+it holds. It is never the Level 3 criterion, because the container pins
+the software but not the processor: math libraries choose their code by
+the processor they find, so last digits can differ between computers.
+A passing verification establishes what happened in the environment
+that was tested; it does not predict what will happen on every future
+computer. A reproducible result does *not* have to contain the raw
+observational data behind it, nor a public record of how the data and
+software were assisted by AI.
 
 ### Level 4: Traceable
 
@@ -262,16 +271,16 @@ it, and vaibify also re-verifies on a schedule while the hub runs.
 | Dependency lock | Project | `requirements.lock` pins every Python dependency by version with hashes. |
 | Environment snapshot | Project | The exact container image digest and system toolchain are recorded. |
 | Dockerfile pinned | Project | The Dockerfile builds from an exact base-image digest. |
-| Reproduce script | Project | `reproduce.sh` at the repository root reruns the project, and its hash is in the manifest. |
-| Reproduce script is current | Project | `reproduce.sh` matches what vaibify would generate for the workflow. |
-| Determinism declared | Project | The researcher has stated how exactly a rerun must match: last-digit numeric differences, thread count, and the Intel MKL setting. |
+| Reproduce script | Project | `reproduce.sh` at the repository root reruns and assesses the project, and its hash is in the manifest, beside the hash of the rerun assessor (`.vaibify/rerunAssessment.py`) it runs. |
+| Reproduce script is current | Project | `reproduce.sh` and its rerun assessor match what vaibify would generate for the workflow, under the current comparison policy. |
+| Determinism declared | Project | The researcher has answered how much speed vaibify should trade for repeatable files. The answer chooses the execution settings every rerun replays; either answer passes. |
 | Software declared | Project | Standalone binaries are declared with version and hash captured, or explicitly waived. |
 | Envelope published | Project | The envelope files (reproduce script, manifest, lock, snapshot, Dockerfile) match the copies on GitHub. |
 | Envelope archived | Project | The same envelope files are in the Zenodo archive. |
 | Environment archived | Project | The container image is in a permanent archive under its own DOI, for the image and platform the envelope pins. |
 | Archives are permanent | Project | Neither archive is a Zenodo sandbox deposit. |
 | Image on a registry (optional) | Project | The pinned image is pullable from a registry such as Docker Hub. Never blocks a level. |
-| Rebuild attestation | Project | A full rebuild reproduced the outputs with matching hashes against the current manifest. |
+| Rebuild attestation | Project | A clean rerun in a copy of the container passed its assessment (every output byte-identical, or the published comparisons passed) against the current manifest, under the current comparison policy and the execution profile the project asks for. |
 | Outputs pinned in the manifest | Step | The step's declared files are in the manifest. |
 | Scripts match the manifest | Step | The step's scripts are unchanged since the manifest was written. |
 | Randomness seeded or declared | Step | A step that uses randomness seeds it or declares it. |
@@ -292,9 +301,10 @@ Level 3 needs the reproducibility envelope (manifest, dependency lock,
 environment snapshot, pinned Dockerfile, and `reproduce.sh`), published
 to GitHub and archived on Zenodo; the container image itself archived,
 because a list of the environment's contents is not enough to rebuild
-it byte for byte; the determinism and software declarations; and an
-attestation that the researcher has rebuilt the results in a copy of
-the container and confirmed that every hash matches. The order of the
+it; the answer to the determinism question and the software
+declaration; and an attestation that the researcher has rerun the
+project in a copy of the container and that the rerun passed its
+assessment. The order of the
 final steps matters: for example, `reproduce.sh` must be generated
 before the manifest records its hash. See
 [Reproducibility](reproducibility.md) for the envelope, the

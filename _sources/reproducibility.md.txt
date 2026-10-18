@@ -3,19 +3,24 @@
 Most scientists consider a result reproducible if someone else can rerun
 the analysis and get the same answer to within some tolerance. That is
 what a project's unit tests check, and it is the bar for PROOF Level 1.
-Level 3 is much stricter: anyone, anywhere, at any time, can rerun your
-project and get back *exactly the same bytes* in every output file. When
-that holds, there is no doubt at all about how your inputs became your
-outputs.
+Level 3 preserves the whole procedure: the exact computing environment,
+saved permanently, and a recorded clean rerun in it whose every output
+was assessed against published criteria. An output passes when its
+bytes are identical to the published file, or when the author's own
+published comparisons, the tests that ship with the project, pass over
+it.
 
-Byte-for-byte reproduction is harder than it sounds. As the
+Why not demand identical bytes everywhere? As the
 [QuickStart](quickStart.md) showed, two computers running the same code
-can disagree in the last digits of a fitted value, because the rules
-that govern floating-point arithmetic allow small differences between
-libraries and processors. The only reliable cure is to rerun the work
-in the *exact* computing environment that produced it. This page
-explains how vaibify records that environment, saves it permanently,
-and proves the reproduction works.
+can disagree in the last digits of a fitted value. Archiving the
+environment removes the differences that come from software, but not
+the ones that come from the processor: math libraries choose their
+fastest code for the processor they find, and split work across however
+many cores it has. So byte identity is reported whenever it holds, as
+the strongest evidence there is, but it is never what Level 3 promises
+on another computer. This page explains how vaibify records the
+environment, saves it permanently, reruns the project in it, and judges
+what the rerun produced.
 
 ## PROOF Level 3 — Reproducible
 
@@ -28,8 +33,9 @@ A project reaches Level 3 when four things exist:
    archive, so it cannot disappear.
 3. **A script anyone can run** to rebuild the results from the files
    and the archived environment.
-4. **Your confirmation** that you ran that reproduction and every byte
-   matched.
+4. **Your confirmation** that you ran that reproduction and it passed
+   its assessment: every output byte-identical, or the published
+   comparisons passing over it.
 
 Level 3 requires a containerized project, because only a container can
 be saved and rerun exactly; a project in host mode reaches at most Level
@@ -65,7 +71,8 @@ be checked on its own:
 | `requirements.lock` | Every Python package the project uses, with its exact version and hash |
 | `.vaibify/environment.json` | The container image, the kind of processor it runs on, and the versions of Python, the compiler and the system libraries |
 | `Dockerfile` | How the container image was built |
-| `reproduce.sh` | The script that reruns the project and checks the result |
+| `reproduce.sh` | The script that reruns the project and assesses the result |
+| `.vaibify/rerunAssessment.py` | The assessor `reproduce.sh` runs, and the comparison policy it grades under |
 
 The **Artifacts** section of the Project block has a row for each file.
 You rarely write any of them by hand: **Regenerate now** rewrites the
@@ -107,12 +114,29 @@ exactly.
 
 ### `reproduce.sh`
 
-**Generate reproduce.sh** writes the script a stranger runs. It finds
-the archived image, runs every automatic step inside it, and finishes
-by checking every file against the manifest. Steps that a person
-performed, such as the AI Declaration, are not rerun; their committed
-files are used as given. The **Reproduce script is current** row warns
-you if the script is older than what vaibify would generate today.
+**Generate reproduce.sh** writes the script a stranger runs, and the
+assessor beside it, `.vaibify/rerunAssessment.py`. The script finds the
+archived image and, inside it:
+
+1. checks every published input against the manifest and sets the
+   published figures aside for comparison;
+2. lists the declared outputs it is about to delete and how to restore
+   them (`git checkout -- <paths>`, or the archived deposit), then
+   deletes them, because it regenerates in the reader's own directory;
+3. reads the processor and applies your recorded execution settings
+   (see [The determinism question](#the-determinism-question));
+4. runs every automatic step as vaibify's runner does: its data
+   commands, then its plot commands, then each group of its tests, and
+   the next step regardless of a failure in this one;
+5. assesses the result and exits with the verdict's code (see
+   [Exit codes](#exit-codes)).
+
+It gives the same verdict, tally and exit code as **Verify Level 3
+Reproducibility** on the same files. Steps that a person performed,
+such as the AI Declaration, are not rerun; their committed files are
+used as given. The **Reproduce script is current** row warns you if the
+script or its assessor is older than what vaibify would generate today,
+or if the assessor was edited.
 
 ## Archiving the environment
 
@@ -157,28 +181,68 @@ An online registry such as Docker Hub can also hold the image and makes
 `reproduce.sh` faster, but a registry promises no preservation, so the
 **Image on a registry (optional)** row never affects your level.
 
-## Declaring what can still vary
+## The determinism question
 
-Even in an identical environment, a few things can make two runs
-differ. Level 3 asks you to say how your project handles them. As with
-the other declarations in vaibify, **answering is what counts**: an
-honest "no" passes, and only an unanswered question fails. The
-**Determinism** section of the Project block asks three questions, each
-saved with its own **Save this answer** button:
+The **Determinism** section of the Project block asks one question:
+**How much speed should vaibify trade for repeatable files?** As with
+the other declarations in vaibify, **answering is what counts**: either
+answer passes, and only an unanswered question fails.
 
-- **Last-digit differences.** Linear-algebra libraries often split a
-  sum across several threads and add the pieces in whatever order they
-  finish, so the final digits can differ from run to run. Do you accept
-  that?
-- **Thread count.** Fixing the number of threads removes that source of
-  variation. Is it fixed, and to what?
-- **The Intel math library.** If your code uses it, it can choose
-  different internal routines on different processors unless a setting
-  prevents it. Do you use it, and with that setting?
+- **Prioritize speed.** Vaibify leaves your math libraries at full
+  speed. Files made on another computer can differ in their last
+  digits; Level 3 judges them by your published comparisons.
+- **Repeatable across computers** (recommended for most projects).
+  Vaibify runs NumPy, OpenBLAS and the C math library on one thread,
+  using instructions that supported computers share, so your computers
+  are more likely to produce identical files. Heavy numerical work can
+  run several times slower. This reduces differences between computers;
+  it cannot eliminate them.
+
+Your answer changes how steps run, not what Level 3 requires. Changing
+it later means rerunning every step once, and it retires your current
+Level 3 attestation, which stays on file as history.
+
+Behind the answer is a versioned **execution profile**, which vaibify
+records and you never type: `speed-v1` requests nothing, and
+`across-v1` requests `OPENBLAS_CORETYPE=Haswell`,
+`NPY_DISABLE_CPU_FEATURES=AVX512_ICL,X86_V4`, `OPENBLAS_NUM_THREADS=1`
+and `OMP_NUM_THREADS=1`. The envelope records the concrete profile, and
+every rerun, in the dashboard or `reproduce.sh`, replays those recorded
+settings rather than looking the answer up again, so a later vaibify
+cannot change what your published profile asked for.
+
+Every run follows the same order. First vaibify reads the processor, in
+a process that loads no math library: its vendor, its `x86-64` level and
+how many cores the run can see. A processor without `x86-64-v3` cannot
+honor the instruction floor, so it runs without those two settings,
+keeps the thread settings, and records "floor not applied: this
+processor lacks x86-64-v3"; the dashboard warns you before such a run
+starts. Then a separate probe loads NumPy under exactly the settings the
+steps get, and records what OpenBLAS chose and whether NumPy applied
+each feature it was asked to disable. NumPy before version 2.4 does not
+know the name `X86_V4`; it ignores that request without a visible
+warning, and keeps using AVX-512 instructions where the processor has
+them. Vaibify says so before such a run starts, and `reproduce.sh`
+prints it. The probe also multiplies two matrices with NumPy, in a
+process of its own, because OpenBLAS can crash under a forced kernel on
+a processor it was not tuned for: OpenBLAS 0.3.34, which NumPy 2.5.3
+bundles, dies with a segmentation fault under `across-v1` on an AMD
+`x86-64-v4` processor, where OpenBLAS 0.3.27 does not. When the product
+crashes, vaibify names the crash and the kernel before the steps run,
+in the dashboard and in `reproduce.sh`. The probe establishes what a
+probe process saw; a step that changes its own settings is not
+detected.
+
+The cost was measured on one 8-core machine: about three to four times
+slower for dense linear algebra, and about three times slower for
+vectorized `exp` and `log`. The profiles cover NumPy, OpenBLAS and the
+C math library only. Other libraries that choose code by processor,
+such as Intel MKL, are not covered; the section says so when your
+dependency lock names MKL.
 
 If a step's scripts appear to draw random numbers without a seed, that
 step carries a warning, and the **Determinism declared** row stays red
-until you seed the generator or the declaration covers the step.
+until you seed the generator.
 
 The **Software declared** row covers programs your steps run that are
 not Python packages, such as a compiled simulation code. Declare each
@@ -220,15 +284,18 @@ in the container: no agent mid-task, no running step.
 
 Vaibify then copies your project into a fresh, throwaway container built
 from the image your envelope pins, with no network access, and reruns the entire
-workflow there. Your own files are never touched. Before anything runs,
-it deletes every output the steps will produce, so an old file can never
-be mistaken for a reproduced one. Then it compares every new file with
-the manifest and deletes the throwaway container.
+workflow there, tests included, under your recorded execution settings.
+Your own files are never touched. Before anything runs, it checks every
+published input and deletes every output the steps will produce, so an
+old file can never be mistaken for a reproduced one. Then it assesses
+the rerun (next section) and deletes the throwaway container.
 
 The rerun takes as long as your workflow does. When it finishes, the
-PROOF tab shows the **Level 3 Attestation** card, with the time, the
-fingerprints it compared and how many files matched, and the
-**Reproduction History** of every attempt. If a step fails, its name and
+PROOF tab shows the **Level 3 Attestation** card, with the verdict and
+its tally, each file's outcome and its reason, and the **Reproduction
+History** of every attempt. A record made by an earlier version of the
+check, which compared bytes alone, reads as a previous check: true
+about what it checked, and not accepted by the current requirement. If a step fails, its name and
 the end of its output are kept for you, since the container that ran it
 is gone. The result is written to `.vaibify/l3_attestation.json`, and
 the hashes the rerun observed are written to `REPRODUCED.sha256`, laid
@@ -244,10 +311,101 @@ names; the author's `REPRODUCED.sha256` is never written. Vaibify does
 not stage or commit any of these files. They are yours, so commit them
 only if you choose to.
 
-You do not have to take vaibify's word for any of this. Every check is
-a standard tool that anyone can run by hand: `sha256sum` for the files,
-`pip` for the packages, and `docker` for the image. Vaibify just runs
-them in the right order.
+You do not have to take vaibify's word for any of this. The file
+checks use standard tools that anyone can run by hand: `sha256sum` for
+the files, `pip` for the packages, and `docker` for the image. The
+assessment itself is `.vaibify/rerunAssessment.py`, a readable Python
+file pinned in your manifest, which `reproduce.sh` runs in the open.
+
+## How a rerun is assessed
+
+The assessment asks two questions, and keeps them apart.
+
+**Integrity is exact.** Every published input (scripts, tests, their
+standards, the envelope) must be unchanged before the rerun and after
+it. Any change is "Published inputs changed", whatever else happened: a
+step that loosened its own tolerance changed a published input.
+
+**Agreement is graded.** Each regenerated output is, in this order:
+
+1. **Failed** when its step's command failed, or it was not written, or
+   a published comparison bound to it failed;
+2. **Byte-identical** when its bytes equal the published file and every
+   check bound to it passed;
+3. **Comparisons passed** when its bytes differ but every published
+   comparison bound to it passed (a figure may also pass vaibify's
+   image check, below);
+4. **Not enough evidence** otherwise: a check that skipped itself or
+   wrote no report, or a difference with no comparison to judge it.
+
+The overall verdict follows the same precedence: "Could not run",
+"Published inputs changed", "Not reproduced", "Not enough evidence",
+then "Reproduced: published comparisons passed; N of M files differ in
+their bytes" or "Reproduced: every file byte-identical". The verdict
+always comes with its tally.
+
+**The evidence is the tests' own reports.** Every command the rerun runs
+gets an identity (`A03.quantitative.1` is the first command of step
+A03's quantitative tests), its exit status is recorded, and every test
+command writes its own JUnit report under that identity. A check counts
+only when the report from its own step and test file says it passed; a
+command that never ran, a report that is missing, and a test that
+skipped itself are all named, never read as passes. A structural check,
+such as "this file exists", can fail an output but never establishes
+agreement.
+
+**The image check is narrow.** A raster figure (`.png`, `.jpg`, `.tif`)
+whose bytes differ passes vaibify's own check when both files are a
+supported encoding (one frame, at most 8 bits per sample) with the same
+format, size and mode, and no channel of any pixel moves by more than 2
+levels out of 255. The report gives the largest change and how many
+pixels changed. It is labeled "within vaibify's image-difference
+threshold", never as the author's comparison, and passing it is not
+proof that a figure carries the same science. Anything outside it is
+"not enough evidence", with the reason named; the remedy is a
+quantitative standard over the data the figure shows.
+
+**The comparison policy is frozen.** These rules are the comparison
+policy `comparison-v1`, recorded on the second line of
+`.vaibify/rerunAssessment.py`. A reproduction grades under the policy
+the project recorded, using vaibify's own copy of that policy, never
+the project's file. A later fix becomes a new policy version; the Level
+3 rebuild requirement accepts only an attestation made under the
+current one, and regenerating `reproduce.sh` moves a project to it.
+
+### Exit codes
+
+`reproduce.sh`, `vaibify reproduce` and the dashboard share one table:
+
+| Code | Verdict |
+|---|---|
+| 0 | Reproduced (byte-identical, or published comparisons passed) |
+| 1 | Not reproduced |
+| 3 | Published inputs changed |
+| 4 | Could not run |
+| 5 | Not enough evidence |
+
+### Where each output came from
+
+Each time a step's data or plot commands complete, vaibify records, in
+`.vaibify/outputProvenance.json`, which outputs they wrote and the
+context they ran under: the processor's vendor, `x86-64` level and
+visible cores, the execution profile and the settings that applied, and
+what the probe saw. Only the section that really ran records; running
+the tests, a failed section and a skipped one relabel nothing. No
+processor model name and no computer name is recorded. The envelope
+copies each pinned output's context, and a file whose bytes no longer
+match its record reads "production context unknown".
+
+That is how a difference is explained rather than guessed. A
+verification puts each differing output's production context beside
+the rerun's. A step whose outputs were made under different settings or
+hardware says "Produced under different execution settings or hardware"
+and names what differs, as information, not as a failure. When every
+manifest mismatch is explained that way, **Check Files Against
+Manifest** offers to make this computer's results the published ones,
+by rerunning every step here and regenerating the manifest; nothing
+requires it.
 
 ## Reproducing a published project
 
@@ -267,13 +425,14 @@ the manifest. This is deliberately not the author's Level 3 checklist;
 whether the author finished their paperwork should not stop you from
 checking the work. It then obtains the image (from a registry, then the
 author's Zenodo archive, checked against its fingerprint, then any copy
-already on your computer), reruns every step in a throwaway container,
-and compares the bytes.
+already on your computer), reruns every step in a throwaway container
+under the author's recorded execution settings, and assesses the result
+exactly as above.
 
-The result is one of *reproduced*, *reproduced under emulation*,
-*diverged*, or *no verdict* (with the reason). It is saved as a report
-under `~/.vaibify/reproductions/reports/`. The report is yours, not the
-author's: nothing is written into their project.
+The verdict is the assessment's, followed by its tally, and says when
+it ran under emulation; or it is "Could not run", with the reason. It is
+saved as a report under `~/.vaibify/reproductions/reports/`. The report
+is yours, not the author's: nothing is written into their project.
 
 ## Keeping the compiler fixed
 
@@ -307,9 +466,20 @@ its maintainers to fix. Never work around it by unpinning. To check published wo
 
 ## Known limitations
 
-- **Byte-exact means within one environment.** The same code on a
-  different processor or library can give numerically near-identical
-  but byte-different results. The archived image removes the library
-  difference, and the determinism answers record the rest.
+- **A verification establishes what happened in the tested
+  environment**, not what will happen on every future computer. The
+  archived image removes the software difference; the execution
+  profile reduces the processor's, and cannot remove it.
+- **Settings are requested and confirmed in a probe process**, not
+  observed in every step's process.
+- **`across-v1` cannot run on every processor.** Where OpenBLAS crashes
+  under its forced kernel, every step that multiplies matrices fails,
+  and the rerun grades those outputs failed. It says why, but the
+  result cannot be regenerated there under that profile.
+- **The image check is narrow** (above): passing it is not proof that a
+  figure carries the same science.
+- **`reproduce.sh` regenerates in the reader's own directory**, and
+  deletes the declared outputs first. A run that fails leaves them
+  absent rather than stale; `git checkout` restores them.
 - **A tampered verifier cannot detect itself.** That is true of every
   verification tool, which is why each check can also be run by hand.

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The PROOF Ladder &mdash; Vaibify 0.1.4.dev2 documentation</title>
+  <title>The PROOF Ladder &mdash; Vaibify 0.1.4.dev26 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1546fae8"></script>
+      <script src="_static/documentation_options.js?v=ba0b7039"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -161,8 +161,8 @@ software and data are free of corruption introduced by AI agents.</p>
 </tr>
 <tr class="row-even"><td><p>3</p></td>
 <td><p>Reproducible</p></td>
-<td><p>Instructions and environment for a byte-identical rerun, attested by the authors</p></td>
-<td><p>That inputs trace to raw data, or a public record of all AI assistance</p></td>
+<td><p>A preserved environment and procedure, and a clean rerun assessed against published criteria, attested by the authors</p></td>
+<td><p>Byte-identical results on other computers; that inputs trace to raw data, or a public record of all AI assistance</p></td>
 </tr>
 <tr class="row-odd"><td><p>4</p></td>
 <td><p>Traceable</p></td>
@@ -210,15 +210,23 @@ researchers can exactly reproduce the results.</p>
 </section>
 <section id="level-3-reproducible">
 <h3>Level 3: Reproducible<a class="headerlink" href="#level-3-reproducible" title="Link to this heading"></a></h3>
-<p>Level 3 adds published instructions for reproducing the results at the
-bit level, and an attestation that the original authors have performed
-that reproduction. A Level 3 product collects all dependencies in a
-clean, well-defined environment, regenerates the results exactly as in
-the original experiment, and includes hashes, such as SHA-256, that let
-others verify that every byte of their recreation matches. A
-reproducible result does <em>not</em> have to contain the raw observational
-data behind it, nor a public record of how the data and software were
-assisted by AI.</p>
+<p>Level 3 adds a preserved execution environment and procedure, with a
+recorded clean rerun assessed against published criteria, and an
+attestation that the original authors made that rerun. A Level 3
+product collects all dependencies in a clean, well-defined environment,
+pins every published input with a hash such as SHA-256, deletes and
+regenerates its outputs, and grades each regenerated output: identical
+bytes, or the author’s own published comparisons (the tests that ship
+with the project) passing over it.</p>
+<p>Byte identity is valuable evidence, and the verdict reports it whenever
+it holds. It is never the Level 3 criterion, because the container pins
+the software but not the processor: math libraries choose their code by
+the processor they find, so last digits can differ between computers.
+A passing verification establishes what happened in the environment
+that was tested; it does not predict what will happen on every future
+computer. A reproducible result does <em>not</em> have to contain the raw
+observational data behind it, nor a public record of how the data and
+software were assisted by AI.</p>
 </section>
 <section id="level-4-traceable">
 <h3>Level 4: Traceable<a class="headerlink" href="#level-4-traceable" title="Link to this heading"></a></h3>
@@ -485,15 +493,15 @@ it, and vaibify also re-verifies on a schedule while the hub runs.</p>
 </tr>
 <tr class="row-odd"><td><p>Reproduce script</p></td>
 <td><p>Project</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> at the repository root reruns the project, and its hash is in the manifest.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> at the repository root reruns and assesses the project, and its hash is in the manifest, beside the hash of the rerun assessor (<code class="docutils literal notranslate"><span class="pre">.vaibify/rerunAssessment.py</span></code>) it runs.</p></td>
 </tr>
 <tr class="row-even"><td><p>Reproduce script is current</p></td>
 <td><p>Project</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> matches what vaibify would generate for the workflow.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> and its rerun assessor match what vaibify would generate for the workflow, under the current comparison policy.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Determinism declared</p></td>
 <td><p>Project</p></td>
-<td><p>The researcher has stated how exactly a rerun must match: last-digit numeric differences, thread count, and the Intel MKL setting.</p></td>
+<td><p>The researcher has answered how much speed vaibify should trade for repeatable files. The answer chooses the execution settings every rerun replays; either answer passes.</p></td>
 </tr>
 <tr class="row-even"><td><p>Software declared</p></td>
 <td><p>Project</p></td>
@@ -521,7 +529,7 @@ it, and vaibify also re-verifies on a schedule while the hub runs.</p>
 </tr>
 <tr class="row-even"><td><p>Rebuild attestation</p></td>
 <td><p>Project</p></td>
-<td><p>A full rebuild reproduced the outputs with matching hashes against the current manifest.</p></td>
+<td><p>A clean rerun in a copy of the container passed its assessment (every output byte-identical, or the published comparisons passed) against the current manifest, under the current comparison policy and the execution profile the project asks for.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Outputs pinned in the manifest</p></td>
 <td><p>Step</p></td>
@@ -555,9 +563,10 @@ expected: Level 3 describes a published release, not the working tree.</p>
 environment snapshot, pinned Dockerfile, and <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>), published
 to GitHub and archived on Zenodo; the container image itself archived,
 because a list of the environment’s contents is not enough to rebuild
-it byte for byte; the determinism and software declarations; and an
-attestation that the researcher has rebuilt the results in a copy of
-the container and confirmed that every hash matches. The order of the
+it; the answer to the determinism question and the software
+declaration; and an attestation that the researcher has rerun the
+project in a copy of the container and that the rerun passed its
+assessment. The order of the
 final steps matters: for example, <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> must be generated
 before the manifest records its hash. See
 <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a> for the envelope, the

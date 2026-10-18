@@ -2036,7 +2036,62 @@ performed outside the dashboard stay visible as progress. The
 "unassessed" state asserts only existence, never quality — it sits
 below "none" on the ladder and never stamps a high-water mark.
 
-## Determinism is three questions, and each must be answered
+## Level 3 grades a rerun; it does not demand identical bytes
+
+Level 3 used to mean "a clean rerun in the archived image reproduces
+every byte". That claim was true only on processors like the author's:
+an archived image pins the software, but NumPy's bundled OpenBLAS picks
+its kernel for the processor it finds, NumPy dispatches its vectorized
+math the same way, and the thread count follows the cores. So the
+claim is now an assessment (design D1). Integrity is exact -- every
+published input unchanged before and after the rerun -- and agreement
+is graded per output: byte-identical, or the author's published
+comparisons passing over it. Byte identity is reported whenever it
+holds and is never the criterion.
+
+Three properties keep the assessment honest, and each is a way to turn
+it back into a claim nobody earned:
+
+* **One file grades both lanes.** The procedure (`rerunProcedure`) and
+  the frozen policy (`comparisonPolicyV1`) render into
+  `.vaibify/rerunAssessment.py`, which `reproduce.sh` runs and the
+  dashboard's shadow lane renders afresh and runs; the bytes are the
+  same for the same policy and workflow. A reproduction grades under
+  the RECORDED policy, with vaibify's own copy of it, never the
+  repository's: a published file is a thing the author could edit. A
+  later fix is a new policy version, and an attestation made under an
+  older one reads as history, true about what it checked.
+* **Evidence is the tests' own JUnit reports**, each bound to its step,
+  test file and command identity, with every planned command accounted
+  for. A missing report, a skip and a command that never ran are named,
+  never read as passes; a structural check can fail an output but never
+  establishes agreement. The precedence that turns outcomes into a
+  verdict is a table in the policy, worst first, so no later reader
+  re-derives it.
+* **The execution profile is frozen in the envelope.** The determinism
+  question has one answer (`sRepeatabilityAnswer`, "speed" or
+  "across"), and the server records the newest profile for it
+  (`sExecutionProfile`). A rerun replays the envelope's recorded
+  `dictExecutionProfile` rather than looking the answer up again. The
+  processor is read FIRST, in a process that loads no math library, so
+  the instruction floor is applied only where the processor can honor
+  it; a probe then loads NumPy under exactly the settings the steps
+  get. Every key a profile may set is on a closed allowlist, checked in
+  Python and again in `reproduce.sh`'s own shell before anything is
+  exported.
+
+Production provenance (`outputProvenance`) is what lets a difference be
+explained rather than guessed: each section that completes records the
+outputs it wrote and the context it ran under, and only a completed
+section relabels anything.
+
+## Determinism was three questions (superseded)
+
+The single question above replaced this ruling on 2026-10-17. The
+history is kept because its two rules survived it: answering is the
+criterion, and an answer lives in its own key rather than being
+inferred from a value. The legacy keys are kept in old workflows and
+read by nothing that grades.
 
 Until 2026-08-30 the L3 determinism gate was an OR: any one of a BLAS
 waiver, a pinned OpenMP thread count, or an Intel MKL mode satisfied
@@ -2581,9 +2636,11 @@ about their own project and is written into it; a report is a
 stranger's record of what happened when they tried, written under the
 reproducer's own home with its own schema and retention, apart from
 the staging scratch that is deleted after every run. `levelGates`
-never imports it, and a test pins that. Its verdicts are
-"reproduced", "reproduced under emulation", "diverged" and "no
-verdict"; the word "attested" appears nowhere on this lane, because
+never imports it, and a test pins that. Its verdicts are the
+comparison policy's own words, imported rather than retyped, plus "no
+verdict" for a run that never reached one; "reproduced" and "diverged"
+survive only so a report written by the byte-only verifier still reads
+as what it said. The word "attested" appears nowhere on this lane, because
 vaibify offers no publishing, depositing, pushing or attesting action
 on a reproduction.
 

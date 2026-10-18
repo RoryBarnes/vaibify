@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.1.4.dev2 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.1.4.dev26 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1546fae8"></script>
+      <script src="_static/documentation_options.js?v=ba0b7039"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -2090,8 +2090,61 @@ performed outside the dashboard stay visible as progress. The
 “unassessed” state asserts only existence, never quality — it sits
 below “none” on the ladder and never stamps a high-water mark.</p>
 </section>
-<section id="determinism-is-three-questions-and-each-must-be-answered">
-<h2>Determinism is three questions, and each must be answered<a class="headerlink" href="#determinism-is-three-questions-and-each-must-be-answered" title="Link to this heading"></a></h2>
+<section id="level-3-grades-a-rerun-it-does-not-demand-identical-bytes">
+<h2>Level 3 grades a rerun; it does not demand identical bytes<a class="headerlink" href="#level-3-grades-a-rerun-it-does-not-demand-identical-bytes" title="Link to this heading"></a></h2>
+<p>Level 3 used to mean “a clean rerun in the archived image reproduces
+every byte”. That claim was true only on processors like the author’s:
+an archived image pins the software, but NumPy’s bundled OpenBLAS picks
+its kernel for the processor it finds, NumPy dispatches its vectorized
+math the same way, and the thread count follows the cores. So the
+claim is now an assessment (design D1). Integrity is exact – every
+published input unchanged before and after the rerun – and agreement
+is graded per output: byte-identical, or the author’s published
+comparisons passing over it. Byte identity is reported whenever it
+holds and is never the criterion.</p>
+<p>Three properties keep the assessment honest, and each is a way to turn
+it back into a claim nobody earned:</p>
+<ul class="simple">
+<li><p><strong>One file grades both lanes.</strong> The procedure (<code class="docutils literal notranslate"><span class="pre">rerunProcedure</span></code>) and
+the frozen policy (<code class="docutils literal notranslate"><span class="pre">comparisonPolicyV1</span></code>) render into
+<code class="docutils literal notranslate"><span class="pre">.vaibify/rerunAssessment.py</span></code>, which <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> runs and the
+dashboard’s shadow lane renders afresh and runs; the bytes are the
+same for the same policy and workflow. A reproduction grades under
+the RECORDED policy, with vaibify’s own copy of it, never the
+repository’s: a published file is a thing the author could edit. A
+later fix is a new policy version, and an attestation made under an
+older one reads as history, true about what it checked.</p></li>
+<li><p><strong>Evidence is the tests’ own JUnit reports</strong>, each bound to its step,
+test file and command identity, with every planned command accounted
+for. A missing report, a skip and a command that never ran are named,
+never read as passes; a structural check can fail an output but never
+establishes agreement. The precedence that turns outcomes into a
+verdict is a table in the policy, worst first, so no later reader
+re-derives it.</p></li>
+<li><p><strong>The execution profile is frozen in the envelope.</strong> The determinism
+question has one answer (<code class="docutils literal notranslate"><span class="pre">sRepeatabilityAnswer</span></code>, “speed” or
+“across”), and the server records the newest profile for it
+(<code class="docutils literal notranslate"><span class="pre">sExecutionProfile</span></code>). A rerun replays the envelope’s recorded
+<code class="docutils literal notranslate"><span class="pre">dictExecutionProfile</span></code> rather than looking the answer up again. The
+processor is read FIRST, in a process that loads no math library, so
+the instruction floor is applied only where the processor can honor
+it; a probe then loads NumPy under exactly the settings the steps
+get. Every key a profile may set is on a closed allowlist, checked in
+Python and again in <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>’s own shell before anything is
+exported.</p></li>
+</ul>
+<p>Production provenance (<code class="docutils literal notranslate"><span class="pre">outputProvenance</span></code>) is what lets a difference be
+explained rather than guessed: each section that completes records the
+outputs it wrote and the context it ran under, and only a completed
+section relabels anything.</p>
+</section>
+<section id="determinism-was-three-questions-superseded">
+<h2>Determinism was three questions (superseded)<a class="headerlink" href="#determinism-was-three-questions-superseded" title="Link to this heading"></a></h2>
+<p>The single question above replaced this ruling on 2026-10-17. The
+history is kept because its two rules survived it: answering is the
+criterion, and an answer lives in its own key rather than being
+inferred from a value. The legacy keys are kept in old workflows and
+read by nothing that grades.</p>
 <p>Until 2026-08-30 the L3 determinism gate was an OR: any one of a BLAS
 waiver, a pinned OpenMP thread count, or an Intel MKL mode satisfied
 it. A project could therefore attest at Level 3 having answered a third
@@ -2628,9 +2681,11 @@ about their own project and is written into it; a report is a
 stranger’s record of what happened when they tried, written under the
 reproducer’s own home with its own schema and retention, apart from
 the staging scratch that is deleted after every run. <code class="docutils literal notranslate"><span class="pre">levelGates</span></code>
-never imports it, and a test pins that. Its verdicts are
-“reproduced”, “reproduced under emulation”, “diverged” and “no
-verdict”; the word “attested” appears nowhere on this lane, because
+never imports it, and a test pins that. Its verdicts are the
+comparison policy’s own words, imported rather than retyped, plus “no
+verdict” for a run that never reached one; “reproduced” and “diverged”
+survive only so a report written by the byte-only verifier still reads
+as what it said. The word “attested” appears nowhere on this lane, because
 vaibify offers no publishing, depositing, pushing or attesting action
 on a reproduction.</p>
 <p>The dashboard’s one-shot job (<code class="docutils literal notranslate"><span class="pre">reproductionRoutes</span></code>,

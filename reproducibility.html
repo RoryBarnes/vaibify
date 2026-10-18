@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.1.4.dev2 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.1.4.dev26 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1546fae8"></script>
+      <script src="_static/documentation_options.js?v=ba0b7039"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -65,9 +65,14 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#archiving-the-environment">Archiving the environment</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#declaring-what-can-still-vary">Declaring what can still vary</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-determinism-question">The determinism question</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-order-of-the-final-steps">The order of the final steps</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-verification-process">The verification process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-a-rerun-is-assessed">How a rerun is assessed</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#exit-codes">Exit codes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#where-each-output-came-from">Where each output came from</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#reproducing-a-published-project">Reproducing a published project</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#keeping-the-compiler-fixed">Keeping the compiler fixed</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#when-a-pinned-toolchain-version-disappears">When a pinned toolchain version disappears</a></li>
@@ -114,18 +119,23 @@
 <p>Most scientists consider a result reproducible if someone else can rerun
 the analysis and get the same answer to within some tolerance. That is
 what a project’s unit tests check, and it is the bar for PROOF Level 1.
-Level 3 is much stricter: anyone, anywhere, at any time, can rerun your
-project and get back <em>exactly the same bytes</em> in every output file. When
-that holds, there is no doubt at all about how your inputs became your
-outputs.</p>
-<p>Byte-for-byte reproduction is harder than it sounds. As the
+Level 3 preserves the whole procedure: the exact computing environment,
+saved permanently, and a recorded clean rerun in it whose every output
+was assessed against published criteria. An output passes when its
+bytes are identical to the published file, or when the author’s own
+published comparisons, the tests that ship with the project, pass over
+it.</p>
+<p>Why not demand identical bytes everywhere? As the
 <a class="reference internal" href="quickStart.html"><span class="std std-doc">QuickStart</span></a> showed, two computers running the same code
-can disagree in the last digits of a fitted value, because the rules
-that govern floating-point arithmetic allow small differences between
-libraries and processors. The only reliable cure is to rerun the work
-in the <em>exact</em> computing environment that produced it. This page
-explains how vaibify records that environment, saves it permanently,
-and proves the reproduction works.</p>
+can disagree in the last digits of a fitted value. Archiving the
+environment removes the differences that come from software, but not
+the ones that come from the processor: math libraries choose their
+fastest code for the processor they find, and split work across however
+many cores it has. So byte identity is reported whenever it holds, as
+the strongest evidence there is, but it is never what Level 3 promises
+on another computer. This page explains how vaibify records the
+environment, saves it permanently, reruns the project in it, and judges
+what the rerun produced.</p>
 <section id="proof-level-3-reproducible">
 <h2>PROOF Level 3 — Reproducible<a class="headerlink" href="#proof-level-3-reproducible" title="Link to this heading"></a></h2>
 <p>A project reaches Level 3 when four things exist:</p>
@@ -137,8 +147,9 @@ summary of the file’s bytes. Change one byte and the hash changes.</p></li>
 archive, so it cannot disappear.</p></li>
 <li><p><strong>A script anyone can run</strong> to rebuild the results from the files
 and the archived environment.</p></li>
-<li><p><strong>Your confirmation</strong> that you ran that reproduction and every byte
-matched.</p></li>
+<li><p><strong>Your confirmation</strong> that you ran that reproduction and it passed
+its assessment: every output byte-identical, or the published
+comparisons passing over it.</p></li>
 </ol>
 <p>Level 3 requires a containerized project, because only a container can
 be saved and rerun exactly; a project in host mode reaches at most Level
@@ -186,7 +197,10 @@ be checked on its own:</p>
 <td><p>How the container image was built</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code></p></td>
-<td><p>The script that reruns the project and checks the result</p></td>
+<td><p>The script that reruns the project and assesses the result</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.vaibify/rerunAssessment.py</span></code></p></td>
+<td><p>The assessor <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> runs, and the comparison policy it grades under</p></td>
 </tr>
 </tbody>
 </table>
@@ -227,12 +241,29 @@ exactly.</p>
 </section>
 <section id="reproduce-sh">
 <h3><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code><a class="headerlink" href="#reproduce-sh" title="Link to this heading"></a></h3>
-<p><strong>Generate reproduce.sh</strong> writes the script a stranger runs. It finds
-the archived image, runs every automatic step inside it, and finishes
-by checking every file against the manifest. Steps that a person
-performed, such as the AI Declaration, are not rerun; their committed
-files are used as given. The <strong>Reproduce script is current</strong> row warns
-you if the script is older than what vaibify would generate today.</p>
+<p><strong>Generate reproduce.sh</strong> writes the script a stranger runs, and the
+assessor beside it, <code class="docutils literal notranslate"><span class="pre">.vaibify/rerunAssessment.py</span></code>. The script finds the
+archived image and, inside it:</p>
+<ol class="arabic simple">
+<li><p>checks every published input against the manifest and sets the
+published figures aside for comparison;</p></li>
+<li><p>lists the declared outputs it is about to delete and how to restore
+them (<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">checkout</span> <span class="pre">--</span> <span class="pre">&lt;paths&gt;</span></code>, or the archived deposit), then
+deletes them, because it regenerates in the reader’s own directory;</p></li>
+<li><p>reads the processor and applies your recorded execution settings
+(see <a class="reference internal" href="#the-determinism-question">The determinism question</a>);</p></li>
+<li><p>runs every automatic step as vaibify’s runner does: its data
+commands, then its plot commands, then each group of its tests, and
+the next step regardless of a failure in this one;</p></li>
+<li><p>assesses the result and exits with the verdict’s code (see
+<a class="reference internal" href="#exit-codes">Exit codes</a>).</p></li>
+</ol>
+<p>It gives the same verdict, tally and exit code as <strong>Verify Level 3
+Reproducibility</strong> on the same files. Steps that a person performed,
+such as the AI Declaration, are not rerun; their committed files are
+used as given. The <strong>Reproduce script is current</strong> row warns you if the
+script or its assessor is older than what vaibify would generate today,
+or if the assessor was edited.</p>
 </section>
 </section>
 <section id="archiving-the-environment">
@@ -273,28 +304,64 @@ agent’s installation would change anything your steps use.</p>
 <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> faster, but a registry promises no preservation, so the
 <strong>Image on a registry (optional)</strong> row never affects your level.</p>
 </section>
-<section id="declaring-what-can-still-vary">
-<h2>Declaring what can still vary<a class="headerlink" href="#declaring-what-can-still-vary" title="Link to this heading"></a></h2>
-<p>Even in an identical environment, a few things can make two runs
-differ. Level 3 asks you to say how your project handles them. As with
-the other declarations in vaibify, <strong>answering is what counts</strong>: an
-honest “no” passes, and only an unanswered question fails. The
-<strong>Determinism</strong> section of the Project block asks three questions, each
-saved with its own <strong>Save this answer</strong> button:</p>
+<section id="the-determinism-question">
+<h2>The determinism question<a class="headerlink" href="#the-determinism-question" title="Link to this heading"></a></h2>
+<p>The <strong>Determinism</strong> section of the Project block asks one question:
+<strong>How much speed should vaibify trade for repeatable files?</strong> As with
+the other declarations in vaibify, <strong>answering is what counts</strong>: either
+answer passes, and only an unanswered question fails.</p>
 <ul class="simple">
-<li><p><strong>Last-digit differences.</strong> Linear-algebra libraries often split a
-sum across several threads and add the pieces in whatever order they
-finish, so the final digits can differ from run to run. Do you accept
-that?</p></li>
-<li><p><strong>Thread count.</strong> Fixing the number of threads removes that source of
-variation. Is it fixed, and to what?</p></li>
-<li><p><strong>The Intel math library.</strong> If your code uses it, it can choose
-different internal routines on different processors unless a setting
-prevents it. Do you use it, and with that setting?</p></li>
+<li><p><strong>Prioritize speed.</strong> Vaibify leaves your math libraries at full
+speed. Files made on another computer can differ in their last
+digits; Level 3 judges them by your published comparisons.</p></li>
+<li><p><strong>Repeatable across computers</strong> (recommended for most projects).
+Vaibify runs NumPy, OpenBLAS and the C math library on one thread,
+using instructions that supported computers share, so your computers
+are more likely to produce identical files. Heavy numerical work can
+run several times slower. This reduces differences between computers;
+it cannot eliminate them.</p></li>
 </ul>
+<p>Your answer changes how steps run, not what Level 3 requires. Changing
+it later means rerunning every step once, and it retires your current
+Level 3 attestation, which stays on file as history.</p>
+<p>Behind the answer is a versioned <strong>execution profile</strong>, which vaibify
+records and you never type: <code class="docutils literal notranslate"><span class="pre">speed-v1</span></code> requests nothing, and
+<code class="docutils literal notranslate"><span class="pre">across-v1</span></code> requests <code class="docutils literal notranslate"><span class="pre">OPENBLAS_CORETYPE=Haswell</span></code>,
+<code class="docutils literal notranslate"><span class="pre">NPY_DISABLE_CPU_FEATURES=AVX512_ICL,X86_V4</span></code>, <code class="docutils literal notranslate"><span class="pre">OPENBLAS_NUM_THREADS=1</span></code>
+and <code class="docutils literal notranslate"><span class="pre">OMP_NUM_THREADS=1</span></code>. The envelope records the concrete profile, and
+every rerun, in the dashboard or <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>, replays those recorded
+settings rather than looking the answer up again, so a later vaibify
+cannot change what your published profile asked for.</p>
+<p>Every run follows the same order. First vaibify reads the processor, in
+a process that loads no math library: its vendor, its <code class="docutils literal notranslate"><span class="pre">x86-64</span></code> level and
+how many cores the run can see. A processor without <code class="docutils literal notranslate"><span class="pre">x86-64-v3</span></code> cannot
+honor the instruction floor, so it runs without those two settings,
+keeps the thread settings, and records “floor not applied: this
+processor lacks x86-64-v3”; the dashboard warns you before such a run
+starts. Then a separate probe loads NumPy under exactly the settings the
+steps get, and records what OpenBLAS chose and whether NumPy applied
+each feature it was asked to disable. NumPy before version 2.4 does not
+know the name <code class="docutils literal notranslate"><span class="pre">X86_V4</span></code>; it ignores that request without a visible
+warning, and keeps using AVX-512 instructions where the processor has
+them. Vaibify says so before such a run starts, and <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>
+prints it. The probe also multiplies two matrices with NumPy, in a
+process of its own, because OpenBLAS can crash under a forced kernel on
+a processor it was not tuned for: OpenBLAS 0.3.34, which NumPy 2.5.3
+bundles, dies with a segmentation fault under <code class="docutils literal notranslate"><span class="pre">across-v1</span></code> on an AMD
+<code class="docutils literal notranslate"><span class="pre">x86-64-v4</span></code> processor, where OpenBLAS 0.3.27 does not. When the product
+crashes, vaibify names the crash and the kernel before the steps run,
+in the dashboard and in <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>. The probe establishes what a
+probe process saw; a step that changes its own settings is not
+detected.</p>
+<p>The cost was measured on one 8-core machine: about three to four times
+slower for dense linear algebra, and about three times slower for
+vectorized <code class="docutils literal notranslate"><span class="pre">exp</span></code> and <code class="docutils literal notranslate"><span class="pre">log</span></code>. The profiles cover NumPy, OpenBLAS and the
+C math library only. Other libraries that choose code by processor,
+such as Intel MKL, are not covered; the section says so when your
+dependency lock names MKL.</p>
 <p>If a step’s scripts appear to draw random numbers without a seed, that
 step carries a warning, and the <strong>Determinism declared</strong> row stays red
-until you seed the generator or the declaration covers the step.</p>
+until you seed the generator.</p>
 <p>The <strong>Software declared</strong> row covers programs your steps run that are
 not Python packages, such as a compiled simulation code. Declare each
 with its expected version, and <strong>Capture version + SHA</strong> records its
@@ -334,14 +401,17 @@ to fix if not. Then it explains what will happen and asks you to press
 in the container: no agent mid-task, no running step.</p>
 <p>Vaibify then copies your project into a fresh, throwaway container built
 from the image your envelope pins, with no network access, and reruns the entire
-workflow there. Your own files are never touched. Before anything runs,
-it deletes every output the steps will produce, so an old file can never
-be mistaken for a reproduced one. Then it compares every new file with
-the manifest and deletes the throwaway container.</p>
+workflow there, tests included, under your recorded execution settings.
+Your own files are never touched. Before anything runs, it checks every
+published input and deletes every output the steps will produce, so an
+old file can never be mistaken for a reproduced one. Then it assesses
+the rerun (next section) and deletes the throwaway container.</p>
 <p>The rerun takes as long as your workflow does. When it finishes, the
-PROOF tab shows the <strong>Level 3 Attestation</strong> card, with the time, the
-fingerprints it compared and how many files matched, and the
-<strong>Reproduction History</strong> of every attempt. If a step fails, its name and
+PROOF tab shows the <strong>Level 3 Attestation</strong> card, with the verdict and
+its tally, each file’s outcome and its reason, and the <strong>Reproduction
+History</strong> of every attempt. A record made by an earlier version of the
+check, which compared bytes alone, reads as a previous check: true
+about what it checked, and not accepted by the current requirement. If a step fails, its name and
 the end of its output are kept for you, since the container that ran it
 is gone. The result is written to <code class="docutils literal notranslate"><span class="pre">.vaibify/l3_attestation.json</span></code>, and
 the hashes the rerun observed are written to <code class="docutils literal notranslate"><span class="pre">REPRODUCED.sha256</span></code>, laid
@@ -355,10 +425,111 @@ to a dated file in <code class="docutils literal notranslate"><span class="pre">
 names; the author’s <code class="docutils literal notranslate"><span class="pre">REPRODUCED.sha256</span></code> is never written. Vaibify does
 not stage or commit any of these files. They are yours, so commit them
 only if you choose to.</p>
-<p>You do not have to take vaibify’s word for any of this. Every check is
-a standard tool that anyone can run by hand: <code class="docutils literal notranslate"><span class="pre">sha256sum</span></code> for the files,
-<code class="docutils literal notranslate"><span class="pre">pip</span></code> for the packages, and <code class="docutils literal notranslate"><span class="pre">docker</span></code> for the image. Vaibify just runs
-them in the right order.</p>
+<p>You do not have to take vaibify’s word for any of this. The file
+checks use standard tools that anyone can run by hand: <code class="docutils literal notranslate"><span class="pre">sha256sum</span></code> for
+the files, <code class="docutils literal notranslate"><span class="pre">pip</span></code> for the packages, and <code class="docutils literal notranslate"><span class="pre">docker</span></code> for the image. The
+assessment itself is <code class="docutils literal notranslate"><span class="pre">.vaibify/rerunAssessment.py</span></code>, a readable Python
+file pinned in your manifest, which <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> runs in the open.</p>
+</section>
+<section id="how-a-rerun-is-assessed">
+<h2>How a rerun is assessed<a class="headerlink" href="#how-a-rerun-is-assessed" title="Link to this heading"></a></h2>
+<p>The assessment asks two questions, and keeps them apart.</p>
+<p><strong>Integrity is exact.</strong> Every published input (scripts, tests, their
+standards, the envelope) must be unchanged before the rerun and after
+it. Any change is “Published inputs changed”, whatever else happened: a
+step that loosened its own tolerance changed a published input.</p>
+<p><strong>Agreement is graded.</strong> Each regenerated output is, in this order:</p>
+<ol class="arabic simple">
+<li><p><strong>Failed</strong> when its step’s command failed, or it was not written, or
+a published comparison bound to it failed;</p></li>
+<li><p><strong>Byte-identical</strong> when its bytes equal the published file and every
+check bound to it passed;</p></li>
+<li><p><strong>Comparisons passed</strong> when its bytes differ but every published
+comparison bound to it passed (a figure may also pass vaibify’s
+image check, below);</p></li>
+<li><p><strong>Not enough evidence</strong> otherwise: a check that skipped itself or
+wrote no report, or a difference with no comparison to judge it.</p></li>
+</ol>
+<p>The overall verdict follows the same precedence: “Could not run”,
+“Published inputs changed”, “Not reproduced”, “Not enough evidence”,
+then “Reproduced: published comparisons passed; N of M files differ in
+their bytes” or “Reproduced: every file byte-identical”. The verdict
+always comes with its tally.</p>
+<p><strong>The evidence is the tests’ own reports.</strong> Every command the rerun runs
+gets an identity (<code class="docutils literal notranslate"><span class="pre">A03.quantitative.1</span></code> is the first command of step
+A03’s quantitative tests), its exit status is recorded, and every test
+command writes its own JUnit report under that identity. A check counts
+only when the report from its own step and test file says it passed; a
+command that never ran, a report that is missing, and a test that
+skipped itself are all named, never read as passes. A structural check,
+such as “this file exists”, can fail an output but never establishes
+agreement.</p>
+<p><strong>The image check is narrow.</strong> A raster figure (<code class="docutils literal notranslate"><span class="pre">.png</span></code>, <code class="docutils literal notranslate"><span class="pre">.jpg</span></code>, <code class="docutils literal notranslate"><span class="pre">.tif</span></code>)
+whose bytes differ passes vaibify’s own check when both files are a
+supported encoding (one frame, at most 8 bits per sample) with the same
+format, size and mode, and no channel of any pixel moves by more than 2
+levels out of 255. The report gives the largest change and how many
+pixels changed. It is labeled “within vaibify’s image-difference
+threshold”, never as the author’s comparison, and passing it is not
+proof that a figure carries the same science. Anything outside it is
+“not enough evidence”, with the reason named; the remedy is a
+quantitative standard over the data the figure shows.</p>
+<p><strong>The comparison policy is frozen.</strong> These rules are the comparison
+policy <code class="docutils literal notranslate"><span class="pre">comparison-v1</span></code>, recorded on the second line of
+<code class="docutils literal notranslate"><span class="pre">.vaibify/rerunAssessment.py</span></code>. A reproduction grades under the policy
+the project recorded, using vaibify’s own copy of that policy, never
+the project’s file. A later fix becomes a new policy version; the Level
+3 rebuild requirement accepts only an attestation made under the
+current one, and regenerating <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> moves a project to it.</p>
+<section id="exit-codes">
+<h3>Exit codes<a class="headerlink" href="#exit-codes" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> and the dashboard share one table:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Code</p></th>
+<th class="head"><p>Verdict</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>Reproduced (byte-identical, or published comparisons passed)</p></td>
+</tr>
+<tr class="row-odd"><td><p>1</p></td>
+<td><p>Not reproduced</p></td>
+</tr>
+<tr class="row-even"><td><p>3</p></td>
+<td><p>Published inputs changed</p></td>
+</tr>
+<tr class="row-odd"><td><p>4</p></td>
+<td><p>Could not run</p></td>
+</tr>
+<tr class="row-even"><td><p>5</p></td>
+<td><p>Not enough evidence</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="where-each-output-came-from">
+<h3>Where each output came from<a class="headerlink" href="#where-each-output-came-from" title="Link to this heading"></a></h3>
+<p>Each time a step’s data or plot commands complete, vaibify records, in
+<code class="docutils literal notranslate"><span class="pre">.vaibify/outputProvenance.json</span></code>, which outputs they wrote and the
+context they ran under: the processor’s vendor, <code class="docutils literal notranslate"><span class="pre">x86-64</span></code> level and
+visible cores, the execution profile and the settings that applied, and
+what the probe saw. Only the section that really ran records; running
+the tests, a failed section and a skipped one relabel nothing. No
+processor model name and no computer name is recorded. The envelope
+copies each pinned output’s context, and a file whose bytes no longer
+match its record reads “production context unknown”.</p>
+<p>That is how a difference is explained rather than guessed. A
+verification puts each differing output’s production context beside
+the rerun’s. A step whose outputs were made under different settings or
+hardware says “Produced under different execution settings or hardware”
+and names what differs, as information, not as a failure. When every
+manifest mismatch is explained that way, <strong>Check Files Against
+Manifest</strong> offers to make this computer’s results the published ones,
+by rerunning every step here and regenerating the manifest; nothing
+requires it.</p>
+</section>
 </section>
 <section id="reproducing-a-published-project">
 <h2>Reproducing a published project<a class="headerlink" href="#reproducing-a-published-project" title="Link to this heading"></a></h2>
@@ -377,12 +548,13 @@ the manifest. This is deliberately not the author’s Level 3 checklist;
 whether the author finished their paperwork should not stop you from
 checking the work. It then obtains the image (from a registry, then the
 author’s Zenodo archive, checked against its fingerprint, then any copy
-already on your computer), reruns every step in a throwaway container,
-and compares the bytes.</p>
-<p>The result is one of <em>reproduced</em>, <em>reproduced under emulation</em>,
-<em>diverged</em>, or <em>no verdict</em> (with the reason). It is saved as a report
-under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/reproductions/reports/</span></code>. The report is yours, not the
-author’s: nothing is written into their project.</p>
+already on your computer), reruns every step in a throwaway container
+under the author’s recorded execution settings, and assesses the result
+exactly as above.</p>
+<p>The verdict is the assessment’s, followed by its tally, and says when
+it ran under emulation; or it is “Could not run”, with the reason. It is
+saved as a report under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/reproductions/reports/</span></code>. The report
+is yours, not the author’s: nothing is written into their project.</p>
 </section>
 <section id="keeping-the-compiler-fixed">
 <h2>Keeping the compiler fixed<a class="headerlink" href="#keeping-the-compiler-fixed" title="Link to this heading"></a></h2>
@@ -415,10 +587,21 @@ its maintainers to fix. Never work around it by unpinning. To check published wo
 <section id="known-limitations">
 <h2>Known limitations<a class="headerlink" href="#known-limitations" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p><strong>Byte-exact means within one environment.</strong> The same code on a
-different processor or library can give numerically near-identical
-but byte-different results. The archived image removes the library
-difference, and the determinism answers record the rest.</p></li>
+<li><p><strong>A verification establishes what happened in the tested
+environment</strong>, not what will happen on every future computer. The
+archived image removes the software difference; the execution
+profile reduces the processor’s, and cannot remove it.</p></li>
+<li><p><strong>Settings are requested and confirmed in a probe process</strong>, not
+observed in every step’s process.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">across-v1</span></code> cannot run on every processor.</strong> Where OpenBLAS crashes
+under its forced kernel, every step that multiplies matrices fails,
+and the rerun grades those outputs failed. It says why, but the
+result cannot be regenerated there under that profile.</p></li>
+<li><p><strong>The image check is narrow</strong> (above): passing it is not proof that a
+figure carries the same science.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> regenerates in the reader’s own directory</strong>, and
+deletes the declared outputs first. A run that fails leaves them
+absent rather than stale; <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">checkout</span></code> restores them.</p></li>
 <li><p><strong>A tampered verifier cannot detect itself.</strong> That is true of every
 verification tool, which is why each check can also be run by hand.</p></li>
 </ul>

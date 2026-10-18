@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.1.4.dev2 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.1.4.dev26 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1546fae8"></script>
+      <script src="_static/documentation_options.js?v=ba0b7039"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -182,7 +182,7 @@ differs by platform.</p></li>
 </ul>
 <p>Your run passed every <em>scientific test</em> (the unit tests) the project defines, but did
 not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the rules that govern computing standards (defined by the IEEE) allow changes in the last digits of some functions, like transcendentals. Thus, progress from here requires rerunning the work in the <em>exact same environment</em> that the author used.</p>
-<p>This next section, which describes how to generate byte-identical results, is technically optional, but encouraged. While <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>’s behavior is the same in both “host mode” and “container mode”, the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!</p>
+<p>This next section, which describes how to rerun the work in the author’s own environment and have the result assessed, is technically optional, but encouraged. While <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>’s behavior is the same in both “host mode” and “container mode”, the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!</p>
 </section>
 <section id="containerize-the-same-project">
 <h2>7. Containerize the same project<a class="headerlink" href="#containerize-the-same-project" title="Link to this heading"></a></h2>
@@ -233,8 +233,9 @@ and build again (try working with an AI agent or pressing <strong>Run a diagnosi
 <p>You will then see a dialog box that shows the log of the download of the 733 MB image from Zenodo. Depending on your connection, <em>this download may take an hour or more.</em> If the connection drops, <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> resumes the download. If it keeps failing, <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> pauses with the partial download kept and presents a “Try again” button. Note that if you cancel a download, the partial file is deleted.</p>
 <p>When the conversion finishes, you return to the Environments Hub and the ai-greenhouse environment will look the same except the <code class="docutils literal notranslate"><span class="pre">host-mode</span></code> badges become <code class="docutils literal notranslate"><span class="pre">contained</span></code>. The steps still do the
 same things, but now they do them in the pinned environment, and the
-PROOF tab’s Level 3 row stops saying the project has no image and instead reports on whether the reproducibility rules have been answered, and
-whether a rebuild from that image reproduces the outputs.</p>
+PROOF tab’s Level 3 row stops saying the project has no image and instead reports on whether the author answered the determinism question
+(how much speed vaibify should trade for repeatable files), and whether a rerun from that image passes its assessment. The author’s answer is
+recorded with the project, so every rerun of it uses the same execution settings.</p>
 <p>This process does not create a second project. Your clone stays on your host machine — the same directory, the same git history, the same outputs you
 just produced; only the runtime settings in its <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> change. The difference is that there is now an exact duplicate in a new Docker container whose environment is identical to the one the author used. Furthermore, your <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> interactions will now take place inside this container leaving your own computer safe.</p>
 <p>At this point, the environment is downloaded, but its container has not yet been started. You will be asked if you want to <strong>Start container</strong> and you should press that button. If at a later time you want to start a stopped container, you can click the kebab menu (<strong>⋮</strong>) and select <strong>Start</strong>. A dark red circle next to the environment’s name means the container is stopped (not using host machine resources);  a blue check means the container is active. Once it starts, you will see a notice that confirms your files were copied into the container. Now go ahead and select the <code class="docutils literal notranslate"><span class="pre">ai-greenhouse</span></code> environment and then the <code class="docutils literal notranslate"><span class="pre">AI</span> <span class="pre">Greenhouse</span></code> Project to return to its dashboard.</p>
@@ -250,14 +251,22 @@ bytes your own computer produced.</p></li>
 <li><p>From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong>. This time every step runs inside the author’s environment,
 and the run log notes that it used the date the author recorded, so
 any figure with a date inside it comes out the same. Each step’s Researcher marker now reads stale because the plot’s bytes changed. Click it once and the badge reads “Passed”.</p></li>
-<li><p>Choose <strong>Check Files Against Manifest</strong> again. Every file now
-matches: in the author’s environment, your run produced the
-author’s bytes.</p></li>
+<li><p>Choose <strong>Check Files Against Manifest</strong> again. On a processor like
+the author’s, every file now matches: in the author’s environment,
+your run produced the author’s bytes. On a different processor, a
+few data files and figures can still differ in their last digits,
+because math libraries choose their fastest code for the processor
+they find; the verification below judges those by the author’s
+published comparisons, the tests that ship with the project.</p></li>
 </ol>
 <p>Finally, from the <strong>Run</strong> menu choose <strong>Verify Level 3
 Reproducibility</strong>. It makes a throwaway copy of the container from
-the author’s image, reruns every step there with no network, compares
-every file, and then deletes the copy. It leaves your files alone, and
+the author’s image, deletes the outputs the steps regenerate, reruns
+every step and its tests there with no network, assesses every file,
+and then deletes the copy. The verdict names what it found, followed
+by its tally: “Reproduced: every file byte-identical”, or, where some
+bytes differ but every published comparison passed, “Reproduced:
+published comparisons passed; N of M files differ in their bytes”. It leaves your files alone, and
 it only starts once your files match the manifest, which is why it
 comes after step 3. While running, you will see an orange <strong>Reproducing</strong> badge pulse. When it finishes, a <strong>Reproduced</strong> badge will appear along the top of the window and both the original MANIFEST.sha256 file and the just-reproduced version will appear in the viewing windows. (In cases where reproduction is unsuccessful, the badge does not persist and you instead see an error message.) The result is saved in <code class="docutils literal notranslate"><span class="pre">.vaibify/reproductions/</span></code> in your aigreenhouse clone.</p>
 <p>Your copy stays at Level 1. Levels 2 and 3 record the <em>author’s</em>
@@ -267,8 +276,13 @@ Level 3 is the author’s job; confirming it is yours, and the Reproduced badge 
 <p>Anyone can run the same check starting from nothing but the project’s
 URL: in the hub, press <strong>+</strong> and choose <strong>Reproduce a published
 project</strong>. A reader without <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> can run <code class="docutils literal notranslate"><span class="pre">./reproduce.sh</span></code> inside
-the clone. Both obtain the author’s image, rerun every step inside it,
-and compare the bytes.</p>
+the clone. It first lists the declared outputs it is about to delete
+and how to restore them (<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">checkout</span> <span class="pre">--</span> <span class="pre">&lt;paths&gt;</span></code>, or the project’s
+archived deposit), then regenerates them in the clone. Both obtain the
+author’s image, rerun every step and its tests inside it under the
+author’s recorded execution settings, and give the same verdict, tally
+and exit code (0 reproduced, 1 not reproduced, 3 published inputs
+changed, 4 could not run, 5 not enough evidence).</p>
 </section>
 </section>
 <section id="when-something-is-wrong">
