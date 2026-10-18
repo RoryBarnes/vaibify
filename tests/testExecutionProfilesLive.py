@@ -136,6 +136,7 @@ def _fiterBuildImage(sNumpyVersion, sTag):
     try:
         yield {
             "sImageId": imageProbe.id,
+            "sNumpyVersion": sNumpyVersion,
             "sArchitecture": str(imageProbe.attrs.get("Architecture") or ""),
             "iDaemonCores": int(dockerDisposable.info().get("NCPU") or 0),
         }
@@ -212,9 +213,11 @@ def _ftReproduce(tmp_path, sName, dictImage, dictRecordedProfile,
 # Run in one container when the fixture's digest is wrong: the fixture
 # under every setting, without each one in turn, and under none, so a
 # failure on a machine nobody here can reach names the setting at fault.
-# A crash prints the fixture line it died on (faulthandler), and the
-# kernel OpenBLAS chose is read under each variant.
-_S_DIAGNOSIS_PROGRAM = """import json, os, subprocess, sys
+# A crash names the innermost Python frame it died in (faulthandler),
+# and the kernel OpenBLAS chose is read under each variant. The first
+# line summarizes every variant, because the falsification lane keeps
+# only the start of a failure message.
+_S_DIAGNOSIS_PROGRAM = """import json, os, re, subprocess, sys
 dictRequested = json.loads(sys.argv[1])
 os.makedirs("/tmp/fixture", exist_ok=True)
 open("/tmp/fixture/fixture.py", "w").write(sys.argv[2])
@@ -232,6 +235,7 @@ sCoreProgram = (
 listVariants = [("every setting", dictRequested)] + [
     ("without " + sKey, {k: v for k, v in dictRequested.items() if k != sKey})
     for sKey in dictRequested] + [("no setting", {})]
+listSummary, listDetail = [], []
 for sName, dictSettings in listVariants:
     dictEnvironment = {k: v for k, v in os.environ.items()
                        if k not in dictRequested}
@@ -243,26 +247,44 @@ for sName, dictSettings in listVariants:
         [sys.executable, "-X", "faulthandler", "fixture.py"],
         env=dictEnvironment, cwd="/tmp/fixture", capture_output=True,
         text=True)
-    sDigest = ""
+    sCore = completedCore.stdout.strip() or str(completedCore.returncode)
     if completed.returncode == 0:
-        sDigest = open("/tmp/fixture/digest.txt").read().strip()
-    print(f"{sName}: exit {completed.returncode} {sDigest} | core "
-          f"{completedCore.stdout.strip() or completedCore.returncode}")
+        sOutcome = open("/tmp/fixture/digest.txt").read().strip()[:12]
+    else:
+        listFrames = re.findall(
+            r'File "([^"]+)", line (\\d+) in (\\S+)', completed.stderr)
+        sOutcome = "in " + (" ".join([os.path.basename(listFrames[0][0])
+                                      + ":" + listFrames[0][1],
+                                      listFrames[0][2]])
+                            if listFrames else "no Python frame")
+    listSummary.append(f"{sName}: exit {completed.returncode} {sOutcome}, "
+                       f"OpenBLAS {(sCore.split() + ['?', '?'])[1]}")
+    listDetail.append(f"{sName}: core {sCore}")
     if completed.returncode != 0:
-        print("    " + "\\n    ".join(completed.stderr.splitlines()[-12:]))
+        listDetail.append(
+            "    " + "\\n    ".join(completed.stderr.splitlines()[-12:]))
+print("; ".join(listSummary))
+print("\\n".join(listDetail))
 """
 
 
-def _fsDiagnoseEachSetting(dictImage, dictRequested):
-    """Return the fixture's exit code and digest under each variant."""
+def _fsDiagnoseEachSetting(listImages, dictRequested):
+    """Return the fixture's outcome under each variant, in each image."""
     dockerDisposable = disposableContainer.fdockerCreateDisposableClient()
-    baOutput = dockerDisposable.containers.run(
-        dictImage["sImageId"],
-        ["python3", "-c", _S_DIAGNOSIS_PROGRAM, json.dumps(dictRequested),
-         _S_FIXTURE_PROGRAM],
-        network_disabled=True, labels=fdictLabels(), remove=True,
-        stdout=True, stderr=True)
-    return baOutput.decode("utf-8", "replace")
+    listSummaries, listDetails = [], []
+    for dictImage in listImages:
+        baOutput = dockerDisposable.containers.run(
+            dictImage["sImageId"],
+            ["python3", "-c", _S_DIAGNOSIS_PROGRAM, json.dumps(dictRequested),
+             _S_FIXTURE_PROGRAM],
+            network_disabled=True, labels=fdictLabels(), remove=True,
+            stdout=True, stderr=True)
+        sSummary, _, sDetail = baOutput.decode(
+            "utf-8", "replace").partition("\n")
+        sLabel = f"NumPy {dictImage['sNumpyVersion']}"
+        listSummaries.append(f"Each setting in turn, {sLabel}: {sSummary}")
+        listDetails.append(f"{sLabel} in detail:\n{sDetail}")
+    return "\n".join(listSummaries + listDetails) + "\n"
 
 
 def _fsDescribeThisMachine(dictImage):
@@ -275,7 +297,7 @@ def _fsDescribeThisMachine(dictImage):
 
 @pytest.mark.falsification
 def testTheAcrossProfileReproducesTheCommittedFixture(
-    dictProfileImage, dictOlderNumpyImage, tmp_path,
+    dictProfileImage, dictOlderNumpyImage, tmp_path, capsys,
 ):
     """This runner regenerates the digest measured on another machine.
 
@@ -287,18 +309,17 @@ def testTheAcrossProfileReproducesTheCommittedFixture(
     handing it to the container.
     """
     sMachine = _fsDescribeThisMachine(dictProfileImage)
-    print("Runner processor:", sMachine)
+    with capsys.disabled():
+        print(f"\nRunner processor: {sMachine}")
     dictProfile = executionProfiles.fdictProfileFromTable(
         executionProfiles.S_PROFILE_ACROSS)
     completed, sDigest, dictProbe = _ftReproduce(
         tmp_path, "across", dictProfileImage, dictProfile)
     sOutput = completed.stdout + completed.stderr
     if sDigest != S_ACROSS_FIXTURE_DIGEST:
-        sOutput += "\nEach setting in turn:\n" + _fsDiagnoseEachSetting(
-            dictProfileImage, dictProfile["dictRequested"])
-        sOutput += (f"\nEach setting in turn, NumPy {S_OLDER_NUMPY_VERSION}:\n"
-                    + _fsDiagnoseEachSetting(
-                        dictOlderNumpyImage, dictProfile["dictRequested"]))
+        sOutput = _fsDiagnoseEachSetting(
+            [dictProfileImage, dictOlderNumpyImage],
+            dictProfile["dictRequested"]) + sOutput
     assert dictProbe.get("dictSettingsSeen") == dictProfile["dictRequested"], (
         sMachine, dictProbe, sOutput)
     assert {sName: dictJudged["sStatus"] for sName, dictJudged in
@@ -323,7 +344,11 @@ def testTheAcrossProfileGivesTheSameBytesOnTwoCores(dictProfileImage, tmp_path):
     completedTwo, sTwo, _dictProbeTwo = _ftReproduce(
         tmp_path, "twoCores", dictProfileImage, dictProfile,
         ["--cpuset-cpus", "0-1"])
-    assert sAll and sAll == sTwo, completedTwo.stdout + completedTwo.stderr
+    sOutput = completedTwo.stdout + completedTwo.stderr
+    if not (sAll and sAll == sTwo):
+        sOutput = _fsDiagnoseEachSetting(
+            [dictProfileImage], dictProfile["dictRequested"]) + sOutput
+    assert sAll and sAll == sTwo, sOutput
 
 
 def testTheSpeedProfileFollowsTheVisibleCores(dictProfileImage, tmp_path):
