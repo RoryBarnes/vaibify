@@ -11,6 +11,8 @@ import json
 
 import pytest
 
+from tests.levelGateStubs import fsWriteRerunAssessor
+
 from vaibify.reproducibility.dockerfileLint import (
     S_DOCKERFILE_FILENAME,
 )
@@ -86,13 +88,10 @@ def _fdictBuildL3ReadyWorkflow():
     return {
         "listSteps": [],
         "dictDeterminism": {
-            # All three questions answered (2026-08-30 ruling).
-            # A lone waiver used to satisfy the gate; it is now
-            # one answer of three, so a fixture carrying only it
-            # builds a project that is NOT L3-ready.
-            "sBlasVarianceAnswer": "accepted",
-            "sOmpThreadsAnswer": "unpinned",
-            "sMklModeAnswer": "not-used",
+            # The determinism question answered: one question since
+            # 2026-10-17, and either answer passes.
+            "sRepeatabilityAnswer": "speed",
+            "sExecutionProfile": "speed-v1",
         },
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
@@ -106,13 +105,14 @@ def fixtureL3Repo(tmp_path):
     _fnWriteEnvironment(tmp_path)
     _fnWriteDockerfile(tmp_path)
     pathScript = _fnWriteReproduceScript(tmp_path)
+    sAssessor = fsWriteRerunAssessor(tmp_path, _fdictBuildL3ReadyWorkflow())
     # Every envelope file present, because the manifest's scope
     # widened on 2026-09-14: a manifest covering the script and the
     # Dockerfile alone is one vaibify would no longer write, and
     # readiness reads it for completeness.
     _fnWriteManifestCovering(
         tmp_path,
-        [S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME,
+        [S_REPRODUCE_SCRIPT_FILENAME, sAssessor, S_DOCKERFILE_FILENAME,
          "requirements.lock", ".vaibify/environment.json"],
     )
     return tmp_path

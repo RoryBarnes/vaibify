@@ -4273,6 +4273,12 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
+    # NEW at 818 (2026-10-17): the v13 -> v14 migrator, which writes
+    # nothing on purpose (design D7: the one determinism question
+    # starts unanswered) and says why at the length that needs. One
+    # cohesive responsibility -- every schema step in one ordered
+    # chain -- so the module is not split around it.
+    "workflowMigrations.py": 818,
     # NEW at 801 (2026-10-14): the interrupted-download classifier joins
     # the remnant scanner. The module's stated purpose is one classifier
     # per kind of leftover, each worded with its evidence and tier, and
@@ -5255,7 +5261,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # stored sign-off, the page's staleness flag reads the run's hash
     # verdict, and the content-vouched sets reach the invalidation and
     # the pencil. -> 4301: and the per-edge upstream evidence.
-    "routes/pipelineRoutes.py": 4301,
+    # 4301 -> 4313 (2026-10-17): the attestation summary carries the
+    # assessed rerun's verdict, its tally, its comparison policy and
+    # whether the record is historical, so the row can say which.
+    # -> 4316: and the tally line, which always rides with the verdict.
+    # 4316 -> 4325 (2026-10-17): the attestation summary names a
+    # changed execution profile in the server's words (F8), and the
+    # currency check and the label are handed the workflow.
+    # 4325 -> 4326 (2026-10-17): the determinism question ships its
+    # choices, its reason and its consequence in the gate's words.
+    # 4326 -> 4339 (2026-10-17): the poll names steps whose outputs
+    # another context produced, and the manifest verify says which
+    # mismatches a recorded context difference explains (F5).
+    "routes/pipelineRoutes.py": 4339,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5351,7 +5369,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (a 409 carried out of the worker, so nothing quarantines), since
     # a run nobody can record would show its failure once and the
     # previous pass on every poll after it.
-    "routes/testRoutes.py": 1078,
+    # 1078 -> 1099 (2026-10-17): "Run tests" runs under the Stage A
+    # decision a pipeline run gets (design I10), and refuses a profile
+    # this vaibify lacks before the drain is taken.
+    "routes/testRoutes.py": 1099,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -6763,7 +6784,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1874 -> 1896 (2026-10-15): the step docstring states the
     # data -> plots -> tests order per mode, and a plot failure leaves
     # the tests unrun with a line that says so.
-    "pipelineRunner.py": 1896,
+    # 1896 -> 1932 (2026-10-17): the attestation rerun's evidence. The
+    # step label reaches every section as an invocation scope, and the
+    # command loop names each command, exports its JUnit path and
+    # records its exit status. The helpers that say WHAT is exported
+    # live in rerunEvidence; what is left is the runner's own threading.
+    # 1932 -> 1944 (2026-10-17): the execution profile (design I10) is
+    # threaded through the run's preparation -- the replayed profile
+    # from the rerun evidence, the run context handed back, the
+    # profile's run-start warning and its pre-flight refusal. The
+    # stages themselves live in determinismEnvironment.
+    # 1944 -> 1955 (2026-10-17): the two section hooks that record how
+    # each output was produced (design I7), and the run-context set-up
+    # beside the execution settings. The record lives in
+    # outputProvenance; the runner says only WHEN a section completed.
+    "pipelineRunner.py": 1955,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -7696,7 +7731,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # before any poll saw it running, and never an earlier one's.
     # -> 2388 (2026-10-13): the worker puts the record kind it settles
     # before any step runs on the live status, for the same row.
-    "routes/reproducibilityRoutes.py": 2388,
+    # 2388 -> 2390 (2026-10-17): the attestation payload carries the
+    # server's judgement of which records are previous checks, so the
+    # PROOF tab labels them without deciding what counts as one.
+    # 2390 -> 2394 (2026-10-17): the declare route records the one
+    # answer beside the newest execution profile it names.
+    "routes/reproducibilityRoutes.py": 2394,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

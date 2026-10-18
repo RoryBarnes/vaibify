@@ -30,6 +30,7 @@ from ..routeScope import (
     S_CARRIER_MODE_B_LOCK_HELD,
     ffnDeclareCarrierMode,
 )
+from ..determinismEnvironment import fsBuildTestExecutionPrefix
 from ..pipelineRunner import fsShellQuote
 from ..workflowManager import (
     fbDeriveUnnecessaryVerification,
@@ -311,7 +312,10 @@ def _fdictRunOneTestCategory(
     sCatCmd = " && ".join(
         [f"cd {fsShellQuote(sDirectory)}"] + list(listCommands))
     sCatCmd = _fsPrefixWithTestCategoryEnv(sCatCmd, sCategory)
-    sCatCmd = _fsPrefixWithWorkflowEnv(sCatCmd, sWorkflowSlug)
+    sCatCmd = fsBuildTestExecutionPrefix(
+        dictCtx["docker"], sContainerId,
+        dictCtx["workflows"].get(sContainerId),
+    ) + _fsPrefixWithWorkflowEnv(sCatCmd, sWorkflowSlug)
     tExecResult = dictCtx["docker"].ftRunInContainerStreamed(
         sContainerId, sCatCmd,
     )
@@ -370,6 +374,7 @@ async def _ftProbeLevelThenRunUnderTheDrain(
         )
 
         def ftRunUnlessUnrecordable():
+            _fnRefuseAnExecutionProfileNotKnownHere(dictWorkflow)
             _fnRefuseATestRunNoMarkerWouldRecord(
                 _flistRefreshConftestsBeforeRun(
                     dictCtx["docker"], sContainerId, dictWorkflow,
@@ -386,6 +391,19 @@ async def _ftProbeLevelThenRunUnderTheDrain(
     if dictCarried["errorRefused"] is not None:
         raise dictCarried["errorRefused"]
     return dictCarried["objResult"]
+
+
+def _fnRefuseAnExecutionProfileNotKnownHere(dictWorkflow):
+    """Raise 409 when the workflow asks for a profile this vaibify lacks.
+
+    Running the tests under some other settings would answer a question
+    the researcher did not ask, so nothing runs and the reason says why.
+    """
+    from vaibify.reproducibility import executionProfiles
+    try:
+        executionProfiles.fdictWorkflowExecutionProfile(dictWorkflow)
+    except executionProfiles.ExecutionProfileError as error:
+        raise HTTPException(409, str(error)) from error
 
 
 def _fnRefuseATestRunNoMarkerWouldRecord(listRefreshFailures):
@@ -770,7 +788,9 @@ def _ftRunSaveAndRunTest(
         ),
         sFilePath,
     )
-    sTestCmd = _fsPrefixWithWorkflowEnv(
+    sTestCmd = fsBuildTestExecutionPrefix(
+        connectionDocker, sContainerId, dictWorkflow,
+    ) + _fsPrefixWithWorkflowEnv(
         sTestCmd,
         fsWorkflowSlugFromPath(
             workflowManager.fsWorkflowLoadedFromPath(dictWorkflow)),
@@ -867,8 +887,9 @@ def _ftRunCategoryCommands(
     Synchronous: it runs inside a mode-(b) carrier worker, which the
     carrier already calls in a thread.
     """
-    sFullCmd = _fsBuildCategoryCommand(
-        dictStep, dictWorkflow, listCmds, sCategory)
+    sFullCmd = fsBuildTestExecutionPrefix(
+        connectionDocker, sContainerId, dictWorkflow,
+    ) + _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds, sCategory)
     tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId, sFullCmd,
     )

@@ -693,11 +693,11 @@ def testAnUnknownDeterminismAnswerIsRefusedNamingTheChoices(sProjectRepo):
     dictWorkflow = {"sProjectRepoPath": sProjectRepo}
     responseHttp = fclientBuild(dictWorkflow).post(
         f"/api/workflow/{S_CONTAINER_ID}/determinism/declare",
-        json={"sBlasVarianceAnswer": "maybe"},
+        json={"sRepeatabilityAnswer": "maybe"},
     )
     assert responseHttp.status_code == 422
     sDetail = responseHttp.json()["detail"]
-    assert sDetail.startswith("sBlasVarianceAnswer must be one of ")
+    assert sDetail.startswith("sRepeatabilityAnswer must be one of ")
     assert "'maybe'" in sDetail
     assert "dictDeterminism" not in dictWorkflow
 

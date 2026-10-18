@@ -322,6 +322,11 @@ def test_the_arrow_judges_rows_exactly_as_the_rows_do(sProjectRepo):
         os.path.join(sProjectRepo, S_REPRODUCE_SCRIPT_FILENAME), "w",
     ) as fileOut:
         fileOut.write("#!/usr/bin/env bash\\nset -euo pipefail\\n")
+    # Beside the current assessor, so the older gate's presence check
+    # passes and only the script's staleness can make the row red.
+    import pathlib
+    from tests.levelGateStubs import fsWriteRerunAssessor
+    fsWriteRerunAssessor(pathlib.Path(sProjectRepo), dictWorkflow)
     from vaibify.reproducibility.manifestWriter import fnWriteManifest
     fnWriteManifest(sProjectRepo, dictWorkflow)
     dictRows = _fdictEnvelopeArtifactSatisfaction(

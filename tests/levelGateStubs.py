@@ -89,3 +89,40 @@ def fnMakeEveryLevel3ConjunctPass(
         "these overrides name gates the Level 3 conjunct list does not "
         f"carry, so they stub nothing: {listUnknown}"
     )
+
+
+S_RERUN_ASSESSOR_PATH = ".vaibify/rerunAssessment.py"
+
+
+def fsWriteRerunAssessor(pathRepo, dictWorkflow):
+    """Write the assessor ``reproduce.sh`` runs; return its repo path.
+
+    A complete Level 3 envelope pins it beside the script (2026-10-17),
+    rendered from the project's own workflow under the current
+    comparison policy, exactly as the generator writes it.
+    """
+    from vaibify.reproducibility.rerunAssessment import (
+        S_CURRENT_COMPARISON_POLICY,
+        fsRenderRerunAssessmentScript,
+    )
+    pathAssessor = pathRepo / S_RERUN_ASSESSOR_PATH
+    pathAssessor.parent.mkdir(parents=True, exist_ok=True)
+    pathAssessor.write_text(fsRenderRerunAssessmentScript(
+        dictWorkflow, S_CURRENT_COMPARISON_POLICY))
+    return S_RERUN_ASSESSOR_PATH
+
+
+def fdictCurrentAssessmentFields():
+    """Return the assessment fields a CURRENT attestation records.
+
+    The current comparison policy, and the execution profile a workflow
+    that has not answered asks for: ``speed-v1``, nothing requested.
+    """
+    from vaibify.reproducibility.executionProfiles import (
+        S_DEFAULT_EXECUTION_PROFILE,
+    )
+    from vaibify.reproducibility.rerunAssessment import (
+        S_CURRENT_COMPARISON_POLICY,
+    )
+    return {"sComparisonPolicy": S_CURRENT_COMPARISON_POLICY,
+            "sProfileId": S_DEFAULT_EXECUTION_PROFILE, "dictRequested": {}}

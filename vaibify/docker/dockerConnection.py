@@ -458,7 +458,8 @@ if dictArgs.get("bReadReproductions"):
             dictOut["sReproductionsError"] = type(error).__name__
             continue
         sWorkflow = dictRecord.get("sWorkflowRelativePath")
-        if (dictRecord.get("sVerdict") in ("reproduced", "diverged")
+        if (dictRecord.get("sVerdict") in dictArgs.get(
+                "listDecisiveVerdicts", [])
                 and sWorkflow and sWorkflow not in setWorkflowsDecided):
             setWorkflowsDecided.add(sWorkflow)
             dictOut["dictReproductionRecords"][sName] = sBody
@@ -1250,7 +1251,8 @@ _DICT_TYPED_READ_PROGRAMS = {
         "            \"listSkipTextPaths\": [], \"listHashPaths\": [],\n"
         "            \"listAbsHashPaths\": [], \"dictCachedKeys\": {},\n"
         "            \"bHashManifestEntries\": False,\n"
-        "            \"bReadReproductions\": False}\n"
+        "            \"bReadReproductions\": False,\n"
+        "            \"listDecisiveVerdicts\": []}\n"
         "dictKeyByPrefix = {\"c\": \"listContentPaths\",\n"
         "                   \"k\": \"listSkipTextPaths\",\n"
         "                   \"h\": \"listHashPaths\",\n"
@@ -1262,6 +1264,8 @@ _DICT_TYPED_READ_PROGRAMS = {
         "        dictArgs[\"bHashManifestEntries\"] = True\n"
         "    elif sArg == \"f:reproductions\":\n"
         "        dictArgs[\"bReadReproductions\"] = True\n"
+        "    elif sArg[:2] == \"v:\":\n"
+        "        dictArgs[\"listDecisiveVerdicts\"].append(sArg[2:])\n"
         "    elif sArg[:2] == \"x:\":\n"
         "        sKeyText, _sSep, sKeyPath = sArg[2:].partition(\"|\")\n"
         "        dictArgs[\"dictCachedKeys\"][sKeyPath] = [\n"
@@ -1670,8 +1674,9 @@ def flistBuildRepoSnapshotArguments(
     Shared by both legs, so the Docker leg and the host leg hand the
     one fixed program the same encoding: "r:<root>", "c:<content
     path>", "k:<skip-text path>", "h:<hash path>", "a:<absolute
-    binary>", the two ``f:`` flags, and one "x:<key>|<path>" per cached
-    stat key. The RENDERED size is measured, not estimated: ``repr()``
+    binary>", the two ``f:`` flags, one "v:<verdict>" per verdict a
+    reproduction record may be decided by (from ``reproductionReport``,
+    the one list of them), and one "x:<key>|<path>" per cached stat key. The RENDERED size is measured, not estimated: ``repr()``
     doubles every backslash and escapes what it must, so an estimate
     admits a command the kernel still refuses -- measured with
     backslash-heavy POSIX names rendering to twice their estimate
@@ -1691,7 +1696,11 @@ def flistBuildRepoSnapshotArguments(
     if bHashManifestEntries:
         listArgs.append("f:manifestEntries")
     if bReadReproductions:
+        from vaibify.reproducibility.reproductionReport import (
+            flistDecisiveVerdicts,
+        )
         listArgs.append("f:reproductions")
+        listArgs += ["v:" + sVerdict for sVerdict in flistDecisiveVerdicts()]
     listKeyArgs = [
         "x:" + ",".join(str(int(i)) for i in listKey) + "|" + sPath
         for sPath, listKey in sorted((dictCachedKeys or {}).items())

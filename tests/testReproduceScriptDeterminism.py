@@ -36,6 +36,7 @@ from tests.liveContainerLabels import flistLabelArguments
 from vaibify.reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
     fsRenderReproduceScript,
+    ftRenderReproductionFiles,
 )
 
 
@@ -63,22 +64,30 @@ _skipWithoutTooling = pytest.mark.skipif(
 )
 
 
-def _fdictBuildFigureWorkflow(listCommands=("python makeFigure.py",)):
+def _fdictBuildFigureWorkflow(
+    listCommands=("python makeFigure.py",), listPlotFiles=(),
+):
     """Return a one-step workflow whose step renders into ``plots``."""
     return {"listSteps": [{
         "sName": "Figure",
         "sStepId": "figure",
         "sDirectory": "plots",
         "saPlotCommands": list(listCommands),
+        "saPlotFiles": list(listPlotFiles),
     }]}
 
 
-def _fsPrepareProjectRepo(pathRepo, dictEnvelope, dictWorkflow=None):
+def _fsPrepareProjectRepo(
+    pathRepo, dictEnvelope, dictWorkflow=None, dictPublished=None,
+):
     """Lay out a project repo and return the reproduce.sh path.
 
-    The repository gets a real commit at :data:`I_HEAD_EPOCH` so that a
-    HEAD re-derivation has something plausible to find. Nothing in the
-    product is supposed to read it.
+    ``dictPublished`` maps repo paths to the published bytes the
+    manifest pins. The script is written beside the assessor it runs,
+    both as the generator renders them. The repository gets a real
+    commit at :data:`I_HEAD_EPOCH` so that a HEAD re-derivation has
+    something plausible to find. Nothing in the product is supposed to
+    read it.
     """
     (pathRepo / ".vaibify").mkdir(parents=True, exist_ok=True)
     (pathRepo / "plots").mkdir(exist_ok=True)
@@ -86,14 +95,17 @@ def _fsPrepareProjectRepo(pathRepo, dictEnvelope, dictWorkflow=None):
         json.dumps(dictEnvelope), encoding="utf-8",
     )
     (pathRepo / "requirements.lock").write_text("", encoding="utf-8")
-    _fnWriteManifest(pathRepo, ["requirements.lock"])
-    sScript = fsRenderReproduceScript(
-        dictWorkflow or _fdictBuildFigureWorkflow(),
+    for sRelative, sText in (dictPublished or {}).items():
+        (pathRepo / sRelative).write_text(sText, encoding="utf-8")
+    _fnWriteManifest(
+        pathRepo, ["requirements.lock"] + sorted(dictPublished or {}),
     )
-    pathScript = pathRepo / S_REPRODUCE_SCRIPT_FILENAME
-    pathScript.write_text(sScript, encoding="utf-8")
+    for sRelative, sText in ftRenderReproductionFiles(
+        dictWorkflow or _fdictBuildFigureWorkflow(),
+    ):
+        (pathRepo / sRelative).write_text(sText, encoding="utf-8")
     _fnCommitAtHeadEpoch(pathRepo)
-    return pathScript
+    return pathRepo / S_REPRODUCE_SCRIPT_FILENAME
 
 
 def _fnWriteManifest(pathRepo, listRelativePaths):
@@ -240,7 +252,7 @@ def test_an_envelope_with_no_epoch_says_so_instead_of_using_the_clock(
     something to RECORD -- a reproduction that later fails on differing
     bytes has to be explainable. The script keeps that property: it
     runs, and it says on stderr both that the epoch is missing and what
-    that costs at the closing ``sha256sum -c``.
+    that costs at the closing assessment.
     """
     pathRepo = tmp_path / "repo"
     pathRepo.mkdir()
@@ -254,7 +266,7 @@ def test_an_envelope_with_no_epoch_says_so_instead_of_using_the_clock(
 
     assert tResult.returncode == 0, tResult.stderr
     assert "iSourceDateEpoch" in tResult.stderr
-    assert "sha256sum" in tResult.stderr
+    assert "the assessment will find every timestamped" in tResult.stderr
     assert "SOURCE_DATE_EPOCH=" in pathRecord.read_text(encoding="utf-8")
     assert str(I_HEAD_EPOCH) not in pathRecord.read_text(encoding="utf-8")
 
@@ -381,6 +393,99 @@ def test_a_zero_epoch_is_treated_as_unrecorded(tmp_path):
 
 
 # ------------------------------------------------------------------
+# The host half: which exit code the reader gets (D6)
+# ------------------------------------------------------------------
+
+
+def _fnInstallScriptedDocker(pathBinDirectory, pathRecord, dictExits):
+    """Write a fake ``docker`` that records its argv and exits as told.
+
+    ``dictExits`` maps a subcommand (``pull``, ``image``, ``run``) to its
+    exit status; an unnamed one succeeds.
+    """
+    pathBinDirectory.mkdir(parents=True, exist_ok=True)
+    listCases = [f"    {sName}) exit {int(iExit)} ;;"
+                 for sName, iExit in dictExits.items()]
+    pathFake = pathBinDirectory / "docker"
+    pathFake.write_text(
+        "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$*" >> {pathRecord}\n'
+        'case "$1" in\n' + "\n".join(listCases) + "\nesac\nexit 0\n",
+        encoding="utf-8",
+    )
+    pathFake.chmod(0o755)
+
+
+@pytest.mark.falsification
+@_skipWithoutTooling
+def test_an_image_no_lane_can_obtain_is_could_not_run(tmp_path):
+    """No pull, no archived copy, no local copy: exit 4, and nothing runs.
+
+    Kills: the unobtainable-image exit going back to 2, which no reader
+    of the exit-code table can interpret.
+    """
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    _fsPrepareProjectRepo(pathRepo, {
+        "dictContainer": {"sImageDigest": S_PROBE_IMAGE},
+        "iSourceDateEpoch": I_RECORDED_EPOCH,
+    })
+    pathRecord = tmp_path / "argv.txt"
+    _fnInstallScriptedDocker(
+        tmp_path / "bin", pathRecord, {"pull": 1, "image": 1})
+
+    tResult = _ftRunReproduceScript(pathRepo, tmp_path / "bin")
+
+    assert tResult.returncode == 4, tResult.stderr
+    assert "Could not run: cannot pull" in tResult.stderr
+    assert not any(sLine.startswith("run ") for sLine in
+                   pathRecord.read_text(encoding="utf-8").splitlines())
+
+
+@pytest.mark.falsification
+@_skipWithoutTooling
+def test_a_docker_run_that_fails_itself_is_could_not_run(tmp_path):
+    """125 is docker failing to start the container, never a verdict.
+
+    Kills: passing every ``docker run`` status through, which reports a
+    daemon refusal under the meaning of whatever number it happened to
+    be.
+    """
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    _fsPrepareProjectRepo(pathRepo, {
+        "dictContainer": {"sImageDigest": S_PROBE_IMAGE},
+        "iSourceDateEpoch": I_RECORDED_EPOCH,
+    })
+    _fnInstallScriptedDocker(
+        tmp_path / "bin", tmp_path / "argv.txt", {"run": 125})
+
+    tResult = _ftRunReproduceScript(pathRepo, tmp_path / "bin")
+
+    assert tResult.returncode == 4
+    assert "Could not run: docker exited 125" in tResult.stderr
+
+
+@pytest.mark.parametrize("iAssessment", [0, 1, 3, 4, 5])
+@_skipWithoutTooling
+def test_the_assessments_exit_code_is_the_scripts(tmp_path, iAssessment):
+    """Every code in the shared table passes through the host half unchanged."""
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    _fsPrepareProjectRepo(pathRepo, {
+        "dictContainer": {"sImageDigest": S_PROBE_IMAGE},
+        "iSourceDateEpoch": I_RECORDED_EPOCH,
+    })
+    _fnInstallScriptedDocker(
+        tmp_path / "bin", tmp_path / "argv.txt", {"run": iAssessment})
+
+    tResult = _ftRunReproduceScript(pathRepo, tmp_path / "bin")
+
+    assert tResult.returncode == iAssessment, tResult.stderr
+    assert "docker exited" not in tResult.stderr
+
+
+# ------------------------------------------------------------------
 # Structure: one authority, and the entrypoint bypass
 # ------------------------------------------------------------------
 
@@ -437,13 +542,17 @@ def test_the_epoch_and_the_salt_arrive_inside_the_container(tmp_path):
 
     pathRepo = tmp_path / "repo"
     pathRepo.mkdir()
+    # The step's output is pinned at the bytes the recorded epoch and
+    # its salt produce, so the assessment has something to grade and
+    # the script's exit status is that grade.
+    sExpected = f"{I_RECORDED_EPOCH}\nsvg.hashsalt: {I_RECORDED_EPOCH}\n"
     _fsPrepareProjectRepo(pathRepo, {
         "dictContainer": {"sImageDigest": S_PROBE_IMAGE},
         "iSourceDateEpoch": I_RECORDED_EPOCH,
     }, _fdictBuildFigureWorkflow([
         'printf "%s\\n" "$SOURCE_DATE_EPOCH" > observed.txt',
         'cat "$MPLCONFIGDIR/matplotlibrc" >> observed.txt',
-    ]))
+    ], ["observed.txt"]), {"plots/observed.txt": sExpected})
     if not _fbBindMountReachesTheDaemon(pathRepo):
         pytest.skip(
             "the daemon cannot see " + str(pathRepo) + " through a bind "
@@ -454,6 +563,7 @@ def test_the_epoch_and_the_salt_arrive_inside_the_container(tmp_path):
     tResult = _ftRunReproduceScript(pathRepo)
 
     assert tResult.returncode == 0, tResult.stdout + tResult.stderr
+    assert "Reproduced: every file byte-identical" in tResult.stdout
     sObserved = (pathRepo / "plots" / "observed.txt").read_text(
         encoding="utf-8",
     )

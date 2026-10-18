@@ -26,6 +26,7 @@ from tests.reproductionSourceFixtures import (
     fnWriteText,
     fsBuildPublishedProject,
 )
+from tests.rerunAssessmentHarness import fnRecordPlannedCommandsAsRun
 from tests.testRerunVerifiesWhatItRan import (
     FakeDisposableDaemon,
     LocalShellContainer,
@@ -109,6 +110,8 @@ def _fcontextPatchTheDaemon(daemonDisposable, fnRunSideEffect):
         sWorkdir, fnStatusCallback, **kwargs,
     ):
         fnRunSideEffect(dictWorkflow, sWorkflowPath)
+        fnRecordPlannedCommandsAsRun(
+            dictWorkflow, kwargs.get("dictRerunEvidence"))
         return 0
 
     return [
@@ -345,16 +348,16 @@ def test_a_rerun_writes_a_report_and_never_an_attestation(sSourceRepo):
     Kills: writing the attestation file into the staged clone.
     """
     dictBefore = _fdictHashTree(sSourceRepo)
-    assert fbL3AttestationCurrent(sSourceRepo) is False
+    assert fbL3AttestationCurrent(sSourceRepo, {}) is False
     dictRun = _fdictInvokeRerun(sSourceRepo, _fnRegenerateTheShadowOutputFaithfully)
     result = dictRun["result"]
     assert result.exit_code == 0, result.output
-    assert "Verdict: reproduced" in result.output
+    assert "Verdict: Reproduced: every file byte-identical" in result.output
     assert "attest" not in result.output.lower().replace(
         "not the author's attestation", "",
     )
     assert _fdictHashTree(sSourceRepo) == dictBefore
-    assert fbL3AttestationCurrent(sSourceRepo) is False
+    assert fbL3AttestationCurrent(sSourceRepo, {}) is False
     assert not os.path.exists(
         os.path.join(sSourceRepo, ".vaibify", "l3_attestation.json"),
     )
@@ -363,7 +366,7 @@ def test_a_rerun_writes_a_report_and_never_an_attestation(sSourceRepo):
     dictReport = reproductionReport.fdictReadReproductionReport(
         listReports[0][:-len(".json")],
     )
-    assert dictReport["sVerdict"] == "reproduced"
+    assert dictReport["sVerdict"] == "byte-identical"
     assert dictReport["dictSource"]["sResolvedCommit"]
     assert sSourceRepo not in open(
         os.path.join(reproductionReport.fsReportsDirectory(), listReports[0]),
@@ -384,21 +387,24 @@ def test_staging_is_deleted_and_the_report_survives_on_every_outcome(
     dictDiverged = _fdictInvokeRerun(
         sSourceRepo, _ffnRewriteTheShadowOutput("changed\n"),
     )
-    assert dictDiverged["result"].exit_code == 1
-    assert "Verdict: diverged" in dictDiverged["result"].output
+    # Changed bytes no comparison covers: not enough evidence, exit 5.
+    assert dictDiverged["result"].exit_code == 5
+    assert "Verdict: Not enough evidence" in dictDiverged["result"].output
     with patch.object(
         commandReproduce, "fdictRerunAndVerifyFromSnapshot",
         side_effect=ShadowRerunRefusedError("the image vanished"),
     ):
         dictRefused = _fdictInvokeRerun(sSourceRepo, _fnRegenerateTheShadowOutputFaithfully)
-    assert dictRefused["result"].exit_code == 1
-    assert "no verdict" in dictRefused["result"].output
+    # Refused: "Could not run", exit 4 (design D6).
+    assert dictRefused["result"].exit_code == 4
+    assert "Could not run: the image vanished" in dictRefused["result"].output
     assert _flistStagingTokens() == []
     listVerdicts = sorted(
         reproductionReport.fdictReadReproductionReport(sName[:-5])["sVerdict"]
         for sName in _flistReports()
     )
-    assert listVerdicts == ["diverged", "no-verdict", "reproduced"]
+    assert listVerdicts == [
+        "byte-identical", "insufficient-evidence", "no-verdict"]
 
 
 def test_an_emulated_run_is_reported_as_reproduced_under_emulation(
@@ -410,9 +416,8 @@ def test_an_emulated_run_is_reported_as_reproduced_under_emulation(
         listExtraArguments=["--allow-emulation"],
     )
     assert dictRun["result"].exit_code == 0, dictRun["result"].output
-    assert "reproduced under emulation (linux/amd64 image on a arm64 host)" in (
-        dictRun["result"].output
-    )
+    assert ("Reproduced: every file byte-identical (under emulation: "
+            "linux/amd64 image on a arm64 host)") in dictRun["result"].output
 
 
 @pytest.mark.falsification

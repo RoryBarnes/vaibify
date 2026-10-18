@@ -1,36 +1,25 @@
-"""Determinism is three questions, and each one must be answered.
+"""Determinism is one question, and answering it is the criterion.
 
-Reported 2026-08-30 in two rounds, and the second round changed the
-gate rather than the copy.
+History, because each step was a defect a researcher met. On 2026-08-30
+the row went green over a block that declared nothing (the old form
+wrote ``{"bAcceptBlasVariance": false}`` when submitted with nothing
+ticked), and the gate was an OR any one of three values satisfied. The
+fix made three separately-answered questions. On 2026-10-17 those became
+ONE (design ruling 2), because none of the three changed what ran
+(design fact 8): how much speed should vaibify trade for repeatable
+files? The answer chooses an execution profile, which vaibify records
+beside it.
 
-Round one: the researcher pressed Declare with nothing ticked, the form
-wrote ``{"bAcceptBlasVariance": false}``, the row went green over a
-block that satisfied nothing, and the Level 3 verify refused them.
-
-Round two, looking at the repaired row: it was not clear that three
-separate things were being asked. They were not — the gate was an OR,
-so ANY one of a BLAS waiver, a pinned thread count or an MKL mode
-satisfied it. A project could attest at Level 3 having answered a third
-of the question, and pinning a thread count says nothing about whether
-last-digit variance is acceptable. The researcher's ruling: make them
-three requirements.
-
-So each is asked separately now, and ANSWERING is the criterion — never
-a particular answer. "I do not accept last-digit differences", "the
-thread count is not fixed" and "this project does not use Intel MKL"
-are complete, passing answers; only silence fails. That is the same
-rule the Personal AI Configuration row runs on.
-
-The answers are recorded as their own keys rather than inferred from
-the values, and that is the whole repair for round one:
-``bAcceptBlasVariance: false`` is what the old form wrote when nothing
-was ticked, so it cannot be told apart from never having chosen.
+ANSWERING is the criterion, never a particular answer: "Prioritize
+speed" and "Repeatable across computers" both pass, and only silence
+fails -- the rule the Personal AI Configuration row runs on. The answer
+is its own key, because a value cannot say a question was considered,
+and the three legacy answers do not answer the new question (D7).
 """
-
-import re
 
 import pytest
 
+from vaibify.reproducibility import executionProfiles
 from vaibify.reproducibility.determinismGate import (
     LIST_DETERMINISM_QUESTIONS,
     fbWorkflowDeclaresDeterminism,
@@ -39,15 +28,14 @@ from vaibify.reproducibility.determinismGate import (
 )
 
 
-# Every question answered, each with the answer that needs no value.
-_DICT_FULLY_ANSWERED = {
+_DICT_ANSWERED_ACROSS = {
+    "sRepeatabilityAnswer": "across", "sExecutionProfile": "across-v1",
+}
+_DICT_THREE_LEGACY_ANSWERS = {
     "sBlasVarianceAnswer": "rejected",
     "sOmpThreadsAnswer": "unpinned",
     "sMklModeAnswer": "not-used",
 }
-
-# The block the OLD form wrote when submitted with nothing ticked.
-_DICT_LEGACY_DECLARES_NOTHING = {"bAcceptBlasVariance": False}
 
 
 def _fdictWorkflow(dictDeterminism):
@@ -56,177 +44,88 @@ def _fdictWorkflow(dictDeterminism):
 
 
 # -----------------------------------------------------------------------
-# The gate is an AND over three answers
+# The gate: one question, and either answer
 # -----------------------------------------------------------------------
 
 
-@pytest.mark.falsification
-def testEveryQuestionMustBeAnsweredNotJustOne():
-    """One answer no longer carries the other two.
-
-    This is the ruling itself: the gate was an OR, so a project that
-    had answered a third of the question attested at Level 3.
-
-    Kills: returning True from flistUnansweredDeterminismQuestions'
-    caller as soon as any single question is answered, i.e. restoring
-    the OR.
-    """
-    for dictQuestion in LIST_DETERMINISM_QUESTIONS:
-        dictOnlyThisOne = {
-            dictQuestion["sAnswerKey"]: dictQuestion["tAnswers"][0],
-        }
-        if dictQuestion["sValueKey"]:
-            dictOnlyThisOne[dictQuestion["sValueKey"]] = 4
-        assert fbWorkflowDeclaresDeterminism(
-            _fdictWorkflow(dictOnlyThisOne),
-        ) is False, (
-            f"answering only {dictQuestion['sKey']} satisfied the "
-            "whole determinism gate"
-        )
-    assert fbWorkflowDeclaresDeterminism(
-        _fdictWorkflow(_DICT_FULLY_ANSWERED),
-    ) is True
-
-
-def testDecliningIsACompleteAnswer():
-    """Answering is the criterion, never a particular answer.
-
-    A project that accepts no variance, pins no threads and uses no
-    MKL has answered every question. Requiring a WAIVER rather than an
-    answer would push researchers toward the permissive option to
-    clear a gate, which inverts what the gate is for.
-    """
-    assert flistUnansweredDeterminismQuestions(
-        _fdictWorkflow(_DICT_FULLY_ANSWERED),
-    ) == []
-    assert flistAuditWorkflow(
-        _fdictWorkflow(_DICT_FULLY_ANSWERED),
-    ) == []
+def testSilenceFailsAndEitherAnswerPasses():
+    """Answering is the criterion; neither answer is the right one."""
+    assert flistUnansweredDeterminismQuestions(_fdictWorkflow({})) == [
+        "repeatability"]
+    for sAnswer in ("speed", "across"):
+        assert fbWorkflowDeclaresDeterminism(_fdictWorkflow({
+            "sRepeatabilityAnswer": sAnswer,
+            "sExecutionProfile": sAnswer + "-v1"})) is True
+    assert flistAuditWorkflow(_fdictWorkflow(_DICT_ANSWERED_ACROSS)) == []
 
 
 @pytest.mark.falsification
-def testAPinnedAnswerWithoutItsValueIsHalfAnAnswer():
-    """"Threads are fixed" with no count is not something a rerun can do.
+def testAnAnswerWithoutItsProfileIsHalfAnAnswer():
+    """The profile an answer names is what a rerun replays; without it, nothing runs.
 
-    Kills: dropping the value check from _fbQuestionIsAnswered, which
-    accepts "pinned" with nothing pinned and records a rule no rerun
-    could follow.
+    Kills: dropping the value check from the answered-question rule,
+    which accepts an answer that names no profile.
     """
-    dictHalf = dict(_DICT_FULLY_ANSWERED)
-    dictHalf["sOmpThreadsAnswer"] = "pinned"
-    assert "ompThreads" in flistUnansweredDeterminismQuestions(
-        _fdictWorkflow(dictHalf),
-    )
-    dictHalf["dOmpNumThreads"] = 8
+    assert "repeatability" in flistUnansweredDeterminismQuestions(
+        _fdictWorkflow({"sRepeatabilityAnswer": "across"}))
     assert flistUnansweredDeterminismQuestions(
-        _fdictWorkflow(dictHalf),
-    ) == []
+        _fdictWorkflow(_DICT_ANSWERED_ACROSS)) == []
 
 
 def testAnUnknownAnswerIsNotAnAnswer():
-    """A typo must not read as a recorded choice.
-
-    The answer keys are strings, so a value the gate does not
-    recognize would otherwise pass "is it set?" and fail every
-    downstream reading of what it means.
-    """
-    dictTypo = dict(_DICT_FULLY_ANSWERED)
-    dictTypo["sBlasVarianceAnswer"] = "acceptedd"
-    assert "blasVariance" in flistUnansweredDeterminismQuestions(
-        _fdictWorkflow(dictTypo),
-    )
-
-
-# -----------------------------------------------------------------------
-# The legacy shape, which is where round one came from
-# -----------------------------------------------------------------------
+    """A typo must not read as a recorded choice."""
+    assert "repeatability" in flistUnansweredDeterminismQuestions(
+        _fdictWorkflow({"sRepeatabilityAnswer": "acros",
+                        "sExecutionProfile": "across-v1"}))
 
 
 @pytest.mark.falsification
-def testTheLegacyFalseWaiverIsNotReadAsAnAnswer():
-    """`bAcceptBlasVariance: false` means "unanswered" and "declined".
+def testTheLegacyAnswersDoNotAnswerTheQuestion():
+    """D7: three legacy answers, all given, leave the one question open.
 
-    It is the byte-for-byte output of pressing Declare with nothing
-    ticked, so reading it as a deliberate "no" would attest a claim
-    the researcher may never have made.
-
-    Kills: treating the legacy waiver key as the blasVariance answer,
-    which silently credits every project that ever opened the old form.
+    Kills: reading any non-empty block as an answer -- the round-one
+    defect, which credits every project that ever filled in a form.
     """
     assert fbWorkflowDeclaresDeterminism(
-        _fdictWorkflow(_DICT_LEGACY_DECLARES_NOTHING),
-    ) is False
-    assert "blasVariance" in flistUnansweredDeterminismQuestions(
-        _fdictWorkflow(_DICT_LEGACY_DECLARES_NOTHING),
-    )
+        _fdictWorkflow(_DICT_THREE_LEGACY_ANSWERS)) is False
+    assert fbWorkflowDeclaresDeterminism(
+        _fdictWorkflow({"bAcceptBlasVariance": False})) is False
 
 
-def testEveryUnansweredQuestionIsNamedSeparately():
-    """One issue per open question, so a row can carry each.
-
-    A single "determinism is not declared" line cannot tell a
-    researcher which of the three is still open — which is what made
-    the section unreadable.
-    """
+def testTheUnansweredQuestionIsNamedInItsOwnWords():
+    """The issue says what is being asked, not that a key is missing."""
     listIssues = flistAuditWorkflow(_fdictWorkflow({}))
-    assert len(listIssues) == len(LIST_DETERMINISM_QUESTIONS)
-    for dictQuestion in LIST_DETERMINISM_QUESTIONS:
-        assert any(
-            dictQuestion["sLabel"] in sIssue for sIssue in listIssues
-        ), f"no issue names {dictQuestion['sKey']}"
+    assert len(listIssues) == len(LIST_DETERMINISM_QUESTIONS) == 1
+    assert ("How much speed should vaibify trade for repeatable files?"
+            in listIssues[0])
 
 
-def testTheQuestionsAreAskedWithoutSchemaKeys():
-    """The researcher-facing text names no JSON keys.
-
-    The old copy showed `bAcceptBlasVariance` to a scientist as if it
-    were a word, and never said what BLAS was.
-    """
+def testTheQuestionIsAskedWithoutSchemaKeys():
+    """Every researcher-facing word comes from the design, with no key in it."""
     for dictQuestion in LIST_DETERMINISM_QUESTIONS:
-        sText = dictQuestion["sLabel"] + dictQuestion["sPlainQuestion"]
-        for sKey in (
-            "bAcceptBlasVariance", "dOmpNumThreads", "sMklCbwr",
-            "dictDeterminism",
-        ):
-            assert sKey not in sText, (
-                f"{dictQuestion['sKey']} shows {sKey} to the researcher"
-            )
-    # And no BARE acronym. Asserted as the property rather than as a
-    # phrase: the wording was rewritten once already for being
-    # unreadable, and a test pinned to a sentence gets rewritten with
-    # it instead of consulted. What must survive an edit is that a
-    # researcher never meets a term the text has not explained.
-    dictExpansions = {
-        "MKL": "Math Kernel Library",
-        "BLAS": "Basic Linear Algebra",
-        "OMP": "OpenMP",
-    }
-    for dictQuestion in LIST_DETERMINISM_QUESTIONS:
-        sText = dictQuestion["sLabel"] + " " + dictQuestion["sPlainQuestion"]
-        for sAcronym, sExpansion in dictExpansions.items():
-            # Whole word only. "OpenBLAS" is a product name that
-            # happens to contain BLAS, and demanding an expansion for
-            # it would push the copy back toward the jargon this
-            # rewrite removed.
-            if not re.search(r"\b" + sAcronym + r"\b", sText):
-                continue
-            assert sExpansion in sText, (
-                f"{dictQuestion['sKey']} uses {sAcronym!r} without "
-                f"expanding it to {sExpansion!r}: {sText!r}"
-            )
+        listTexts = [dictQuestion["sLabel"], dictQuestion["sPlainQuestion"],
+                     dictQuestion["sWhy"], dictQuestion["sConsequence"]]
+        for dictChoice in dictQuestion["listChoices"]:
+            listTexts += [dictChoice["sLabel"], dictChoice["sDescription"]]
+        for sText in listTexts:
+            for sKey in ("sRepeatabilityAnswer", "sExecutionProfile",
+                         "dictDeterminism", "speed-v1", "across-v1"):
+                assert sKey not in sText, (sKey, sText)
+    dictQuestion = LIST_DETERMINISM_QUESTIONS[0]
+    assert [dictChoice["sAnswer"] for dictChoice in
+            dictQuestion["listChoices"]] == ["speed", "across"]
+    assert [dictChoice["bRecommended"] for dictChoice in
+            dictQuestion["listChoices"]] == [False, True]
 
 
 # -----------------------------------------------------------------------
-# The poll ships the verdict, so the row need not re-derive it
+# The poll ships the verdict, and the question in the gate's words
 # -----------------------------------------------------------------------
 
 
 @pytest.mark.falsification
 def testThePollShipsTheVerdictRatherThanTheRawBlock():
     """The row must not have to re-derive what the gate already knows.
-
-    Two authorities on one question is how they came to disagree in
-    round one.
 
     Kills: dropping bDeterminismDeclared from
     _fdictBuildWorkflowEnvelopeDetail, which forces the row back onto
@@ -238,26 +137,81 @@ def testThePollShipsTheVerdictRatherThanTheRawBlock():
     )
     sSource = inspect.getsource(_fdictBuildWorkflowEnvelopeDetail)
     assert '"bDeterminismDeclared"' in sSource
-    assert '"listDeterminismQuestions"' in sSource, (
-        "the poll ships no per-question state, so the three rows have "
-        "nothing to render"
-    )
+    assert '"listDeterminismQuestions"' in sSource
 
 
-def testTheWirePayloadCarriesOneEntryPerQuestion():
-    """Each row's data comes from the backend, labels included."""
+def testTheWirePayloadCarriesTheQuestionAndTheRecordedProfile():
+    """The row renders the backend's words and the profile the answer named."""
     from vaibify.gui.routes.pipelineRoutes import (
         _flistEnvelopeDeterminismQuestions,
     )
     listWire = _flistEnvelopeDeterminismQuestions(
-        _fdictWorkflow({"sBlasVarianceAnswer": "accepted"}),
+        _fdictWorkflow(_DICT_ANSWERED_ACROSS))
+    assert len(listWire) == 1
+    dictEntry = listWire[0]
+    assert dictEntry["bAnswered"] is True
+    assert dictEntry["sAnswer"] == "across"
+    assert dictEntry["sValue"] == "across-v1"
+    assert dictEntry["listChoices"][1]["sLabel"] == (
+        "Repeatable across computers")
+    assert dictEntry["sWhy"] and dictEntry["sConsequence"]
+
+
+# -----------------------------------------------------------------------
+# The declare route records the answer and the newest profile for it
+# -----------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def testTheAnswerRecordsTheNewestProfileForIt(monkeypatch):
+    """vaibify writes the ID; a newer table version is what a fresh answer gets.
+
+    Kills: recording a fixed version for the answer, which leaves a new
+    profile version unreachable by answering.
+    """
+    from vaibify.gui.routes.reproducibilityRoutes import (
+        _fdictApplyDeterminismAnswer,
     )
-    assert len(listWire) == len(LIST_DETERMINISM_QUESTIONS)
-    dictByKey = {d["sKey"]: d for d in listWire}
-    assert dictByKey["blasVariance"]["bAnswered"] is True
-    assert dictByKey["ompThreads"]["bAnswered"] is False
-    assert dictByKey["mklMode"]["bAnswered"] is False
-    assert dictByKey["blasVariance"]["sQuestion"]
+    dictTable = dict(executionProfiles.DICT_EXECUTION_PROFILES)
+    dictTable["across-v2"] = dict(dictTable["across-v1"])
+    monkeypatch.setattr(executionProfiles, "DICT_EXECUTION_PROFILES", dictTable)
+    dictLegacy = dict(_DICT_THREE_LEGACY_ANSWERS)
+    dictBlock = _fdictApplyDeterminismAnswer(
+        dictLegacy, {"sRepeatabilityAnswer": "across"})
+    assert dictBlock["sExecutionProfile"] == "across-v2"
+    assert dictBlock["sRepeatabilityAnswer"] == "across"
+    for sKey, sValue in _DICT_THREE_LEGACY_ANSWERS.items():
+        assert dictBlock[sKey] == sValue
+    assert _fdictApplyDeterminismAnswer(
+        dictBlock, {"sRepeatabilityAnswer": "speed"})[
+            "sExecutionProfile"] == "speed-v1"
+    dictWithdrawn = _fdictApplyDeterminismAnswer(
+        dictBlock, {"sRepeatabilityAnswer": None})
+    assert "sRepeatabilityAnswer" not in dictWithdrawn
+    assert "sExecutionProfile" not in dictWithdrawn
+
+
+@pytest.mark.falsification
+def testACallerCannotNameAProfileOrALegacyAnswer():
+    """The route takes the answer and nothing else.
+
+    Kills: accepting a profile ID from the caller, which lets an
+    answer and the settings that run disagree.
+    """
+    from fastapi import HTTPException
+    from vaibify.gui.routes.reproducibilityRoutes import (
+        _fdictValidateDeterminismBody,
+    )
+    for dictBody in ({"sExecutionProfile": "across-v1"},
+                     {"sBlasVarianceAnswer": "accepted"},
+                     {"dOmpNumThreads": 4},
+                     {"sRepeatabilityAnswer": "fastest"}):
+        with pytest.raises(HTTPException) as errorRefused:
+            _fdictValidateDeterminismBody(dictBody)
+        assert errorRefused.value.status_code == 422, dictBody
+    assert _fdictValidateDeterminismBody(
+        {"sRepeatabilityAnswer": "across"}) == {
+            "sRepeatabilityAnswer": "across"}
 
 
 # -----------------------------------------------------------------------
@@ -306,9 +260,10 @@ def testTheMigrationKeepsTheValuesARerunActsOn():
     assert dictBlock["sMklCbwr"] == "COMPATIBLE"
     assert dictBlock["sOmpThreadsAnswer"] == "pinned"
     assert dictBlock["sMklModeAnswer"] == "pinned"
-    # Fully pinned under the old rules IS fully answered under the new
-    # ones, so a project that did the work keeps its credit.
-    assert fbWorkflowDeclaresDeterminism(dictWorkflow) is True
+    # Fully answered under the three questions, and still open under
+    # the one that replaced them: none of them said which profile runs
+    # (design D7). The record of what was declared stays.
+    assert fbWorkflowDeclaresDeterminism(dictWorkflow) is False
 
 
 def testTheMigrationNeverOverwritesAnExplicitAnswer():
@@ -362,6 +317,49 @@ def testTheMigrationSpellsTheSameKeysTheGateReads():
         )
 
 
+@pytest.mark.falsification
+def testTheV14MigrationLeavesTheQuestionOpenAndKeepsTheLegacyKeys():
+    """D7: a v13 project arrives unanswered, its old answers untouched.
+
+    Kills: a v13-to-v14 migrator that reads an answer into the legacy
+    block, which attests a choice about what runs that nobody made.
+    """
+    from vaibify.gui.workflowMigrations import (
+        I_CURRENT_WORKFLOW_VERSION, S_VERSION_KEY, fiApplyMigrations,
+    )
+    dictWorkflow = {S_VERSION_KEY: 13,
+                    "dictDeterminism": dict(_DICT_THREE_LEGACY_ANSWERS)}
+    fiApplyMigrations(dictWorkflow, "")
+    assert dictWorkflow[S_VERSION_KEY] == I_CURRENT_WORKFLOW_VERSION == 14
+    assert dictWorkflow["dictDeterminism"] == _DICT_THREE_LEGACY_ANSWERS
+    assert flistUnansweredDeterminismQuestions(dictWorkflow) == [
+        "repeatability"]
+    dictCurrent = {S_VERSION_KEY: 14,
+                   "dictDeterminism": dict(_DICT_ANSWERED_ACROSS)}
+    fiApplyMigrations(dictCurrent, "")
+    assert dictCurrent["dictDeterminism"] == _DICT_ANSWERED_ACROSS
+
+
+@pytest.mark.falsification
+def testTheV14MigratorSpellsNoKeyTheGateReads():
+    """The sibling of the spelling test: this migrator must write NO answer.
+
+    ``workflowMigrations`` spells keys as literals, so the way it would
+    start fabricating an answer is by spelling one.
+
+    Kills: a v13-to-v14 migrator that writes the answer or the profile.
+    """
+    import inspect
+    from vaibify.gui import workflowMigrations
+    from vaibify.reproducibility.determinismGate import (
+        S_REPEATABILITY_ANSWER_KEY,
+    )
+    sSource = inspect.getsource(workflowMigrations._fnMigrateV13ToV14)
+    for sConstant in (S_REPEATABILITY_ANSWER_KEY,
+                      executionProfiles.S_EXECUTION_PROFILE_KEY):
+        assert f'"{sConstant}"' not in sSource, sConstant
+
+
 # -----------------------------------------------------------------------
 # The maths-library reading, and the surfaces it has to reach
 # -----------------------------------------------------------------------
@@ -388,10 +386,18 @@ def testTheMathsLibraryReadingCarriesBothLengths():
     assert dictReading["bMklFound"] is False
     assert "MKL" in dictReading["sHeadline"]
     assert "MKL" in dictReading["sNote"]
-    # The long form states the limit; the short one must not claim
-    # past it, so it hedges rather than asserting "does not use MKL".
-    assert "most likely" in dictReading["sHeadline"]
+    # The long form states the limit of reading a lock; the short one
+    # claims only what the lock shows.
+    assert "in your dependency lock" in dictReading["sHeadline"]
     assert "DECLARES" in dictReading["sNote"]
+    with open(
+        os.path.join(sRepo, "requirements.lock"), "w", encoding="utf-8",
+    ) as fileLock:
+        fileLock.write("numpy==2.4.6\nmkl==2025.0\n")
+    dictFound = fdictDetectMathsLibrary(sRepo)
+    assert dictFound["bMklFound"] is True
+    assert "no execution profile covers" in dictFound["sHeadline"]
+    assert "Neither answer covers it" in dictFound["sNote"]
 
 
 @pytest.mark.falsification

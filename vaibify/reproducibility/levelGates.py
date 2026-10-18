@@ -1550,8 +1550,14 @@ def fbVerifyReproduceScript(filesRepo, dictWorkflow):
     emitted before the renderer resolved tokens are already on disk.
     """
     from vaibify.gui.workflowManager import flistResidualWorkflowTokens
+    from vaibify.reproducibility.rerunAssessment import (
+        S_RERUN_ASSESSMENT_REPO_PATH,
+    )
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    if not filesRepo.fbIsFile(S_REPRODUCE_SCRIPT_FILENAME):
+    # The script runs the assessor beside it, so a script without its
+    # assessor, or with an unpinned one, cannot grade what it reruns.
+    if not (filesRepo.fbIsFile(S_REPRODUCE_SCRIPT_FILENAME)
+            and filesRepo.fbIsFile(S_RERUN_ASSESSMENT_REPO_PATH)):
         return False
     try:
         listEntries = flistParseManifestLines(filesRepo)
@@ -1562,7 +1568,8 @@ def fbVerifyReproduceScript(filesRepo, dictWorkflow):
     if flistResidualWorkflowTokens(sScript):
         return False
     setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
-    return S_REPRODUCE_SCRIPT_FILENAME in setPaths
+    return (S_REPRODUCE_SCRIPT_FILENAME in setPaths
+            and S_RERUN_ASSESSMENT_REPO_PATH in setPaths)
 
 
 def fbVerifyReproduceScriptCurrent(filesRepo, dictWorkflow):
@@ -1593,20 +1600,34 @@ def fbVerifyReproduceScriptCurrent(filesRepo, dictWorkflow):
     refusing to render means the workflow cannot produce a script at
     all, which is a different failure owned by different gates, and
     naming it staleness would send the researcher at the wrong fix.
+
+    The assessor the script runs (``.vaibify/rerunAssessment.py``) is
+    held to the same rule, against its render under the CURRENT
+    comparison policy: a project assessed under an older policy, or
+    with a hand-edited assessor, is regenerated to move forward.
     """
     from vaibify.reproducibility.reproduceScriptGenerator import (
-        fsRenderReproduceScript,
+        ftRenderReproductionFiles,
     )
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not filesRepo.fbIsFile(S_REPRODUCE_SCRIPT_FILENAME):
         return True
     try:
-        sOnDisk = filesRepo.fsReadText(S_REPRODUCE_SCRIPT_FILENAME)
-        sCurrent = fsRenderReproduceScript(dictWorkflow)
+        tRendered = ftRenderReproductionFiles(dictWorkflow)
     except (OSError, ValueError) as error:
         fnReRaiseControlPlaneRefusal(error)
         return True
-    return sOnDisk == sCurrent
+    for sRelativePath, sCurrent in tRendered:
+        if not filesRepo.fbIsFile(sRelativePath):
+            continue
+        try:
+            sOnDisk = filesRepo.fsReadText(sRelativePath)
+        except (OSError, ValueError) as error:
+            fnReRaiseControlPlaneRefusal(error)
+            return True
+        if sOnDisk != sCurrent:
+            return False
+    return True
 
 
 def fbVerifyDeterminismDeclared(filesRepo, dictWorkflow):
@@ -1671,7 +1692,7 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     bAllReadiness = all(dictFlags.values())
     dictResult = {sKey: bool(bValue) for sKey, bValue in dictFlags.items()}
     dictResult["bL3AttestationCurrent"] = (
-        fbL3AttestationCurrent(filesRepo) if bRepo else False
+        fbL3AttestationCurrent(filesRepo, dictWorkflow) if bRepo else False
     )
     # Reported, but deliberately OUTSIDE the readiness all(): readiness
     # asks whether the LOCAL envelope is complete and pinned, which is
@@ -3216,7 +3237,9 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
         "reproduce-script-missing": fbVerifyReproduceScript(
             filesRepo, dictWorkflow,
         ),
-        "l3-attestation-stale": fbL3AttestationCurrent(filesRepo),
+        "l3-attestation-stale": fbL3AttestationCurrent(
+            filesRepo, dictWorkflow,
+        ),
         "binaries-not-declared-or-waived": fbWorkflowDeclaresBinaries(
             dictWorkflow,
         ),
@@ -3569,14 +3592,19 @@ _DICT_L3_REMEDIATION_HINTS = {
         "record that already holds it), then click Verify now on the "
         "Zenodo row.",
     "reproduce-script-stale":
-        "reproduce.sh on disk is not what vaibify would generate for "
-        "this workflow now, so it predates the machinery it needs. A "
-        "script written before the environment archive existed opens "
-        "with a bare 'docker pull' and stops -- and for a locally "
-        "built image no registry serves that digest, so a stranger's "
-        "reproduction dies on its first line while your own Zenodo "
-        "deposit holds the image it wanted. Regenerate reproduce.sh, "
-        "then commit and publish it.",
+        "reproduce.sh, or the rerun assessor beside it "
+        "(.vaibify/rerunAssessment.py), is not what vaibify would "
+        "generate for this workflow now, so it predates the machinery "
+        "it needs. A script written before the environment archive "
+        "existed opens with a bare 'docker pull' and stops -- and for "
+        "a locally built image no registry serves that digest, so a "
+        "stranger's reproduction dies on its first line while your own "
+        "Zenodo deposit holds the image it wanted. A script written "
+        "before the assessed rerun compares bytes alone, so it does not "
+        "run the checks the dashboard runs, and an assessor that was "
+        "edited, or written under an older comparison policy, grades by "
+        "rules this version of vaibify does not use. Regenerate "
+        "reproduce.sh, then commit and publish it and its assessor.",
     "an-archive-is-a-sandbox-deposit":
         "An archive backing this project is a Zenodo SANDBOX deposit. "
         "The sandbox mints test DOIs, promises no preservation, and "
@@ -3607,7 +3635,8 @@ _DICT_L3_REMEDIATION_HINTS = {
         "Capture the container image digest into "
         ".vaibify/environment.json.",
     "reproduce-script-missing":
-        "Generate reproduce.sh and pin it in MANIFEST.sha256. A "
+        "Generate reproduce.sh and pin it, with the rerun assessor "
+        "written beside it, in MANIFEST.sha256. A "
         "script already present fails this too when its commands "
         "still carry unresolved {token} references; regenerating it "
         "resolves them, and resolve-commands reports any that name "

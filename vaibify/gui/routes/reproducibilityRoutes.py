@@ -80,6 +80,8 @@ from ...reproducibility.l3Attestation import (
     S_ATTESTATION_FILENAME,
     S_STATUS_FAILED,
     S_STATUS_PASSED,
+    fbAttestationIsHistorical,
+    fdictAssessmentFieldsFromOutcome,
     fdictBuildAttestation,
     fdictReadAttestation,
     flistReadAttestationHistory,
@@ -92,12 +94,11 @@ from ...reproducibility.environmentSnapshot import (
 )
 from ...reproducibility.determinismGate import (
     LIST_DETERMINISM_QUESTIONS,
-    S_ACCEPT_BLAS_WAIVER_KEY,
-    S_BLAS_ANSWER_KEY,
-    S_MKL_ANSWER_KEY,
-    S_MKL_CBWR_KEY,
-    S_OMP_ANSWER_KEY,
-    S_OMP_NUM_THREADS_KEY,
+    S_REPEATABILITY_ANSWER_KEY,
+)
+from ...reproducibility.executionProfiles import (
+    S_EXECUTION_PROFILE_KEY,
+    fsNewestProfileForAnswer,
 )
 from ...reproducibility.declaredPackages import (
     fdictComparePackageDeclarations,
@@ -635,6 +636,11 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
         reproductionRecord.flistReadReproductionRecords(filesRepo)
         if bHasRepo else []
     )
+    # Whether each record predates the current assessment contract is
+    # the SERVER's judgement, shipped beside the record, so the page
+    # labels a previous check without deciding what counts as one.
+    for dictRecord in ([dictCurrent] if dictCurrent else []) + listHistory:
+        dictRecord["bHistorical"] = fbAttestationIsHistorical(dictRecord)
     return {
         "dictCurrentAttestation": dictCurrent,
         "listHistory": listHistory,
@@ -1512,6 +1518,7 @@ def _fbPersistAttestation(
             ),
             sReproducedManifestPath=sReproducedManifestPath,
             sAttestedAtUtc=sTimestampUtc,
+            dictAssessmentFields=fdictAssessmentFieldsFromOutcome(dictResult),
         )
 
     try:
@@ -1973,18 +1980,11 @@ def _fnAppendBinaryToEnvironmentJson(filesRepo, dictCaptured):
 
 
 # Wire-format keys and their accepted scalar JSON types for the
-# determinism declaration route; these are exactly the keys
-# determinismGate.fbWorkflowDeclaresDeterminism reads.
+# determinism declaration route: the ONE answer the gate reads
+# (2026-10-17). The execution profile it names is written by the route,
+# never accepted from a caller, so a profile ID is never typed.
 _DICT_DETERMINISM_KEY_TYPES = {
-    S_ACCEPT_BLAS_WAIVER_KEY: (bool,),
-    S_OMP_NUM_THREADS_KEY: (int, float),
-    S_MKL_CBWR_KEY: (str,),
-    # The three ANSWER keys (2026-08-30). Each records that a question
-    # was considered, which no value can express: `false` and "never
-    # asked" are the same bytes.
-    S_BLAS_ANSWER_KEY: (str,),
-    S_OMP_ANSWER_KEY: (str,),
-    S_MKL_ANSWER_KEY: (str,),
+    S_REPEATABILITY_ANSWER_KEY: (str,),
 }
 
 # Every answer key, with the answers it accepts. Validated here rather
@@ -2032,13 +2032,11 @@ def _fnRequireScalarType(sKey, jsonValue, tTypesExpected):
 def _fdictValidateDeterminismBody(dictRequest):
     """Return the validated determinism keys or raise HTTP 422.
 
-    Accepts only the three scalar keys the L3 determinism gate reads;
-    at least one must be present and every value must match its
-    declared scalar type. A ``null`` value means "remove this key" —
-    without it, a mistaken pin (an OpenMP thread count the researcher
-    cleared in the form) survived every re-declaration because the
-    route merges keys. Unknown keys are rejected outright so typos
-    cannot silently fail the readiness gate later.
+    Accepts only the answer key the determinism gate reads, with one of
+    the answers it recognizes. A ``null`` value means "withdraw the
+    answer". Unknown keys -- the three legacy answers and the profile ID
+    among them -- are rejected outright, so a typo cannot silently fail
+    the readiness gate later and a caller cannot name a profile.
     """
     if not isinstance(dictRequest, dict) or not dictRequest:
         raise HTTPException(
@@ -2064,6 +2062,26 @@ def _fdictValidateDeterminismBody(dictRequest):
     return dictDeclared
 
 
+def _fdictApplyDeterminismAnswer(dictExisting, dictDeclared):
+    """Return the block with the answer recorded beside the profile it names.
+
+    The profile is the newest table version for the answer, written
+    here so the researcher never types an ID. Withdrawing the answer
+    withdraws its profile too. Every other key is kept: the legacy
+    answers stay as history (design D7).
+    """
+    dictDeterminism = dict(dictExisting)
+    sAnswer = dictDeclared.get(S_REPEATABILITY_ANSWER_KEY)
+    if sAnswer is None:
+        dictDeterminism.pop(S_REPEATABILITY_ANSWER_KEY, None)
+        dictDeterminism.pop(S_EXECUTION_PROFILE_KEY, None)
+        return dictDeterminism
+    dictDeterminism[S_REPEATABILITY_ANSWER_KEY] = sAnswer
+    dictDeterminism[S_EXECUTION_PROFILE_KEY] = fsNewestProfileForAnswer(
+        sAnswer)
+    return dictDeterminism
+
+
 def _fnRegisterDeclareDeterminism(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/determinism/declare."""
 
@@ -2080,14 +2098,8 @@ def _fnRegisterDeclareDeterminism(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         dictDeclared = _fdictValidateDeterminismBody(dictBody)
-        dictDeterminism = dict(
-            dictWorkflow.get("dictDeterminism") or {},
-        )
-        for sKey, jsonValue in dictDeclared.items():
-            if jsonValue is None:
-                dictDeterminism.pop(sKey, None)
-            else:
-                dictDeterminism[sKey] = jsonValue
+        dictDeterminism = _fdictApplyDeterminismAnswer(
+            dictWorkflow.get("dictDeterminism") or {}, dictDeclared)
         dictWorkflow["dictDeterminism"] = dictDeterminism
         fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,

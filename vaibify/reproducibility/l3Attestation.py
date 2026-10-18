@@ -59,6 +59,9 @@ __all__ = [
     "S_STATUS_PASSED",
     "S_STATUS_FAILED",
     "fbL3AttestationCurrent",
+    "fsDescribeProfileMismatch",
+    "fbAttestationIsHistorical",
+    "fdictAssessmentFieldsFromOutcome",
     "fdictBuildAttestation",
     "fdictReadAttestation",
     "flistReadAttestationHistory",
@@ -77,12 +80,21 @@ __all__ = [
 ]
 
 
-I_SCHEMA_VERSION = 6
+I_SCHEMA_VERSION = 7
 S_ATTESTATION_FILENAME = "l3_attestation.json"
 S_ATTESTATION_HISTORY_DIR = "l3_attestations"
 S_STATUS_PASSED = "passed"
 S_STATUS_FAILED = "failed"
 _S_MANIFEST_FILENAME = "MANIFEST.sha256"
+
+# The assessed rerun's fields (schema 7): the assessment report, its
+# verdict and tally, the comparison policy it was graded under, and the
+# execution profile the rerun replayed -- its ID and the settings it
+# requested (F8), ``None`` for a record made before profiles.
+_T_ASSESSMENT_FIELDS = (
+    "dictAssessmentReport", "dictTally", "sComparisonPolicy", "sVerdict",
+    "sVerdictRendered", "sProfileId", "dictRequested",
+)
 
 
 # Reasons the archived attestation does or does not cover the archive.
@@ -211,6 +223,24 @@ def _fdictMigrateAttestationV5ToV6(dictPayload):
     return dictMigrated
 
 
+def _fdictMigrateAttestationV6ToV7(dictPayload):
+    """Bring a v6 record to v7: the rerun was graded by bytes alone then.
+
+    A v6 verifier compared hashes and nothing else, so it could pass
+    with failing tests (design fact 9). The record stays what it always
+    was -- true evidence of the check that produced it -- and is marked
+    HISTORICAL, which no newer contract accepts (F11, D7). ``None`` for
+    the assessment fields: no assessment was made, and an empty value
+    would claim one was.
+    """
+    dictMigrated = dict(dictPayload)
+    dictMigrated["iSchemaVersion"] = 7
+    dictMigrated["bHistorical"] = True
+    for sKey in _T_ASSESSMENT_FIELDS:
+        dictMigrated[sKey] = None
+    return dictMigrated
+
+
 # Forward-migration chain for older attestation records. Each entry is
 # (iFromVersion, fnMigrate) where fnMigrate(dictPayload) transforms a
 # v=iFromVersion record into v=iFromVersion+1 form. Future L4 / L6 work
@@ -221,6 +251,7 @@ _LIST_ATTESTATION_MIGRATORS = [
     (3, _fdictMigrateAttestationV3ToV4),
     (4, _fdictMigrateAttestationV4ToV5),
     (5, _fdictMigrateAttestationV5ToV6),
+    (6, _fdictMigrateAttestationV6ToV7),
 ]
 
 
@@ -288,18 +319,81 @@ def _fdictMigrateAttestation(dictPayload):
     return dictPayload
 
 
-def fbL3AttestationCurrent(filesRepo):
+def fbAttestationIsHistorical(dictPayload):
+    """Return True when a record predates the current assessment contract.
+
+    Historical is a property of the CHECK, not of the result: a record
+    migrated from a byte-only verifier, or one graded under a comparison
+    policy that is no longer current, is still true about what it
+    checked, and never satisfies the rebuild requirement.
+    """
+    from vaibify.reproducibility.rerunAssessment import (
+        S_CURRENT_COMPARISON_POLICY,
+    )
+    return bool(
+        dictPayload.get("bHistorical")
+        or int(dictPayload.get("iSchemaVersion") or 0) < 7
+        or dictPayload.get("sComparisonPolicy") != S_CURRENT_COMPARISON_POLICY
+    )
+
+
+def fdictAssessmentFieldsFromOutcome(dictOutcome):
+    """Return the assessment fields an attestation records, from an outcome.
+
+    One reading for both lanes that build an attestation -- the
+    dashboard's and the CLI's -- because they write the same file.
+    """
+    return {sKey: dictOutcome.get(sKey) for sKey in _T_ASSESSMENT_FIELDS}
+
+
+def fsDescribeProfileMismatch(dictPayload, dictWorkflow):
+    """Return why a record's execution profile is not the workflow's, or "".
+
+    The record's profile ID and requested settings must both equal what
+    the workflow asks for now: changing the answer retires the
+    attestation (F8), and the history keeps it. The shadow replays the
+    ENVELOPE's profile, so the remedy names regenerating the envelope
+    first; rerunning against an envelope still recording the old
+    profile would retire nothing.
+    """
+    from vaibify.reproducibility import executionProfiles
+    try:
+        dictProfile = executionProfiles.fdictWorkflowExecutionProfile(
+            dictWorkflow)
+    except executionProfiles.ExecutionProfileError as error:
+        return str(error)
+    if (dictPayload.get("sProfileId") == dictProfile["sProfileId"]
+            and dictPayload.get("dictRequested")
+            == dictProfile["dictRequested"]):
+        return ""
+    return (
+        "the last rebuild ran under the execution profile "
+        f"{dictPayload.get('sProfileId') or '(none recorded)'}, and this "
+        f"project now asks for {dictProfile['sProfileId']}; regenerate "
+        "the reproducibility envelope, then run the verification again")
+
+
+def fbL3AttestationCurrent(filesRepo, dictWorkflow):
     """Return True iff an L3 attestation exists, passed, and is not stale.
 
     Staleness is keyed against ``fsCurrentManifestDigest`` so any
     workflow edit that re-generates the manifest invalidates the
-    attestation without requiring a separate timestamp.
+    attestation without requiring a separate timestamp. A historical
+    record -- one made by the byte-only verifier, or under a comparison
+    policy that is no longer current -- is never current, whatever
+    digest it names (design F11, D7, I9). Nor is one made under an
+    execution profile the workflow no longer asks for (F8): the
+    workflow is a required argument so no caller can skip that check.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictPayload = fdictReadAttestation(filesRepo)
     if dictPayload is None:
         return False
     if dictPayload.get("sStatus") != S_STATUS_PASSED:
+        return False
+    if fbAttestationIsHistorical(dictPayload):
+        return False
+    if fsDescribeProfileMismatch(dictPayload, dictWorkflow):
         return False
     sRecorded = dictPayload.get("sManifestDigestAtAttestation") or ""
     if not sRecorded:
@@ -315,7 +409,7 @@ def fdictBuildAttestation(
     dictImageArchiveCheck=None, listFileOutcomes=None,
     dictReproductionProvenance=None, sReproducedManifestPath=None,
     sAttestedAtUtc="", iPinnedInputsUnchanged=None, iPinnedInputsTotal=None,
-    dictPreRerunClearing=None,
+    dictPreRerunClearing=None, dictAssessmentFields=None,
 ):
     """Return a fully-populated attestation dict (no file IO).
 
@@ -373,6 +467,12 @@ def fdictBuildAttestation(
     ``sAttestedAtUtc`` may be supplied so the record shares its
     timestamp with the manifest copy written beside it; empty means
     now.
+
+    ``dictAssessmentFields`` carries the assessed rerun's record --
+    :func:`fdictAssessmentFieldsFromOutcome` reads it off the lane's
+    outcome -- and every absent field is ``None``. ``bHistorical`` is
+    False for every record this builder makes; only the migration of an
+    older record sets it.
     """
     return {
         "iSchemaVersion": I_SCHEMA_VERSION,
@@ -411,6 +511,9 @@ def fdictBuildAttestation(
         "sReproducedManifestPath": sReproducedManifestPath,
         "sRunLogPath": sRunLogPath,
         "dictAiProvenance": dictAiProvenance,
+        "bHistorical": False,
+        **{sKey: (dictAssessmentFields or {}).get(sKey)
+           for sKey in _T_ASSESSMENT_FIELDS},
     }
 
 

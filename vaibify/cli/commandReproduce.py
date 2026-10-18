@@ -68,6 +68,7 @@ from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 from vaibify.reproducibility.l3Attestation import (
     S_STATUS_FAILED,
     S_STATUS_PASSED,
+    fdictAssessmentFieldsFromOutcome,
     fdictBuildAttestation,
     fsCurrentManifestDigest,
 )
@@ -869,6 +870,7 @@ def _fdictBuildRerunAttestation(
         ),
         sReproducedManifestPath=sReproducedManifestPath,
         sAttestedAtUtc=sTimestampUtc,
+        dictAssessmentFields=fdictAssessmentFieldsFromOutcome(dictOutcome),
     )
 
 
@@ -989,7 +991,23 @@ def _fsRecordedImageDigest(sProjectRepo):
 
 
 def _fnReportHashCompare(dictOutcome):
-    """Print the post-rerun hash compare, naming every diverged artefact."""
+    """Print the rerun's verdict and tally, or the legacy hash compare.
+
+    The assessed rerun's verdict is the comparison policy's own wording,
+    always beside its tally: a comparison verdict printed without the
+    count of files that differ reads as byte identity.
+    """
+    if dictOutcome.get("sVerdictRendered"):
+        click.echo(f"... {dictOutcome['sVerdictRendered']}")
+        click.echo(f"    {dictOutcome.get('sTallyRendered') or ''}")
+        for sDiverged in dictOutcome["listDivergedHashes"][1:]:
+            click.echo(f"  {sDiverged}")
+        return
+    if not dictOutcome.get("bRerunAttempted", True):
+        listReasons = dictOutcome.get("listDivergedHashes") or [
+            "the rerun never started"]
+        click.echo(f"... Could not run: {listReasons[0]}")
+        return
     sCounts = (
         f"{dictOutcome['iOutputHashesMatched']}/"
         f"{dictOutcome['iOutputHashesTotal']}"
@@ -1003,11 +1021,13 @@ def _fnReportHashCompare(dictOutcome):
 
 
 def _ftRunRerunTier(sProjectRepo, sWorkflowName):
-    """Re-run, re-hash, attest; return ``(bPassed, bAttestationWritten)``.
+    """Re-run, assess, attest; return ``(iExitCode, bAttestationWritten)``.
 
-    ``bPassed`` is the hash-compare verdict, not the pipeline's exit
-    code: a step that exits zero having changed an output byte has not
-    reproduced anything, and Tier 5 must say so.
+    ``iExitCode`` is the assessment's shared code (design D6): 0 passed,
+    1 not reproduced, 3 published inputs changed, 4 could not run, 5
+    not enough evidence. It is never the pipeline's exit code: a step
+    that exits zero having changed an output byte has not reproduced
+    anything, and Tier 5 must say so.
     """
     fStarted = time.monotonic()
     # Which record the run would write is settled BEFORE the rerun: a
@@ -1020,14 +1040,15 @@ def _ftRunRerunTier(sProjectRepo, sWorkflowName):
         )
     except reproductionRecord.RecordKindUndeterminedError as error:
         click.echo(f"  refused before any step ran: {error}")
-        return False, False
+        return reproductionReport.I_EXIT_COULD_NOT_RUN, False
     dictOutcome = fdictRerunAndVerify(sProjectRepo, sWorkflowName)
     _fnReportHashCompare(dictOutcome)
     bAttestationWritten = _fbWriteAttestationFromRun(
         sProjectRepo, dictOutcome,
         time.monotonic() - fStarted, sRecordKind,
     )
-    return dictOutcome["bPassed"], bAttestationWritten
+    return (reproductionReport.fiExitCodeOfOutcome(dictOutcome),
+            bAttestationWritten)
 
 
 def _fnReportStagedSource(dictStaged):
@@ -1205,8 +1226,8 @@ def _fnReproduceStagedSnapshot(sToken, dictAcquired):
         "This report is yours, not the author's attestation; nothing was "
         "written into the project."
     )
-    if dictReport["sVerdict"] != reproductionReport.S_VERDICT_REPRODUCED:
-        sys.exit(1)
+    if dictReport["iExitCode"] != 0:
+        sys.exit(dictReport["iExitCode"])
 
 
 @click.command("reproduce")
@@ -1286,17 +1307,21 @@ def fnReproduceCommand(
         if not _fbDispatchTier(sTier, sProjectRepo, setSkipTiers):
             bAllPassed = False
     bAttestationWritten = False
+    iRerunExitCode = 0
     if bRerun:
-        bRerunPassed, bAttestationWritten = _ftRunRerunTier(
+        iRerunExitCode, bAttestationWritten = _ftRunRerunTier(
             sProjectRepo, sWorkflowName,
         )
-        if not bRerunPassed:
-            bAllPassed = False
     else:
         click.echo(
             f"[5/{_S_TIER_DENOMINATOR}] "
             "Re-running workflow ... skipped (use --rerun)"
         )
-    _fnEmitFinalSummary(bAllPassed, bRerun, bAttestationWritten)
+    _fnEmitFinalSummary(
+        bAllPassed and iRerunExitCode == 0, bRerun, bAttestationWritten)
+    # The rerun's shared code (design D6) outranks a tier failure: it
+    # is the same code reproduce.sh and --from exit with.
+    if iRerunExitCode:
+        sys.exit(iRerunExitCode)
     if not bAllPassed:
         sys.exit(1)

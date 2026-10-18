@@ -62,6 +62,7 @@ const VaibifyApp = (function () {
             dictBlockersByStep: {},
             dictBlockersByStepLevel2: {},
             dictAiDeclarationFreshness: null,
+            dictOutputContextNotes: {},
             dictBlockersByStepLevel3: {},
             dictStepLevels: {},
             dictStepLevelHighWater: {},
@@ -1085,6 +1086,7 @@ const VaibifyApp = (function () {
         _dictWorkflowState.dictBlockersByStepLevel2 = {};
         _dictWorkflowState.dictBlockersByStepLevel3 = {};
         _dictWorkflowState.dictAiDeclarationFreshness = null;
+        _dictWorkflowState.dictOutputContextNotes = {};
         _dictWorkflowState.dictStepLevels = {};
         _dictWorkflowState.dictStepLevelHighWater = {};
         _dictWorkflowState.dictStepLevelWarnings = {};
@@ -2275,6 +2277,8 @@ const VaibifyApp = (function () {
                 .sProjectRepoPath || "",
             dictAiDeclarationFreshness:
                 _dictWorkflowState.dictAiDeclarationFreshness || null,
+            dictOutputContextNotes:
+                _dictWorkflowState.dictOutputContextNotes || {},
             setExpandedUnitTests: VaibifyTestManager.fsetGetExpandedUnitTests(),
             fdictGetFalsificationState:
                 VaibifyTestManager.fdictGetFalsificationState,
@@ -2475,6 +2479,7 @@ const VaibifyApp = (function () {
             (dictContext.dictMaxInputMtimeByStep || {})[sIdx] || "",
             dictContext.dictMaxPlotMtimeByStep[sIdx] || "",
             dictContext.dictTestCategoryMtimes[sIdx] || null,
+            (dictContext.dictOutputContextNotes || {})[sIdx] || null,
             dictContext.fdictGetFalsificationState ?
                 dictContext.fdictGetFalsificationState(iIndex) : null,
         ].concat(_flistBlockerAndLevelSlice(iIndex, dictContext)));
@@ -3421,9 +3426,9 @@ const VaibifyApp = (function () {
         },
         "reproduce-script-missing": {
             sIcon: "⚠",
-            sLabel: "reproduce.sh missing or not pinned in the " +
-                "manifest — generate it from the Artifacts section " +
-                "of the Project block",
+            sLabel: "reproduce.sh or its rerun assessor missing or " +
+                "not pinned in the manifest — generate it from the " +
+                "Artifacts section of the Project block",
             sClass: "step-blocker-glyph-l3-workflow-reproduce",
         },
         /* The Level 3 half of the published-copy question. Its Level 2
@@ -3486,11 +3491,10 @@ const VaibifyApp = (function () {
            a project that already has one. */
         "reproduce-script-stale": {
             sIcon: "⚠",
-            sLabel: "reproduce.sh predates the machinery it needs — " +
-                "it pulls the image and has no way to fall back to " +
-                "your archived copy, so a stranger's reproduction " +
-                "fails on its first line; regenerate it, then commit " +
-                "and publish",
+            sLabel: "reproduce.sh or its rerun assessor is not what " +
+                "vaibify would generate now, so a stranger's " +
+                "reproduction does not run the checks this dashboard " +
+                "runs; regenerate it, then commit and publish both",
             sClass: "step-blocker-glyph-l3-workflow-reproduce-stale",
         },
         "an-archive-is-a-sandbox-deposit": {
@@ -4005,14 +4009,12 @@ const VaibifyApp = (function () {
     }
 
     function _fdictDescribeDeterminismScan(dictSafe) {
-        /* The scan answers TWO of the three determinism questions'
-           worth of evidence, and the toast used to report only one.
-           A researcher who ran it to settle the MKL question read
-           "none of the known non-determinism patterns found" and
-           reasonably concluded the scan had told them nothing —
-           because about MKL it had (reported 2026-08-30). The maths
-           library reading rides every branch now, in the short form
-           the backend authors beside the long one. */
+        /* The scan reports the script anti-patterns AND which maths
+           library the lock declares, because the profiles cover
+           OpenBLAS and not Intel MKL -- a toast reporting only the
+           first told a researcher nothing about the second (reported
+           2026-08-30). The maths library reading rides every branch,
+           in the short form the backend authors beside the long one. */
         var sMaths = (dictSafe.dictMathsLibrary || {}).sHeadline || "";
         var sSuffix = sMaths ? " " + sMaths : "";
         var listIssues = dictSafe.listIssues || [];
@@ -4292,10 +4294,21 @@ const VaibifyApp = (function () {
                         "files match their pinned hashes.",
                         sType: "info"};
                 }
+                /* A difference the server explains by recorded
+                   hardware or settings is said in its words, with the
+                   option it offers -- never as an alarm (design F5). */
+                var dictExplain =
+                    (dictResult || {}).dictContextExplanation || {};
+                if (dictExplain.bOnlyContextDifferences) {
+                    return {sMessage: dictExplain.sSummary + " " +
+                        dictExplain.sOption, sType: "info"};
+                }
                 return {sMessage: listBad.length + " of " + iTotal +
                     " files differ from the manifest (first: " +
                     (listBad[0].sPath || listBad[0]) + "). Re-run " +
-                    "the project or regenerate the envelope.",
+                    "the project or regenerate the envelope." +
+                    (dictExplain.sSummary ? " " + dictExplain.sSummary
+                        : ""),
                     sType: "warning"};
             },
         },
@@ -4654,17 +4667,12 @@ const VaibifyApp = (function () {
     }
 
     function _fdictReadDeterminismForm(elButton) {
-        /* Read ONE question's answer from the form the button sits
-           in. Each question is now its own row with its own Save, so
-           a body carries one answer and the endpoint's key merge
-           leaves the other two alone.
+        /* Read the question's answer from the form the button sits in.
 
-           An unanswered form submits NOTHING rather than a default.
-           The previous version sent `bAcceptBlasVariance: false` for
-           an unticked box, which recorded a block that satisfied no
-           gate while turning the row green — the defect this whole
-           change came from. A researcher who saves without choosing
-           now gets told to choose. */
+           An unanswered form submits NOTHING rather than a default: an
+           older form sent a value for an unticked box, which recorded a
+           block that satisfied no gate while turning the row green. A
+           researcher who saves without choosing is told to choose. */
         var elForm = elButton.closest(".determinism-form");
         if (!elForm) return null;
         var elChecked = elForm.querySelector(
@@ -4678,21 +4686,10 @@ const VaibifyApp = (function () {
     }
 
     function _fdictBuildDeterminismBody(elForm, sAnswer) {
-        // The answer, plus the value that answer needs. A value is
-        // sent as null when the chosen answer does not want one, so a
-        // thread count survives no longer than the decision to pin.
+        // The answer and nothing else: the server records the
+        // execution profile it names, so no profile ID is ever sent.
         var dictBody = {};
         dictBody[elForm.dataset.answerKey] = sAnswer;
-        var sValueKey = elForm.dataset.valueKey || "";
-        if (!sValueKey) return dictBody;
-        var elValue = elForm.querySelector(".determinism-value");
-        var sRaw = elValue ? String(elValue.value).trim() : "";
-        if (sRaw === "" || sAnswer !== "pinned") {
-            dictBody[sValueKey] = null;
-            return dictBody;
-        }
-        dictBody[sValueKey] = (sValueKey === "dOmpNumThreads")
-            ? parseInt(sRaw, 10) : sRaw;
         return dictBody;
     }
 
@@ -5923,8 +5920,14 @@ const VaibifyApp = (function () {
                 "</div>";
         };
         var listCarried = dictCurrent.listCarriedPaths || [];
+        /* The verdict, its tally and its policy -- or that this is a
+           previous check -- rendered by the PROOF tab's one renderer,
+           so the document and the card never word it differently. */
         var sHtml = '<div class="attestation-summary">' +
-            fnRow("Status", dictCurrent.sStatus || "unknown") +
+            VaibifyProofTab.fsRenderAssessmentVerdict(dictCurrent) +
+            fnRow("Status", dictCurrent.bHistorical === true ?
+                "previous check (" + (dictCurrent.sStatus || "unknown") +
+                ")" : (dictCurrent.sStatus || "unknown")) +
             fnRow("Attested", dictCurrent.sAttestedAtUtc || "?") +
             fnRow("Manifest digest",
                 dictCurrent.sManifestDigestAtAttestation || "?") +
@@ -7012,6 +7015,7 @@ const VaibifyApp = (function () {
         _fnApplyBlockerAndLevelState(dictStatus);
         _fnApplyAiDeclarationFreshness(
             dictStatus.dictAiDeclarationFreshness);
+        _fnApplyOutputContextNotes(dictStatus.dictOutputContextNotes);
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
             fnApplyInvalidatedSteps(dictInv);
@@ -7027,6 +7031,18 @@ const VaibifyApp = (function () {
         if (dictStatus.dictTestFileChanges) {
             VaibifyTestManager.fnNotifyTestFileChanges(
                 dictStatus.dictTestFileChanges);
+        }
+    }
+
+    function _fnApplyOutputContextNotes(dictNotes) {
+        /* The server's per-step notes on outputs another context
+           produced; mirrored, never derived, and re-rendered when they
+           move so a card never shows an old note. */
+        var sPrior = JSON.stringify(
+            _dictWorkflowState.dictOutputContextNotes || {});
+        _dictWorkflowState.dictOutputContextNotes = dictNotes || {};
+        if (JSON.stringify(dictNotes || {}) !== sPrior) {
+            fnRenderStepList();
         }
     }
 

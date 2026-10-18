@@ -205,13 +205,10 @@ def test_flistAuditWorkflow_skips_corrupt_steps():
     """Line 213: a non-dict entry in listSteps must be skipped, not crashed on."""
     dictWorkflow = {
         "dictDeterminism": {
-            # All three questions answered (2026-08-30 ruling).
-            # A lone waiver used to satisfy the gate; it is now
-            # one answer of three, so a fixture carrying only it
-            # builds a project that is NOT L3-ready.
-            "sBlasVarianceAnswer": "accepted",
-            "sOmpThreadsAnswer": "unpinned",
-            "sMklModeAnswer": "not-used",
+            # The determinism question answered: one question since
+            # 2026-10-17, and either answer passes.
+            "sRepeatabilityAnswer": "speed",
+            "sExecutionProfile": "speed-v1",
         },
         "listSteps": [None, "not a dict", {"sName": "S"}],
     }
@@ -315,7 +312,7 @@ def test_fbL3AttestationCurrent_missing_recorded_digest_is_false(tmp_path):
     )
     fnWriteAttestation(str(tmp_path), dictAttestation)
     from vaibify.reproducibility.l3Attestation import fbL3AttestationCurrent
-    assert fbL3AttestationCurrent(str(tmp_path)) is False
+    assert fbL3AttestationCurrent(str(tmp_path), {}) is False
 
 
 def test_fnInvalidateAttestation_returns_false_when_missing(tmp_path):

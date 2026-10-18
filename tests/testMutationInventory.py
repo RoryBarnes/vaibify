@@ -427,7 +427,13 @@ I_UNCLASSIFIED_ROW_BUDGET = 271
 # (agent lane rejected, catalog-excluded, id re-verified present and
 # stopped immediately before, docker rm without -f so the daemon refuses
 # a running one), and the recycled-identity refusal is kill-confirmed.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 229
+# 230 (2026-10-17), a NEW site that cannot change a container from the
+# hub: the rerun probe's matrix product, fdictExerciseMatrixProduct. The
+# module is rendered into the rerun assessment file and the launch runs
+# only inside a reproduction container, with a fixed argv; it counts as
+# mutation-capable because its program is sys.executable, which the scan
+# cannot read. Classified at birth, lane reproduction-container.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 230
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -723,7 +729,12 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # exactly what makes it a root the scan cannot read.
 DICT_UNRESOLVED_BUDGET = {
     # 22 -> 21 (2026-10-01): the removed second setup wizard.
-    "opaque-subprocess-command": 21,
+    # 21 -> 22 (2026-10-17): the rerun probe's matrix product,
+    # fdictExerciseMatrixProduct, launched as sys.executable so that it
+    # tests the NumPy the probe imported. Its argv is fixed source text
+    # and it runs only inside a reproduction container; the scan cannot
+    # read a launch whose program is not a literal.
+    "opaque-subprocess-command": 22,
     # 52 since fsImageState (2026-09-18): a gateway image lookup, read
     # through the same SDK root as flistGetRunningContainers beside it.
     # 53 since fdictSweepSurvivorsOfVanishedResources (2026-09-21): the

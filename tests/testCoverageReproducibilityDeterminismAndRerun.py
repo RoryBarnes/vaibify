@@ -20,6 +20,7 @@ import pytest
 
 from vaibify.reproducibility import determinismGate, rerunVerification
 from vaibify.reproducibility.repoFiles import HostRepoFiles
+from tests.rerunAssessmentHarness import fnRecordPlannedCommandsAsRun
 
 
 S_STEP_DIRECTORY = "stepAlpha"
@@ -165,7 +166,7 @@ def fnInstallPipelineRunner(monkeypatch, iExitCode, listCalls):
     async def fiFakeRunAllSteps(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         sWorkdir, fnStatusCallback, iSourceDateEpochOverride=None,
-        sRunMode="full",
+        sRunMode="full", dictRerunEvidence=None,
     ):
         await fnStatusCallback({"sType": "stepStarted"})
         listCalls.append({
@@ -220,8 +221,10 @@ def fnInstallRerunWriting(monkeypatch, pathRepo, baWritten, bSucceeded=True):
     """Stand in for the container run: write ``baWritten`` as the output."""
     def fbFakeRun(connectionDocker, sContainerId, dictWorkflow,
                   sWorkflowPath, sWorkdir, fnStatusCallback,
-                  iSourceDateEpochOverride=None):
+                  iSourceDateEpochOverride=None, dictRerunEvidence=None):
         fnWriteFile(pathRepo, S_OUTPUT_PATH, baWritten)
+        fnRecordPlannedCommandsAsRun(
+            dictWorkflow, dictRerunEvidence, 0 if bSucceeded else 1)
         return bSucceeded
 
     monkeypatch.setattr(
@@ -256,14 +259,22 @@ def testARerunThatReproducesEveryByteIsAttestedAsPassed(
 
 
 def testARerunThatChangesOneByteFails(monkeypatch, tmp_path):
-    """One different output byte is a divergence naming that file."""
+    """One different output byte, with no comparison over it, is not a pass.
+
+    The assessed rerun leads with its verdict and then names the file
+    whose bytes moved: nothing vouches for the new bytes, so there is
+    not enough evidence that they agree.
+    """
     fnWriteFile(tmp_path, S_OUTPUT_PATH, BA_OUTPUT)
     fnWriteManifestPinning(tmp_path, {S_OUTPUT_PATH: BA_OUTPUT})
     fnInstallRerunWriting(monkeypatch, tmp_path, BA_OUTPUT[:-1] + b"3")
     dictOutcome, _listEvents = fdictRerunOnce(tmp_path)
     assert dictOutcome["bPassed"] is False
     assert dictOutcome["iOutputHashesMatched"] == 0
-    assert dictOutcome["listDivergedHashes"] == [S_OUTPUT_PATH]
+    assert dictOutcome["sVerdict"] == "insufficient-evidence"
+    assert dictOutcome["listDivergedHashes"] == [
+        f"Not enough evidence: {S_OUTPUT_PATH} were not assessed",
+        S_OUTPUT_PATH]
 
 
 # ── rerun: the verdict helpers ───────────────────────────────────

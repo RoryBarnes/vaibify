@@ -523,7 +523,8 @@ def test_a_version_two_cache_is_no_longer_scope_current():
     no answer at all to the archived-attestation criterion, and an
     absent answer is indistinguishable from a recorded "does not
     cover"; a v5 cache never compared the AI-provenance stamp, so its
-    badge would read matched by omission. The literal versions are
+    badge would read matched by omission; a v6 cache never compared the
+    rerun assessor ``reproduce.sh`` runs. The literal versions are
     deliberate — these are the assertions that fail if a bump is ever
     reverted.
 
@@ -534,11 +535,11 @@ def test_a_version_two_cache_is_no_longer_scope_current():
     superseded version that no test names is a version the gate may
     silently start accepting again.
 
-    Kills: reverting ``I_PUBLICATION_SCOPE_VERSION`` to 5 (or any
+    Kills: reverting ``I_PUBLICATION_SCOPE_VERSION`` to 6 (or any
     earlier value), which makes every cache predating the widened
     comparison claim to answer a question it never asked.
     """
-    for iStaleVersion in (2, 3, 4, 5):
+    for iStaleVersion in (2, 3, 4, 5, 6):
         assert publicationScope.fbCachedScopeIsCurrent(
             {"iScopeVersion": iStaleVersion},
         ) is False

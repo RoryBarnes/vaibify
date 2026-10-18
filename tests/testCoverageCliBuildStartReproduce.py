@@ -473,8 +473,9 @@ def testRerunWhoseGitCannotAnswerIsRefusedBeforeAnyStep(
         commandReproduce, "fdictRerunAndVerify",
         lambda *args: listReran.append(args),
     )
+    # (exit code, attestation written): "Could not run" is 4 (design D6).
     assert commandReproduce._ftRunRerunTier(str(tmp_path), "workflow") == (
-        False, False,
+        4, False,
     )
     assert listReran == []
     assert "refused before any step ran" in capsys.readouterr().out

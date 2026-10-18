@@ -693,7 +693,7 @@ file describes the analysis and nothing else.
 | `fDefaultWallClockBudgetSeconds` | number | `0` (no limit) | Default runtime limit for every step; Projects made with **New Project** or **Make Project** start at four hours. |
 | `bAutoArchive` | boolean | `false` | Push verified files to Overleaf and Zenodo automatically. |
 | `bNoStandaloneBinaries`, `listDeclaredBinaries` | boolean, array | — | Compiled programs the Project runs, for Level 3. |
-| `dictDeterminism` | object | — | How exactly a rerun must match; see [Reproducibility](reproducibility.md). |
+| `dictDeterminism` | object | — | The answer to the determinism question (`sRepeatabilityAnswer`: `speed` or `across`) and the execution profile vaibify records for it (`sExecutionProfile`); answered in the Project block, never typed. See [Reproducibility](reproducibility.md#the-determinism-question). |
 | `dictRemotes` | object | — | GitHub, Overleaf, and Zenodo connections; see [Connecting to External Resources](externalResources.md). |
 | `iWorkflowSchemaVersion` | integer | written by vaibify | Format version; older files are upgraded when loaded. |
 

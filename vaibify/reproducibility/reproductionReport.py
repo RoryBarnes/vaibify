@@ -32,6 +32,7 @@ import time
 from datetime import datetime, timezone
 
 from vaibify import __version__
+from vaibify.reproducibility import comparisonPolicyV1
 from vaibify.reproducibility import imageAcquisition
 from vaibify.reproducibility import imageArchive
 from vaibify.reproducibility import imageDeposit
@@ -46,10 +47,21 @@ __all__ = [
     "fdictRecheckObtainedImage",
     "F_REPORT_RETENTION_SECONDS",
     "I_REPORT_SCHEMA_VERSION",
+    "I_EXIT_COULD_NOT_RUN",
+    "SET_VERDICTS_THAT_DO_NOT_REPRODUCE",
+    "SET_VERDICTS_THAT_REPRODUCE",
+    "S_VERDICT_BYTE_IDENTICAL",
+    "S_VERDICT_COMPARISONS_PASSED",
     "S_VERDICT_DIVERGED",
+    "S_VERDICT_INPUTS_CHANGED",
+    "S_VERDICT_INSUFFICIENT_EVIDENCE",
     "S_VERDICT_NO_VERDICT",
+    "S_VERDICT_NOT_REPRODUCED",
     "S_VERDICT_REPRODUCED",
     "fdictBuildReproductionReport",
+    "fiExitCodeOfOutcome",
+    "flistDecisiveVerdicts",
+    "fsVerdictOfOutcome",
     "fdictReadReproductionReport",
     "flistSweepExpiredReports",
     "fsReadReproducedManifestText",
@@ -63,12 +75,34 @@ __all__ = [
 # and the name of the reproduced manifest written beside the report.
 # v3 (2026-09-30): the output counts cover only regenerated outputs;
 # pinned inputs are counted apart and the pre-run deletions are named.
-I_REPORT_SCHEMA_VERSION = 3
+# v4 (2026-10-17): the verdict is the assessed rerun's, with its
+# wording, tally, comparison policy and exit code.
+I_REPORT_SCHEMA_VERSION = 4
 _S_REPRODUCED_MANIFEST_SUFFIX = ".sha256"
 
+# ``reproduced`` and ``diverged`` are the byte-only verifier's verdicts,
+# kept so a report written before schema 4 still reads as what it said.
 S_VERDICT_REPRODUCED = "reproduced"
 S_VERDICT_DIVERGED = "diverged"
 S_VERDICT_NO_VERDICT = "no-verdict"
+# The assessed rerun's verdicts are the comparison policy's own words,
+# never retyped here: a second copy of a verdict string is how two
+# readers of one report come to disagree.
+S_VERDICT_BYTE_IDENTICAL = comparisonPolicyV1.S_VERDICT_BYTE_IDENTICAL
+S_VERDICT_COMPARISONS_PASSED = comparisonPolicyV1.S_VERDICT_COMPARISONS_PASSED
+S_VERDICT_NOT_REPRODUCED = comparisonPolicyV1.S_VERDICT_NOT_REPRODUCED
+S_VERDICT_INSUFFICIENT_EVIDENCE = (
+    comparisonPolicyV1.S_VERDICT_INSUFFICIENT_EVIDENCE)
+S_VERDICT_INPUTS_CHANGED = comparisonPolicyV1.S_VERDICT_INPUTS_CHANGED
+SET_VERDICTS_THAT_REPRODUCE = frozenset({
+    S_VERDICT_REPRODUCED, S_VERDICT_BYTE_IDENTICAL,
+    S_VERDICT_COMPARISONS_PASSED,
+})
+SET_VERDICTS_THAT_DO_NOT_REPRODUCE = frozenset({
+    S_VERDICT_DIVERGED, S_VERDICT_NOT_REPRODUCED,
+    S_VERDICT_INSUFFICIENT_EVIDENCE, S_VERDICT_INPUTS_CHANGED,
+})
+I_EXIT_COULD_NOT_RUN = 4
 
 _S_REPORTS_SUBDIRECTORY = "reports"
 _I_PRIVATE_DIRECTORY_MODE = 0o700
@@ -104,12 +138,6 @@ def fdictBuildReproductionReport(
     turns a narrow true statement into a broad false one.
     """
     bRerunAttempted = bool(dictOutcome.get("bRerunAttempted", True))
-    if not bRerunAttempted:
-        sVerdict = S_VERDICT_NO_VERDICT
-    elif dictOutcome.get("bPassed"):
-        sVerdict = S_VERDICT_REPRODUCED
-    else:
-        sVerdict = S_VERDICT_DIVERGED
     return {
         "sReportId": secrets.token_hex(8),
         "iSchemaVersion": I_REPORT_SCHEMA_VERSION,
@@ -131,7 +159,16 @@ def fdictBuildReproductionReport(
         "sObtainedFrom": dictAcquired.get("sObtainedFrom", ""),
         "sImageReferenceRun": dictAcquired.get("sImageReference", ""),
         "listAcquisitionAttempts": list(dictAcquired.get("listAttempts") or []),
-        "sVerdict": sVerdict,
+        "sVerdict": fsVerdictOfOutcome(dictOutcome),
+        "sVerdictRendered": str(dictOutcome.get("sVerdictRendered") or ""),
+        "sTallyRendered": str(dictOutcome.get("sTallyRendered") or ""),
+        "dictTally": dict(dictOutcome.get("dictTally") or {}),
+        "sComparisonPolicy": str(dictOutcome.get("sComparisonPolicy") or ""),
+        "iExitCode": fiExitCodeOfOutcome(dictOutcome),
+        "dictAssessmentReport": (
+            dict(dictOutcome["dictAssessmentReport"])
+            if isinstance(dictOutcome.get("dictAssessmentReport"), dict)
+            else None),
         "bRerunAttempted": bRerunAttempted,
         "iOutputHashesMatched": int(dictOutcome.get("iOutputHashesMatched", 0)),
         "iOutputHashesTotal": int(dictOutcome.get("iOutputHashesTotal", 0)),
@@ -167,6 +204,43 @@ def fdictBuildReproductionReport(
         "sShadowTeardown": str(dictOutcome.get("sShadowTeardown") or ""),
         "fDurationSeconds": float(fDurationSeconds),
     }
+
+
+def flistDecisiveVerdicts():
+    """Return every verdict a reader's label may be decided by, sorted.
+
+    The poll's snapshot program keeps the newest record per workflow
+    whose verdict is one of these, so it is handed this list rather than
+    spelling verdicts of its own: a copy there kept only the two
+    byte-only verdicts, and a reader's assessed reproduction was dropped
+    before the label could read it.
+    """
+    return sorted(SET_VERDICTS_THAT_REPRODUCE
+                  | SET_VERDICTS_THAT_DO_NOT_REPRODUCE)
+
+
+def fsVerdictOfOutcome(dictOutcome):
+    """Return the verdict an outcome reached; the assessment's when it has one."""
+    if not dictOutcome.get("bRerunAttempted", True):
+        return S_VERDICT_NO_VERDICT
+    if dictOutcome.get("sVerdict"):
+        return str(dictOutcome["sVerdict"])
+    return S_VERDICT_REPRODUCED if dictOutcome.get("bPassed") else (
+        S_VERDICT_DIVERGED)
+
+
+def fiExitCodeOfOutcome(dictOutcome):
+    """Return the shared exit code (design D6) a lane exits with.
+
+    The assessment's own code when it reached a verdict; "Could not run"
+    (4) for a rerun that was refused, or could not be graded.
+    """
+    if not dictOutcome.get("bRerunAttempted", True):
+        return I_EXIT_COULD_NOT_RUN
+    iExitCode = dictOutcome.get("iAssessmentExitCode")
+    if isinstance(iExitCode, int):
+        return iExitCode
+    return 0 if dictOutcome.get("bPassed") else 1
 
 
 def _fdictSourceFacts(dictSource):
@@ -218,6 +292,15 @@ def fsRenderVerdict(dictReport):
     """Return the one-line, researcher-facing verdict of a report."""
     sVerdict = dictReport.get("sVerdict", "")
     dictPlatform = dictReport.get("dictPlatform") or {}
+    sRendered = str(dictReport.get("sVerdictRendered") or "")
+    if sRendered:
+        if sVerdict in SET_VERDICTS_THAT_REPRODUCE and dictPlatform.get(
+                "bEmulated"):
+            return (
+                f"{sRendered} (under emulation: "
+                f"{dictPlatform.get('sRequiredPlatform')} image on a "
+                f"{dictPlatform.get('sDaemonArchitecture')} host)")
+        return sRendered
     if sVerdict == S_VERDICT_REPRODUCED:
         if dictPlatform.get("bEmulated"):
             return (
@@ -229,7 +312,8 @@ def fsRenderVerdict(dictReport):
     if sVerdict == S_VERDICT_DIVERGED:
         return "diverged"
     listReasons = dictReport.get("listDivergedHashes") or []
-    return "no verdict: " + (listReasons[0] if listReasons else "the rerun never started")
+    return "Could not run: " + (
+        listReasons[0] if listReasons else "the rerun never started")
 
 
 def fsWriteReproductionReport(dictReport):

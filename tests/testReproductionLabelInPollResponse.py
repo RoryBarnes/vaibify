@@ -20,6 +20,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.levelGateStubs import fdictCurrentAssessmentFields
+
 from tests.reproductionSourceFixtures import (
     S_FIXTURE_OUTPUT,
     S_FIXTURE_SCRIPT,
@@ -148,9 +150,37 @@ def _fdictPollLabel(sRepo, connection=None, dictCtxExtra=None,
         fdictBuildReproductionLabel, fsRelativeWorkflowPath,
     )
     return fdictBuildReproductionLabel(
-        filesPoll, fsRelativeWorkflowPath(
+        filesPoll, _fdictWorkflowFor(sRepo), fsRelativeWorkflowPath(
             _fsWorkflowPath(sRepo), sRepo), dictLastNoVerdict,
     ), connection, dictCtx
+
+
+@pytest.mark.falsification
+def test_an_assessed_reproduction_decides_the_label(tmp_path):
+    """The assessed verdicts reach the label through the real snapshot.
+
+    A reader's reproduction graded by the comparison policy records
+    ``byte-identical``, ``comparisons-passed`` or ``not-reproduced``,
+    never the byte-only ``reproduced``. Each must decide the label as
+    its meaning does: the first two show it, the third reads diverged.
+
+    Kills: the snapshot program keeping only records whose verdict is
+    one of the two byte-only words, which drops every assessed
+    reproduction and shows "absent" after a successful one.
+    """
+    for sVerdict, sState, bShow in (
+        ("byte-identical", "reproduced", True),
+        ("comparisons-passed", "reproduced", True),
+        ("not-reproduced", "diverged", False),
+    ):
+        sRepo = _fsBuildReaderClone(tmp_path / sVerdict)
+        dictOutcome = _fdictOutcomeFor(sRepo, sVerdict != "not-reproduced")
+        dictOutcome.update({"sVerdict": sVerdict,
+                            "sVerdictRendered": "the policy's own words"})
+        _fnWriteRecord(sRepo, dictOutcome)
+        dictLabel, _connection, _ctx = _fdictPollLabel(sRepo)
+        assert dictLabel["sState"] == sState, (sVerdict, dictLabel)
+        assert dictLabel["bShow"] is bShow, (sVerdict, dictLabel)
 
 
 @pytest.mark.falsification
@@ -433,7 +463,7 @@ def test_a_snapshot_that_did_not_read_the_records_is_unreadable_not_absent(
     )
     from vaibify.reproducibility.repoFiles import ffilesConservativeSnapshot
     dictLabel = fdictBuildReproductionLabel(
-        ffilesConservativeSnapshot(str(tmp_path)), S_FIXTURE_WORKFLOW_PATH)
+        ffilesConservativeSnapshot(str(tmp_path)), {}, S_FIXTURE_WORKFLOW_PATH)
     assert dictLabel["sState"] == "unreadable"
     assert dictLabel["bShow"] is False
 
@@ -531,6 +561,7 @@ def fnWriteAuthorAttestation(
         "sha256:" + "c" * 64, 1.0, 1, 1,
         dictReproductionProvenance=dictProvenance,
         sAttestedAtUtc=sAttestedAtUtc,
+        dictAssessmentFields=fdictCurrentAssessmentFields(),
     ))
 
 
@@ -543,7 +574,7 @@ def fdictPollAuthorLabel(sRepo, dictLastNoVerdict=None):
 
 def _fbGateSaysCurrent(sRepo):
     from vaibify.reproducibility.l3Attestation import fbL3AttestationCurrent
-    return fbL3AttestationCurrent(sRepo)
+    return fbL3AttestationCurrent(sRepo, {})
 
 
 @pytest.mark.falsification
