@@ -798,7 +798,7 @@ def fdictExerciseMatrixProduct():
     try:
         processResult = subprocess.run(
             [sys.executable, "-c", _S_MATRIX_PRODUCT_PROGRAM],
-            capture_output=True, text=True,
+            capture_output=True, encoding="utf-8", errors="replace",
             timeout=F_MATRIX_PRODUCT_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
         return {"sState": S_PRODUCT_TIMED_OUT, "iExitCode": None,
