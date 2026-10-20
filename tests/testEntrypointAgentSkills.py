@@ -277,7 +277,10 @@ def test_claude_md_delegates_ladder_and_step_authoring_to_skills():
     # 220 -> 225 (2026-10-08): the one-paragraph Resources section --
     # memory limit, headroom, background jobs, what /tmp loses -- which
     # the agent needs before it fans out, not after a skill is loaded.
-    assert sBody.count("\n") < 225, (
+    # 225 -> 245 (2026-10-19, measured 241): the "Whose instructions
+    # win" section and the conventions stated as defaults, which must
+    # be read before any other instruction, not loaded on demand.
+    assert sBody.count("\n") < 245, (
         "CLAUDE.md body did not shrink — the heavy sections are "
         "still inlined"
     )

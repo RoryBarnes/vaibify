@@ -31559,6 +31559,25 @@ LIST_FALSIFICATIONS = [
         old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
         new='    iSwapBytes = iDesiredBytes\n',
     ),
+    # --- 2026-10-19: the in-container guide yields to the researcher.
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointInstructionPrecedence.py::'
+            'testTheGuideOpensBySayingTheResearchersInstructionsWin'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        old='## Whose instructions win\n',
+        new='## Notes\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointInstructionPrecedence.py::'
+            'testTheConventionsAreDefaultsTheResearcherCanReplace'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        old='## Conventions (defaults)\n',
+        new='## Conventions\n',
+    ),
     Falsification(
         nodeid='tests/testEntrypointResourcesGuidance.py::testTheGuideTellsTheAgentWhereItsMemoryLimitIs',
         source='vaibify/containerImage/entrypoint.sh',
