@@ -139,6 +139,7 @@ checks its framing.
 | **Effort per participant** | `standard` | Recorded with the council; the provider adapters do not read it. |
 | **Execution permission** | Full sandbox | *Read-only council* runs nothing, for a cheaper, design-only deliberation or a project that should not be executed even in a sandbox: Claude and Antigravity participants plan only, Codex participants have their command tools removed, and vaibify re-runs no claimed command, so no claim can be `confirmed`. |
 | **Minimum rounds** | 1 | Force at least this many cross-review rounds even if the first veto would accept. |
+| **Maximum rounds** | 3 | Stop the deliberation after this many rounds; it cannot be below the minimum. |
 | **Output budget per turn (MB)** | 10 | A turn that produces more is stopped. |
 
 The round limit is not on the form and defaults to three. Each turn

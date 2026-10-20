@@ -172,6 +172,7 @@ def test_council_settings_show_each_default():
     assert "bPeerAnonymity: true" in sSource
     assert 'sExecutionPermission: "fullSandbox"' in sSource
     assert "iMinimumRounds: 1" in sSource
+    assert "iMaximumRounds: 3" in sSource
     assert "councilPeerAnonymity" in sSource
     assert "councilMinimumRounds" in sSource
 
@@ -391,7 +392,8 @@ def test_convene_sends_the_settings_form():
     assert "_fdictReadSettingsForm" in sSource
     assert "dictSettings: _fdictReadSettingsForm()" in sSource
     for sFormId in ("councilPeerAnonymity", "councilEffort",
-                    "councilExecution", "councilMinimumRounds"):
+                    "councilExecution", "councilMinimumRounds",
+                    "councilMaximumRounds"):
         assert sFormId in sSource, "settings form lost " + sFormId
 
 

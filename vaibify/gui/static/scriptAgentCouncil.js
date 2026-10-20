@@ -46,6 +46,7 @@ var VaibifyAgentCouncil = (function () {
         sEffortPerParticipant: "standard",
         sExecutionPermission: "fullSandbox",
         iMinimumRounds: 1,
+        iMaximumRounds: 3,
         /* Mirrors agentCouncilCampaign.DICT_DEFAULT_SETTINGS. It was
            absent, and the form's own 3600 literal stood in for it — so
            the researcher ruling that raised the default to four hours
@@ -1295,6 +1296,9 @@ var VaibifyAgentCouncil = (function () {
             "<label>Minimum rounds " +
             "<input type=\"number\" id=\"councilMinimumRounds\" min=\"1\" " +
             "value=\"" + dict.iMinimumRounds + "\"></label>" +
+            "<label>Maximum rounds " +
+            "<input type=\"number\" id=\"councilMaximumRounds\" min=\"1\" " +
+            "value=\"" + dict.iMaximumRounds + "\"></label>" +
             /* The other per-turn budget, exposed for the same reason
                the time budget is: the right value is a property of the
                work being convened, and an implementation council that
@@ -1755,6 +1759,8 @@ var VaibifyAgentCouncil = (function () {
         var elAnonymity = document.getElementById("councilPeerAnonymity");
         var iMinimumRounds = parseInt(
             _fsReadValue("councilMinimumRounds") || "1", 10);
+        var iMaximumRounds = parseInt(
+            _fsReadValue("councilMaximumRounds") || "", 10);
         return {
             bPeerAnonymity: elAnonymity
                 ? !!elAnonymity.checked
@@ -1764,6 +1770,8 @@ var VaibifyAgentCouncil = (function () {
             sExecutionPermission: _fsReadValue("councilExecution")
                 || DICT_DEFAULT_SETTINGS.sExecutionPermission,
             iMinimumRounds: iMinimumRounds > 0 ? iMinimumRounds : 1,
+            iMaximumRounds: iMaximumRounds > 0
+                ? iMaximumRounds : DICT_DEFAULT_SETTINGS.iMaximumRounds,
             /* The value the researcher agreed to after a time-budget
                kill. Sending the default when they had raised it would
                make the modal a lie. */

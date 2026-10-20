@@ -31613,6 +31613,17 @@ LIST_FALSIFICATIONS = [
              '        saArgv.extend(["--mode", "plan"])\n'),
         new='',
     ),
+    # --- 2026-10-20: the convene form sends its maximum rounds.
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilMaximumRoundsReachesTheRecord.py::'
+            'testTheConveneFormSendsTheMaximumRounds'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old=('            iMaximumRounds: iMaximumRounds > 0\n'
+             '                ? iMaximumRounds : DICT_DEFAULT_SETTINGS.iMaximumRounds,\n'),
+        new='',
+    ),
     # --- 2026-10-19: every dashboard action has a command-line
     # equivalent, the researcher list never reaches the container, the
     # hub lane claims nothing, the credential stays in the body, and an
