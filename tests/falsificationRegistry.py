@@ -31636,6 +31636,18 @@ LIST_FALSIFICATIONS = [
              '        return False\n'),
         new='',
     ),
+    # --- 2026-10-20: the Zenodo publish offers what Level 3 reads.
+    Falsification(
+        nodeid=(
+            'tests/testZenodoCandidatesCoverLevelThree.py::'
+            'testTheZenodoCandidatesCarryTheEnvelopeAndTheAttestation'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old=('    for sPath in publicationScope.flistCollectComparisonPaths(\n'
+             '        dictWorkflow, filesRepo,\n'
+             '    ):\n'),
+        new='    for sPath in []:\n',
+    ),
     # --- 2026-10-19: every dashboard action has a command-line
     # equivalent, the researcher list never reaches the container, the
     # hub lane claims nothing, the credential stays in the body, and an
