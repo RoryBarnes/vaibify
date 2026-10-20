@@ -8,9 +8,11 @@ transient ``dictDependencyScan`` annotation (``dependencyFindings``
 reads them for Level 1). Nothing is written into the project.
 
 Each finding carries what it was found against -- the script's bytes
-(SHA-256) and the upstream output declaration it matched -- so a later
-reader can tell a finding that still describes the files from one that
-no longer does. A step whose scan raised is recorded FAILED with the
+(SHA-256) and the upstream output declaration it matched -- and each
+scan entry records every script it read (an absent one as "") and a
+fingerprint of what it matched them against, so a later reader can tell
+a scan, a clean one included, that still describes the files from one
+that no longer does. A step whose scan raised is recorded FAILED with the
 reason, which clears its findings: a failed scan says nothing about the
 step, and keeping the old findings would let old data pass or fail it.
 """
@@ -20,9 +22,12 @@ import logging
 import posixpath
 
 from vaibify.reproducibility.dependencyFindings import (
+    S_INPUTS_FINGERPRINT_KEY,
     S_SCAN_ANNOTATION_KEY,
+    S_SCRIPT_HASHES_KEY,
     S_STATE_FAILED,
     S_STATE_SCANNED,
+    fsScanInputsFingerprint,
 )
 from vaibify.reproducibility.manifestPaths import fsResolveStepPathToRepoPath
 
@@ -80,8 +85,8 @@ def _fsMatchedOutputDeclaration(dictUpstreamStep, sScannedPath):
 
 
 async def _flistScanOneCommand(dictCtx, sContainerId, dictWorkflow, iStep,
-                               sCommand):
-    """Return the findings one command's script yields."""
+                               sCommand, dictScriptSha256):
+    """Return the findings one command's script yields; record its hash."""
     from .commandUtilities import ftExtractScriptPathForLanguage
     from .dependencyScanner import flistScanForLoadCalls
     from .routes.scriptRoutes import (
@@ -92,8 +97,11 @@ async def _flistScanOneCommand(dictCtx, sContainerId, dictWorkflow, iStep,
     sScript, sLanguage = ftExtractScriptPathForLanguage(sCommand)
     if not sScript:
         return []
+    sScriptRepoPath = fsResolveStepPathToRepoPath(
+        sScript, dictStep.get("sDirectory", "") or "")
     sText, sSha256 = await _ftReadScript(dictCtx, sContainerId, _fsJoinStepPath(
         _fsAbsoluteStepDirectory(dictStep, dictWorkflow), sScript))
+    dictScriptSha256[sScriptRepoPath] = sSha256
     if sText is None:
         return []
     sLanguage = _fsResolveLanguage(sLanguage, sScript, sCommand, sText)
@@ -101,8 +109,6 @@ async def _flistScanOneCommand(dictCtx, sContainerId, dictWorkflow, iStep,
         return []
     dictMatches = _fdictCrossReferenceFiles(
         flistScanForLoadCalls(sText, sLanguage), dictWorkflow, iStep)
-    sScriptRepoPath = fsResolveStepPathToRepoPath(
-        sScript, dictStep.get("sDirectory", "") or "")
     return [_fdictBuildFinding(dictWorkflow, dictMatch, sScriptRepoPath,
                                sSha256)
             for dictMatch in dictMatches.get("listSuggestions", [])]
@@ -127,12 +133,15 @@ async def _fdictScanOneStep(dictCtx, sContainerId, dictWorkflow, iStep):
     """Return one step's scan entry: its findings, or why the scan failed."""
     from .routes.scriptRoutes import _flistCollectAllCommands
     from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+    dictStep = dictWorkflow["listSteps"][iStep]
+    sInputsFingerprint = fsScanInputsFingerprint(dictWorkflow, dictStep)
+    dictScriptSha256 = {}
     try:
         listFindings = []
-        for sCommand in _flistCollectAllCommands(
-                dictWorkflow["listSteps"][iStep]):
+        for sCommand in _flistCollectAllCommands(dictStep):
             listFindings.extend(await _flistScanOneCommand(
-                dictCtx, sContainerId, dictWorkflow, iStep, sCommand))
+                dictCtx, sContainerId, dictWorkflow, iStep, sCommand,
+                dictScriptSha256))
     except Exception as error:
         fnReRaiseControlPlaneRefusal(error)
         return {"sState": S_STATE_FAILED, "listFindings": [],
@@ -141,7 +150,8 @@ async def _fdictScanOneStep(dictCtx, sContainerId, dictWorkflow, iStep):
                   if dictFinding["sUpstreamStepId"]
                   and dictFinding["sMatchedOutput"]]
     return {"sState": S_STATE_SCANNED, "listFindings": listUsable,
-            "sError": ""}
+            "sError": "", S_SCRIPT_HASHES_KEY: dictScriptSha256,
+            S_INPUTS_FINGERPRINT_KEY: sInputsFingerprint}
 
 
 async def fdictScanWorkflowDependencies(dictCtx, sContainerId, dictWorkflow):

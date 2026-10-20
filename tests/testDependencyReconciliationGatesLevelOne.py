@@ -25,7 +25,7 @@ import hashlib
 import pytest
 
 from vaibify.gui import stepDependencyScan
-from vaibify.reproducibility import levelGates
+from vaibify.reproducibility import dependencyFindings, levelGates
 from vaibify.reproducibility.repoFiles import HostRepoFiles
 
 
@@ -64,15 +64,28 @@ def _fdictWorkflow(sRepo, dictScan=None):
     """fit-model (A01) first, make-data (A02), then plot-results (A03)."""
     dictPlot = _fdictStep("plot-results", "A03", "PlotResults",
                           "figure.json", "python plot.py")
-    if dictScan is not None:
-        dictPlot["dictDependencyScan"] = dictScan
-    return {"sProjectRepoPath": sRepo, "listSteps": [
+    dictWorkflow = {"sProjectRepoPath": sRepo, "listSteps": [
         _fdictStep("fit-model", "A01", "FitModel", "fit.json",
                    "python fit.py"),
         _fdictStep("make-data", "A02", "MakeData", "samples.csv",
                    "python make.py"),
         dictPlot,
     ]}
+    if dictScan is not None:
+        _fnRecordScan(dictWorkflow, dictScan)
+    return dictWorkflow
+
+
+def _fnRecordScan(dictWorkflow, dictScan, sScriptSha256=None):
+    """Attach a scan of plot-results, stamped with what it examined."""
+    dictPlot = next(dictStep for dictStep in dictWorkflow["listSteps"]
+                    if dictStep["sStepId"] == "plot-results")
+    dictScan.setdefault("dictScriptSha256", {
+        S_PLOT_SCRIPT: sScriptSha256 or _fsSha256(S_PLOT_SOURCE)})
+    dictScan.setdefault(
+        "sScanInputsFingerprint",
+        dependencyFindings.fsScanInputsFingerprint(dictWorkflow, dictPlot))
+    dictPlot["dictDependencyScan"] = dictScan
 
 
 @pytest.fixture
@@ -185,11 +198,41 @@ def testAScriptEditedSinceTheScanReadsNotCurrentUntilRescanned(sRepo):
     assert dictCell["sState"] != "attained"
     assert levelGates._fbComputeLevel1(
         dictWorkflow, HostRepoFiles(sRepo)) is False
-    dictWorkflow["listSteps"][2]["dictDependencyScan"] = {
+    _fnRecordScan(dictWorkflow, {
         "sState": "scanned", "sError": "",
-        "listFindings": [_fdictFinding(_fsSha256(sEdited))]}
+        "listFindings": [_fdictFinding(_fsSha256(sEdited))]},
+        _fsSha256(sEdited))
     assert _fdictPlotEntry(_flistLevel1(dictWorkflow, sRepo))[
         "sCriterion"] == "dependency-unreconciled"
+
+
+@pytest.mark.falsification
+def testACleanScanGoesStaleWhenItsScriptGainsARead(sRepo):
+    """Kills: proving a scan current only through the scripts it found in."""
+    sClean = "print('nothing read')\n"
+    with open(sRepo + "/" + S_PLOT_SCRIPT, "w") as fileOut:
+        fileOut.write(sClean)
+    dictWorkflow = _fdictWorkflow(sRepo, {
+        "sState": "scanned", "sError": "", "listFindings": []})
+    dictWorkflow["listSteps"][2]["dictDependencyScan"][
+        "dictScriptSha256"] = {S_PLOT_SCRIPT: _fsSha256(sClean)}
+    assert _flistLevel1(dictWorkflow, sRepo) == []
+    with open(sRepo + "/" + S_PLOT_SCRIPT, "w") as fileOut:
+        fileOut.write(S_PLOT_SOURCE)
+    dictEntry = _fdictPlotEntry(_flistLevel1(dictWorkflow, sRepo))
+    assert dictEntry["sCriterion"] == "dependency-scan-not-current"
+    assert f"{S_PLOT_SCRIPT} changed since" in dictEntry["sRemediationHint"]
+
+
+def testACleanScanGoesStaleWhenTheStepGainsACommand(sRepo):
+    dictWorkflow = _fdictWorkflow(sRepo, {
+        "sState": "scanned", "sError": "", "listFindings": []})
+    assert _flistLevel1(dictWorkflow, sRepo) == []
+    dictWorkflow["listSteps"][2]["saPlotCommands"] = ["python extra.py"]
+    dictEntry = _fdictPlotEntry(_flistLevel1(dictWorkflow, sRepo))
+    assert dictEntry["sCriterion"] == "dependency-scan-not-current"
+    assert "the step's scripts, or the workflow's steps" in dictEntry[
+        "sRemediationHint"]
 
 
 def testAChangedUpstreamDeclarationReadsNotCurrent(sRepo):
@@ -210,14 +253,22 @@ def testAFailedScanReadsNotCurrentAndKeepsNoFinding(sRepo):
 
 
 def testAReorderMovesTheBlockerWithTheStepIds(sRepo):
+    """A read matches only an earlier step's output, so a reorder leaves
+    the scan not current until it is redone; either way the blocker
+    follows the step id, never the old position."""
     dictWorkflow = _fdictWorkflow(sRepo, _fdictScanned(sRepo))
     dictWorkflow["listSteps"] = [dictWorkflow["listSteps"][i]
-                                 for i in (2, 1, 0)]
+                                 for i in (1, 2, 0)]
+    listBlockers = _flistLevel1(dictWorkflow, sRepo)
+    assert [(dictEntry["iStepIndex"], dictEntry["sCriterion"])
+            for dictEntry in listBlockers] == [
+        (1, "dependency-scan-not-current")]
+    _fnRecordScan(dictWorkflow, _fdictScanned(sRepo))
     listBlockers = _flistLevel1(dictWorkflow, sRepo)
     dictEntry = next(dictEntry for dictEntry in listBlockers
                      if dictEntry["sCriterion"] == "dependency-unreconciled")
-    assert dictEntry["iStepIndex"] == 0
-    assert dictEntry["listOffendingUpstreamSteps"] == [1]
+    assert dictEntry["iStepIndex"] == 1
+    assert dictEntry["listOffendingUpstreamSteps"] == [0]
 
 
 def testTheStateRidesOnWhicheverBlockerDominates(sRepo):
@@ -265,6 +316,11 @@ def testTheRealScanFilesAFindingByIdWithItsScriptHash(sRepo):
         "sUpstreamStepId": "make-data", "sMatchedOutput": "samples.csv",
         "sScriptPath": S_PLOT_SCRIPT,
         "sScriptSha256": _fsSha256(S_PLOT_SOURCE)}
+    assert dictScan["make-data"]["listFindings"] == []
+    assert dictScan["make-data"]["dictScriptSha256"] == {
+        "MakeData/make.py": ""}
+    assert dictScan["plot-results"]["dictScriptSha256"] == {
+        S_PLOT_SCRIPT: _fsSha256(S_PLOT_SOURCE)}
     stepDependencyScan.fnStoreScanResults(
         dictCtx, "cid", dictWorkflow, dictScan)
     assert dictWorkflow["listSteps"][2]["saSourceCodeDeps"] == ["make-data"]

@@ -31883,6 +31883,15 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testDependencyReconciliationGatesLevelOne.py::'
+            'testACleanScanGoesStaleWhenItsScriptGainsARead'
+        ),
+        source='vaibify/reproducibility/dependencyFindings.py',
+        old='            (dictScan.get(S_SCRIPT_HASHES_KEY) or {}).items()):\n',
+        new='            {}.items()):\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/browser/testGeneratedTestsSayWhoWroteThem.py::'
             'testAModelWrittenTierSaysSoOnItsRow'
         ),

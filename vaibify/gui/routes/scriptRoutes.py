@@ -25,6 +25,7 @@ from ...reproducibility.dependencyFindings import (
     S_DEPENDENCY_NOT_CURRENT,
     S_DISMISSALS_KEY,
     S_SCAN_ANNOTATION_KEY,
+    T_SCANNED_COMMAND_KEYS,
 )
 
 
@@ -160,8 +161,7 @@ async def _fdictScanDependencies(
 def _flistCollectAllCommands(dictStep):
     """Gather all command fields from a single step."""
     listCommands = []
-    for sKey in ("saDataCommands", "saPlotCommands",
-                 "saSetupCommands", "saCommands"):
+    for sKey in T_SCANNED_COMMAND_KEYS:
         listCommands.extend(dictStep.get(sKey, []))
     return listCommands
 

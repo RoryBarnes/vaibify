@@ -189,6 +189,27 @@ class MockDockerBoost:
             return b"%PDF-1.4"
         raise FileNotFoundError(f"Not found: {sPath}")
 
+    def fdictHashContainerRepoPaths(self, sContainerId, sRootPath,
+                                    listRelPaths):
+        """The typed hash batch, answered from the bytes this double serves.
+
+        The Level 1 gate asks it for every script a dependency scan read,
+        a clean scan included, so a double without it fails every poll.
+        """
+        import hashlib
+        dictOut = {}
+        for sRelPath in listRelPaths:
+            dictEntry = {"sSha256": None, "sSymlinkSegment": None,
+                         "bEscapesRoot": False}
+            try:
+                dictEntry["sSha256"] = hashlib.sha256(self.fbaFetchFile(
+                    sContainerId, posixpath.join(sRootPath, sRelPath)
+                )).hexdigest()
+            except FileNotFoundError:
+                dictEntry["bMissing"] = True
+            dictOut[sRelPath] = dictEntry
+        return dictOut
+
     def fnWriteFile(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
