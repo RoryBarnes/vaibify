@@ -31874,6 +31874,15 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testNarrowLlmFallback.py::'
+            'testTheEveryCategoryFallbackAsksBeforeReplacingAResearchersTest'
+        ),
+        source='vaibify/gui/llmTestGeneration.py',
+        old='    if listCustomized:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/browser/testGeneratedTestsSayWhoWroteThem.py::'
             'testAModelWrittenTierSaysSoOnItsRow'
         ),

@@ -69,7 +69,7 @@ def fdictGenerateAndStampTests(
     if not bDeterministic:
         return _fdictStampPayload(_fdictGenerateAllTestsViaLlm(
             connectionDocker, sContainerId, iStepIndex, dictWorkflow,
-            dictVariables, bUseApi, sApiKey, sUser,
+            dictVariables, bUseApi, sApiKey, sUser, bForceOverwrite,
         ), S_GENERATOR_LLM)
     try:
         dictResult = moduleGenerator.fdictGenerateAllTestsDeterministic(
@@ -79,7 +79,8 @@ def fdictGenerateAndStampTests(
     except OutputAnalysisError as error:
         return _fdictFallBackForEveryCategory(
             connectionDocker, sContainerId, iStepIndex, dictWorkflow,
-            dictVariables, bUseApi, sApiKey, sUser, str(error))
+            dictVariables, bUseApi, sApiKey, sUser, bForceOverwrite,
+            str(error))
     _fdictStampPayload(dictResult, S_GENERATOR_DETERMINISTIC)
     sFailure = _fsQuantitativeAnalysisFailure(
         dictResult.get("dictQuantitative"))
@@ -134,7 +135,7 @@ def _fsNameBothFailures(sPriorFailure, error):
 
 def _fdictFallBackForEveryCategory(
     connectionDocker, sContainerId, iStepIndex, dictWorkflow,
-    dictVariables, bUseApi, sApiKey, sUser, sFailure,
+    dictVariables, bUseApi, sApiKey, sUser, bForceOverwrite, sFailure,
 ):
     """Ask the consented model for all three categories, or name both failures."""
     sModel = fsResolveConsentedModel(
@@ -143,7 +144,7 @@ def _fdictFallBackForEveryCategory(
         raise OutputAnalysisError(f"{sFailure} {S_NO_MODEL_AVAILABLE}")
     return _fdictGenerateAllTestsViaLlm(
         connectionDocker, sContainerId, iStepIndex, dictWorkflow,
-        dictVariables, sModel == "api", sApiKey, sUser,
+        dictVariables, sModel == "api", sApiKey, sUser, bForceOverwrite,
         sGenerator=S_GENERATOR_LLM_FALLBACK, sPriorFailure=sFailure)
 
 
@@ -173,12 +174,21 @@ def _fdictFallBackForQuantitative(
 
 def _fdictGenerateAllTestsViaLlm(
     connectionDocker, sContainerId, iStepIndex,
-    dictWorkflow, dictVariables, bUseApi, sApiKey, sUser,
+    dictWorkflow, dictVariables, bUseApi, sApiKey, sUser, bForceOverwrite,
     sGenerator=S_GENERATOR_LLM, sPriorFailure="",
 ):
-    """Generate all three test categories via LLM."""
+    """Generate all three test categories via LLM.
+
+    A test file vaibify did not write asks for confirmation before any
+    model is called, exactly as the deterministic writers do.
+    """
     dictStep, sDirectory = moduleGenerator._ftExtractStepInfo(
         dictWorkflow, iStepIndex)
+    listCustomized = [] if bForceOverwrite else _flistCustomizedTestFiles(
+        connectionDocker, sContainerId, sDirectory)
+    if listCustomized:
+        return {"bNeedsOverwriteConfirm": True,
+                "listModifiedFiles": listCustomized}
     fTolerance = dictWorkflow.get("fTolerance", 1e-6)
     sDataFiles = ", ".join(dictStep.get("saOutputDataFiles", []))
     sScripts, sPreviews = moduleGenerator.ftBuildStepContext(
@@ -208,6 +218,21 @@ def _fdictGenerateAllTestsViaLlm(
         fTolerance, bUseApi, sApiKey, sUser, sGenerator, sPriorFailure,
     )
     return dictResult
+
+
+def _flistCustomizedTestFiles(connectionDocker, sContainerId, sDirectory):
+    """Return the step's test files that hold content vaibify did not write."""
+    listTemplates = [
+        (moduleGenerator.fsIntegrityTestPath(sDirectory),
+         moduleGenerator.fsBuildIntegrityTestCode()),
+        (moduleGenerator.fsQualitativeTestPath(sDirectory),
+         moduleGenerator.fsBuildQualitativeTestCode()),
+        (moduleGenerator.fsQuantitativeTestPath(sDirectory),
+         moduleGenerator.fsBuildQuantitativeTestCode()),
+    ]
+    return [sPath for sPath, sTemplate in listTemplates
+            if not moduleGenerator._fbFileMatchesTemplate(
+                connectionDocker, sContainerId, sPath, sTemplate)]
 
 
 def _fsCategoryTestPath(sCategory, sDirectory):

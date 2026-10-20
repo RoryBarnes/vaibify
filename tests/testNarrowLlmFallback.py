@@ -209,6 +209,27 @@ def testAPendingOverwriteConfirmationAsksNoModel(listModelCalls):
     assert listModelCalls == []
 
 
+@pytest.mark.falsification
+def testTheEveryCategoryFallbackAsksBeforeReplacingAResearchersTest(
+        listModelCalls):
+    """Kills: the model fallback writing past the overwrite confirmation."""
+    sCustomTest = testGenerator.fsIntegrityTestPath(S_STEP)
+    baCustom = b"def test_mine():\n    pass\n"
+    containerDouble = ContainerDouble(
+        iIntrospectionExit=1, bHasClaude=True,
+        dictExistingFiles={sCustomTest: baCustom})
+    dictResult = _fdictGenerate(containerDouble)
+    assert dictResult["bNeedsOverwriteConfirm"] is True
+    assert dictResult["listModifiedFiles"] == [sCustomTest]
+    assert containerDouble.dictFiles[sCustomTest] == baCustom
+    assert listModelCalls == []
+    dictForced = testGenerator.fdictGenerateAllTests(
+        containerDouble, "cid", 0, _fdictWorkflow(), {},
+        bForceOverwrite=True)
+    assert dictForced["dictIntegrity"]["sGenerator"] == "llm-fallback"
+    assert listModelCalls == [False, False, False]
+
+
 def testAMissingStepSurfacesUnchangedAndAsksNoModel(listModelCalls):
     with pytest.raises(IndexError):
         _fdictGenerate(ContainerDouble(bHasClaude=True), iStepIndex=5)
