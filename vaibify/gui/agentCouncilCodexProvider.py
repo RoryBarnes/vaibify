@@ -20,6 +20,7 @@ __all__ = [
     "S_RUNNER_CODEX_CONFIG_DIRECTORY",
     "S_RUNNER_CODEX_HOME",
     "LIST_CODEX_EGRESS_HOSTNAMES",
+    "LIST_CODEX_READ_ONLY_COUNCIL_FLAGS",
     "fdictBuildCodexCapabilityContract",
     "fdictExtractCodexRunnerCredential",
     "fbaBuildCodexConfigTarball",
@@ -32,6 +33,13 @@ __all__ = [
 
 S_PROVIDER_CODEX = "codex"
 LIST_CODEX_EGRESS_HOSTNAMES = ["chatgpt.com"]
+# Both command tools off. ``--strict-config`` refuses an unknown key by
+# name, so a CLI that renames either fails the turn instead of quietly
+# leaving the tool on.
+LIST_CODEX_READ_ONLY_COUNCIL_FLAGS = [
+    "-c", "features.shell_tool=false",
+    "-c", "features.unified_exec=false",
+]
 S_CODEX_CONFIG_COMPONENT = ".codex"
 S_CODEX_CREDENTIAL_BASENAME = "auth.json"
 S_RUNNER_CODEX_HOME = "/tmp/vaibifyCouncilCodex"
@@ -230,8 +238,13 @@ def fdictBuildCodexCapabilityContract(dictEvidenceRecord=None,
 
 
 def flistComposeCodexArgv(sModelId, sInstructionChannel,
-                          saCliProgram=None, bStructured=True):
-    """Compose a fixed Codex exec argv with a separate instruction lane."""
+                          saCliProgram=None, bStructured=True,
+                          bReadOnlyCouncil=False):
+    """Compose a fixed Codex exec argv with a separate instruction lane.
+
+    The read-only sandbox stops writes, not commands, so a read-only
+    council also removes both command tools: the project is not run.
+    """
     saProgram = list(saCliProgram) if saCliProgram else list(
         LIST_CODEX_CLI_PROGRAM)
     saArgv = saProgram + [
@@ -241,6 +254,8 @@ def flistComposeCodexArgv(sModelId, sInstructionChannel,
         "-c", f"developer_instructions={json.dumps(sInstructionChannel)}",
         "-c", 'web_search="disabled"',
     ]
+    if bReadOnlyCouncil:
+        saArgv.extend(LIST_CODEX_READ_ONLY_COUNCIL_FLAGS)
     if bStructured:
         saArgv.extend(["--output-schema", S_RUNNER_CODEX_SCHEMA_PATH])
     return saArgv + ["--cd", agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT, "-"]
@@ -305,7 +320,8 @@ class CodexRunnerConnection(agentCouncilProviders.ClaudeRunnerConnection):
     async def fnStartTurn(self, dictTurnRequest):
         saArgv = flistComposeCodexArgv(
             self.sRequestedModel, dictTurnRequest["sInstructionChannel"],
-            self.saCliProgram)
+            self.saCliProgram, bReadOnlyCouncil=dictTurnRequest.get(
+                "bReadOnlyCouncil", False))
         baStdin = agentCouncilProviders.fsComposeUntrustedPromptText(
             dictTurnRequest["listQuotedMaterial"]).encode("utf-8")
         fEffectiveWallClock = agentCouncilProviders.ffClampTurnBudgetToLoginLife(

@@ -171,8 +171,12 @@ def fdictBuildAntigravityCapabilityContract(
 
 
 def flistComposeAntigravityArgv(sModelId, saCliProgram=None,
-                                bStructured=True):
-    """Compose the fixed noninteractive Antigravity command surface."""
+                                bStructured=True, bReadOnlyCouncil=False):
+    """Compose the fixed noninteractive Antigravity command surface.
+
+    ``--sandbox`` restricts the terminal rather than removing it, so a
+    read-only council also runs in plan mode: the project is not run.
+    """
     saProgram = list(saCliProgram) if saCliProgram else list(
         LIST_ANTIGRAVITY_CLI_PROGRAM)
     saArgv = saProgram + [
@@ -182,6 +186,8 @@ def flistComposeAntigravityArgv(sModelId, saCliProgram=None,
         "--agent", S_ANTIGRAVITY_AGENT_NAME,
         "--sandbox", "--disable-slash-commands",
     ]
+    if bReadOnlyCouncil:
+        saArgv.extend(["--mode", "plan"])
     if bStructured:
         saArgv.extend(["--json-schema", S_RUNNER_ANTIGRAVITY_SCHEMA_PATH])
     return saArgv
@@ -356,7 +362,8 @@ class AntigravityRunnerConnection(
 
     async def fnStartTurn(self, dictTurnRequest):
         saArgv = flistComposeAntigravityArgv(
-            self.sRequestedModel, self.saCliProgram)
+            self.sRequestedModel, self.saCliProgram,
+            bReadOnlyCouncil=dictTurnRequest.get("bReadOnlyCouncil", False))
         fEffectiveWallClock = agentCouncilProviders.ffClampTurnBudgetToLoginLife(
             self.fWallClockSeconds,
             self._iLoginExpiresAtEpochMilliseconds)

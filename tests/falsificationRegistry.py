@@ -31569,6 +31569,50 @@ LIST_FALSIFICATIONS = [
         new=('        dictResult, sZenodoService = await '
              '_ftPerformZenodoArchive(\n'),
     ),
+    # --- 2026-10-20: a read-only council runs nothing. The server half
+    # (no baseline re-run) predates this; the runner half removes the
+    # command tools Codex and Antigravity keep under their sandboxes.
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilLedger.py::'
+            'testReadOnlyCouncilProducesNoConfirmedClaims'
+        ),
+        source='vaibify/gui/agentCouncilEvidence.py',
+        old=('            if bReadOnly:\n'
+             '                self._fnRevertClaim(dictClaim, "readOnlyCouncil")\n'),
+        new=('            if False:\n'
+             '                self._fnRevertClaim(dictClaim, "readOnlyCouncil")\n'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testEveryTurnOfAReadOnlyCouncilSaysSo'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        old=('            dictSettings["sExecutionPermission"] == '
+             'S_EXECUTION_READ_ONLY))\n'),
+        new='            False))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testACodexParticipantInAReadOnlyCouncilHasNoCommandTool'
+        ),
+        source='vaibify/gui/agentCouncilCodexProvider.py',
+        old=('    if bReadOnlyCouncil:\n'
+             '        saArgv.extend(LIST_CODEX_READ_ONLY_COUNCIL_FLAGS)\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testAnAntigravityParticipantInAReadOnlyCouncilPlansOnly'
+        ),
+        source='vaibify/gui/agentCouncilAntigravityProvider.py',
+        old=('    if bReadOnlyCouncil:\n'
+             '        saArgv.extend(["--mode", "plan"])\n'),
+        new='',
+    ),
     # --- 2026-10-19: every dashboard action has a command-line
     # equivalent, the researcher list never reaches the container, the
     # hub lane claims nothing, the credential stays in the body, and an
