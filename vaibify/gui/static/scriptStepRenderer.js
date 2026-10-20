@@ -278,6 +278,8 @@ var VaibifyStepRenderer = (function () {
         "user-attestation": "Your sign-off recorded",
         "timing-clean": "Nothing changed since verification",
         "input-data-declared": "Input data declared",
+        "dependencies-reconciled": "Cross-step reads declared or " +
+            "dismissed",
         // "Outputs" until 2026-08-25, when the projection behind
         // these rows widened from the step's output arrays to every
         // path it declares — inputs, scripts, test standards,
@@ -479,9 +481,46 @@ var VaibifyStepRenderer = (function () {
         return dictEntry.sRemediationHint || "";
     }
 
+    function _fsDependencyFindingsHtml(dictReq, iIndex, dictContext) {
+        /* The scan's own findings and reason, carried on the step's
+           Level 1 blocker whichever criterion dominates it. Each
+           unreconciled read is declared in the workflow or dismissed
+           by the researcher; a scan that is not current is rescanned. */
+        var dictEntry = (dictContext.dictBlockersByStep || {})[iIndex] ||
+            {};
+        if (dictReq.bMet === null) {
+            return '<div class="step-level-requirement-hint">' +
+                fnEscapeHtml("Dependency scan not current: " +
+                    (dictEntry.sDependencyReason || "unknown reason") +
+                    ".") + ' <button class="btn btn-small ' +
+                'wf-rescan-dependencies">Rescan dependencies</button>' +
+                '</div>';
+        }
+        return (dictEntry.listDependencyFindings || []).map(
+            function (dictFinding) {
+                return '<div class="step-level-requirement-hint">' +
+                    fnEscapeHtml(dictFinding.sScriptPath + " reads " +
+                        dictFinding.sScannedPath + " (" +
+                        dictFinding.sUpstreamStepId + "'s " +
+                        dictFinding.sMatchedOutput + ") — declare it " +
+                        "with {step:" + dictFinding.sUpstreamStepId +
+                        ".<stem>} or dismiss it.") +
+                    ' <button class="btn btn-small ' +
+                    'wf-dismiss-dependency" data-step="' + iIndex +
+                    '" data-scanned="' +
+                    fnEscapeHtml(dictFinding.sScannedPath) +
+                    '" data-upstream="' +
+                    fnEscapeHtml(dictFinding.sUpstreamStepId) +
+                    '">Dismiss</button></div>';
+            }).join("");
+    }
+
     function _fsRequirementHintHtml(dictReq, iIndex, iLevel,
         dictContext) {
         if (dictReq.bMet === true) return "";
+        if (dictReq.sName === "dependencies-reconciled") {
+            return _fsDependencyFindingsHtml(dictReq, iIndex, dictContext);
+        }
         var listParts = [];
         var listOffenders = _flistRequirementOffenders(
             dictReq, iIndex, iLevel, dictContext);

@@ -3226,6 +3226,18 @@ const VaibifyApp = (function () {
                 "results and approve it",
             sClass: "step-blocker-glyph-user",
         },
+        "dependency-unreconciled": {
+            sIcon: "⚠",
+            sLabel: "The dependency scan found a cross-step read the " +
+                "workflow does not declare — declare it or dismiss it",
+            sClass: "step-blocker-glyph-l1-dependency",
+        },
+        "dependency-scan-not-current": {
+            sIcon: "?",
+            sLabel: "Dependency scan not current — rescan " +
+                "dependencies",
+            sClass: "step-blocker-glyph-l1-dependency-unknown",
+        },
         "test-freshness-unchecked": {
             /* Not a failure and not stale: this poll could not compare
              * the files with the digests the last test run recorded.
@@ -5280,20 +5292,39 @@ const VaibifyApp = (function () {
         return listDeps;
     }
 
+    function _fdictStepIndexById(listSteps) {
+        var dictIndexById = {};
+        listSteps.forEach(function (dictStep, iIndex) {
+            if (dictStep && dictStep.sStepId) {
+                dictIndexById[dictStep.sStepId] = iIndex;
+            }
+        });
+        return dictIndexById;
+    }
+
     function _flistComputeStepDependencies(iStep) {
+        /* A display mirror of workflowManager.fsetExtractUpstreamIndices
+           (both token forms; the symbolic one resolved by step id). The
+           regex once read only {StepNN.x}, so every canonical
+           {step:<id>.<stem>} edge was missing from this row. The Level 1
+           dependency check is the backend's, never this. */
         var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
         var step = listSteps[iStep];
+        var dictIndexById = _fdictStepIndexById(listSteps);
         var setDeps = {};
         var listArrays = ["saDataCommands", "saPlotCommands",
             "saTestCommands", "saOutputDataFiles", "saPlotFiles",
             "saDependencies", "saSetupCommands", "saCommands"];
         listArrays.forEach(function (sKey) {
             (step[sKey] || []).forEach(function (sVal) {
-                var rRef = /\{Step(\d+)\.\w+\}/g;
+                var rRef = /\{Step(\d+)\.[^}]+\}|\{step:([^.}\s]+)\.[^}]+\}/g;
                 var match;
                 while ((match = rRef.exec(sVal)) !== null) {
-                    var iDep = parseInt(match[1]) - 1;
-                    if (iDep !== iStep) setDeps[iDep] = true;
+                    var iDep = match[1] !== undefined ?
+                        parseInt(match[1]) - 1 : dictIndexById[match[2]];
+                    if (iDep !== undefined && iDep !== iStep) {
+                        setDeps[iDep] = true;
+                    }
                 }
             });
         });
@@ -5303,9 +5334,11 @@ const VaibifyApp = (function () {
                     setDeps[j] = true;
             }
         }
-        (step.saSourceCodeDeps || []).forEach(function (iDepNumber) {
-            var iDep = iDepNumber - 1;
-            if (iDep >= 0 && iDep !== iStep) setDeps[iDep] = true;
+        /* Scan-found upstream steps, by step ID (the backend files
+           them by id so a reorder never redraws an edge). */
+        (step.saSourceCodeDeps || []).forEach(function (sStepId) {
+            var iDep = dictIndexById[sStepId];
+            if (iDep !== undefined && iDep !== iStep) setDeps[iDep] = true;
         });
         return Object.keys(setDeps).map(Number).sort(
             function (a, b) { return a - b; }

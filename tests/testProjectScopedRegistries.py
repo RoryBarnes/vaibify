@@ -101,13 +101,18 @@ def testADependencyScanIsReadOnlyForTheWorkflowItScanned():
     """Kills: one scan per container, drawn on whichever project is open."""
     sFirstPath = S_REPO_FIRST + "/.vaibify/projects/first.json"
     sSecondPath = S_REPO_SECOND + "/.vaibify/projects/second.json"
-    dictCtx = {"sourceCodeDeps": {S_CONTAINER: {sFirstPath: {0: {1}}}}}
+    listSteps = [{"sStepId": "make-data"}, {"sStepId": "plot-data"}]
+    dictCtx = {"sourceCodeDeps": {S_CONTAINER: {sFirstPath: {
+        "plot-data": {"listFindings": [{"sUpstreamStepId": "make-data"}]},
+    }}}}
     assert pipelineServer.fdictCachedSourceCodeDeps(
-        dictCtx, S_CONTAINER, {workflowManager.S_LOADED_FROM_KEY: sFirstPath},
+        dictCtx, S_CONTAINER, {workflowManager.S_LOADED_FROM_KEY: sFirstPath,
+                               "listSteps": listSteps},
     ) == {0: {1}}
     assert pipelineServer.fdictCachedSourceCodeDeps(
         dictCtx, S_CONTAINER,
-        {workflowManager.S_LOADED_FROM_KEY: sSecondPath},
+        {workflowManager.S_LOADED_FROM_KEY: sSecondPath,
+         "listSteps": listSteps},
     ) is None
 
 

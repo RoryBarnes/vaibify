@@ -64,8 +64,7 @@ class StepRenameSplitError(RuntimeError):
 
 _T_STEP_PATH_ARRAY_KEYS = (
     "saStepScripts", "saOutputDataFiles", "saPlotFiles",
-    "saInputDataFiles", "saTestStandards", "saSourceCodeDeps",
-    "saScratchDirs",
+    "saInputDataFiles", "saTestStandards", "saScratchDirs",
 )
 
 _T_STEP_COMMAND_ARRAY_KEYS = (

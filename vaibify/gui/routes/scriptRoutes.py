@@ -6,14 +6,33 @@ import asyncio
 import os
 import posixpath
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
+from pydantic import BaseModel
 
 from .. import workflowManager
+from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import (
     DependencyScanRequest,
     fdictRequireWorkflow,
 )
-from ..routeScope import S_CARRIER_TYPED_READ, ffnDeclareCarrierMode
+from ..routeContext import fdictCommitWorkflowSave, ffilesForWorkflow
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_TYPED_READ,
+    ffnDeclareCarrierMode,
+)
+from ...reproducibility.dependencyFindings import (
+    S_DEPENDENCY_NOT_CURRENT,
+    S_DISMISSALS_KEY,
+    S_SCAN_ANNOTATION_KEY,
+)
+
+
+class DependencyDismissalRequest(BaseModel):
+    """Which finding the researcher dismisses: the read, and whose output."""
+
+    sScannedPath: str
+    sUpstreamStepId: str
 
 
 def _fnRegisterScriptRoutes(app, dictCtx):
@@ -258,8 +277,10 @@ def _flistCollectUpstreamOutputs(dictWorkflow, iStepIndex):
         for sFileName in dictStep.get("saOutputDataFiles", []):
             sStem = os.path.splitext(
                 os.path.basename(sFileName))[0]
+            sStepId = dictStep.get("sStepId")
             sTemplateVariable = (
-                "{" + f"Step{iStepNumber:02d}.{sStem}" + "}"
+                "{" + f"step:{sStepId}.{sStem}" + "}" if sStepId
+                else "{" + f"Step{iStepNumber:02d}.{sStem}" + "}"
             )
             listUpstream.append({
                 "sFileName": sFileName,
@@ -388,7 +409,11 @@ def _fdictFindStemMatch(
     sStem, dictStemRegistry, dictWorkflow, iCurrentStep,
 ):
     """Return match dict if sStem maps to upstream step output."""
-    for sKey, iStepNumber in dictStemRegistry.items():
+    # Symbolic {step:<id>.<stem>} keys first: the positional form is
+    # deprecated, and a suggestion becomes the token the researcher saves.
+    for sKey, iStepNumber in sorted(
+            dictStemRegistry.items(),
+            key=lambda tItem: not tItem[0].startswith("step:")):
         iStepIndex = iStepNumber - 1
         if iStepIndex >= iCurrentStep:
             continue
@@ -428,6 +453,107 @@ def _fnStoreCommitHash(
             dictSync[sKey]["sGithubCommit"] = sCommitHash
 
 
+def _fnRegisterDependencyReconciliation(app, dictCtx):
+    """Register the dependency rescan and the researcher's dismissal."""
+
+    @ffnAgentAction("rescan-dependencies")
+    @app.post("/api/workflow/{sContainerId}/dependencies/rescan")
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictRescanDependencies(sContainerId: str):
+        """Scan every step's scripts again; read-only, results in hub memory."""
+        from ..pipelineServer import _fnScanDependenciesBackground
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        await _fnScanDependenciesBackground(
+            dictCtx, sContainerId, dictWorkflow)
+        return {"dictSteps": {
+            dictStep.get("sStepId"): {
+                "sState": dictStep[S_SCAN_ANNOTATION_KEY]["sState"],
+                "iFindings": len(
+                    dictStep[S_SCAN_ANNOTATION_KEY]["listFindings"]),
+                "sError": dictStep[S_SCAN_ANNOTATION_KEY]["sError"],
+            }
+            for dictStep in dictWorkflow.get("listSteps", []) or []
+            if isinstance(dictStep, dict)
+            and S_SCAN_ANNOTATION_KEY in dictStep}}
+
+    @ffnAgentAction("dismiss-dependency-finding")
+    @app.post(
+        "/api/steps/{sContainerId}/{iStepIndex}/dependencies/dismiss")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDismissDependencyFinding(
+        sContainerId: str, iStepIndex: int,
+        request: DependencyDismissalRequest, requestHttp: Request,
+    ):
+        """Record that the researcher reviewed a finding and it is no edge."""
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        dictStep = _fdictRequireStep(dictWorkflow, iStepIndex)
+        dictFinding = _fdictRequireCurrentFinding(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex, dictStep,
+            request)
+        listDismissals = [
+            dictEntry for dictEntry in dictStep.get(S_DISMISSALS_KEY, [])
+            or [] if not (
+                dictEntry.get("sScannedPath") == request.sScannedPath
+                and dictEntry.get("sUpstreamStepId")
+                == request.sUpstreamStepId)]
+        listDismissals.append({
+            sKey: dictFinding[sKey] for sKey in (
+                "sScannedPath", "sUpstreamStepId", "sScriptPath",
+                "sScriptSha256")})
+        dictStep[S_DISMISSALS_KEY] = listDismissals
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The dependency dismissal",
+        )
+        return {S_DISMISSALS_KEY: listDismissals}
+
+
+def _fdictRequireStep(dictWorkflow, iStepIndex):
+    """Return the step, or 404 by index."""
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        raise HTTPException(404, f"Step index {iStepIndex} out of range")
+    return listSteps[iStepIndex]
+
+
+def _fdictRequireCurrentFinding(
+    dictCtx, sContainerId, dictWorkflow, iStepIndex, dictStep, request,
+):
+    """Return the finding being dismissed, refusing one that is not current.
+
+    A dismissal binds the script hash it was made against, so it may
+    only be made against a finding that still describes the script:
+    dismissing a stale finding would record a review of code nobody saw.
+    """
+    from ...reproducibility.levelGates import _fdictDependencyStatesByStep
+    listFindings = (dictStep.get(S_SCAN_ANNOTATION_KEY) or {}).get(
+        "listFindings", []) or []
+    dictFinding = next((
+        dictEntry for dictEntry in listFindings
+        if dictEntry.get("sScannedPath") == request.sScannedPath
+        and dictEntry.get("sUpstreamStepId") == request.sUpstreamStepId),
+        None)
+    if dictFinding is None:
+        raise HTTPException(
+            404, f"No dependency finding for {request.sScannedPath} from "
+            f"step '{request.sUpstreamStepId}' on this step. Rescan "
+            "dependencies, then dismiss what the scan reports.")
+    dictStates = _fdictDependencyStatesByStep(
+        dictWorkflow, ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow))
+    if (dictStates.get(iStepIndex) or {}).get("sState") == (
+            S_DEPENDENCY_NOT_CURRENT):
+        raise HTTPException(
+            409, "The dependency scan of this step is not current ("
+            + dictStates[iStepIndex]["sReason"] + "). Rescan dependencies "
+            "before dismissing a finding.")
+    return dictFinding
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all script detection routes."""
     _fnRegisterScriptRoutes(app, dictCtx)
+    _fnRegisterDependencyReconciliation(app, dictCtx)

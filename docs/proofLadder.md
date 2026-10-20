@@ -227,6 +227,7 @@ given.
 | Integrity, Qualitative, and Quantitative unit tests pass | Step | One row per test category the step has. |
 | Your sign-off recorded | Step | The researcher inspected the outputs and approved the step. |
 | Nothing changed since verification | Step | No script, output, or upstream step changed after the step's tests or sign-off. |
+| Cross-step reads declared or dismissed | Step | Shown once the dependency scan has run. When the scan finds the step's script reading another step's declared output, that edge is declared (a `{step:<id>.<stem>}` token or `saDependencies`) or you dismiss the finding; a dismissal holds only while the script is unchanged. A finding made against an older script or output declaration, or a scan that failed, reads "dependency scan not current" until **Rescan dependencies** (`vaibify do rescan-dependencies`) runs again; that is unknown, never a pass. Dismiss with the button on the row or `vaibify do dismiss-dependency-finding`. |
 | Project context file (optional) | Project | `.vaibify/AGENTS.md` records the in-container agent's standing instructions. Never blocks a level. |
 
 ### Level 2 requirements

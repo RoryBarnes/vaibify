@@ -176,7 +176,10 @@ def test_scan_dependencies_finds_upstream_match(clientHttp):
     assert dictMatch["sFileName"] == "orbit_output.npy"
     assert dictMatch["iSourceStep"] == 1
     assert dictMatch["sSourceStepName"] == "Generate Orbits"
-    assert "{Step01." in dictMatch["sTemplateVariable"]
+    # The canonical symbolic token, never the deprecated positional
+    # one: the suggestion becomes the token the researcher saves.
+    assert dictMatch["sTemplateVariable"] == (
+        "{step:generate-orbits.orbit_output}")
 
 
 def test_scan_dependencies_reports_unmatched(clientHttp):

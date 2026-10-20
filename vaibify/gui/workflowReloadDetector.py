@@ -159,6 +159,8 @@ def _fdictPerformReload(
     _fnApplyProjectRepoPath(
         dictCtx, sContainerId, sWorkflowPath, dictWorkflow,
     )
+    from .stepDependencyScan import fnReapplyCachedScan
+    fnReapplyCachedScan(dictCtx, sContainerId, dictWorkflow)
     dictCtx["workflows"][sContainerId] = dictWorkflow
     dictFingerprints = _fdictGetSelfWriteMap(dictCtx)
     dictFingerprints[sContainerId] = (

@@ -496,6 +496,11 @@ def flistLevel1Blockers(
     Consumers must tolerate its absence.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    # The scan verdict reads script hashes and the scan annotation,
+    # neither of which the workflow or repo fingerprint can see, so the
+    # verdict itself joins the key (the declaration-freshness pattern).
+    dictDependencyStates = _fdictDependencyStatesByStep(
+        dictWorkflow, filesRepo)
     tCacheKey = (
         "L1",
         _fsWorkflowBlockerFingerprint(dictWorkflow),
@@ -503,37 +508,62 @@ def flistLevel1Blockers(
         _fsRepoFingerprint(filesRepo),
         _fsScriptStatusFingerprint(dictScriptStatus),
         _fsFreshnessVerdictFingerprint(dictUnknownFreshnessByStep),
+        json.dumps(dictDependencyStates, sort_keys=True, default=str),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
         return listCached
     listResult = _flistComputeLevel1Blockers(
         dictWorkflow, dictNewModTimes, filesRepo, dictScriptStatus,
-        dictUnknownFreshnessByStep,
+        dictUnknownFreshnessByStep, dictDependencyStates,
     )
     _fnBlockerCacheStore(tCacheKey, listResult)
     return listResult
 
 
+def _fdictDependencyStatesByStep(dictWorkflow, filesRepo):
+    """Return each scanned step's dependency verdict (``dependencyFindings``)."""
+    from .dependencyFindings import fdictDependencyStatesByStep
+    return fdictDependencyStatesByStep(
+        dictWorkflow, filesRepo, _fdictUpstreamStepsByConsumer(dictWorkflow))
+
+
 def _flistComputeLevel1Blockers(
     dictWorkflow, dictNewModTimes, filesRepo, dictScriptStatus,
-    dictUnknownFreshnessByStep=None,
+    dictUnknownFreshnessByStep=None, dictDependencyStates=None,
 ):
-    """Uncached L1-blocker evaluation — the body of the original gate."""
+    """Uncached L1-blocker evaluation — the body of the original gate.
+
+    A step whose scan-found dependencies are unreconciled or not current
+    carries ``sDependencyState`` on whichever blocker dominates it, so
+    the step's cell sees that state even when another criterion wins
+    the glyph.
+    """
     if not fbWorkflowHasProjectRepo(filesRepo):
         return []
     listSteps = dictWorkflow.get("listSteps", []) or []
     if not listSteps:
         return []
+    if dictDependencyStates is None:
+        dictDependencyStates = _fdictDependencyStatesByStep(
+            dictWorkflow, filesRepo)
     dictUpstreamByStep = _fdictUpstreamStepsByConsumer(dictWorkflow)
     listBlockers = []
     for iStepIndex, dictStep in enumerate(listSteps):
+        dictState = dictDependencyStates.get(iStepIndex) or {}
         dictBlocker = _fdictBuildStepBlocker(
             dictWorkflow, iStepIndex, dictStep,
             dictNewModTimes, dictUpstreamByStep,
             dictScriptStatus, filesRepo, dictUnknownFreshnessByStep,
+            dictState,
         )
         if dictBlocker is not None:
+            if dictState.get("sState") in _T_DEPENDENCY_BLOCKING_STATES:
+                dictBlocker["sDependencyState"] = dictState["sState"]
+                dictBlocker["listDependencyFindings"] = list(
+                    dictState.get("listFindings") or [])
+                dictBlocker["sDependencyReason"] = dictState.get(
+                    "sReason", "")
             listBlockers.append(dictBlocker)
     return sorted(listBlockers, key=lambda dictEntry: dictEntry["iStepIndex"])
 
@@ -542,7 +572,7 @@ def _fdictBuildStepBlocker(
     dictWorkflow, iStepIndex, dictStep,
     dictNewModTimes, dictUpstreamByStep,
     dictScriptStatus=None, filesRepo=None,
-    dictUnknownFreshnessByStep=None,
+    dictUnknownFreshnessByStep=None, dictDependencyState=None,
 ):
     """Return the single dominant blocker dict for a step, or None.
 
@@ -568,6 +598,10 @@ def _fdictBuildStepBlocker(
         return None
     if _fbStepInputDataUndeclared(dictStep):
         return _fdictInputUndeclaredBlocker(dictWorkflow, iStepIndex)
+    sDependencyState = (dictDependencyState or {}).get("sState")
+    if sDependencyState == S_DEPENDENCY_UNRECONCILED_STATE:
+        return _fdictDependencyUnreconciledBlocker(
+            dictWorkflow, iStepIndex, dictDependencyState)
     if not fbStepTimingClean(dictStep):
         return _fdictUpstreamModifiedBlocker(
             dictWorkflow, iStepIndex, dictStep,
@@ -588,9 +622,88 @@ def _fdictBuildStepBlocker(
         return _fdictFreshnessUncheckedBlocker(
             dictWorkflow, iStepIndex, listUnchecked,
         )
+    if sDependencyState == S_DEPENDENCY_NOT_CURRENT_STATE:
+        return _fdictDependencyNotCurrentBlocker(
+            dictWorkflow, iStepIndex, dictDependencyState)
     return _fdictUserDispositionBlocker(
         dictWorkflow, iStepIndex, dictStep,
     )
+
+
+S_DEPENDENCY_UNRECONCILED_STATE = "unreconciled"
+S_DEPENDENCY_NOT_CURRENT_STATE = "not-current"
+_T_DEPENDENCY_BLOCKING_STATES = (
+    S_DEPENDENCY_UNRECONCILED_STATE, S_DEPENDENCY_NOT_CURRENT_STATE,
+)
+_DICT_DEPENDENCY_PSEUDO_CRITERIA = {
+    S_DEPENDENCY_UNRECONCILED_STATE: "dependency-unreconciled",
+    S_DEPENDENCY_NOT_CURRENT_STATE: "dependency-scan-not-current",
+}
+
+
+def _fdictDependencyUnreconciledBlocker(
+    dictWorkflow, iStepIndex, dictDependencyState,
+):
+    """Build the ``dependency-unreconciled`` blocker for one step.
+
+    The scanner found this step's script reading another step's
+    declared output, and the workflow neither declares the edge nor
+    records the researcher dismissing it: the graph the workflow JSON
+    states is missing an edge its own scripts take.
+    """
+    listFindings = dictDependencyState.get("listFindings") or []
+    dictIndexById = {
+        dictStep.get("sStepId"): iIndex for iIndex, dictStep in enumerate(
+            dictWorkflow.get("listSteps", []) or [])
+        if isinstance(dictStep, dict)}
+    sFound = "; ".join(
+        f"{dictFinding.get('sScriptPath')} reads "
+        f"{dictFinding.get('sScannedPath')} "
+        f"({dictFinding.get('sUpstreamStepId')}'s "
+        f"{dictFinding.get('sMatchedOutput')})"
+        for dictFinding in listFindings)
+    return {
+        "iLevel": 1,
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
+        "sCriterion": "dependency-unreconciled",
+        "listOffendingFiles": sorted({
+            dictFinding.get("sScriptPath", "") for dictFinding in listFindings}),
+        "listOffendingUpstreamSteps": sorted({
+            dictIndexById[dictFinding["sUpstreamStepId"]]
+            for dictFinding in listFindings
+            if dictFinding.get("sUpstreamStepId") in dictIndexById}),
+        "listDependencyFindings": listFindings,
+        "sRemediationHint":
+            "The dependency scan found an undeclared cross-step read: "
+            + sFound + ". Declare it with a {step:<id>.<stem>} token or "
+            "saDependencies, or dismiss the finding.",
+    }
+
+
+def _fdictDependencyNotCurrentBlocker(
+    dictWorkflow, iStepIndex, dictDependencyState,
+):
+    """Build the ``dependency-scan-not-current`` blocker for one step.
+
+    Not a failure: the scan's findings no longer describe the files, or
+    the scan failed, so nothing is known about this step's hidden
+    reads until it is scanned again.
+    """
+    return {
+        "iLevel": 1,
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
+        "sCriterion": "dependency-scan-not-current",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "Dependency scan not current: "
+            + (dictDependencyState.get("sReason") or "unknown reason")
+            + ". Rescan dependencies.",
+    }
 
 
 def _fdictFreshnessUncheckedBlocker(dictWorkflow, iStepIndex, listPaths):
@@ -4416,7 +4529,7 @@ def _fdictBuildPerLevelCriteriaLookups(
 ):
     """Index each level's per-step blocker criteria by step index."""
     return {
-        "dictLevel1CriteriaByStep": _fdictCriteriaByStep(
+        "dictLevel1CriteriaByStep": _fdictLevel1CriteriaByStep(
             listLevel1Blockers,
         ),
         "dictLevel2CriteriaByStep": _fdictCriteriaByStep(
@@ -4447,6 +4560,23 @@ def _fdictLevel3FailingCriteriaByStep(listLevel3Blockers):
         dictResult.setdefault(iStepIndex, set()).update(
             sCriterion for sCriterion in listFailing if sCriterion
         )
+    return dictResult
+
+
+def _fdictLevel1CriteriaByStep(listLevel1Blockers):
+    """Index each step's L1 criteria, plus its carried dependency state.
+
+    The dependency state rides on whichever blocker dominates the step
+    (``sDependencyState``), and is added here as its own criterion so
+    the dependency requirement reads the same verdict as the gate.
+    """
+    dictResult = _fdictCriteriaByStep(listLevel1Blockers)
+    for dictEntry in listLevel1Blockers or []:
+        sPseudo = _DICT_DEPENDENCY_PSEUDO_CRITERIA.get(
+            dictEntry.get("sDependencyState"))
+        iStepIndex = dictEntry.get("iStepIndex", -1)
+        if sPseudo and isinstance(iStepIndex, int) and iStepIndex >= 0:
+            dictResult.setdefault(iStepIndex, set()).add(sPseudo)
     return dictResult
 
 
@@ -4671,6 +4801,11 @@ def _flistStepLevel1Requirements(
     listRequirements.append(
         ("input-data-declared",
          not _fbStepInputDataUndeclared(dictStep)))
+    if "dependency-unreconciled" in setCriteria:
+        listRequirements.append(("dependencies-reconciled", False))
+    elif "dependency-scan-not-current" in setCriteria:
+        # Unknown: counted in the total, never as satisfied.
+        listRequirements.append(("dependencies-reconciled", None))
     return listRequirements
 
 

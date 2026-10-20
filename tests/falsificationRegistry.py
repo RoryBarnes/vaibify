@@ -23743,13 +23743,9 @@ LIST_FALSIFICATIONS = [
             'tests/testProjectScopedRegistries.py::'
             'testADependencyScanIsReadOnlyForTheWorkflowItScanned'
         ),
-        source='vaibify/gui/pipelineServer.py',
-        old=(
-            '    return dictByWorkflow.get(\n'
-            '        (dictWorkflow or {}).get(workflowManager.S_LOADED_FROM_KEY,'
-            ' ""),\n'
-            '    )\n'
-        ),
+        source='vaibify/gui/stepDependencyScan.py',
+        old=('    return dictByWorkflow.get('
+             '_fsWorkflowCacheKey(dictWorkflow))\n'),
         new='    return next(iter(dictByWorkflow.values()), None)\n',
     ),
     Falsification(
@@ -30404,12 +30400,12 @@ LIST_FALSIFICATIONS = [
         source='vaibify/reproducibility/levelGates.py',
         old=(
             '        _fsFreshnessVerdictFingerprint(dictUnknownFreshnessByStep),\n'
-            '    )\n'
-            '    listCached = _flistBlockerCacheLookup(tCacheKey)\n'
+            '        json.dumps(dictDependencyStates, sort_keys=True, '
+            'default=str),\n'
         ),
         new=(
-            '    )\n'
-            '    listCached = _flistBlockerCacheLookup(tCacheKey)\n'
+            '        json.dumps(dictDependencyStates, sort_keys=True, '
+            'default=str),\n'
         ),
     ),
     Falsification(
@@ -31571,6 +31567,59 @@ LIST_FALSIFICATIONS = [
              '_ftPerformZenodoArchive(\n'),
         new=('        dictResult, sZenodoService = await '
              '_ftPerformZenodoArchive(\n'),
+    ),
+    # --- 2026-10-19: scan-found dependencies gate Level 1 (F2): the
+    # blocker, the dismissal's hash binding, the staleness rule, and the
+    # route's refusal to dismiss a stale finding.
+    Falsification(
+        nodeid=(
+            'tests/testDependencyReconciliationGatesLevelOne.py::'
+            'testAnUndeclaredScanFoundReadBlocksLevelOne'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('    if sDependencyState == S_DEPENDENCY_UNRECONCILED_STATE:\n'
+             '        return _fdictDependencyUnreconciledBlocker(\n'
+             '            dictWorkflow, iStepIndex, dictDependencyState)\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyReconciliationGatesLevelOne.py::'
+            'testADismissalHoldsOnlyAtTheScriptHashItWasMadeAgainst'
+        ),
+        source='vaibify/reproducibility/dependencyFindings.py',
+        old=('            and dictDismissal.get("sScriptSha256") == '
+             'sScriptSha256)\n'),
+        new='            and True)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyReconciliationGatesLevelOne.py::'
+            'testAScriptEditedSinceTheScanReadsNotCurrentUntilRescanned'
+        ),
+        source='vaibify/reproducibility/dependencyFindings.py',
+        old=('    if not sHashNow or sHashNow != '
+             'dictFinding.get("sScriptSha256"):\n'),
+        new='    if not sHashNow:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyDismissalRoute.py::'
+            'testAFindingWhoseScanIsNotCurrentCannotBeDismissed'
+        ),
+        source='vaibify/gui/routes/scriptRoutes.py',
+        old=('    if (dictStates.get(iStepIndex) or {}).get("sState") == (\n'
+             '            S_DEPENDENCY_NOT_CURRENT):\n'),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSymbolicTokenDependenciesOnScreen.py::'
+            'testASymbolicTokenDeclaresTheDependency'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='                var rRef = /\\{Step(\\d+)\\.[^}]+\\}|\\{step:([^.}\\s]+)\\.[^}]+\\}/g;\n',
+        new='                var rRef = /\\{Step(\\d+)\\.\\w+\\}/g;\n',
     ),
     # --- 2026-10-19: colliding basenames block Level 2 (F4), in the
     # scalar gate and in each owning step's cell alike.

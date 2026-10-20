@@ -722,6 +722,13 @@ var VaibifyDependencyScanner = (function () {
                 var sUpBase = saFiles[j].split("/").pop();
                 var sUpStem = sUpBase.replace(/\.[^.]+$/, "");
                 if (sUpStem === sStem) {
+                    /* The canonical symbolic token; the positional
+                       {StepNN.x} form is deprecated and is written
+                       only for a step that has no id yet. */
+                    if (listSteps[i].sStepId) {
+                        return "{step:" + listSteps[i].sStepId + "." +
+                            sStem + "}";
+                    }
                     var sLabel = "Step" +
                         String(i + 1).padStart(2, "0");
                     return "{" + sLabel + "." + sStem + "}";
@@ -741,7 +748,9 @@ var VaibifyDependencyScanner = (function () {
         var listNew = [];
         for (var i = 0; i < listTokens.length; i++) {
             var sToken = listTokens[i];
-            if (!/^\{Step\d+\./.test(sToken)) continue;
+            if (!/^\{(Step\d+|step:[a-z0-9][a-z0-9-]*)\./.test(sToken)) {
+                continue;
+            }
             if (sJoinedCommands.indexOf(sToken) === -1 &&
                 sJoinedDeps.indexOf(sToken) === -1) {
                 listNew.push(sToken);

@@ -7325,7 +7325,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # exclusions, with why an agent must never make them.
     # 1519 -> 1525 (2026-10-14): the reproduction retry's catalog entry,
     # human-only like its run and discard siblings.
-    "actionCatalog.py": 1525,
+    # 1525 -> 1540 (2026-10-19): the dependency rescan (agent-safe) and
+    # the researcher-only dismissal of a scan-found dependency.
+    "actionCatalog.py": 1540,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
