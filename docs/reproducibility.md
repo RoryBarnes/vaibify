@@ -106,7 +106,11 @@ to publish.
 `requirements.lock` lists each Python package at the exact version that
 actually ran in your container, with a hash so a substitute package
 cannot slip in. **Check dependencies** confirms that every entry
-carries its hash.
+carries its hash. A project that uses only the Python standard library
+still gets a lock: when your dependency file declares nothing, vaibify
+writes a line saying so, and the check accepts it. An empty lock
+without that line still fails, because it cannot tell "needs nothing"
+from "never locked".
 
 ### Tier 3 — the container
 

@@ -54,10 +54,7 @@ S_FIXTURE_DOCKERFILE = (
     # into the new, empty workspace volume on first mount.
     "&& mkdir -p /workspace/.vaibify/logs "
     "&& touch /workspace/.vaibify/.entrypoint_ready "
-    "&& chown -R researcher:researcher /workspace "
-    # The template needs only the standard library, and an empty lock
-    # is refused, so the project declares one small pinned package.
-    "&& pip install --no-cache-dir --quiet six==1.17.0\n"
+    "&& chown -R researcher:researcher /workspace\n"
     # The recipe label is what the start route reads as "built by
     # vaibify"; its value is never compared on the start path.
     "LABEL vaibify-recipe-sha256=cli-end-to-end-fixture\n"
@@ -323,9 +320,10 @@ def _fnPrepareLocalLevelThree(dictHub):
         "FROM " + _fsBaseImageDigestReference(dictHub) + "\n"
         "ENV SOURCE_DATE_EPOCH=1767225600\n"
         "RUN apt-get update && apt-get install -y git"
-        "  # allow-unpinned\n"
-        "RUN pip install --no-cache-dir six==1.17.0\n"))
-    _fnWriteProjectFile(dictHub, "requirements.in", "six==1.17.0\n")
+        "  # allow-unpinned\n"))
+    # The template needs only the standard library: the project declares
+    # no dependency, and the generated lock must say so and still pass.
+    _fnWriteProjectFile(dictHub, "requirements.in", "")
     _fdictDo(dictHub, "declare-determinism", "sRepeatabilityAnswer=speed")
     _fdictDo(dictHub, "declare-standalone-binaries", json.dumps({
         "bNoStandaloneBinaries": True, "listDeclaredBinaries": []}))

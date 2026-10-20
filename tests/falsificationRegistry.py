@@ -2781,11 +2781,28 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testDependencyPinningMutationCoverage.py::test_verify_flags_empty_but_present_lockfile',
         source='vaibify/reproducibility/dependencyPinning.py',
         old='''    if not listEntries:
-        return [
-            "requirements.lock at '"''',
+        if S_NO_DEPENDENCIES_MARKER in sContents.splitlines():''',
         new='''    if False:
-        return [
-            "requirements.lock at '"''',
+        if S_NO_DEPENDENCIES_MARKER in sContents.splitlines():''',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testALockThatDeclaresNothing.py::'
+            'testAGeneratedLockThatPinsNothingPassesTheDependencyRow'
+        ),
+        source='vaibify/reproducibility/dependencyPinning.py',
+        old=('        if S_NO_DEPENDENCIES_MARKER in sContents.splitlines():\n'
+             '            return []\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testALockThatDeclaresNothing.py::'
+            'testAnEmptyLockNobodyGeneratedStillFailsAndNamesTheRemedy'
+        ),
+        source='vaibify/reproducibility/dependencyPinning.py',
+        old='        if S_NO_DEPENDENCIES_MARKER in sContents.splitlines():\n',
+        new='        if True:\n',
     ),
     Falsification(
         nodeid='tests/testDependencyPinningMutationCoverage.py::test_verify_accepts_flush_left_hash_continuation',

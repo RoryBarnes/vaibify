@@ -271,7 +271,7 @@ it, and vaibify also re-verifies on a schedule while the hub runs.
 |---|---|---|
 | Manifest complete | Project | `MANIFEST.sha256` pins the hash of every declared artifact, script, and test. |
 | Manifest matches the files | Project | Every hash the manifest pins is the file's current bytes. |
-| Dependency lock | Project | `requirements.lock` pins every Python dependency by version with hashes. |
+| Dependency lock | Project | `requirements.lock` pins every Python dependency by version with hashes, or records that the project declares none. |
 | Environment snapshot | Project | The exact container image digest and system toolchain are recorded. |
 | Dockerfile pinned | Project | The Dockerfile builds from an exact base-image digest. |
 | Reproduce script | Project | `reproduce.sh` at the repository root reruns and assesses the project, and its hash is in the manifest, beside the hash of the rerun assessor (`.vaibify/rerunAssessment.py`) it runs. |

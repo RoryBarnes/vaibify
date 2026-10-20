@@ -42,6 +42,8 @@ __all__ = [
     "fbIsUvAvailable",
     "flistResolveLockCompileCommand",
     "S_LOCK_TOOL_INSTALL_HINT",
+    "S_NO_DEPENDENCIES_MARKER",
+    "fsMarkALockThatDeclaresNothing",
 ]
 
 
@@ -59,6 +61,12 @@ _S_LOCK_TOOL_MISSING_MESSAGE = (
     + S_LOCK_TOOL_INSTALL_HINT
 )
 _S_LOCK_FILENAME = "requirements.lock"
+# Written by the generator, never by hand, into a lock whose input
+# declared no third-party dependency. An empty file cannot tell "this
+# project needs none" from "nobody locked it"; this line says which.
+S_NO_DEPENDENCIES_MARKER = (
+    "# vaibify: this project declares no third-party Python dependencies"
+)
 # The per-repo dependency file vaibify's own container entrypoint
 # installs on startup, and the one the container docs tell researchers
 # to maintain.
@@ -120,8 +128,22 @@ def fnGenerateRequirementsLock(filesRepo):
     sLocalRoot = filesRepo.fsLocalRootOrNone()
     if sLocalRoot is not None:
         _fnRunLockCompile(Path(sLocalRoot), sInput, listCompilePrefix)
+        sCompiled = filesRepo.fsReadText(_S_LOCK_FILENAME)
+        sMarked = fsMarkALockThatDeclaresNothing(sCompiled)
+        if sMarked != sCompiled:
+            filesRepo.fnWriteTextAtomic(_S_LOCK_FILENAME, sMarked)
         return
     _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix)
+
+
+def fsMarkALockThatDeclaresNothing(sLockContents):
+    """Return the compiled lock, marked when it pins no dependency at all."""
+    if _flistParseLockEntries(sLockContents) or (
+            S_NO_DEPENDENCIES_MARKER in sLockContents.splitlines()):
+        return sLockContents
+    sSeparator = "" if not sLockContents or sLockContents.endswith(
+        "\n") else "\n"
+    return sLockContents + sSeparator + S_NO_DEPENDENCIES_MARKER + "\n"
 
 
 def _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix):
@@ -170,7 +192,8 @@ def _fnCompileLockViaStaging(filesRepo, sInput, listCompilePrefix):
             "r", encoding="utf-8",
         ) as fileHandle:
             sLockContents = fileHandle.read()
-    filesRepo.fnWriteTextAtomic(_S_LOCK_FILENAME, sLockContents)
+    filesRepo.fnWriteTextAtomic(
+        _S_LOCK_FILENAME, fsMarkALockThatDeclaresNothing(sLockContents))
 
 
 _S_CONSTRAINTS_FILENAME = "constraints.txt"
@@ -364,7 +387,10 @@ def flistVerifyRequirementsLock(filesRepo):
     """Return a list of structural issues with the lockfile.
 
     An empty list means the lockfile exists, parses, and every
-    dependency entry carries at least one ``--hash=sha256:...`` line.
+    dependency entry carries at least one ``--hash=sha256:...`` line. A
+    lock with no entry passes only when it carries the generator's
+    ``S_NO_DEPENDENCIES_MARKER``: a project that needs nothing says so,
+    and an empty file nobody generated still fails.
     This is a format-only check; actual install verification is the
     user's call to ``pip install --require-hashes``.
     """
@@ -377,10 +403,14 @@ def flistVerifyRequirementsLock(filesRepo):
     sContents = filesRepo.fsReadText(_S_LOCK_FILENAME)
     listEntries = _flistParseLockEntries(sContents)
     if not listEntries:
+        if S_NO_DEPENDENCIES_MARKER in sContents.splitlines():
+            return []
         return [
             "requirements.lock at '"
             + sDisplayPath
-            + "' contains no dependency entries"
+            + "' contains no dependency entries. If the project needs "
+            "none, regenerate the reproducibility envelope: vaibify then "
+            "records that it declares none"
         ]
     return _flistFindUnhashedEntries(listEntries)
 
