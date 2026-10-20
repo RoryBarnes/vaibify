@@ -19,6 +19,7 @@ decision lives in one module.
 
 import hashlib
 import json
+import posixpath
 import threading
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -1240,6 +1241,8 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not fbAtLeastLevel1(dictWorkflow, filesRepo):
         return False
+    if flistLevel2BasenameCollisions(dictWorkflow):
+        return False
     if not fbWorkflowFullySyncedWithGithub(
         dictWorkflow, filesRepo,
     ):
@@ -2431,6 +2434,7 @@ def _flistComputeLevel2Blockers(dictWorkflow, filesRepo):
     listBlockers.extend(_flistZenodoLevel2Blockers(
         dictWorkflow, filesRepo,
     ))
+    listBlockers.extend(_flistBasenameCollisionLevel2Blockers(dictWorkflow))
     listBlockers.extend(_flistAiDeclarationLevel2Blockers(
         dictWorkflow, filesRepo,
     ))
@@ -2507,6 +2511,61 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
     ):
         return listBlockers
     return [_fdictZenodoUnexplainedRefusalBlocker(dictStatus)]
+
+
+S_BASENAME_COLLISION_CRITERION = "basename-collision"
+
+
+def flistLevel2BasenameCollisions(dictWorkflow):
+    """Return each group of published Level 2 files sharing a basename.
+
+    A Zenodo deposit is FLAT: files upload under their basenames, the
+    second of a colliding pair overwrites the first, and the archive
+    therefore refuses such a selection (``_fnRefuseBasenameCollisions``).
+    This states that refusal before the researcher clicks. Read from
+    the workflow alone, so the poll can answer it.
+    """
+    dictByBasename = {}
+    for sPath in _flistLevel2CanonicalPaths(dictWorkflow):
+        dictByBasename.setdefault(posixpath.basename(sPath), []).append(sPath)
+    return [sorted(listPaths) for _sName, listPaths in sorted(
+        dictByBasename.items()) if len(listPaths) > 1]
+
+
+def _flistBasenameCollisionLevel2Blockers(dictWorkflow):
+    """Return a blocker on each step owning a colliding file, homing the rest."""
+    listGroups = flistLevel2BasenameCollisions(dictWorkflow)
+    if not listGroups:
+        return []
+    setColliding = {sPath for listGroup in listGroups for sPath in listGroup}
+    sHint = (
+        "A Zenodo deposit is flat, so files sharing a name overwrite "
+        "each other: " + "; ".join(", ".join(listGroup)
+                                   for listGroup in listGroups)
+        + ". Rename one of each.")
+    dictTemplateValues = fdictWorkflowTemplateValues(dictWorkflow)
+    listBlockers, setClaimed = [], set()
+    for iStepIndex, dictStep in enumerate(
+            dictWorkflow.get("listSteps", []) or []):
+        if not isinstance(dictStep, dict):
+            continue
+        listOffending = sorted(setColliding & set(
+            _flistStepPublishedPaths(dictStep, dictTemplateValues)))
+        if listOffending:
+            setClaimed.update(listOffending)
+            listBlockers.append(_fdictBuildSyncStepBlocker(
+                dictWorkflow, iStepIndex, listOffending,
+                S_BASENAME_COLLISION_CRITERION, sHint))
+    listUnclaimed = sorted(setColliding - setClaimed)
+    if listUnclaimed:
+        listBlockers.append({
+            "iLevel": 2, "iStepIndex": -1,
+            "sStepLabel": _S_WORKFLOW_SCOPE_LABEL, "sScope": "workflow",
+            "sCriterion": "basename-collision",
+            "listOffendingFiles": listUnclaimed,
+            "listOffendingUpstreamSteps": [], "sRemediationHint": sHint,
+        })
+    return listBlockers
 
 
 def _flistAiDeclarationLevel2Blockers(dictWorkflow, filesRepo):
@@ -4679,6 +4738,10 @@ def _flistStepLevel2Requirements(dictStep, setCriteria, dictContext):
         listRequirements.append(
             ("figure-frozen",
              "figure-not-frozen" not in setCriteria))
+    if S_BASENAME_COLLISION_CRITERION in setCriteria:
+        # Counted only while it fails, so a project with unique names
+        # keeps the totals it had; the cell still drops with the row.
+        listRequirements.append(("unique-basenames", False))
     if fbStepIsAiDeclaration(dictStep):
         # The declaration's researcher sign-off is a Level 2
         # requirement (its L1 cell reads not-applicable). A sign-off
@@ -5162,6 +5225,9 @@ def _ftWorkflowLevel2Counts(dictWorkflow, listLevel2Blockers, bHasRepo):
     tApplicable = _T_WORKFLOW_LEVEL2_BASE_CRITERIA
     if fbWorkflowHasArxivConnection(dictWorkflow):
         tApplicable = tApplicable + _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA
+    if S_BASENAME_COLLISION_CRITERION in _fsetWorkflowScopeCriteria(
+            listLevel2Blockers):
+        tApplicable = tApplicable + (S_BASENAME_COLLISION_CRITERION,)
     return _ftCountWorkflowCriteria(
         listLevel2Blockers, tApplicable, bHasRepo,
     )

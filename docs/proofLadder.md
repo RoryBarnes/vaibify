@@ -244,6 +244,7 @@ given.
 | Published files match the GitHub mirror | Step | The step's declared files match GitHub. |
 | Published files match the Zenodo deposit | Step | The step's declared files match Zenodo. |
 | Manuscript figures frozen in Overleaf | Step | Shown only when an Overleaf project is bound and the step has plot files. |
+| File names unique across the deposit | Step | Shown only when it fails: one of the step's published files shares its name with another published file. A Zenodo deposit is flat, so the second would overwrite the first, and the archive refuses such a selection; rename one. |
 | AI declaration signed off | Step | Only on the AI declaration step: the researcher has signed the declaration of AI use, and no other step's scripts, outputs, or declared input data have changed since. A later change makes the sign-off stale until the researcher signs again; a file vaibify cannot read leaves the row unknown, which also blocks Level 2. A change made and fully undone between two checks is not detected. If the project has no such step, an **Add AI declaration step** row appears at the foot of the step list. |
 
 **Personal AI Configuration** asks one question: did the researcher's

@@ -138,6 +138,11 @@ def _fdictAiDeclarationStep():
     """Return a minimal ai-declaration step dict."""
     dictStep = _fdictGreenStep(sName="Decl")
     dictStep["sStepKind"] = S_AI_DECLARATION_STEP_KIND
+    # Names of its own: a flat Zenodo deposit cannot hold two files
+    # called data.csv, so a project that published both could never
+    # reach Level 2 (basename-collision, 2026-10-19).
+    dictStep["saOutputDataFiles"] = ["Decl/declaration.csv"]
+    dictStep["saPlotFiles"] = ["Decl/declaration.pdf"]
     return dictStep
 
 

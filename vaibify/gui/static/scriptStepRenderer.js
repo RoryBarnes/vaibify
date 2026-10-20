@@ -287,6 +287,7 @@ var VaibifyStepRenderer = (function () {
         "github-mirror": "Published files match the GitHub mirror",
         "zenodo-deposit": "Published files match the Zenodo deposit",
         "figure-frozen": "Manuscript figures frozen in Overleaf",
+        "unique-basenames": "File names unique across the deposit",
         "ai-declaration-attested": "AI declaration signed off",
         "missing-from-manifest": "Outputs pinned in the manifest",
         "script-not-pinned": "Scripts match the manifest",
@@ -299,6 +300,8 @@ var VaibifyStepRenderer = (function () {
     var _DICT_UNMET_REQUIREMENT_HINTS = {
         "figure-frozen": "Freeze via each plot file's Overleaf " +
             "badge, then re-verify",
+        "unique-basenames": "A Zenodo deposit is flat: rename one " +
+            "of the files that share this name",
         "ai-declaration-attested": "Sign off in the declaration " +
             "body above",
         "missing-from-manifest": "Refresh the manifest (Project " +
@@ -322,6 +325,7 @@ var VaibifyStepRenderer = (function () {
         "github-mirror": "not-in-github-mirror",
         "zenodo-deposit": "not-in-zenodo-deposit",
         "figure-frozen": "figure-not-frozen",
+        "unique-basenames": "basename-collision",
     };
 
     var _DICT_VERIFY_SERVICE_BY_REQUIREMENT = {

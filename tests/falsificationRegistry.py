@@ -31572,6 +31572,27 @@ LIST_FALSIFICATIONS = [
         new=('        dictResult, sZenodoService = await '
              '_ftPerformZenodoArchive(\n'),
     ),
+    # --- 2026-10-19: colliding basenames block Level 2 (F4), in the
+    # scalar gate and in each owning step's cell alike.
+    Falsification(
+        nodeid=(
+            'tests/testBasenameCollisionBlocksLevelTwo.py::'
+            'testACollisionBlocksTheScalarGate'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('    if flistLevel2BasenameCollisions(dictWorkflow):\n'
+             '        return False\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBasenameCollisionBlocksLevelTwo.py::'
+            'testEachOwningStepCarriesTheBlockerAndItsCellDrops'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='        listRequirements.append(("unique-basenames", False))\n',
+        new='        pass\n',
+    ),
     # --- 2026-10-19: vaibify's note beside policy v1's vector remedy,
     # and the libraries the execution profiles do not cover.
     Falsification(

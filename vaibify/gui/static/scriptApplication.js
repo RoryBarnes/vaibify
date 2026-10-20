@@ -3301,6 +3301,12 @@ const VaibifyApp = (function () {
                 "a new deposit from the Repos panel",
             sClass: "step-blocker-glyph-l2-zenodo",
         },
+        "basename-collision": {
+            sIcon: "⚠",
+            sLabel: "Two published files share a name, and a " +
+                "Zenodo deposit is flat — rename one",
+            sClass: "step-blocker-glyph-l2-zenodo",
+        },
         "github-verify-stale": {
             sIcon: "⚠",
             sLabel: "GitHub sync check is stale — re-verify from " +

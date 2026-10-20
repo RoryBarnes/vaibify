@@ -1344,6 +1344,10 @@ def _fdictPublishedWorkflow():
     """
     dictDeclaration = _fdictGreenStepNamed("Decl")
     dictDeclaration["sStepKind"] = S_AI_DECLARATION_STEP_KIND
+    # Names of its own, as in testLevelGateL2Arxiv: a flat Zenodo
+    # deposit cannot hold two files called data.csv (basename-collision).
+    dictDeclaration["saOutputDataFiles"] = ["Decl/declaration.csv"]
+    dictDeclaration["saPlotFiles"] = ["Decl/declaration.pdf"]
     return {
         "sWorkflowName": "Published", "sPlotDirectory": "Plot",
         "sFigureType": "pdf", "iNumberOfCores": 4,
