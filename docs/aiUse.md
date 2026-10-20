@@ -199,6 +199,16 @@ viewer. The record is *tamper-evident*, not *provably complete*: time
 between recorded intervals was not monitored, and the dashboard shows
 those gaps rather than hiding them.
 
+The index never holds a plain hash of the raw transcript. A plain hash
+would let anyone who reads the published, redacted text test guesses
+at what was redacted. Vaibify pins how much of each transcript it has
+captured with a keyed digest instead, and the key stays on your
+computer. On another computer, the next capture of a session that has
+grown since re-reads it from the beginning; the result is the same,
+only slower. An index written by an earlier version of vaibify loses
+its plain hashes the next time a capture is saved, but they remain in
+your repository's earlier commits.
+
 ## Supervised mode
 
 Some changes never appear in a transcript: an edit you make by hand, a

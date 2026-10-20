@@ -34,7 +34,13 @@ Honesty properties, in order of importance:
   only the complete lines appended since the last capture yields
   exactly the bytes a whole-file recapture would. A trailing partial
   line waits for the next pass, because a secret CAN span a mid-line
-  append boundary. The captured raw prefix is pinned by hash; a
+  append boundary. The captured raw prefix is pinned by a KEYED
+  digest (HMAC-SHA256 under a key that never leaves this host): the
+  index is public and the sanitized text beside it reproduces every
+  raw byte but the redacted ones, so a bare SHA-256 of the raw prefix
+  would let anyone confirm a guessed secret offline. Without the key
+  -- another machine, a lost key -- the digest cannot match and the
+  session is recaptured whole, which is slower and never wrong. A
   transcript that was rewritten rather than appended, or a session
   file that no longer matches its record, is recaptured whole. A
   transcript is passed over only when its stat key (nanosecond mtime
@@ -58,6 +64,7 @@ __all__ = [
     "fbSessionBelongsToProject",
     "fdictListContainerTranscripts",
     "fdictLoadIndex",
+    "fsResolveDigestKeyPath",
     "fdictSanitizeNewTranscriptLines",
     "fdictLandSanitizedSessions",
     "fbVerifyCaptureChain",
@@ -66,9 +73,13 @@ __all__ = [
 ]
 
 import hashlib
+import hmac
 import json
+import os
 import posixpath
+import secrets
 import shlex
+import tempfile
 from datetime import datetime, timezone
 
 from vaibify.gui.transcriptSanitizer import flistSanitizeTextsInParallel
@@ -225,8 +236,12 @@ def fdictLoadIndex(filesRepo):
         return _fdictEmptyIndex()
     dictIndex.setdefault("listCaptures", [])
     dictIndex.setdefault("listCoverageIntervals", [])
+    # The unsalted raw-prefix hashes of earlier versions are an offline
+    # oracle for redacted secrets; dropped here, they leave the public
+    # index at its next write.
+    dictIndex.pop("dictSessionRawSha256", None)
     dictIndex.setdefault("dictSessionBytes", {})
-    dictIndex.setdefault("dictSessionRawSha256", {})
+    dictIndex.setdefault("dictSessionRawDigests", {})
     dictIndex.setdefault("dictSessionStatKeys", {})
     dictIndex.setdefault("iSessionsOutsideProject", 0)
     return dictIndex
@@ -237,7 +252,7 @@ def _fdictEmptyIndex():
         "listCaptures": [],
         "listCoverageIntervals": [],
         "dictSessionBytes": {},
-        "dictSessionRawSha256": {},
+        "dictSessionRawDigests": {},
         "dictSessionStatKeys": {},
         "iSessionsOutsideProject": 0,
     }
@@ -245,6 +260,47 @@ def _fdictEmptyIndex():
 
 def _fsSha256Hex(baContent):
     return hashlib.sha256(baContent).hexdigest()
+
+
+S_DIGEST_KEY_FILENAME = "promptRecordDigestKey"
+
+
+def fsResolveDigestKeyPath():
+    """Return where this host keeps its raw-prefix digest key."""
+    return os.path.join(
+        os.path.expanduser("~"), ".vaibify", S_DIGEST_KEY_FILENAME)
+
+
+def _fbaLoadOrCreateDigestKey():
+    """Return this host's private digest key, creating it on first use.
+
+    Mode 600 in a mode-700 directory, and never written into a
+    repository. The key is written to a private temporary file and
+    hard-linked into place, so two hubs creating it at once agree on
+    one key and neither can read a half-written one.
+    """
+    sPath = fsResolveDigestKeyPath()
+    os.makedirs(os.path.dirname(sPath), mode=0o700, exist_ok=True)
+    if not os.path.exists(sPath):
+        iDescriptor, sTemporaryPath = tempfile.mkstemp(
+            dir=os.path.dirname(sPath))
+        try:
+            with os.fdopen(iDescriptor, "wb") as fileKey:
+                fileKey.write(secrets.token_bytes(32))
+            os.link(sTemporaryPath, sPath)
+        except FileExistsError:
+            pass
+        finally:
+            os.unlink(sTemporaryPath)
+    with open(sPath, "rb") as fileKey:
+        return fileKey.read()
+
+
+def _fsRawPrefixDigest(baRawPrefix):
+    """Return the keyed digest that pins a captured raw prefix."""
+    return hmac.new(
+        _fbaLoadOrCreateDigestKey(), baRawPrefix, hashlib.sha256,
+    ).hexdigest()
 
 
 def _fsHashRecord(dictRecord):
@@ -334,14 +390,15 @@ def _fsPriorSanitizedTextOrNone(filesRepo, dictIndex, sFileName):
 def _fbCapturedPrefixUnchanged(dictIndex, sContainerPath, baRaw):
     """Return True iff the raw bytes already captured are still there."""
     iCapturedBytes = dictIndex["dictSessionBytes"].get(sContainerPath, -1)
-    sCapturedSha256 = dictIndex["dictSessionRawSha256"].get(
+    sCapturedDigest = dictIndex["dictSessionRawDigests"].get(
         sContainerPath, "",
     )
-    if iCapturedBytes < 0 or not sCapturedSha256:
+    if iCapturedBytes < 0 or not sCapturedDigest:
         return False
     if len(baRaw) < iCapturedBytes:
         return False
-    return _fsSha256Hex(baRaw[:iCapturedBytes]) == sCapturedSha256
+    return hmac.compare_digest(
+        _fsRawPrefixDigest(baRaw[:iCapturedBytes]), sCapturedDigest)
 
 
 def _fbListingUnchangedSinceCapture(dictIndex, sContainerPath, dictEntry):
@@ -400,7 +457,7 @@ def _fdictPlanOneSession(
         "iCapturedBytesBefore": dictIndex["dictSessionBytes"].get(
             sContainerPath, -1,
         ),
-        "sRawSha256Before": dictIndex["dictSessionRawSha256"].get(
+        "sRawDigestBefore": dictIndex["dictSessionRawDigests"].get(
             sContainerPath, "",
         ),
         "sCaptureKind": "whole" if sPriorText is None else "appended",
@@ -413,7 +470,7 @@ def _fdictPlanOneSession(
             "utf-8", errors="replace",
         ),
         "iCapturedBytesAfter": iCompleteBytes,
-        "sRawSha256After": _fsSha256Hex(baRaw[:iCompleteBytes]),
+        "sRawDigestAfter": _fsRawPrefixDigest(baRaw[:iCompleteBytes]),
     }
 
 
@@ -486,7 +543,7 @@ def _fdictUnchangedObservation(dictIndex, sContainerPath, dictEntry):
         "listStatKey": list(dictEntry.get("listStatKey") or []),
         "iCapturedBytesBefore": dictIndex["dictSessionBytes"].get(
             sContainerPath, -1),
-        "sRawSha256Before": dictIndex["dictSessionRawSha256"].get(
+        "sRawDigestBefore": dictIndex["dictSessionRawDigests"].get(
             sContainerPath, ""),
     }
 
@@ -498,8 +555,8 @@ def _fbPendingStillApplies(filesRepo, dictIndex, dictPending):
         dictPending["iCapturedBytesBefore"]
     ):
         return False
-    if dictIndex["dictSessionRawSha256"].get(sContainerPath, "") != (
-        dictPending["sRawSha256Before"]
+    if dictIndex["dictSessionRawDigests"].get(sContainerPath, "") != (
+        dictPending["sRawDigestBefore"]
     ):
         return False
     if dictPending["sCaptureKind"] != "appended":
@@ -539,8 +596,8 @@ def _fdictLandOneSession(filesRepo, dictIndex, dictPending):
     dictIndex["dictSessionBytes"][sContainerPath] = (
         dictPending["iCapturedBytesAfter"]
     )
-    dictIndex["dictSessionRawSha256"][sContainerPath] = (
-        dictPending["sRawSha256After"]
+    dictIndex["dictSessionRawDigests"][sContainerPath] = (
+        dictPending["sRawDigestAfter"]
     )
     dictIndex["dictSessionStatKeys"][sContainerPath] = (
         dictPending["listStatKey"]
@@ -554,8 +611,8 @@ def _fnRecordUnchangedStatKeys(dictIndex, listUnchanged):
         sContainerPath = dictObservation["sContainerPath"]
         if dictIndex["dictSessionBytes"].get(sContainerPath, -1) != (
             dictObservation["iCapturedBytesBefore"]
-        ) or dictIndex["dictSessionRawSha256"].get(sContainerPath, "") != (
-            dictObservation["sRawSha256Before"]
+        ) or dictIndex["dictSessionRawDigests"].get(sContainerPath, "") != (
+            dictObservation["sRawDigestBefore"]
         ):
             continue
         dictIndex["dictSessionStatKeys"][sContainerPath] = (

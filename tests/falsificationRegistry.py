@@ -2805,6 +2805,26 @@ LIST_FALSIFICATIONS = [
         new='        if True:\n',
     ),
     Falsification(
+        nodeid=(
+            'tests/testPromptRecordPublishesNoRawDigestOracle.py::'
+            'testThePublishedIndexHoldsNoBareHashOfAnyRawPrefix'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old=('    return hmac.new(\n'
+             '        _fbaLoadOrCreateDigestKey(), baRawPrefix, hashlib.sha256,\n'
+             '    ).hexdigest()\n'),
+        new='    return hashlib.sha256(baRawPrefix).hexdigest()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordPublishesNoRawDigestOracle.py::'
+            'testAnIndexFromAnEarlierVersionLosesItsBareHashesAtItsNextWrite'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old='    dictIndex.pop("dictSessionRawSha256", None)\n',
+        new='',
+    ),
+    Falsification(
         nodeid='tests/testDependencyPinningMutationCoverage.py::test_verify_accepts_flush_left_hash_continuation',
         source='vaibify/reproducibility/dependencyPinning.py',
         old="""if sLine[:1].isspace() or sLine.lstrip().startswith("--hash"):""",
@@ -23938,8 +23958,9 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/promptRecordManager.py',
         old=(
-            '    return _fsSha256Hex(baRaw[:iCapturedBytes]) == '
-            'sCapturedSha256\n'
+            '    return hmac.compare_digest(\n'
+            '        _fsRawPrefixDigest(baRaw[:iCapturedBytes]), '
+            'sCapturedDigest)\n'
         ),
         new='    return True\n',
     ),
