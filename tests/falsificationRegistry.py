@@ -31892,6 +31892,15 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testResearcherActions.py::'
+            'testANonInteractiveRunIsStoppedSoItsReleaseNeedNotWait'
+        ),
+        source='vaibify/cli/hubSession.py',
+        old='    if iExitCode == I_INTERACTIVE_REFUSED_EXIT_CODE:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/browser/testGeneratedTestsSayWhoWroteThem.py::'
             'testAModelWrittenTierSaysSoOnItsRow'
         ),

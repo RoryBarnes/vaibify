@@ -218,6 +218,59 @@ def testANonInteractiveRunStopsAtAnInteractiveStepAndSaysWhy(capsys):
     assert "Inspect fits" in capsys.readouterr().err
 
 
+class _RecordingSocket(_RecordingConnection):
+    """The same, usable as the context manager ``connect`` returns."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+@pytest.mark.falsification
+def testANonInteractiveRunIsStoppedSoItsReleaseNeedNotWait(monkeypatch):
+    """Kills: leaving the paused run to hold the container, so the
+    release waits out the whole timeout before the command exits 3."""
+    listRequests = []
+    listSleeps = []
+    dictHub = {"bStopped": False}
+
+    def ftSend(sBaseUrl, sCredential, sMethod, sPath, dictFields,
+               fTimeoutSeconds, **dictKeywords):
+        listRequests.append((sMethod, sPath, dictKeywords.get("sLeaseId")))
+        if sPath.endswith("/kill"):
+            dictHub["bStopped"] = True
+            return 200, {"bSuccess": True}
+        if dictHub["bStopped"]:
+            return 200, {"bReleased": True}
+        return 409, {"sMessage": "a run is paused at an interactive step"}
+
+    def fnSleep(fSeconds):
+        listSleeps.append(fSeconds)
+        assert len(listSleeps) < 3, "the release is waiting on the run"
+
+    monkeypatch.setattr(hubSession, "ftSendHttpRequest", ftSend)
+    monkeypatch.setattr(hubSession.time, "sleep", fnSleep)
+    socketScripted = _RecordingSocket([
+        {"sType": "workflowBound", "sWorkflowPath": "/workspace/p.json",
+         "sExactSourceFingerprint": "f" * 64}, _DICT_PAUSE])
+    dictSession = {"sBaseUrl": "http://127.0.0.1:1", "sCredential": "c",
+                   "sContainerName": "projectAlpha",
+                   "sContainerId": "cid-77", "sLeaseId": "lease-1"}
+    with patch("websockets.sync.client.connect",
+               return_value=socketScripted):
+        iExit = hubSession.fiStreamPipelineAction(
+            dictSession, {"sAction": "runAll"}, False, 300.0,
+            bNonInteractive=True)
+    hubSession.fnReleaseContainer(dictSession, fWaitSeconds=None)
+    assert iExit == hubSession.I_INTERACTIVE_REFUSED_EXIT_CODE
+    assert listRequests == [
+        ("POST", "/api/pipeline/cid-77/kill", "lease-1"),
+        ("POST", "/api/registry/projectAlpha/release", "lease-1")]
+    assert listSleeps == []
+
+
 def testAnInteractiveRunAsksThenReportsTheExitCode(monkeypatch):
     listAnswers = ["r", 0]
     monkeypatch.setattr(hubSession.click, "prompt",

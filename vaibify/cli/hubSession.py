@@ -605,7 +605,9 @@ def fiStreamPipelineAction(
     owning lease — the browser gate, all three. Returns the process exit
     code: the run's own exit code on completion, 1 on refusal or error,
     and 3 when an interactive step needs a person and
-    ``bNonInteractive`` says none is there.
+    ``bNonInteractive`` says none is there; that run is stopped first,
+    because a run left paused holds the container, and this command's
+    release, until the hub abandons the step hours later.
     """
     from websockets.sync.client import connect
     from websockets.exceptions import WebSocketException
@@ -619,13 +621,36 @@ def fiStreamPipelineAction(
             connection.send(json.dumps(
                 _fdictAcknowledgeBoundWorkflow(connection, dictPayload, bJson)
             ))
-            return _fiStreamUntilTerminalEvent(
+            iExitCode = _fiStreamUntilTerminalEvent(
                 connection, bJson, fTimeoutSeconds, bNonInteractive,
             )
     except (WebSocketException, OSError) as error:
         raise HubSessionError(
             "pipeline socket failed: %s" % error
         )
+    if iExitCode == I_INTERACTIVE_REFUSED_EXIT_CODE:
+        _fnStopTheRunNobodyCanAnswer(dictSession)
+    return iExitCode
+
+
+def _fnStopTheRunNobodyCanAnswer(dictSession):
+    """Stop the run paused on an interactive step, as the Stop button does."""
+    try:
+        iStatusCode, _ = ftSendSessionRequest(
+            dictSession, "POST",
+            "/api/pipeline/%s/kill" % dictSession["sContainerId"], None,
+            F_BOOTSTRAP_TIMEOUT_SECONDS,
+        )
+    except HubSessionError as error:
+        click.echo("Warning: could not stop the paused run: %s" % error,
+                   err=True)
+        return
+    if iStatusCode != 200:
+        click.echo("Warning: the hub did not stop the paused run "
+                   "(HTTP %d); stop it from the dashboard." % iStatusCode,
+                   err=True)
+        return
+    click.echo("Stopped the run at that step.", err=True)
 
 
 def _fdictAcknowledgeBoundWorkflow(connection, dictPayload, bJson):

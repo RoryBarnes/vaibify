@@ -474,7 +474,10 @@ run it or skip it. To run it, it prints the step's commands for you to
 run in a container shell (`vaibify connect`), then asks for the exit
 code and reports it, as the dashboard's buttons do. With
 `--non-interactive` the run stops at that step at once, names it, and
-exits 3, so a script never waits on a question nobody will answer.
+exits 3, so a script never waits on a question nobody will answer. The
+command stops the paused run as the dashboard's Stop button does, so
+the container is released at once rather than held until the hub gives
+up on the step.
 
 Actions that act on the hub rather than on a running container, such
 as `set-container-settings`, address the project by name and claim
