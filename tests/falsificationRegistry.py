@@ -31559,6 +31559,26 @@ LIST_FALSIFICATIONS = [
         old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
         new='    iSwapBytes = iDesiredBytes\n',
     ),
+    # --- 2026-10-19: the graceful-exits checker never passes over a
+    # language it cannot read, and an exit in a handler is an error path.
+    Falsification(
+        nodeid=(
+            'tests/testGracefulExitsChecker.py::'
+            'testAnUncheckedLanguageIsReportedNotChecked'
+        ),
+        source='vaibify/containerImage/skills/graceful-exits/checkGracefulExits.py',
+        old='        return [], [sPath + ": NOT CHECKED: no " + sLanguage\n',
+        new='        return [], [] and [sPath + ": NOT CHECKED: no " + sLanguage\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGracefulExitsChecker.py::'
+            'testAnErrorPathExitWithNoMessageIsReported'
+        ),
+        source='vaibify/containerImage/skills/graceful-exits/checkGracefulExits.py',
+        old='        bErrorPath = fbIsInsideHandler(node, dictParents) or (\n',
+        new='        bErrorPath = False or (\n',
+    ),
     # --- 2026-10-19: the Jupyter token stays off the process list.
     Falsification(
         nodeid=(
