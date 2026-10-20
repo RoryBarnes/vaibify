@@ -46,6 +46,12 @@ logger = logging.getLogger("vaibify")
 def fnArchiveOutputs(config, dictWorkflow, sWorkdir):
     """Identify changed outputs and upload them to Zenodo.
 
+    NOT CALLED: nothing in vaibify (backend, CLI or frontend) calls this,
+    nor ``fnUploadToZenodo`` behind it. Kept for now by the maintainer's
+    decision. It uploads only changed outputs, so a deposit made with it
+    could not reach Level 3; the dashboard's publish builds its file list
+    from ``syncDispatcher.flistCollectZenodoArchiveCandidates`` instead.
+
     Parameters
     ----------
     config : dict
