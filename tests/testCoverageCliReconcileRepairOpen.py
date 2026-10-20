@@ -19,7 +19,6 @@ import sys
 from types import SimpleNamespace
 
 import pytest
-from click.testing import CliRunner
 
 from vaibify.cli import commandOpen, commandReconcile, commandRepair
 from vaibify.cli import hubSession
@@ -29,6 +28,7 @@ from vaibify.config import operationJournal, registryManager
 from vaibify.docker import containerLifecycleRepair, containerManager
 from vaibify.docker.containerLifecycleRepair import RepairRefusedError
 from vaibify.gui import hostControlChannel
+from tests.cliRunnerStreams import frunnerSeparatingStreams
 
 S_CONTAINER_NAME = "projectAlpha"
 S_HOST_PROJECT = "hostProjectBeta"
@@ -36,14 +36,6 @@ I_HUB_PORT = 8123
 I_HUB_PID = 4242
 S_CAPABILITY = "k" * 43
 DICT_LIVE_HOLDER = {"iPid": I_HUB_PID, "iPort": I_HUB_PORT}
-
-
-def frunnerSeparatingStreams():
-    """Return a CliRunner whose result keeps stderr apart from stdout."""
-    try:
-        return CliRunner(mix_stderr=False)
-    except TypeError:
-        return CliRunner()
 
 
 def fnAssertCleanExit(resultInvoke, iExpectedCode):

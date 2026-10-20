@@ -34,10 +34,10 @@ import tempfile
 import threading
 
 import pytest
-from click.testing import CliRunner
 
 from tests.liveContainerLabels import fdictLabels
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
+from tests.cliRunnerStreams import frunnerSeparatingStreams
 
 # It serves a real hub on a port and binds a control socket, so the
 # falsification harness must not run it beside another such test.
@@ -181,7 +181,7 @@ def _fresultVaibify(listArguments, sDirectory=None):
     if sDirectory:
         os.chdir(sDirectory)
     try:
-        return CliRunner(mix_stderr=False).invoke(
+        return frunnerSeparatingStreams().invoke(
             main, listArguments, catch_exceptions=False)
     finally:
         os.chdir(sPrevious)

@@ -19,6 +19,7 @@ from click.testing import CliRunner
 from vaibify.cli import actionCommands, hubSession
 from vaibify.cli.main import main
 from vaibify.gui import actionCatalog, researcherActions
+from tests.cliRunnerStreams import frunnerSeparatingStreams
 
 
 S_SENTINEL_TOKEN = "sentinel-token-q7Zx9-NEVER-PRINTED"
@@ -171,7 +172,7 @@ def testTheCredentialTokenTravelsOnlyInTheRequestBody(monkeypatch):
     monkeypatch.setattr(hubSession, "ftSendSessionRequest", ftSend)
     listArgv = ["credential", "set", "zenodo", "--instance",
                 "production"]
-    result = CliRunner(mix_stderr=False).invoke(
+    result = frunnerSeparatingStreams().invoke(
         main, listArgv, input=S_SENTINEL_TOKEN + "\n")
     assert result.exit_code == 1
     assert S_SENTINEL_TOKEN not in result.stdout
