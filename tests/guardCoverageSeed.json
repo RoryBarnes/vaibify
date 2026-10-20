@@ -6,7 +6,6 @@
 "vaibify/cli/commandRun.py::_fnValidateStepOptions",
 "vaibify/cli/commandStart.py::_fnRejectCommandWithDetach",
 "vaibify/cli/commandVerifyStep.py::_fnValidateStatus",
-"vaibify/cli/commandVerifyStep.py::_fnValidateStepIndex",
 "vaibify/cli/remoteProtocol.py::_fnValidateCapability",
 "vaibify/cli/remoteProtocol.py::_fnValidateCapabilityKind",
 "vaibify/cli/remoteProtocol.py::_fnValidateHostname",

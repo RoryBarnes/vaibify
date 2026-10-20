@@ -6984,6 +6984,14 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     color: var(--color-orange);
 }
 
+/* A dependency the scan found but the workflow does not declare is
+   pending work, and a scan that is not current is unknown, never a
+   pass: both orange, like the other recoverable marks. */
+.step-blocker-glyph-l1-dependency,
+.step-blocker-glyph-l1-dependency-unknown {
+    color: var(--color-orange);
+}
+
 .step-blocker-glyph-script-stale {
     color: var(--color-orange);
 }

@@ -3198,9 +3198,9 @@ def _flistOverleafVerifyBlockers(filesRepo):
     )
     if not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS):
         return [_fdictOverleafWorkflowBlocker(
-            S_OVERLEAF_VERIFY_STALE_CRITERION, [],
-            "The Overleaf check is missing or stale — click Verify now "
-            "on the Overleaf manuscript row")]
+            sCriterion="overleaf-verify-stale", listOffendingFiles=[],
+            sHint=("The Overleaf check is missing or stale — click "
+                   "Verify now on the Overleaf manuscript row"))]
     if _fbCachedSyncStatusFullMatch(dictStatus):
         return []
     listDiverged = [
@@ -3208,9 +3208,10 @@ def _flistOverleafVerifyBlockers(filesRepo):
         dictStatus.get("listDiverged") or [] if isinstance(dictEntry, dict)
     ]
     return [_fdictOverleafWorkflowBlocker(
-        S_NOT_IN_OVERLEAF_CRITERION, listDiverged,
-        "The last Overleaf check did not find every figure matching — "
-        "push figures from the Repos panel, then verify again")]
+        sCriterion="not-in-overleaf", listOffendingFiles=listDiverged,
+        sHint=("The last Overleaf check did not find every figure "
+               "matching — push figures from the Repos panel, then "
+               "verify again"))]
 
 
 def _fdictOverleafWorkflowBlocker(sCriterion, listOffendingFiles, sHint):
@@ -4468,10 +4469,8 @@ _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA = (
 
 # Counted only while an Overleaf project is bound (ruling F5), exactly
 # as the gate reads them; unbound, the row is not applicable.
-S_OVERLEAF_VERIFY_STALE_CRITERION = "overleaf-verify-stale"
-S_NOT_IN_OVERLEAF_CRITERION = "not-in-overleaf"
 _T_WORKFLOW_LEVEL2_OVERLEAF_CRITERIA = (
-    S_OVERLEAF_VERIFY_STALE_CRITERION, S_NOT_IN_OVERLEAF_CRITERION,
+    "overleaf-verify-stale", "not-in-overleaf",
 )
 
 # ``image-not-published`` is deliberately ABSENT, and so is every other
