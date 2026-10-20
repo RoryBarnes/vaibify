@@ -89,6 +89,18 @@ the files** (every listed hash still describes the file on disk). A
 reader can run the same check without vaibify with `sha256sum -c
 MANIFEST.sha256`.
 
+When files differ, the notice counts them; click it for every
+differing file and what is recorded about how each copy was made:
+the settings and hardware recorded for the pinned copy and for this
+one, or "production context unknown" when either was not recorded.
+A recorded difference shows where to look; it does not prove why the
+bytes changed. The check compares bytes and runs none of your
+published tests, so it cannot say whether a difference is within your
+published tolerances: **Verify Level 3** reruns the project and judges
+that. Regenerating the envelope replaces the published hashes and
+loses the comparison with them, so do it only for a change you intend
+to publish.
+
 ### Tier 2 — the Python packages
 
 `requirements.lock` lists each Python package at the exact version that

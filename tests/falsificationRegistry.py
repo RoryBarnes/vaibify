@@ -31559,6 +31559,30 @@ LIST_FALSIFICATIONS = [
         old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
         new='    iSwapBytes = iDesiredBytes\n',
     ),
+    # --- 2026-10-19: Check Files Against Manifest lists every differing
+    # file with what is recorded about it, and never advises the rerun
+    # or regenerate that settles nothing or erases the comparison.
+    Falsification(
+        nodeid=(
+            'tests/testManifestCheckReport.py::'
+            'testEveryDifferingFileIsListedWithWhatIsRecordedAboutIt'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        old='    for dictMismatch in listMismatches:\n',
+        new='    for dictMismatch in listMismatches[:1]:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testManifestCheckReportOnScreen.py::'
+            'testTheToastCountsAndTheReportListsEveryFile'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='                    " files differ from the manifest." +\n',
+        new=(
+            '                    " files differ from the manifest. Re-run '
+            'the project or regenerate the envelope." +\n'
+        ),
+    ),
     # --- 2026-10-19: the graceful-exits checker never passes over a
     # language it cannot read, and an exit in a handler is an error path.
     Falsification(

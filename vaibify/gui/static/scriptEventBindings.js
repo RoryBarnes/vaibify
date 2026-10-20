@@ -1043,8 +1043,11 @@ var VaibifyEventBindings = (function () {
                 _fnCloseVerifyReproducibilityModal();
             },
             btnVerifyReproducibilityManifest: function () {
-                VaibifySyncManager.fdictVerifyManifest(
-                    VaibifyApp.fsGetContainerId());
+                /* The third entry point to the ONE verify-manifest
+                   action. It used to call the sync manager's own copy
+                   of the verdict, which drifted into a red "Manifest
+                   mismatch" while the action's wording moved on. */
+                VaibifyApp.fnRunProjectAction("verify-manifest");
             },
             btnShowDag: function () {
                 VaibifyApp.fnShowDag();

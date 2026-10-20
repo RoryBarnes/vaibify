@@ -4294,22 +4294,29 @@ const VaibifyApp = (function () {
                         "files match their pinned hashes.",
                         sType: "info"};
                 }
-                /* A difference the server explains by recorded
-                   hardware or settings is said in its words, with the
-                   option it offers -- never as an alarm (design F5). */
+                /* The check compares bytes, so the toast counts and
+                   the server's report says the rest: every file with
+                   its recorded contexts, what the check cannot judge,
+                   and regenerating only as a choice with its cost.
+                   It once told everyone to "re-run the project or
+                   regenerate the envelope" -- the first may reproduce
+                   the same bytes, the second erases the comparison.
+                   Differences made under recorded other settings or
+                   hardware are never an alarm (design F5). */
                 var dictExplain =
                     (dictResult || {}).dictContextExplanation || {};
-                if (dictExplain.bOnlyContextDifferences) {
-                    return {sMessage: dictExplain.sSummary + " " +
-                        dictExplain.sOption, sType: "info"};
-                }
+                var dictReport =
+                    (dictResult || {}).dictMismatchReport || {};
                 return {sMessage: listBad.length + " of " + iTotal +
-                    " files differ from the manifest (first: " +
-                    (listBad[0].sPath || listBad[0]) + "). Re-run " +
-                    "the project or regenerate the envelope." +
+                    " files differ from the manifest." +
                     (dictExplain.sSummary ? " " + dictExplain.sSummary
-                        : ""),
-                    sType: "warning"};
+                        : "") + " Click for every file and what it " +
+                    "means.",
+                    sType: dictExplain.bOnlyContextDifferences ?
+                        "info" : "warning",
+                    fnOnClick: function () {
+                        _fnShowManifestMismatchReport(dictReport);
+                    }};
             },
         },
         "copy-image-dockerfile": {
@@ -4754,6 +4761,28 @@ const VaibifyApp = (function () {
         };
     }
 
+    function _fnShowManifestMismatchReport(dictReport) {
+        /* Every sentence is the server's (dictMismatchReport); this
+           only lays them out, so the page cannot word a remedy the
+           backend does not stand behind. */
+        var listFiles = dictReport.listFiles || [];
+        var sHtml = '<ul class="manifest-mismatch-files">' +
+            listFiles.map(function (dictFile) {
+                return '<li><code>' + fnEscapeHtml(dictFile.sPath) +
+                    '</code>: ' + fnEscapeHtml(dictFile.sDescription) +
+                    '</li>';
+            }).join("") + '</ul>';
+        ["sScope", "sDeterminismNote", "sRegenerateChoice"].forEach(
+            function (sKey) {
+                if (dictReport[sKey]) {
+                    sHtml += '<p>' + fnEscapeHtml(dictReport[sKey]) +
+                        '</p>';
+                }
+            });
+        VaibifyModals.fnShowInfoModal(
+            "Files that differ from the manifest", sHtml);
+    }
+
     function _fsDescribeManifestProvenance(dictResult) {
         /* Which manifest the check read, when that is not the one the
            author committed. Empty when the working copy IS the
@@ -4889,7 +4918,8 @@ const VaibifyApp = (function () {
             if (dictAction.fdictAfterResponse) {
                 var dictOutcome = dictAction.fdictAfterResponse(
                     dictResult, sArg);
-                fnShowToast(dictOutcome.sMessage, dictOutcome.sType);
+                fnShowToast(dictOutcome.sMessage, dictOutcome.sType,
+                    dictOutcome.fnOnClick);
             } else {
                 fnShowToast(dictAction.sToast, "info");
             }
@@ -7696,7 +7726,10 @@ const VaibifyApp = (function () {
                 el.remove();
             });
         }
-        if (sType !== "error" && sType !== "warning") {
+        /* A toast that offers an action stays until it is taken or
+           closed: an offer that vanishes in four seconds is one most
+           researchers never get to accept. */
+        if (sType !== "error" && sType !== "warning" && !fnOnClick) {
             setTimeout(function () { el.remove(); }, 4000);
         }
         document.getElementById("toastContainer").appendChild(el);
