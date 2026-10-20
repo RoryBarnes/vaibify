@@ -6,7 +6,10 @@
 # per-session token is generated and written to an ephemeral mode-600
 # file inside the container at start time — the file is read by the
 # vaibify GUI when the user clicks "Open Jupyter" and is overwritten
-# each time the container starts.
+# each time the container starts. A mode-600 Jupyter config file, also
+# generated at start, reads the token from that file, so the token is
+# never on a command line (visible in the process list) or in an
+# environment variable.
 
 ARG BASE_IMAGE=vaibify:latest
 FROM ${BASE_IMAGE}
@@ -22,7 +25,8 @@ CMD ["/bin/bash", "-c", "\
     install -m 0600 /dev/null /run/vaibify/jupyter-token && \
     python3 -c 'import secrets,sys; sys.stdout.write(secrets.token_urlsafe(32))' \
         > /run/vaibify/jupyter-token && \
-    JUPYTER_TOKEN=$(cat /run/vaibify/jupyter-token) && \
-    exec jupyter lab \
-        --ip=127.0.0.1 --port=8888 --no-browser \
-        --ServerApp.token=\"$JUPYTER_TOKEN\""]
+    install -m 0600 /dev/null /run/vaibify/jupyter_server_config.py && \
+    echo 'c.IdentityProvider.token = open(\"/run/vaibify/jupyter-token\").read().strip()' \
+        > /run/vaibify/jupyter_server_config.py && \
+    exec jupyter lab --config=/run/vaibify/jupyter_server_config.py \
+        --ip=127.0.0.1 --port=8888 --no-browser"]

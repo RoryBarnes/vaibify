@@ -31559,6 +31559,19 @@ LIST_FALSIFICATIONS = [
         old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
         new='    iSwapBytes = iDesiredBytes\n',
     ),
+    # --- 2026-10-19: the Jupyter token stays off the process list.
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileHardening.py::'
+            'test_jupyter_token_never_reaches_a_command_line'
+        ),
+        source='vaibify/containerImage/Dockerfile.jupyter',
+        old='--ip=127.0.0.1 --port=8888 --no-browser"]',
+        new=(
+            '--ip=127.0.0.1 --port=8888 --no-browser '
+            '--ServerApp.token=\\"$(cat /run/vaibify/jupyter-token)\\""]'
+        ),
+    ),
     # --- 2026-10-19: the in-container guide yields to the researcher.
     Falsification(
         nodeid=(
