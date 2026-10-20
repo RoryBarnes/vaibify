@@ -31559,6 +31559,19 @@ LIST_FALSIFICATIONS = [
         old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
         new='    iSwapBytes = iDesiredBytes\n',
     ),
+    # --- 2026-10-19: Make Permanent refuses colliding basenames too.
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_make_permanent_refuses_basename_collisions'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=('        _fnRefuseBasenameCollisions(request.listFilePaths)\n'
+             '        dictResult, sZenodoService = await '
+             '_ftPerformZenodoArchive(\n'),
+        new=('        dictResult, sZenodoService = await '
+             '_ftPerformZenodoArchive(\n'),
+    ),
     # --- 2026-10-19: vaibify's note beside policy v1's vector remedy,
     # and the libraries the execution profiles do not cover.
     Falsification(

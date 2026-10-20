@@ -2936,6 +2936,50 @@ def test_zenodo_archive_refuses_basename_collisions(clientHttp):
 
 
 @pytest.mark.falsification
+def test_make_permanent_refuses_basename_collisions(clientHttp):
+    """Make Permanent publishes through the same flat deposit, so it
+    refuses colliding basenames by name too, before any upload.
+
+    Kills: dropping the ``_fnRefuseBasenameCollisions`` call from the
+    promote route -- the second of a pair silently overwrites the first
+    on production Zenodo, where the record is permanent.
+    """
+    _fnConnectToContainer(clientHttp)
+    listArchiveCommands = []
+
+    def _ftRecordArchive(sContainerId, sCommand):
+        listArchiveCommands.append(sCommand)
+        return (0, "")
+
+    with patch.object(
+        _mockDockerInstance, "ftResultExecuteCommand", _ftRecordArchive,
+    ), patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={
+            "listSteps": [],
+            "sZenodoService": "sandbox",
+            "sZenodoDepositionId": "551",
+            "dictRemotes": {"zenodo": {
+                "sRecordId": "551", "sService": "sandbox",
+            }},
+        },
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/promote",
+            json={"listFilePaths": [
+                "/workspace/StepAlpha/tests/test_qualitative.py",
+                "/workspace/StepBeta/tests/test_qualitative.py",
+            ]},
+        )
+    assert responseHttp.status_code == 400, responseHttp.text
+    sDetail = responseHttp.json()["detail"]
+    assert "StepAlpha/tests/test_qualitative.py" in sDetail
+    assert "StepBeta/tests/test_qualitative.py" in sDetail
+    assert not any("zenodo" in sCommand.lower()
+                   for sCommand in listArchiveCommands), listArchiveCommands
+
+
+@pytest.mark.falsification
 def test_zenodo_archive_refuses_a_parent_on_the_other_instance(clientHttp):
     """A promoted project set back to sandbox is refused locally.
 
