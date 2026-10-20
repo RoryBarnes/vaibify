@@ -31900,6 +31900,17 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testVaibifyDoCli.py::'
+            'test_fiSendHttpRequest_post_with_no_fields_still_sends_a_body'
+        ),
+        source='vaibify/containerImage/vaibifyDo.py',
+        old=('        dataBody = json.dumps(dictTarget["dictBody"] or {})'
+             '.encode("utf-8")\n'),
+        new=('        dataBody = json.dumps(dictTarget["dictBody"])'
+             '.encode("utf-8") if dictTarget["dictBody"] else None\n'),
+    ),
+    Falsification(
+        nodeid=(
             'tests/browser/testGeneratedTestsSayWhoWroteThem.py::'
             'testAModelWrittenTierSaysSoOnItsRow'
         ),

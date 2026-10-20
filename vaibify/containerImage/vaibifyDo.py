@@ -514,17 +514,19 @@ def fiSendHttpRequest(dictTarget, sToken, sMethod, bJsonMode):
     For GET requests, fields parsed from key=value CLI args become
     query-string parameters rather than a JSON body, because a GET body
     is non-portable and FastAPI bind queries by default for primitive
-    types like ``iLines: int``.
+    types like ``iLines: int``. Every other method sends a JSON body,
+    ``{}`` when no field was given: a route whose body fields are all
+    optional still requires the body, and answers 422 without one.
     """
     dataBody = None
     dictHeaders = fdictBuildRequestHeaders(sToken)
     sUrl = dictTarget["sUrl"]
-    if dictTarget["dictBody"]:
-        if sMethod == "GET":
+    if sMethod == "GET":
+        if dictTarget["dictBody"]:
             sUrl = _fsAppendQueryString(sUrl, dictTarget["dictBody"])
-        else:
-            dataBody = json.dumps(dictTarget["dictBody"]).encode("utf-8")
-            dictHeaders["Content-Type"] = "application/json"
+    else:
+        dataBody = json.dumps(dictTarget["dictBody"] or {}).encode("utf-8")
+        dictHeaders["Content-Type"] = "application/json"
     request = urllib.request.Request(
         sUrl, data=dataBody,
         headers=dictHeaders, method=sMethod)

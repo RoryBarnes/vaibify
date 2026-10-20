@@ -499,7 +499,8 @@ def flistRunShellcheck(sPath):
     try:
         processShellcheck = subprocess.run(
             ["shellcheck", "-f", "gcc", sPath],
-            capture_output=True, text=True, check=False)
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", check=False)
     except OSError as error:
         raise CheckerError(
             "cannot run shellcheck on " + sPath + ": " + str(error)) from error
