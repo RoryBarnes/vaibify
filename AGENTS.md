@@ -278,7 +278,12 @@ control; this line is the signpost. The reasoning lives in
   server-side and fails closed, so getting it wrong is a security
   decision, not a documentation one. `testAgentActionRegistered` and
   `tests/testAgentLaneEnforcement.py` enforce it; the
-  `add-route-module` skill has the recipe.
+  `add-route-module` skill has the recipe. **And every one the GUI
+  invokes must have a CLI equivalent**: `LIST_AGENT_ACTIONS`,
+  `LIST_RESEARCHER_ACTIONS`, a host command in
+  `DICT_ROUTE_TO_HOST_COMMAND`, or `SET_GUI_ONLY_ROUTES` with a reason.
+  `testEveryGuiInvokedMutationHasCliEquivalent` enforces it, so Level 3
+  stays reachable from the command line alone.
 - **`introspectionScript.py` is an f-string executed inside
   containers.** Editing it as ordinary Python loses escape sequences
   silently, and its duplication with `dataLoaders.py` is deliberate —

@@ -111,17 +111,26 @@ Pick `bAgentSafe`:
   researcher judgment (accept plots as standard, set Zenodo metadata,
   reorder pipeline semantics).
 
-If the new route is state-mutating but should NOT be invokable by
-the agent (control-plane, credential setup, poll-driven scan, etc.),
-add its `(sMethod, sPath)` tuple to
-`SET_INTENTIONALLY_EXCLUDED_PATHS` in the same file with a comment
-explaining why. This keeps the invariant test silent on intentional
-omissions.
+Every state-mutating route the GUI invokes must also have a CLI
+equivalent. Register it in exactly one place:
+
+- `LIST_AGENT_ACTIONS` — callable by agents and by `vaibify do`
+  (ships into the container);
+- `LIST_RESEARCHER_ACTIONS` — `vaibify do` on the host only, never
+  shipped into the container (credential-free researcher actions);
+- `DICT_ROUTE_TO_HOST_COMMAND` — a hand-written `vaibify` subcommand
+  (credentials, typed confirmations, interactive frames);
+- `SET_GUI_ONLY_ROUTES` — genuine browser plumbing, with a one-line
+  reason.
+
+A route that mutates but is never invoked by the GUI still goes in
+`SET_INTENTIONALLY_EXCLUDED_PATHS` with a comment.
 
 Confirm registration:
 
 ```bash
 python -m pytest tests/testArchitecturalInvariants.py::testAgentActionRegistered -v
+python -m pytest tests/testArchitecturalInvariants.py::testEveryGuiInvokedMutationHasCliEquivalent -v
 ```
 
 ### 4. Add tests
