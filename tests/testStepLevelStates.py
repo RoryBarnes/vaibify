@@ -779,7 +779,7 @@ def testNonAttainedWithoutRegressionOrTimingEmitsNoWarning():
 # ------------------------------------------------------------------------
 
 
-def _fiCountLevelTwoCriteria(bWithArxiv=False):
+def _fiCountLevelTwoCriteria(bWithArxiv=False, bWithOverleaf=False):
     """How many criteria the workflow-scope L2 cell counts.
 
     Read from the gate's own tuples. A number written here by hand is
@@ -791,6 +791,8 @@ def _fiCountLevelTwoCriteria(bWithArxiv=False):
     iCount = len(levelGates._T_WORKFLOW_LEVEL2_BASE_CRITERIA)
     if bWithArxiv:
         iCount += len(levelGates._T_WORKFLOW_LEVEL2_ARXIV_CRITERIA)
+    if bWithOverleaf:
+        iCount += len(levelGates._T_WORKFLOW_LEVEL2_OVERLEAF_CRITERIA)
     return iCount
 
 
@@ -945,9 +947,11 @@ def testWorkflowScopeArxivCriteriaApplicableOnlyWithArxivConnection():
     dictStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, listLevel2, [],
     )
+    # A bound Overleaf project counts its own two criteria (ruling F5).
     assert dictStates["s2"] == _fdictCell(
-        "partial", _fiCountLevelTwoCriteria(bWithArxiv=True) - 1,
-        _fiCountLevelTwoCriteria(bWithArxiv=True),
+        "partial",
+        _fiCountLevelTwoCriteria(bWithArxiv=True, bWithOverleaf=True) - 1,
+        _fiCountLevelTwoCriteria(bWithArxiv=True, bWithOverleaf=True),
     )
 
 
@@ -958,7 +962,8 @@ def testWorkflowScopeOverleafBindingAloneAddsNoArxivCriteria():
         dictWorkflow, [], [],
     )
     assert dictStates["s2"] == _fdictCell(
-        "attained", _fiCountLevelTwoCriteria(), _fiCountLevelTwoCriteria(),
+        "attained", _fiCountLevelTwoCriteria(bWithOverleaf=True),
+        _fiCountLevelTwoCriteria(bWithOverleaf=True),
     )
 
 

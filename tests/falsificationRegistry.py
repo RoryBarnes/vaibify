@@ -31624,6 +31624,18 @@ LIST_FALSIFICATIONS = [
              '                ? iMaximumRounds : DICT_DEFAULT_SETTINGS.iMaximumRounds,\n'),
         new='',
     ),
+    # --- 2026-10-20: ruling F5 -- a bound Overleaf project's chip and
+    # rows fail on the same set.
+    Falsification(
+        nodeid=(
+            'tests/testOverleafChipAgreesWithRows.py::'
+            'testAnUnpushedFigureOfABoundProjectHoldsTheChipBelowLevelTwo'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('    if _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):\n'
+             '        return False\n'),
+        new='',
+    ),
     # --- 2026-10-19: every dashboard action has a command-line
     # equivalent, the researcher list never reaches the container, the
     # hub lane claims nothing, the credential stays in the body, and an

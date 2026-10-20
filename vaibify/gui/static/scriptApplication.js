@@ -3363,6 +3363,19 @@ const VaibifyApp = (function () {
                 "push manuscript figures",
             sClass: "step-blocker-glyph-l2-figure",
         },
+        "overleaf-verify-stale": {
+            sIcon: "⚠",
+            sLabel: "The Overleaf check is missing or stale — click " +
+                "Verify now on the Overleaf manuscript row",
+            sClass: "step-blocker-glyph-l2-overleaf-stale",
+        },
+        "not-in-overleaf": {
+            sIcon: "⚠",
+            sLabel: "The last Overleaf check did not find every " +
+                "figure matching — push figures from the Repos " +
+                "panel, then verify again",
+            sClass: "step-blocker-glyph-l2-overleaf",
+        },
         "arxiv-mismatch": {
             sIcon: "⚠",
             sLabel: "arXiv submission doesn't match the Overleaf " +

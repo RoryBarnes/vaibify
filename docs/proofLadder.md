@@ -236,6 +236,7 @@ given.
 |---|---|---|
 | GitHub mirror | Project | Every published file matches the GitHub repository at a recently verified commit. |
 | Zenodo deposit (Project block: **Zenodo archive**) | Project | Published files match a Zenodo deposit with a DOI. |
+| Overleaf manuscript | Project | Opt-in: checked only when an Overleaf project is bound, and then required: a recent Overleaf check found every figure matching. Unbound, it reads not applicable and never blocks. |
 | arXiv manuscript (Project block: **arXiv submission**) | Project | Opt-in: checked only when an arXiv submission is recorded. |
 | AI model declared (Project block: **AI models**) | Project | Every model used is declared with vendor, model ID, and dates of use; open-weight models also give their weights source and revision hash. Undeclared is the only failing state. |
 | Personal AI Configuration answered (Project block: **Personal AI Configuration**) | Project | See below. |
@@ -244,7 +245,7 @@ given.
 | Prompt Record (optional) | Project | When enabled, agent transcripts are captured and the first capture approved. Never blocks a level. |
 | Published files match the GitHub mirror | Step | The step's declared files match GitHub. |
 | Published files match the Zenodo deposit | Step | The step's declared files match Zenodo. |
-| Manuscript figures frozen in Overleaf | Step | Shown only when an Overleaf project is bound and the step has plot files. |
+| Manuscript figures frozen in Overleaf | Step | Shown only when an Overleaf project is bound and the step has plot files; then every one of the step's figures must have been pushed at the recorded commit. |
 | File names unique across the deposit | Step | Shown only when it fails: one of the step's published files shares its name with another published file. A Zenodo deposit is flat, so the second would overwrite the first, and the archive refuses such a selection; rename one. |
 | AI declaration signed off | Step | Only on the AI declaration step: the researcher has signed the declaration of AI use, and no other step's scripts, outputs, or declared input data have changed since. A later change makes the sign-off stale until the researcher signs again; a file vaibify cannot read leaves the row unknown, which also blocks Level 2. A change made and fully undone between two checks is not detected. If the project has no such step, an **Add AI declaration step** row appears at the foot of the step list. |
 

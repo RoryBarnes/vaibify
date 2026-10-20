@@ -305,7 +305,7 @@ def _fsFreshnessVerdictFingerprint(dictUnknownFreshnessByStep):
 
 
 def _fsSyncStatusFingerprint(filesRepo):
-    """SHA over GitHub + Zenodo sync caches so verify-completion busts L2/L3.
+    """SHA over the remotes' sync caches so verify-completion busts L2/L3.
 
     The previous L2/L3 cache keys ignored
     ``scheduledReverify.fdictReadCachedSyncStatus`` results, so a GitHub
@@ -316,7 +316,9 @@ def _fsSyncStatusFingerprint(filesRepo):
     field. Returns ``"none"`` when the repo has no sync cache yet.
     """
     listEntries = []
-    for sService in ("github", "zenodo"):
+    # Overleaf joined with ruling F5: a bound project's Overleaf check
+    # is a Level 2 blocker, so its verify must be able to clear one.
+    for sService in ("github", "zenodo", "overleaf"):
         try:
             dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
                 filesRepo, sService,
@@ -1350,6 +1352,11 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
     Overleaf manuscript is bound) leaves the conjunct trivially True —
     manuscript posting happens outside vaibify on its own timeline and
     must not block publication of the code and data.
+
+    The Overleaf conjunct is opt-in the same way: an unbound project is
+    not applicable, and a BOUND one passes only when its Overleaf
+    blockers are empty, so the chip and the rows beneath it fail on
+    the same set (ruling F5, 2026-10-19).
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not fbAtLeastLevel1(dictWorkflow, filesRepo):
@@ -1371,6 +1378,8 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
     if not replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow):
         return False
     if not fbImageArchiveQuestionSettled(dictWorkflow, filesRepo):
+        return False
+    if _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):
         return False
     if not fbWorkflowFullySyncedWithArxiv(
         dictWorkflow, filesRepo,
@@ -3154,7 +3163,13 @@ def _fdictWorkflowScopeLevel2Blocker(sCriterion, sRemediationHint):
 
 
 def _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):
-    """Return per-step ``figure-not-frozen`` blockers, or empty list."""
+    """Return a bound project's Overleaf L2 blockers, or empty list.
+
+    A per-step ``figure-not-frozen`` for each step with a figure not
+    pushed at the recorded commit, and one workflow-scope blocker when
+    the Overleaf row is not green. The Level 2 gate reads this list, so
+    it is the single authority on what Overleaf requires (ruling F5).
+    """
     if not fbWorkflowHasOverleafBinding(dictWorkflow):
         return []
     setPushed = _fsetPushedFigurePaths(dictWorkflow, filesRepo)
@@ -3168,7 +3183,48 @@ def _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):
             listBlockers.append(_fdictFigureNotFrozenBlocker(
                 dictWorkflow, iStepIndex, listOffending,
             ))
-    return listBlockers
+    return listBlockers + _flistOverleafVerifyBlockers(filesRepo)
+
+
+def _flistOverleafVerifyBlockers(filesRepo):
+    """Return the workflow-scope blocker while the Overleaf row is not green.
+
+    The row is green on exactly a fresh, scope-current check that
+    compared figures and found every one matching, which is what the
+    two cached-status predicates the GitHub and Zenodo gates use say.
+    """
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        filesRepo, "overleaf",
+    )
+    if not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS):
+        return [_fdictOverleafWorkflowBlocker(
+            S_OVERLEAF_VERIFY_STALE_CRITERION, [],
+            "The Overleaf check is missing or stale — click Verify now "
+            "on the Overleaf manuscript row")]
+    if _fbCachedSyncStatusFullMatch(dictStatus):
+        return []
+    listDiverged = [
+        dictEntry.get("sPath") for dictEntry in
+        dictStatus.get("listDiverged") or [] if isinstance(dictEntry, dict)
+    ]
+    return [_fdictOverleafWorkflowBlocker(
+        S_NOT_IN_OVERLEAF_CRITERION, listDiverged,
+        "The last Overleaf check did not find every figure matching — "
+        "push figures from the Repos panel, then verify again")]
+
+
+def _fdictOverleafWorkflowBlocker(sCriterion, listOffendingFiles, sHint):
+    """Build one workflow-scope Overleaf blocker entry."""
+    return {
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": sCriterion,
+        "listOffendingFiles": listOffendingFiles,
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint": sHint,
+    }
 
 
 def _fsetPushedFigurePaths(dictWorkflow, filesRepo):
@@ -4410,6 +4466,14 @@ _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA = (
     "arxiv-mismatch", "arxiv-version-stale",
 )
 
+# Counted only while an Overleaf project is bound (ruling F5), exactly
+# as the gate reads them; unbound, the row is not applicable.
+S_OVERLEAF_VERIFY_STALE_CRITERION = "overleaf-verify-stale"
+S_NOT_IN_OVERLEAF_CRITERION = "not-in-overleaf"
+_T_WORKFLOW_LEVEL2_OVERLEAF_CRITERIA = (
+    S_OVERLEAF_VERIFY_STALE_CRITERION, S_NOT_IN_OVERLEAF_CRITERION,
+)
+
 # ``image-not-published`` is deliberately ABSENT, and so is every other
 # registry criterion (ruled 2026-09-05): a container registry is a
 # commercial convenience with no preservation commitment, like Overleaf
@@ -5360,6 +5424,8 @@ def _ftWorkflowLevel2Counts(dictWorkflow, listLevel2Blockers, bHasRepo):
     tApplicable = _T_WORKFLOW_LEVEL2_BASE_CRITERIA
     if fbWorkflowHasArxivConnection(dictWorkflow):
         tApplicable = tApplicable + _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA
+    if fbWorkflowHasOverleafBinding(dictWorkflow):
+        tApplicable = tApplicable + _T_WORKFLOW_LEVEL2_OVERLEAF_CRITERIA
     if S_BASENAME_COLLISION_CRITERION in _fsetWorkflowScopeCriteria(
             listLevel2Blockers):
         tApplicable = tApplicable + (S_BASENAME_COLLISION_CRITERION,)
