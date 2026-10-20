@@ -54,7 +54,7 @@ directory.
 | `run` | Run every step, one step, or from a step onward |
 | `workflow` | Summarize the workflow or one step |
 | `test` | Run the tests of every step or one step |
-| `verify-step` | Record your sign-off on a step |
+| `verify-step` | Record your sign-off on a step, as the dashboard's sign-off does |
 | `generate-standards` | Create or refresh a step's `tests/quantitative_standards_<step>.json` from its data |
 | `reproduce` | Verify the Level 3 reproducibility envelope, or reproduce a published project |
 | `gui` | Open the hub, or a single-project viewer |
@@ -63,6 +63,7 @@ directory.
 | `do <action>` | Run any dashboard action from the host, as the researcher |
 | `reconcile CONTAINER` | Prove a quarantined container's interrupted operations settled |
 | `secret` | Store, check, or delete an agent provider's API key |
+| `credential set\|status\|delete` | Store, inspect, or delete the GitHub, Overleaf, and Zenodo credentials a project publishes with |
 | `revoke github\|overleaf\|zenodo` | Remove a stored credential and revoke it upstream where possible |
 | `remote DESTINATION` | Open a dashboard for another machine over SSH |
 | `remote-helper` | The far end of `vaibify remote`; not run by hand |
@@ -312,6 +313,12 @@ per-type sequential (the ninth automated step), as in the dashboard.
 | `vaibify test [--step N] [--json] [-p NAME]` | Run the tests of every step or one step. Exits 1 on any failure, 2 when the step number is out of range |
 | `vaibify verify-step --step STEP --status passed\|failed\|untested [-p NAME]` | Record your sign-off on a step. `--step` takes a label or a 1-based number |
 
+`verify-step` records the sign-off through the dashboard's own route,
+so it carries the same timestamp and the same hashes of the plots it
+covers, and a later change to those plots is noticed exactly as it is
+after a sign-off in the browser. A hub must be running, and the
+command claims the container for the one request.
+
 ### vaibify generate-standards
 
 ```bash
@@ -410,13 +417,25 @@ session.
 
 ## vaibify do
 
-Every dashboard action has a `vaibify do` subcommand, generated from
-the same catalog the dashboard and the in-container `vaibify-do` use,
-so the three cannot drift apart. `vaibify do` authenticates as the
-researcher, so actions reserved for the researcher (user-only actions,
-such as `clean-outputs`) are available here; `bAgentSafe` constrains an
-agent in a container, not the researcher at their own terminal. The
-agent's in-container usage is described in [For Agents](forAgents.md).
+Every dashboard action has a command-line equivalent. Most are
+`vaibify do` subcommands, generated from two lists: the agent-action
+catalog, which the dashboard and the in-container `vaibify-do` also
+use, and a researcher-only list that is never shipped into a container
+(container settings, the Agent Council, uploads, file transfers).
+`vaibify do` authenticates as the researcher, so actions reserved for
+the researcher (user-only actions, such as `clean-outputs`) are
+available here; `bAgentSafe` constrains an agent in a container, not
+the researcher at their own terminal. The agent's in-container usage
+is described in [For Agents](forAgents.md).
+
+The rest have a hand-written home: credentials are `vaibify
+credential`, building and starting are `vaibify build` and `vaibify
+start`, registering a directory is `vaibify register`, and opening a
+project in another tab is `vaibify open`. A handful of dashboard
+actions have no command-line form because they only make sense in a
+browser, such as moving a live session into a fresh tab.
+`tests/testArchitecturalInvariants.py::testEveryGuiInvokedMutationHasCliEquivalent`
+fails when a new dashboard action has none of these.
 
 ```bash
 vaibify do                          # list every action
@@ -434,6 +453,7 @@ vaibify do check-l2-readiness --json
 | `--json` | One JSON object per line |
 | `--dry-run` | Print the call without sending it |
 | `--timeout` | Seconds to wait for the response, or for the next event of a run (`0` waits indefinitely) |
+| `--non-interactive` | Run actions only: stop with exit code 3 at an interactive step instead of asking at the terminal |
 
 Options follow the action name. Step selectors on the run actions are
 bare words (labels such as `A09`, or 0-based indices); other fields
@@ -443,6 +463,18 @@ action as it runs. The command claims the container for one action and
 then releases it, so a container open in a dashboard tab is refused
 rather than taken over: close that tab, or run the action from inside
 the container with `vaibify-do`.
+
+A run that reaches an interactive step asks at the terminal whether to
+run it or skip it. To run it, it prints the step's commands for you to
+run in a container shell (`vaibify connect`), then asks for the exit
+code and reports it, as the dashboard's buttons do. With
+`--non-interactive` the run stops at that step at once, names it, and
+exits 3, so a script never waits on a question nobody will answer.
+
+Actions that act on the hub rather than on a running container, such
+as `set-container-settings`, address the project by name and claim
+nothing. `upload-file-stream` takes `sLocalPath=<file>` and streams
+that host file as the request body, filling in its size and name.
 
 ## Recovering a quarantined container
 
@@ -478,9 +510,19 @@ judgments available only here:
 | `vaibify secret set-provider-key --provider NAME` | Store an agent provider's API key, read from a prompt that does not echo |
 | `vaibify secret provider-key-status --provider NAME` | Report whether a provider's key is configured |
 | `vaibify secret delete-provider-key --provider NAME` | Remove a provider's key |
+| `vaibify credential set github\|overleaf\|zenodo [--project-id ID] [--instance sandbox\|production] [-p NAME]` | Store a publishing token for a project, read from a prompt that does not echo |
+| `vaibify credential status [-p NAME]` | Report which remotes are configured and reachable |
+| `vaibify credential delete github\|overleaf\|zenodo` | The same as `vaibify revoke` |
 | `vaibify revoke github [--keyring-slot SLOT]` | Remove the stored GitHub credential, or one repository's with `--keyring-slot`, and revoke it upstream where possible |
 | `vaibify revoke overleaf` | The same, for Overleaf |
 | `vaibify revoke zenodo [--instance sandbox\|production]` | The same, for one Zenodo instance (default `sandbox`) |
+
+`credential set` is the command-line form of the dashboard's credential
+forms. The token is read at a hidden prompt and sent only in the body
+of one request to the hub on this machine; it never appears on the
+command line, in an environment variable, or in any message the
+command prints. `--project-id` binds an Overleaf project, and
+`--instance` chooses the Zenodo instance (default `sandbox`).
 
 `revoke` prints whether the upstream token was revoked and whether the
 local copy was cleared, and exits non-zero if the local copy was not

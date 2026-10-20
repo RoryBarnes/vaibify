@@ -111,6 +111,7 @@ from .commandBuild import fnBuildCommand
 from .commandCat import fnCatCommand
 from .commandCompletePath import fnCompletePathCommand
 from .commandConfig import fnConfigCommand
+from .commandCredential import fnCredentialCommand
 from .commandDestroy import fnDestroyCommand
 from .commandDoctor import fnDoctorCommand
 from .commandGenerateStandards import fnGenerateStandardsCommand
@@ -333,6 +334,7 @@ main.add_command(fnCatCommand)
 main.add_command(fnCompletePathCommand)
 main.add_command(fnRegisterCommand)
 main.add_command(fnRevokeCommand)
+main.add_command(fnCredentialCommand)
 main.add_command(fnTestCommand)
 main.add_command(fnGenerateStandardsCommand)
 main.add_command(fnDoctorCommand)

@@ -17,8 +17,7 @@ from vaibify.cli.commandWorkflow import (
 from vaibify.cli.commandVerifyStep import (
     fnVerifyStepCommand,
     _fnValidateStatus,
-    _fnValidateStepIndex,
-    _fnSetUserVerification,
+    fdictSignOffBody,
 )
 from vaibify.cli.commandLs import fnListCommand, _fsNormalizePath as _fsNormalizePathLs
 from vaibify.cli.commandCat import fnCatCommand, _fsNormalizePath as _fsNormalizePathCat
@@ -138,32 +137,20 @@ def test_fnValidateStatus_rejects_invalid():
     assert excInfo.value.code == 2
 
 
-def test_fnValidateStepIndex_valid():
-    _fnValidateStepIndex(1, 5)
-    _fnValidateStepIndex(5, 5)
+def test_the_sign_off_body_keeps_the_stored_block_and_sets_the_verdict():
+    """The route replaces the whole block, so nothing stored is dropped."""
+    dictStep = {"sName": "step1", "dictVerification": {
+        "sUser": "untested", "sUnitTest": "passed",
+        "dictUserVerifiedHashes": {"Plot/a.pdf": "ab"}}}
+    assert fdictSignOffBody(dictStep, "passed") == {"dictVerification": {
+        "sUser": "passed", "sUnitTest": "passed",
+        "dictUserVerifiedHashes": {"Plot/a.pdf": "ab"}}}
+    assert dictStep["dictVerification"]["sUser"] == "untested"
 
 
-def test_fnValidateStepIndex_out_of_range():
-    with pytest.raises(SystemExit):
-        _fnValidateStepIndex(0, 5)
-    with pytest.raises(SystemExit):
-        _fnValidateStepIndex(6, 5)
-
-
-def test_fnSetUserVerification_sets_status():
-    dictWorkflow = {
-        "listSteps": [
-            {"sName": "step1", "dictVerification": {"sUser": "untested"}},
-        ],
-    }
-    _fnSetUserVerification(dictWorkflow, 0, "passed")
-    assert dictWorkflow["listSteps"][0]["dictVerification"]["sUser"] == "passed"
-
-
-def test_fnSetUserVerification_creates_dict_if_missing():
-    dictWorkflow = {"listSteps": [{"sName": "step1"}]}
-    _fnSetUserVerification(dictWorkflow, 0, "failed")
-    assert dictWorkflow["listSteps"][0]["dictVerification"]["sUser"] == "failed"
+def test_the_sign_off_body_creates_the_block_when_missing():
+    assert fdictSignOffBody({"sName": "step1"}, "failed") == {
+        "dictVerification": {"sUser": "failed"}}
 
 
 # -----------------------------------------------------------------------

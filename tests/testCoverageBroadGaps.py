@@ -926,58 +926,54 @@ class TestCommandRunHelpers:
 
 
 class TestCommandVerifyStepCli:
-    """Test verify-step CLI integration."""
+    """verify-step signs off through the dashboard's route, never directly."""
 
-    @patch("vaibify.cli.commandVerifyStep.fconfigResolveProject")
-    @patch("vaibify.cli.commandVerifyStep.fconnectionRequireDocker")
-    @patch("vaibify.cli.commandVerifyStep.fsRequireRunningContainer")
-    @patch("vaibify.cli.commandVerifyStep.fdictRequireWorkflow")
-    @patch("vaibify.cli.commandVerifyStep._fnSaveWorkflow")
-    def test_verify_step_success(
-        self, mockSave, mockWorkflow, mockContainer, mockDocker, mockConfig
-    ):
-        mockConfig.return_value = _fMockConfig()
-        mockDocker.return_value = _fMockDocker()
-        mockContainer.return_value = "ctn1"
-        mockWorkflow.return_value = {
-            "dictWorkflow": {
-                "listSteps": [
-                    {"sName": "Build", "dictVerification": {}},
-                ],
-            },
-            "sWorkflowPath": "/w.yaml",
-        }
-        from vaibify.cli.commandVerifyStep import fnVerifyStepCommand
-        runner = CliRunner()
-        result = runner.invoke(
-            fnVerifyStepCommand, ["--step", "1", "--status", "passed"]
-        )
-        assert result.exit_code == 0
+    @staticmethod
+    def _fdictInvoke(listArgs, dictStep, iPutStatus=200):
+        from vaibify.cli import commandVerifyStep
+        listRequests = []
+
+        def ftSend(dictSession, sMethod, sPath, dictFields=None, *args,
+                   **kwargs):
+            listRequests.append((sMethod, sPath, dictFields))
+            if sMethod == "GET":
+                return 200, dictStep
+            return iPutStatus, {"detail": "the container clock could not "
+                                          "be read"}
+
+        with patch.object(commandVerifyStep, "fconfigResolveProject",
+                          return_value=_fMockConfig()), \
+                patch.object(commandVerifyStep.hubSession,
+                             "fdictOpenResearcherSession",
+                             return_value={"sContainerId": "cid"}), \
+                patch.object(commandVerifyStep.hubSession,
+                             "fnReleaseContainer") as mockRelease, \
+                patch.object(commandVerifyStep.hubSession,
+                             "ftSendSessionRequest", ftSend):
+            result = CliRunner().invoke(
+                commandVerifyStep.fnVerifyStepCommand, listArgs)
+        return result, listRequests, mockRelease
+
+    def test_verify_step_success(self):
+        result, listRequests, mockRelease = self._fdictInvoke(
+            ["--step", "1", "--status", "passed"],
+            {"sName": "Build", "dictVerification": {"sUnitTest": "passed"}})
+        assert result.exit_code == 0, result.output
         assert "passed" in result.output
-        mockSave.assert_called_once()
+        assert listRequests[-1] == (
+            "PUT", "/api/steps/cid/0",
+            {"dictVerification": {"sUnitTest": "passed",
+                                  "sUser": "passed"}})
+        mockRelease.assert_called_once()
 
-    @patch("vaibify.cli.commandVerifyStep.fconfigResolveProject")
-    @patch("vaibify.cli.commandVerifyStep.fconnectionRequireDocker")
-    @patch("vaibify.cli.commandVerifyStep.fsRequireRunningContainer")
-    @patch("vaibify.cli.commandVerifyStep.fdictRequireWorkflow")
-    def test_verify_step_out_of_range(
-        self, mockWorkflow, mockContainer, mockDocker, mockConfig
-    ):
-        mockConfig.return_value = _fMockConfig()
-        mockDocker.return_value = _fMockDocker()
-        mockContainer.return_value = "ctn1"
-        mockWorkflow.return_value = {
-            "dictWorkflow": {
-                "listSteps": [{"sName": "Build"}],
-            },
-            "sWorkflowPath": "/w.yaml",
-        }
-        from vaibify.cli.commandVerifyStep import fnVerifyStepCommand
-        runner = CliRunner()
-        result = runner.invoke(
-            fnVerifyStepCommand, ["--step", "5", "--status", "passed"]
-        )
-        assert result.exit_code != 0
+    def test_a_refused_sign_off_is_reported_and_nothing_else_is_written(self):
+        result, listRequests, mockRelease = self._fdictInvoke(
+            ["--step", "1", "--status", "passed"],
+            {"sName": "Build", "dictVerification": {}}, iPutStatus=409)
+        assert result.exit_code == 1
+        assert "not recorded" in result.output
+        assert [tRequest[0] for tRequest in listRequests] == ["GET", "PUT"]
+        mockRelease.assert_called_once()
 
 
 # =======================================================================

@@ -35,6 +35,11 @@ import sys
 import click
 
 from vaibify.gui.actionCatalog import LIST_AGENT_ACTIONS
+from vaibify.gui.researcherActions import (
+    LIST_RESEARCHER_ACTIONS,
+    S_LANE_HUB,
+    T_HUB_SESSION_PLACEHOLDERS,
+)
 from . import hubSession
 
 
@@ -48,6 +53,12 @@ SET_ACTIONS_WITHOUT_CLI = frozenset({
 _SET_DISPATCHABLE_METHODS = frozenset(
     {"GET", "POST", "PUT", "DELETE", "WS"}
 )
+
+# Actions whose route reads a file's bytes from the request body. The
+# named field is a LOCAL path: the command streams that file and fills
+# the size and name the route asks for. Without this, the generated
+# command sent no body at all and could only ever create a folder.
+DICT_LOCAL_FILE_BODY_FIELDS = {"upload-file-stream": "sLocalPath"}
 
 # Path placeholders the CLI supplies itself, never as a CLI argument.
 _SET_SESSION_PLACEHOLDERS = frozenset({"sContainerId"})
@@ -82,14 +93,22 @@ def flistPathPlaceholders(sPath):
     return listNames
 
 
+def fbEntryUsesHubLane(dictEntry):
+    """True for a control-plane action: a project by name, no claim."""
+    return dictEntry.get("sLane") == S_LANE_HUB
+
+
 def flistArgumentPlaceholders(dictEntry):
     """Return the placeholders a caller must supply on the command line."""
     if dictEntry["sMethod"] == "WS":
         return []
+    setSupplied = set(_SET_SESSION_PLACEHOLDERS)
+    if fbEntryUsesHubLane(dictEntry):
+        setSupplied.update(T_HUB_SESSION_PLACEHOLDERS)
     return [
         sPlaceholder
         for sPlaceholder in flistPathPlaceholders(dictEntry["sPath"])
-        if sPlaceholder not in _SET_SESSION_PLACEHOLDERS
+        if sPlaceholder not in setSupplied
     ]
 
 
@@ -208,6 +227,9 @@ def fsBuildRequestPath(dictEntry, dictSession, dictPathValues):
     sPath = dictEntry["sPath"]
     dictValues = dict(dictPathValues)
     dictValues["sContainerId"] = dictSession["sContainerId"]
+    if fbEntryUsesHubLane(dictEntry):
+        for sPlaceholder in T_HUB_SESSION_PLACEHOLDERS:
+            dictValues[sPlaceholder] = dictSession["sContainerName"]
     for sKey, sValue in dictValues.items():
         sQuoted = quote(str(sValue), safe="/")
         sPath = sPath.replace("{%s}" % sKey, sQuoted)
@@ -312,6 +334,13 @@ def _flistBuildCommandParameters(dictEntry):
                  "event of a run (0 disables the limit).",
         ),
     ])
+    if dictEntry["sMethod"] == "WS":
+        listParameters.append(click.Option(
+            ["--non-interactive", "bNonInteractive"], is_flag=True,
+            default=False,
+            help="Stop with exit code 3 at an interactive step instead "
+                 "of asking at the terminal.",
+        ))
     return listParameters
 
 
@@ -365,6 +394,7 @@ def _fiDispatchAction(dictEntry, dictSession, dictParams):
                 dictEntry, listPositional, dictFields,
             ),
             dictParams["bJson"], fTimeoutSeconds,
+            dictParams.get("bNonInteractive", False),
         )
     if listPositional:
         raise hubSession.HubSessionError(
@@ -374,6 +404,7 @@ def _fiDispatchAction(dictEntry, dictSession, dictParams):
     dictPathValues = fdictResolvePathValues(
         dictSession, flistArgumentPlaceholders(dictEntry), dictParams,
     )
+    baRawBody = fbaReadLocalFileBody(dictEntry, dictFields)
     dictQuery, dictBody = ftSplitQueryFromBodyFields(dictEntry, dictFields)
     return hubSession.fiSendHttpAction(
         dictSession, dictEntry["sMethod"],
@@ -382,7 +413,30 @@ def _fiDispatchAction(dictEntry, dictSession, dictParams):
             dictQuery,
         ),
         dictBody, dictParams["bJson"], fTimeoutSeconds,
+        baRawBody=baRawBody,
     )
+
+
+def fbaReadLocalFileBody(dictEntry, dictFields):
+    """Return the local file's bytes for a raw-body route, filling its fields.
+
+    Pops the local-path field and sets ``iSizeBytes`` and, unless given,
+    ``sFilename``; returns None for every other action.
+    """
+    import os
+    sField = DICT_LOCAL_FILE_BODY_FIELDS.get(dictEntry["sName"])
+    if not sField or sField not in dictFields:
+        return None
+    sLocalPath = str(dictFields.pop(sField))
+    try:
+        with open(sLocalPath, "rb") as fileLocal:
+            baContent = fileLocal.read()
+    except OSError as error:
+        raise hubSession.HubSessionError(
+            "cannot read %s: %s" % (sLocalPath, error.strerror or error))
+    dictFields["iSizeBytes"] = len(baContent)
+    dictFields.setdefault("sFilename", os.path.basename(sLocalPath))
+    return baContent
 
 
 def _fsResolveContainerName(sProjectName):
@@ -396,14 +450,20 @@ def fnRunCatalogAction(dictEntry, dictParams):
     sContainerName = _fsResolveContainerName(dictParams["sProjectName"])
     try:
         if dictParams["bDryRun"]:
+            fdictInspect = (
+                hubSession.fdictOpenHubControlSession
+                if fbEntryUsesHubLane(dictEntry)
+                else hubSession.fdictInspectHubSession)
             _fnPrintDryRun(
                 dictEntry,
-                hubSession.fdictInspectHubSession(
-                    sContainerName, dictParams["iPort"],
-                ),
+                fdictInspect(sContainerName, dictParams["iPort"]),
                 dictParams,
             )
             return
+        if fbEntryUsesHubLane(dictEntry):
+            sys.exit(_fiDispatchAction(
+                dictEntry, hubSession.fdictOpenHubControlSession(
+                    sContainerName, dictParams["iPort"]), dictParams))
         _fnDispatchUnderLease(dictEntry, sContainerName, dictParams)
     except hubSession.HubSessionError as error:
         click.echo("Error: %s" % error, err=True)
@@ -430,6 +490,17 @@ def _fsBuildCommandHelp(dictEntry):
     action from the in-container agent; it never withholds it here,
     because the person at the terminal IS the researcher.
     """
+    sLocalField = DICT_LOCAL_FILE_BODY_FIELDS.get(dictEntry.get("sName"))
+    if sLocalField:
+        dictEntry = dict(dictEntry, sDescription=(
+            "%s From the host, pass %s=<file> to stream a local file; "
+            "iSizeBytes and sFilename are filled in from it (or use "
+            "'vaibify push')." % (dictEntry["sDescription"], sLocalField)))
+    if "bAgentSafe" not in dictEntry:
+        return (
+            "%s\n\nResearcher-only: never shipped into the container, so "
+            "no in-container agent can call it." % dictEntry["sDescription"]
+        )
     if dictEntry["bAgentSafe"]:
         return dictEntry["sDescription"]
     return (
@@ -464,7 +535,7 @@ def fcommandBuildActionCommand(dictEntry):
 def fnPrintActionCatalog():
     """Print every generated action, grouped by catalog category."""
     dictByCategory = {}
-    for dictEntry in LIST_AGENT_ACTIONS:
+    for dictEntry in LIST_AGENT_ACTIONS + LIST_RESEARCHER_ACTIONS:
         dictByCategory.setdefault(
             dictEntry["sCategory"], [],
         ).append(dictEntry)
@@ -485,8 +556,9 @@ def fnPrintActionCatalog():
 def fnDoCommand(ctx):
     """Run a dashboard action from the host, as the researcher.
 
-    Every subcommand is generated from the agent-action catalog, so the
-    names match the dashboard and the in-container 'vaibify-do' CLI.
+    Every subcommand is generated from the agent-action catalog and the
+    researcher-only list, so the names match the dashboard and the
+    in-container 'vaibify-do' CLI, which offers only the former.
     """
     if ctx.invoked_subcommand is None:
         fnPrintActionCatalog()
@@ -494,7 +566,7 @@ def fnDoCommand(ctx):
 
 def fnRegisterGeneratedActions(groupParent):
     """Attach one generated command per catalog entry to the group."""
-    for dictEntry in LIST_AGENT_ACTIONS:
+    for dictEntry in LIST_AGENT_ACTIONS + LIST_RESEARCHER_ACTIONS:
         if dictEntry["sName"] in SET_ACTIONS_WITHOUT_CLI:
             continue
         command = fcommandBuildActionCommand(dictEntry)

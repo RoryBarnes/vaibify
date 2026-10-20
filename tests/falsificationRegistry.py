@@ -5439,9 +5439,10 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testVaibifyDoHeadless.py::test_do_bootstraps_over_the_socket_and_acts_under_its_lease',
         source='vaibify/cli/hubSession.py',
         old='''        sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
-        sLeaseId=dictSession["sLeaseId"],
+        sLeaseId=dictSession["sLeaseId"], baRawBody=baRawBody,
     )''',
         new='''        sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
+        baRawBody=baRawBody,
     )''',
     ),
 
@@ -31567,6 +31568,61 @@ LIST_FALSIFICATIONS = [
              '_ftPerformZenodoArchive(\n'),
         new=('        dictResult, sZenodoService = await '
              '_ftPerformZenodoArchive(\n'),
+    ),
+    # --- 2026-10-19: every dashboard action has a command-line
+    # equivalent, the researcher list never reaches the container, the
+    # hub lane claims nothing, the credential stays in the body, and an
+    # interactive step under --non-interactive stops at once.
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testEveryGuiInvokedMutationHasCliEquivalent'
+        ),
+        source='vaibify/gui/researcherActions.py',
+        old='    ("POST", "/api/sync/{sContainerId}/setup"): "credential",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResearcherActions.py::'
+            'testTheResearcherListIsNeverShippedNorCallableByAnAgent'
+        ),
+        source='vaibify/gui/actionCatalog.py',
+        old=('        "listActions": [dict(dictEntry) for dictEntry in '
+             'LIST_AGENT_ACTIONS],\n'),
+        new=('        "listActions": [dict(dictEntry) for dictEntry in '
+             'LIST_AGENT_ACTIONS + __import__('
+             '"vaibify.gui.researcherActions", fromlist=["_"])'
+             '.LIST_RESEARCHER_ACTIONS],\n'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResearcherActions.py::'
+            'testAHubLaneActionAddressesTheProjectByNameAndClaimsNothing'
+        ),
+        source='vaibify/cli/actionCommands.py',
+        old=('        if fbEntryUsesHubLane(dictEntry):\n'
+             '            sys.exit(_fiDispatchAction(\n'),
+        new=('        if False:\n'
+             '            sys.exit(_fiDispatchAction(\n'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResearcherActions.py::'
+            'testTheCredentialTokenTravelsOnlyInTheRequestBody'
+        ),
+        source='vaibify/cli/commandCredential.py',
+        old='    sToken = click.prompt("%s token" % sService, hide_input=True)\n',
+        new='    sToken = click.prompt("%s token" % sService, hide_input=False)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResearcherActions.py::'
+            'testANonInteractiveRunStopsAtAnInteractiveStepAndSaysWhy'
+        ),
+        source='vaibify/cli/hubSession.py',
+        old='    if bNonInteractive:\n        click.echo(\n',
+        new='    if False:\n        click.echo(\n',
     ),
     # --- 2026-10-19: scan-found dependencies gate Level 1 (F2): the
     # blocker, the dismissal's hash binding, the staleness rule, and the

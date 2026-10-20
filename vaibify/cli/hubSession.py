@@ -113,7 +113,7 @@ def _fjsonParseResponseBody(response):
 def ftSendHttpRequest(
     sBaseUrl, sCredential, sMethod, sPath, dictFields=None,
     fTimeoutSeconds=F_DEFAULT_TIMEOUT_SECONDS, dictQuery=None,
-    sLeaseId="",
+    sLeaseId="", baRawBody=None,
 ):
     """Return ``(iStatusCode, jsonBody)`` for one researcher-lane call.
 
@@ -127,6 +127,8 @@ def ftSendHttpRequest(
     ``sLeaseId``, when set, rides the ``X-Vaibify-Lease`` header (never a
     query param, which would leak into logs): claim's re-claim lease,
     release's owning lease, connect's owning lease.
+    ``baRawBody`` is sent as the body itself, for the routes that read a
+    file's bytes from the request stream.
     """
     import requests
     dictHeaders = (
@@ -137,7 +139,10 @@ def ftSendHttpRequest(
     dictKeywords = {}
     if dictQuery:
         dictKeywords["params"] = dict(dictQuery)
-    if dictFields:
+    if baRawBody is not None:
+        dictHeaders["Content-Type"] = "application/octet-stream"
+        dictKeywords["data"] = baRawBody
+    elif dictFields:
         if sMethod == "GET":
             dictKeywords["params"] = dict(
                 dictKeywords.get("params", {}), **dictFields
@@ -172,6 +177,7 @@ def _fjsonRequireOkResponse(tResponse, sWhat):
 def ftSendSessionRequest(
     dictSession, sMethod, sPath, dictFields=None,
     fTimeoutSeconds=F_DEFAULT_TIMEOUT_SECONDS, dictQuery=None,
+    baRawBody=None,
 ):
     """Send one OWNER-SCOPED request: the credential AND the lease, always.
 
@@ -185,7 +191,7 @@ def ftSendSessionRequest(
     return ftSendHttpRequest(
         dictSession["sBaseUrl"], dictSession["sCredential"], sMethod,
         sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
-        sLeaseId=dictSession["sLeaseId"],
+        sLeaseId=dictSession["sLeaseId"], baRawBody=baRawBody,
     )
 
 
@@ -446,6 +452,28 @@ def fdictInspectHubSession(sContainerName, iPort=None):
     }
 
 
+def fdictOpenHubControlSession(sContainerName, iPort=None):
+    """Return a researcher session on the hub's control plane: no claim.
+
+    The control-plane routes address a project by NAME (start a stopped
+    container, change its limits, containerize a host project), so they
+    need the researcher's credential and nothing a running container
+    session would supply; claiming would be impossible for a container
+    that is not running and wrong for one a dashboard tab holds.
+    """
+    iHubPort = fiResolveHubPort(iPort)
+    sBaseUrl = "http://127.0.0.1:%d" % iHubPort
+    return {
+        "sBaseUrl": sBaseUrl,
+        "iHubPort": iHubPort,
+        "sCredential": fsRedeemHostLaneCredential(iHubPort, sBaseUrl),
+        "sContainerName": sContainerName,
+        "sContainerId": "",
+        "sLeaseId": "",
+        "sWorkflowPath": "",
+    }
+
+
 def fdictOpenResearcherSession(
     sContainerName, iPort=None, sWorkflowPath=None,
 ):
@@ -491,6 +519,7 @@ def _fnPrintPayload(jsonBody, bJson):
 
 def fiSendHttpAction(
     dictSession, sMethod, sPath, dictFields, bJson, fTimeoutSeconds,
+    baRawBody=None,
 ):
     """Perform one HTTP action, print the body, return the exit code.
 
@@ -499,6 +528,7 @@ def fiSendHttpAction(
     """
     iStatusCode, jsonBody = ftSendSessionRequest(
         dictSession, sMethod, sPath, dictFields, fTimeoutSeconds,
+        baRawBody=baRawBody,
     )
     _fnPrintPayload(jsonBody, bJson)
     if 200 <= iStatusCode < 300:
@@ -532,14 +562,20 @@ def _fnPrintPipelineEvent(dictEvent, bJson):
     click.echo(" ".join(listParts))
 
 
+I_INTERACTIVE_REFUSED_EXIT_CODE = 3
+
+
 def fiStreamPipelineAction(
     dictSession, dictPayload, bJson, fTimeoutSeconds,
+    bNonInteractive=False,
 ):
     """Send one action on the pipeline socket and stream its events.
 
     Presents the loopback origin, the browser credential, and the
     owning lease — the browser gate, all three. Returns the process exit
-    code: the run's own exit code on completion, 1 on refusal or error.
+    code: the run's own exit code on completion, 1 on refusal or error,
+    and 3 when an interactive step needs a person and
+    ``bNonInteractive`` says none is there.
     """
     from websockets.sync.client import connect
     from websockets.exceptions import WebSocketException
@@ -552,7 +588,7 @@ def fiStreamPipelineAction(
         ) as connection:
             connection.send(json.dumps(dictPayload))
             return _fiStreamUntilTerminalEvent(
-                connection, bJson, fTimeoutSeconds,
+                connection, bJson, fTimeoutSeconds, bNonInteractive,
             )
     except (WebSocketException, OSError) as error:
         raise HubSessionError(
@@ -560,7 +596,47 @@ def fiStreamPipelineAction(
         )
 
 
-def _fiStreamUntilTerminalEvent(connection, bJson, fTimeoutSeconds):
+def _fbAnswerInteractivePause(connection, dictEvent, bNonInteractive):
+    """Answer an interactive step's pause; False when nobody can.
+
+    The dashboard asks in a dialog; here the researcher answers at the
+    terminal. With --non-interactive the run stops at once and says why,
+    rather than waiting out the timeout or skipping the step silently.
+    """
+    sStepName = dictEvent.get("sStepName", "")
+    if bNonInteractive:
+        click.echo(
+            "Error: step '%s' is interactive and waits for you. Answer it "
+            "in the dashboard, or run again without --non-interactive."
+            % sStepName, err=True)
+        return False
+    sChoice = click.prompt(
+        "Step '%s' is interactive. Run it in the container terminal (r) "
+        "or skip it (s)?" % sStepName,
+        type=click.Choice(["r", "s"]), default="r")
+    connection.send(json.dumps({
+        "sAction": "interactiveResume" if sChoice == "r"
+        else "interactiveSkip"}))
+    return True
+
+
+def _fnReportInteractiveCompletion(connection, dictEvent):
+    """Show the step's commands; send the exit code the researcher reports."""
+    dictStep = dictEvent.get("dictStep") or {}
+    click.echo("Run step '%s' in a container shell ('vaibify connect'):"
+               % dictEvent.get("sStepName", ""))
+    for sKey in ("saDataCommands", "saPlotCommands", "saTestCommands"):
+        for sCommand in dictStep.get(sKey, []) or []:
+            click.echo("  %s" % sCommand)
+    iExitCode = click.prompt(
+        "When it has finished, enter its exit code", type=int, default=0)
+    connection.send(json.dumps({
+        "sAction": "interactiveComplete", "iExitCode": iExitCode}))
+
+
+def _fiStreamUntilTerminalEvent(
+    connection, bJson, fTimeoutSeconds, bNonInteractive=False,
+):
     """Print events until a terminal one arrives; return the exit code."""
     while True:
         sMessage = connection.recv(timeout=(fTimeoutSeconds or None))
@@ -572,6 +648,11 @@ def _fiStreamUntilTerminalEvent(connection, bJson, fTimeoutSeconds):
             continue
         _fnPrintPipelineEvent(dictEvent, bJson)
         sType = dictEvent.get("sType", "")
+        if sType == "interactivePause" and not _fbAnswerInteractivePause(
+                connection, dictEvent, bNonInteractive):
+            return I_INTERACTIVE_REFUSED_EXIT_CODE
+        if sType == "interactiveTerminalStart":
+            _fnReportInteractiveCompletion(connection, dictEvent)
         if sType == "completed":
             return int(dictEvent.get("iExitCode", 0) or 0)
         if sType in _T_TERMINAL_EVENT_TYPES:
