@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.1.4.dev26 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.1.4.dev64 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ba0b7039"></script>
+      <script src="_static/documentation_options.js?v=61c5391b"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -300,6 +300,20 @@ steps below it at their level. When an upstream step is modified, downstream ste
 are flagged as upstream-modified. The researcher sees verification
 badges dim automatically; no one has to remember to invalidate
 anything by hand.</p>
+<p>A run’s own writes are never a modification. Each check compares the
+mtimes it measures with the baseline the previous check measured, and
+while a run is live it moves that baseline without flagging anything.
+A check after a run would otherwise compare the run’s outputs with a
+baseline from before them whenever nothing checked in between: every
+command-line run (nothing polls during one), and on the dashboard every
+output written after the run’s last poll. So the runner measures the
+outputs of the steps it executed just before its terminal state is
+written, and records them in that same write
+(<code class="docutils literal notranslate"><span class="pre">runOutputBaseline.S_RUN_OUTPUT_MODTIMES_KEY</span></code>). Whichever check first
+sees the finished run, a poll or a command’s connect, merges them into
+its baseline, once per run and only for the run’s own project. A file
+changed after the run still differs from the run’s measurement, and
+still reads as changed.</p>
 <p>Declared input data (<code class="docutils literal notranslate"><span class="pre">saInputDataFiles</span></code> — raw files a step consumes
 that no step produces) rides the same poll: input paths join the
 stat batch, an mtime delta on a declared input invalidates every

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Declaring AI Use &mdash; Vaibify 0.1.4.dev26 documentation</title>
+  <title>Declaring AI Use &mdash; Vaibify 0.1.4.dev64 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ba0b7039"></script>
+      <script src="_static/documentation_options.js?v=61c5391b"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -295,6 +295,15 @@ breaks the chain, and the dashboard says so on the row and in the
 viewer. The record is <em>tamper-evident</em>, not <em>provably complete</em>: time
 between recorded intervals was not monitored, and the dashboard shows
 those gaps rather than hiding them.</p>
+<p>The index never holds a plain hash of the raw transcript. A plain hash
+would let anyone who reads the published, redacted text test guesses
+at what was redacted. Vaibify pins how much of each transcript it has
+captured with a keyed digest instead, and the key stays on your
+computer. On another computer, the next capture of a session that has
+grown since re-reads it from the beginning; the result is the same,
+only slower. An index written by an earlier version of vaibify loses
+its plain hashes the next time a capture is saved, but they remain in
+your repository’s earlier commits.</p>
 </section>
 <section id="supervised-mode">
 <h2>Supervised mode<a class="headerlink" href="#supervised-mode" title="Link to this heading"></a></h2>

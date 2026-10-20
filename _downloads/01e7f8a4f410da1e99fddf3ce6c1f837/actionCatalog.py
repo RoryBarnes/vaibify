@@ -792,6 +792,23 @@ LIST_AGENT_ACTIONS = [
                      "attestation. User-only: this is a choice about "
                      "the researcher's own work and an agent must not "
                      "make it on their behalf."},
+    {"sName": "rescan-dependencies", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/dependencies/rescan",
+     "bAgentSafe": True,
+     "sDescription": "Scan every step's scripts again for reads of "
+                     "other steps' declared outputs. Read-only; clears "
+                     "a 'dependency scan not current' Level 1 state."},
+    {"sName": "dismiss-dependency-finding", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/steps/{sContainerId}/{iStepIndex}/dependencies/"
+              "dismiss",
+     "bAgentSafe": False,
+     "sDescription": "Record that the researcher reviewed a scan-found "
+                     "cross-step read and it is not a dependency. Args: "
+                     "{sScannedPath, sUpstreamStepId}. Bound to the "
+                     "script's hash, so a changed script asks again. "
+                     "User-only: the review is the researcher's."},
     {"sName": "answer-environment-archive", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/environment-archive/answer",

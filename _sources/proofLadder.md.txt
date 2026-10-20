@@ -227,6 +227,7 @@ given.
 | Integrity, Qualitative, and Quantitative unit tests pass | Step | One row per test category the step has. |
 | Your sign-off recorded | Step | The researcher inspected the outputs and approved the step. |
 | Nothing changed since verification | Step | No script, output, or upstream step changed after the step's tests or sign-off. |
+| Cross-step reads declared or dismissed | Step | Shown once the dependency scan has run. When the scan finds the step's script reading another step's declared output, that edge is declared (a `{step:<id>.<stem>}` token or `saDependencies`) or you dismiss the finding; a dismissal holds only while the script is unchanged. A finding made against an older script or output declaration, or a scan that failed, reads "dependency scan not current" until **Rescan dependencies** (`vaibify do rescan-dependencies`) runs again; that is unknown, never a pass. Dismiss with the button on the row or `vaibify do dismiss-dependency-finding`. |
 | Project context file (optional) | Project | `.vaibify/AGENTS.md` records the in-container agent's standing instructions. Never blocks a level. |
 
 ### Level 2 requirements
@@ -235,6 +236,7 @@ given.
 |---|---|---|
 | GitHub mirror | Project | Every published file matches the GitHub repository at a recently verified commit. |
 | Zenodo deposit (Project block: **Zenodo archive**) | Project | Published files match a Zenodo deposit with a DOI. |
+| Overleaf manuscript | Project | Opt-in: checked only when an Overleaf project is bound, and then required: a recent Overleaf check found every figure matching. Unbound, it reads not applicable and never blocks. |
 | arXiv manuscript (Project block: **arXiv submission**) | Project | Opt-in: checked only when an arXiv submission is recorded. |
 | AI model declared (Project block: **AI models**) | Project | Every model used is declared with vendor, model ID, and dates of use; open-weight models also give their weights source and revision hash. Undeclared is the only failing state. |
 | Personal AI Configuration answered (Project block: **Personal AI Configuration**) | Project | See below. |
@@ -243,7 +245,8 @@ given.
 | Prompt Record (optional) | Project | When enabled, agent transcripts are captured and the first capture approved. Never blocks a level. |
 | Published files match the GitHub mirror | Step | The step's declared files match GitHub. |
 | Published files match the Zenodo deposit | Step | The step's declared files match Zenodo. |
-| Manuscript figures frozen in Overleaf | Step | Shown only when an Overleaf project is bound and the step has plot files. |
+| Manuscript figures frozen in Overleaf | Step | Shown only when an Overleaf project is bound and the step has plot files; then every one of the step's figures must have been pushed at the recorded commit. |
+| File names unique across the deposit | Step | Shown only when it fails: one of the step's published files shares its name with another published file. A Zenodo deposit is flat, so the second would overwrite the first, and the archive refuses such a selection; rename one. |
 | AI declaration signed off | Step | Only on the AI declaration step: the researcher has signed the declaration of AI use, and no other step's scripts, outputs, or declared input data have changed since. A later change makes the sign-off stale until the researcher signs again; a file vaibify cannot read leaves the row unknown, which also blocks Level 2. A change made and fully undone between two checks is not detected. If the project has no such step, an **Add AI declaration step** row appears at the foot of the step list. |
 
 **Personal AI Configuration** asks one question: did the researcher's
@@ -268,7 +271,7 @@ it, and vaibify also re-verifies on a schedule while the hub runs.
 |---|---|---|
 | Manifest complete | Project | `MANIFEST.sha256` pins the hash of every declared artifact, script, and test. |
 | Manifest matches the files | Project | Every hash the manifest pins is the file's current bytes. |
-| Dependency lock | Project | `requirements.lock` pins every Python dependency by version with hashes. |
+| Dependency lock | Project | `requirements.lock` pins every Python dependency by version with hashes, or records that the project declares none. |
 | Environment snapshot | Project | The exact container image digest and system toolchain are recorded. |
 | Dockerfile pinned | Project | The Dockerfile builds from an exact base-image digest. |
 | Reproduce script | Project | `reproduce.sh` at the repository root reruns and assesses the project, and its hash is in the manifest, beside the hash of the rerun assessor (`.vaibify/rerunAssessment.py`) it runs. |

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.1.4.dev26 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.1.4.dev64 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ba0b7039"></script>
+      <script src="_static/documentation_options.js?v=61c5391b"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -240,7 +240,7 @@ directory.</p>
 <td><p>Run the tests of every step or one step</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">verify-step</span></code></p></td>
-<td><p>Record your sign-off on a step</p></td>
+<td><p>Record your sign-off on a step, as the dashboard’s sign-off does</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">generate-standards</span></code></p></td>
 <td><p>Create or refresh a step’s <code class="docutils literal notranslate"><span class="pre">tests/quantitative_standards_&lt;step&gt;.json</span></code> from its data</p></td>
@@ -266,13 +266,16 @@ directory.</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">secret</span></code></p></td>
 <td><p>Store, check, or delete an agent provider’s API key</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">revoke</span> <span class="pre">github|overleaf|zenodo</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">credential</span> <span class="pre">set|status|delete</span></code></p></td>
+<td><p>Store, inspect, or delete the GitHub, Overleaf, and Zenodo credentials a project publishes with</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">revoke</span> <span class="pre">github|overleaf|zenodo</span></code></p></td>
 <td><p>Remove a stored credential and revoke it upstream where possible</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">remote</span> <span class="pre">DESTINATION</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remote</span> <span class="pre">DESTINATION</span></code></p></td>
 <td><p>Open a dashboard for another machine over SSH</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remote-helper</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">remote-helper</span></code></p></td>
 <td><p>The far end of <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code>; not run by hand</p></td>
 </tr>
 </tbody>
@@ -598,6 +601,11 @@ per-type sequential (the ninth automated step), as in the dashboard.</p>
 </tr>
 </tbody>
 </table>
+<p><code class="docutils literal notranslate"><span class="pre">verify-step</span></code> records the sign-off through the dashboard’s own route,
+so it carries the same timestamp and the same hashes of the plots it
+covers, and a later change to those plots is noticed exactly as it is
+after a sign-off in the browser. A hub must be running, and the
+command claims the container for the one request.</p>
 <section id="vaibify-generate-standards">
 <h3>vaibify generate-standards<a class="headerlink" href="#vaibify-generate-standards" title="Link to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>generate-standards<span class="w"> </span>--step-dir<span class="w"> </span>PATH<span class="w"> </span><span class="o">[</span>--rtol<span class="w"> </span>FLOAT<span class="o">]</span><span class="w"> </span><span class="o">[</span>--detect-stochastic<span class="o">]</span>
@@ -724,13 +732,22 @@ session.</p>
 </section>
 <section id="vaibify-do">
 <h2>vaibify do<a class="headerlink" href="#vaibify-do" title="Link to this heading"></a></h2>
-<p>Every dashboard action has a <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> subcommand, generated from
-the same catalog the dashboard and the in-container <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> use,
-so the three cannot drift apart. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> authenticates as the
-researcher, so actions reserved for the researcher (user-only actions,
-such as <code class="docutils literal notranslate"><span class="pre">clean-outputs</span></code>) are available here; <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> constrains an
-agent in a container, not the researcher at their own terminal. The
-agent’s in-container usage is described in <a class="reference internal" href="forAgents.html"><span class="std std-doc">For Agents</span></a>.</p>
+<p>Every dashboard action has a command-line equivalent. Most are
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> subcommands, generated from two lists: the agent-action
+catalog, which the dashboard and the in-container <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> also
+use, and a researcher-only list that is never shipped into a container
+(container settings, the Agent Council, uploads, file transfers).
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> authenticates as the researcher, so actions reserved for
+the researcher (user-only actions, such as <code class="docutils literal notranslate"><span class="pre">clean-outputs</span></code>) are
+available here; <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> constrains an agent in a container, not
+the researcher at their own terminal. The agent’s in-container usage
+is described in <a class="reference internal" href="forAgents.html"><span class="std std-doc">For Agents</span></a>.</p>
+<p>The rest have a hand-written home: credentials are <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span></code>, building and starting are <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code>, registering a directory is <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">register</span></code>, and opening a
+project in another tab is <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">open</span></code>. A handful of dashboard
+actions have no command-line form because they only make sense in a
+browser, such as moving a live session into a fresh tab.
+<code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py::testEveryGuiInvokedMutationHasCliEquivalent</span></code>
+fails when a new dashboard action has none of these.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span><span class="k">do</span><span class="w">                          </span><span class="c1"># list every action</span>
 vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>run-step<span class="w"> </span>--help<span class="w">          </span><span class="c1"># one action's arguments</span>
 vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>run-step<span class="w"> </span>A09<span class="w">             </span><span class="c1"># run one step</span>
@@ -763,6 +780,9 @@ vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--timeout</span></code></p></td>
 <td><p>Seconds to wait for the response, or for the next event of a run (<code class="docutils literal notranslate"><span class="pre">0</span></code> waits indefinitely)</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--non-interactive</span></code></p></td>
+<td><p>Run actions only: stop with exit code 3 at an interactive step instead of asking at the terminal</p></td>
+</tr>
 </tbody>
 </table>
 <p>Options follow the action name. Step selectors on the run actions are
@@ -773,6 +793,23 @@ action as it runs. The command claims the container for one action and
 then releases it, so a container open in a dashboard tab is refused
 rather than taken over: close that tab, or run the action from inside
 the container with <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>.</p>
+<p>An action that starts work the hub carries on with, such as a run or
+<strong>Verify Level 3</strong>, returns once that work has finished: the release
+waits for it, says so, and gives up after <code class="docutils literal notranslate"><span class="pre">--timeout</span></code> seconds with the
+hub’s reason. Pass a longer <code class="docutils literal notranslate"><span class="pre">--timeout</span></code> for a long verification.</p>
+<p>A run that reaches an interactive step asks at the terminal whether to
+run it or skip it. To run it, it prints the step’s commands for you to
+run in a container shell (<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code>), then asks for the exit
+code and reports it, as the dashboard’s buttons do. With
+<code class="docutils literal notranslate"><span class="pre">--non-interactive</span></code> the run stops at that step at once, names it, and
+exits 3, so a script never waits on a question nobody will answer. The
+command stops the paused run as the dashboard’s Stop button does, so
+the container is released at once rather than held until the hub gives
+up on the step.</p>
+<p>Actions that act on the hub rather than on a running container, such
+as <code class="docutils literal notranslate"><span class="pre">set-container-settings</span></code>, address the project by name and claim
+nothing. <code class="docutils literal notranslate"><span class="pre">upload-file-stream</span></code> takes <code class="docutils literal notranslate"><span class="pre">sLocalPath=&lt;file&gt;</span></code> and streams
+that host file as the request body, filling in its size and name.</p>
 </section>
 <section id="recovering-a-quarantined-container">
 <h2>Recovering a quarantined container<a class="headerlink" href="#recovering-a-quarantined-container" title="Link to this heading"></a></h2>
@@ -834,17 +871,32 @@ judgments available only here:</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">secret</span> <span class="pre">delete-provider-key</span> <span class="pre">--provider</span> <span class="pre">NAME</span></code></p></td>
 <td><p>Remove a provider’s key</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">github</span> <span class="pre">[--keyring-slot</span> <span class="pre">SLOT]</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">set</span> <span class="pre">github|overleaf|zenodo</span> <span class="pre">[--project-id</span> <span class="pre">ID]</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>Store a publishing token for a project, read from a prompt that does not echo</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">status</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>Report which remotes are configured and reachable</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">delete</span> <span class="pre">github|overleaf|zenodo</span></code></p></td>
+<td><p>The same as <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">github</span> <span class="pre">[--keyring-slot</span> <span class="pre">SLOT]</span></code></p></td>
 <td><p>Remove the stored GitHub credential, or one repository’s with <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code>, and revoke it upstream where possible</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">overleaf</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">overleaf</span></code></p></td>
 <td><p>The same, for Overleaf</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">zenodo</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">zenodo</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span></code></p></td>
 <td><p>The same, for one Zenodo instance (default <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>)</p></td>
 </tr>
 </tbody>
 </table>
+<p><code class="docutils literal notranslate"><span class="pre">credential</span> <span class="pre">set</span></code> is the command-line form of the dashboard’s credential
+forms. The token is read at a hidden prompt and sent only in the body
+of one request to the hub on this machine; it never appears on the
+command line, in an environment variable, or in any message the
+command prints. <code class="docutils literal notranslate"><span class="pre">--project-id</span></code> binds an Overleaf project, and
+<code class="docutils literal notranslate"><span class="pre">--instance</span></code> chooses the Zenodo instance (default <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>).</p>
 <p><code class="docutils literal notranslate"><span class="pre">revoke</span></code> prints whether the upstream token was revoked and whether the
 local copy was cleared, and exits non-zero if the local copy was not
 cleared. For GitHub it also runs <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">logout</span></code>. Overleaf and Zenodo

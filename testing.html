@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing Model &mdash; Vaibify 0.1.4.dev26 documentation</title>
+  <title>Testing Model &mdash; Vaibify 0.1.4.dev64 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ba0b7039"></script>
+      <script src="_static/documentation_options.js?v=61c5391b"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -210,7 +210,8 @@ reads each of the step’s declared output files, and records what it
 finds: shape, data type, NaN and infinity counts, column names, JSON
 keys, and benchmark values. vaibify then writes the three standards
 files and the three test files mechanically from that report. No
-language model is involved.</p>
+language model is involved unless vaibify could not understand the
+outputs at all (see the fallback below).</p>
 <p>The generator also classifies each step’s randomness, because a
 tolerance that suits a deterministic calculation is meaningless for a
 sampler:</p>
@@ -236,7 +237,7 @@ sampler:</p>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unintrospectable</span></code></p></td>
 <td><p>Output files exist but yield no numeric benchmark</p></td>
-<td><p>None; the introspector’s errors are recorded instead</p></td>
+<td><p>None from vaibify; the introspector’s errors are recorded, and the fallback below may apply</p></td>
 </tr>
 </tbody>
 </table>
@@ -246,13 +247,33 @@ agent you direct, are expected to extend the standards for what matters
 in your science. An agent asked for tests is steered to the
 deterministic generator (<code class="docutils literal notranslate"><span class="pre">generate-tests-deterministic</span></code>), which pins
 what is actually in the data and never overwrites an edited file.</p>
-<p>Two other paths exist. A quantitative standards file can be refreshed
-from live data outside the dashboard, from the command line; see
-<a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>. And the generation route can still ask a language model (the
-in-container Claude Code, or a provider API key you have stored) to
-write tests, but only when a caller explicitly turns the deterministic
-mode off; the dashboard’s <strong>Generate</strong> button does not. That route is
-researcher-only, because model-written test content must be reviewed.</p>
+<p>A quantitative standards file can also be refreshed from live data
+outside the dashboard, from the command line; see
+<a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>.</p>
+<p>A language model writes tests in two cases only, and each tier records
+which: <code class="docutils literal notranslate"><span class="pre">sGenerator</span></code> in its standards file and in the step
+(<code class="docutils literal notranslate"><span class="pre">deterministic</span></code>, <code class="docutils literal notranslate"><span class="pre">llm-fallback</span></code> or <code class="docutils literal notranslate"><span class="pre">llm</span></code>), a
+<code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">vaibify-generator:</span></code> first line in a model-written test file, and a
+note on the step’s test rows for a model-written tier.</p>
+<ul class="simple">
+<li><p><strong>Fallback (<code class="docutils literal notranslate"><span class="pre">llm-fallback</span></code>).</strong> When vaibify cannot understand a
+step’s outputs – the introspection script fails or prints nothing
+readable (every tier), or no output yields a benchmark, so no
+quantitative standards can be derived (the quantitative tier) –
+<strong>Generate</strong> asks a model you have already enabled: Claude Code
+installed in the container, or the provider API key you chose to
+use. It never asks for a key. Nothing else causes a fallback: a
+refused or failed write, a pending overwrite confirmation and a
+missing step are reported as they are. With no model available, the
+error names both what vaibify could not read and why no model was
+asked.</p></li>
+<li><p><strong>On request (<code class="docutils literal notranslate"><span class="pre">llm</span></code>).</strong> A caller can turn the deterministic mode off
+explicitly; the dashboard’s <strong>Generate</strong> button does not.</p></li>
+</ul>
+<p>Both are researcher-only, because model-written test content must be
+reviewed, and the agent’s deterministic generator cannot reach a model.
+Generated standards are the published criteria that judge an output
+whose bytes moved, which is why their author is recorded.</p>
 </section>
 <section id="checking-that-your-tests-have-teeth">
 <h3>Checking that your tests have teeth<a class="headerlink" href="#checking-that-your-tests-have-teeth" title="Link to this heading"></a></h3>

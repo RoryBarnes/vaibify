@@ -13,7 +13,10 @@ workspace every time the container starts, and links `AGENTS.md` and
 `GEMINI.md` to it, so every installed agent reads the same text.
 Because it is rewritten at every start, editing it inside the container
 has no lasting effect. Your own instructions belong in your project's
-context file instead, which vaibify never overwrites; see
+context file instead, which vaibify never overwrites. Wherever your
+instructions and the prompt conflict, yours win, except for the
+container's security boundaries and the actions only you may perform:
+the prompt's coding conventions are defaults, not rules. See
 [For Agents](forAgents.md), which also describes the skills and actions
 the prompt refers to.
 

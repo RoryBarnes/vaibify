@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The PROOF Ladder &mdash; Vaibify 0.1.4.dev26 documentation</title>
+  <title>The PROOF Ladder &mdash; Vaibify 0.1.4.dev64 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ba0b7039"></script>
+      <script src="_static/documentation_options.js?v=61c5391b"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -379,7 +379,11 @@ given.</p>
 <td><p>Step</p></td>
 <td><p>No script, output, or upstream step changed after the step’s tests or sign-off.</p></td>
 </tr>
-<tr class="row-even"><td><p>Project context file (optional)</p></td>
+<tr class="row-even"><td><p>Cross-step reads declared or dismissed</p></td>
+<td><p>Step</p></td>
+<td><p>Shown once the dependency scan has run. When the scan finds the step’s script reading another step’s declared output, that edge is declared (a <code class="docutils literal notranslate"><span class="pre">{step:&lt;id&gt;.&lt;stem&gt;}</span></code> token or <code class="docutils literal notranslate"><span class="pre">saDependencies</span></code>) or you dismiss the finding; a dismissal holds only while the script is unchanged. A finding made against an older script or output declaration, or a scan that failed, reads “dependency scan not current” until <strong>Rescan dependencies</strong> (<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">rescan-dependencies</span></code>) runs again; that is unknown, never a pass. Dismiss with the button on the row or <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">dismiss-dependency-finding</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Project context file (optional)</p></td>
 <td><p>Project</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">.vaibify/AGENTS.md</span></code> records the in-container agent’s standing instructions. Never blocks a level.</p></td>
 </tr>
@@ -404,41 +408,49 @@ given.</p>
 <td><p>Project</p></td>
 <td><p>Published files match a Zenodo deposit with a DOI.</p></td>
 </tr>
-<tr class="row-even"><td><p>arXiv manuscript (Project block: <strong>arXiv submission</strong>)</p></td>
+<tr class="row-even"><td><p>Overleaf manuscript</p></td>
+<td><p>Project</p></td>
+<td><p>Opt-in: checked only when an Overleaf project is bound, and then required: a recent Overleaf check found every figure matching. Unbound, it reads not applicable and never blocks.</p></td>
+</tr>
+<tr class="row-odd"><td><p>arXiv manuscript (Project block: <strong>arXiv submission</strong>)</p></td>
 <td><p>Project</p></td>
 <td><p>Opt-in: checked only when an arXiv submission is recorded.</p></td>
 </tr>
-<tr class="row-odd"><td><p>AI model declared (Project block: <strong>AI models</strong>)</p></td>
+<tr class="row-even"><td><p>AI model declared (Project block: <strong>AI models</strong>)</p></td>
 <td><p>Project</p></td>
 <td><p>Every model used is declared with vendor, model ID, and dates of use; open-weight models also give their weights source and revision hash. Undeclared is the only failing state.</p></td>
 </tr>
-<tr class="row-even"><td><p>Personal AI Configuration answered (Project block: <strong>Personal AI Configuration</strong>)</p></td>
+<tr class="row-odd"><td><p>Personal AI Configuration answered (Project block: <strong>Personal AI Configuration</strong>)</p></td>
 <td><p>Project</p></td>
 <td><p>See below.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Environment archive</p></td>
+<tr class="row-even"><td><p>Environment archive</p></td>
 <td><p>Project</p></td>
 <td><p>Asked once the environment snapshot pins a container image: deposit the image in a permanent archive, point at a deposit that holds it, or decline. Any answer meets it.</p></td>
 </tr>
-<tr class="row-even"><td><p>Supervised mode (optional)</p></td>
+<tr class="row-odd"><td><p>Supervised mode (optional)</p></td>
 <td><p>Project</p></td>
 <td><p>When enabled, every repository change is attributed to a recorded action. Never blocks a level.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Prompt Record (optional)</p></td>
+<tr class="row-even"><td><p>Prompt Record (optional)</p></td>
 <td><p>Project</p></td>
 <td><p>When enabled, agent transcripts are captured and the first capture approved. Never blocks a level.</p></td>
 </tr>
-<tr class="row-even"><td><p>Published files match the GitHub mirror</p></td>
+<tr class="row-odd"><td><p>Published files match the GitHub mirror</p></td>
 <td><p>Step</p></td>
 <td><p>The step’s declared files match GitHub.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Published files match the Zenodo deposit</p></td>
+<tr class="row-even"><td><p>Published files match the Zenodo deposit</p></td>
 <td><p>Step</p></td>
 <td><p>The step’s declared files match Zenodo.</p></td>
 </tr>
-<tr class="row-even"><td><p>Manuscript figures frozen in Overleaf</p></td>
+<tr class="row-odd"><td><p>Manuscript figures frozen in Overleaf</p></td>
 <td><p>Step</p></td>
-<td><p>Shown only when an Overleaf project is bound and the step has plot files.</p></td>
+<td><p>Shown only when an Overleaf project is bound and the step has plot files; then every one of the step’s figures must have been pushed at the recorded commit.</p></td>
+</tr>
+<tr class="row-even"><td><p>File names unique across the deposit</p></td>
+<td><p>Step</p></td>
+<td><p>Shown only when it fails: one of the step’s published files shares its name with another published file. A Zenodo deposit is flat, so the second would overwrite the first, and the archive refuses such a selection; rename one.</p></td>
 </tr>
 <tr class="row-odd"><td><p>AI declaration signed off</p></td>
 <td><p>Step</p></td>
@@ -481,7 +493,7 @@ it, and vaibify also re-verifies on a schedule while the hub runs.</p>
 </tr>
 <tr class="row-even"><td><p>Dependency lock</p></td>
 <td><p>Project</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> pins every Python dependency by version with hashes.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> pins every Python dependency by version with hashes, or records that the project declares none.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Environment snapshot</p></td>
 <td><p>Project</p></td>

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agent Council &mdash; Vaibify 0.1.4.dev26 documentation</title>
+  <title>Agent Council &mdash; Vaibify 0.1.4.dev64 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ba0b7039"></script>
+      <script src="_static/documentation_options.js?v=61c5391b"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -254,13 +254,17 @@ checks its framing.</p>
 </tr>
 <tr class="row-even"><td><p><strong>Execution permission</strong></p></td>
 <td><p>Full sandbox</p></td>
-<td><p><em>Read-only council</em> skips execution for a cheaper, design-only deliberation in which no claim can be <code class="docutils literal notranslate"><span class="pre">confirmed</span></code>.</p></td>
+<td><p><em>Read-only council</em> runs nothing, for a cheaper, design-only deliberation or a project that should not be executed even in a sandbox: Claude and Antigravity participants plan only, Codex participants have their command tools removed, and vaibify re-runs no claimed command, so no claim can be <code class="docutils literal notranslate"><span class="pre">confirmed</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Minimum rounds</strong></p></td>
 <td><p>1</p></td>
 <td><p>Force at least this many cross-review rounds even if the first veto would accept.</p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Output budget per turn (MB)</strong></p></td>
+<tr class="row-even"><td><p><strong>Maximum rounds</strong></p></td>
+<td><p>3</p></td>
+<td><p>Stop the deliberation after this many rounds; it cannot be below the minimum.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Output budget per turn (MB)</strong></p></td>
 <td><p>10</p></td>
 <td><p>A turn that produces more is stopped.</p></td>
 </tr>

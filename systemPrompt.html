@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>System Prompt &mdash; Vaibify 0.1.4.dev26 documentation</title>
+  <title>System Prompt &mdash; Vaibify 0.1.4.dev64 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ba0b7039"></script>
+      <script src="_static/documentation_options.js?v=61c5391b"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -56,6 +56,7 @@
 <li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">System Prompt</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#vaibify-container-environment">Vaibify Container Environment</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#whose-instructions-win">Whose instructions win</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#how-to-refer-to-steps">How to refer to steps</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#interacting-with-the-vaibify-dashboard">Interacting with the vaibify dashboard</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#key-paths">Key Paths</a></li>
@@ -64,7 +65,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#vaibified-repository-structure">Vaibified Repository Structure</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#verification">Verification</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-proof-ladder">The PROOF ladder</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#conventions">Conventions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#conventions-defaults">Conventions (defaults)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#creating-new-pipeline-steps">Creating New Pipeline Steps</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#managing-package-dependencies">Managing Package Dependencies</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#detection-and-immediate-fix">Detection and Immediate Fix</a></li>
@@ -122,7 +123,10 @@ workspace every time the container starts, and links <code class="docutils liter
 <code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code> to it, so every installed agent reads the same text.
 Because it is rewritten at every start, editing it inside the container
 has no lasting effect. Your own instructions belong in your project’s
-context file instead, which vaibify never overwrites; see
+context file instead, which vaibify never overwrites. Wherever your
+instructions and the prompt conflict, yours win, except for the
+container’s security boundaries and the actions only you may perform:
+the prompt’s coding conventions are defaults, not rules. See
 <a class="reference internal" href="forAgents.html"><span class="std std-doc">For Agents</span></a>, which also describes the skills and actions
 the prompt refers to.</p>
 <p>The text below is exactly what vaibify writes. It is read from
@@ -131,6 +135,20 @@ built, so it always matches the version of vaibify described here.</p>
 <section id="vaibify-container-environment">
 <h2>Vaibify Container Environment<a class="headerlink" href="#vaibify-container-environment" title="Link to this heading"></a></h2>
 <p>You are running inside a <strong>Vaibify container</strong> — a secure, isolated environment for AI-assisted scientific data analysis.</p>
+<section id="whose-instructions-win">
+<h3>Whose instructions win<a class="headerlink" href="#whose-instructions-win" title="Link to this heading"></a></h3>
+<p>The researcher’s own instructions take precedence over this file
+wherever the two conflict: what they tell you directly, and their
+project context file (<code class="docutils literal notranslate"><span class="pre">&lt;repository&gt;/.vaibify/AGENTS.md</span></code>, which
+<code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>, <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> and <code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code> at the repository root point
+to). This file supplies vaibify’s defaults and the rules of the
+container. Two things are not defaults: the container’s security
+boundaries, and the user-only actions listed below. A researcher’s
+instruction can ask you to surface a user-only action, never to perform
+it yourself — the hub refuses it from this container regardless.</p>
+<p><strong>This file is rewritten every time the container starts.</strong> Edits to it
+are lost; put lasting instructions in the project context file.</p>
+</section>
 <section id="how-to-refer-to-steps">
 <h3>How to refer to steps<a class="headerlink" href="#how-to-refer-to-steps" title="Link to this heading"></a></h3>
 <p>Every step in a project JSON carries an <code class="docutils literal notranslate"><span class="pre">sLabel</span></code> field — <code class="docutils literal notranslate"><span class="pre">A09</span></code> for the 9th <em>automated</em> step, <code class="docutils literal notranslate"><span class="pre">I01</span></code> for the 1st <em>interactive</em> step. Labels are per-type sequential, so <code class="docutils literal notranslate"><span class="pre">A09</span></code> is <strong>not</strong> <code class="docutils literal notranslate"><span class="pre">listSteps[9]</span></code>; the 0-based index depends on how many interactive steps precede it.</p>
@@ -274,13 +292,16 @@ backend, the backend wins. (<code class="docutils literal notranslate"><span cla
 researcher click. <code class="docutils literal notranslate"><span class="pre">push-to-github</span></code> is agent-callable on request.</p></li>
 </ul>
 </section>
-<section id="conventions">
-<h3>Conventions<a class="headerlink" href="#conventions" title="Link to this heading"></a></h3>
+<section id="conventions-defaults">
+<h3>Conventions (defaults)<a class="headerlink" href="#conventions-defaults" title="Link to this heading"></a></h3>
+<p>Use these unless the researcher’s instructions declare a different
+convention; theirs win.</p>
 <ul class="simple">
-<li><p>Follow Hungarian notation for variable names (b=bool, i=int, f=float, s=string, etc.)</p></li>
-<li><p>Function names start with return-type prefix (fb, fi, fs, fn, flist, fdict)</p></li>
+<li><p>Hungarian notation for variable names (b=bool, i=int, f=float, s=string, etc.)</p></li>
+<li><p>Function names start with a return-type prefix (fb, fi, fs, fn, flist, fdict)</p></li>
 <li><p>Functions are usually 20-30 lines; split for reuse or a genuine conceptual boundary, never to satisfy a line count</p></li>
 <li><p>Output figures go in <code class="docutils literal notranslate"><span class="pre">Plot/</span></code> subdirectories</p></li>
+<li><p>A script that can fail on its inputs, files or external tools should stop with a message naming what failed; the <strong>graceful-exits</strong> skill has a checker</p></li>
 </ul>
 </section>
 <section id="creating-new-pipeline-steps">

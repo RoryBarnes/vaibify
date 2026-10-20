@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.1.4.dev26 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.1.4.dev64 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ba0b7039"></script>
+      <script src="_static/documentation_options.js?v=61c5391b"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -216,13 +216,28 @@ file that no longer matches. Two Level 3 rows read it: <strong>Manifest
 complete</strong> (every file that should be listed is) and <strong>Manifest matches
 the files</strong> (every listed hash still describes the file on disk). A
 reader can run the same check without vaibify with <code class="docutils literal notranslate"><span class="pre">sha256sum</span> <span class="pre">-c</span> <span class="pre">MANIFEST.sha256</span></code>.</p>
+<p>When files differ, the notice counts them; click it for every
+differing file and what is recorded about how each copy was made:
+the settings and hardware recorded for the pinned copy and for this
+one, or “production context unknown” when either was not recorded.
+A recorded difference shows where to look; it does not prove why the
+bytes changed. The check compares bytes and runs none of your
+published tests, so it cannot say whether a difference is within your
+published tolerances: <strong>Verify Level 3</strong> reruns the project and judges
+that. Regenerating the envelope replaces the published hashes and
+loses the comparison with them, so do it only for a change you intend
+to publish.</p>
 </section>
 <section id="tier-2-the-python-packages">
 <h3>Tier 2 — the Python packages<a class="headerlink" href="#tier-2-the-python-packages" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> lists each Python package at the exact version that
 actually ran in your container, with a hash so a substitute package
 cannot slip in. <strong>Check dependencies</strong> confirms that every entry
-carries its hash.</p>
+carries its hash. A project that uses only the Python standard library
+still gets a lock: when your dependency file declares nothing, vaibify
+writes a line saying so, and the check accepts it. An empty lock
+without that line still fails, because it cannot tell “needs nothing”
+from “never locked”.</p>
 </section>
 <section id="tier-3-the-container">
 <h3>Tier 3 — the container<a class="headerlink" href="#tier-3-the-container" title="Link to this heading"></a></h3>
@@ -474,6 +489,17 @@ threshold”, never as the author’s comparison, and passing it is not
 proof that a figure carries the same science. Anything outside it is
 “not enough evidence”, with the reason named; the remedy is a
 quantitative standard over the data the figure shows.</p>
+<p><strong>A changed vector figure cannot pass under policy v1.</strong> A vector
+figure (<code class="docutils literal notranslate"><span class="pre">.pdf</span></code>, <code class="docutils literal notranslate"><span class="pre">.eps</span></code>, <code class="docutils literal notranslate"><span class="pre">.svg</span></code>) whose bytes differ is “not enough
+evidence” whatever comparisons exist: the policy does not compare
+vector figures, so one reaches Level 3 only if its bytes match.
+Answering “Repeatable across computers” makes matching bytes more
+likely, not certain. The policy’s own remedy also suggests a raster
+companion or a quantitative standard over the plotted data; neither
+changes the verdict on the vector file itself, and the dashboard says
+so beside it. Publishing the figure as a raster puts it under the image
+check. The remedy’s wording cannot be corrected inside the frozen
+policy; a future policy version can compare vector figures.</p>
 <p><strong>The comparison policy is frozen.</strong> These rules are the comparison
 policy <code class="docutils literal notranslate"><span class="pre">comparison-v1</span></code>, recorded on the second line of
 <code class="docutils literal notranslate"><span class="pre">.vaibify/rerunAssessment.py</span></code>. A reproduction grades under the policy
@@ -520,15 +546,18 @@ the tests, a failed section and a skipped one relabel nothing. No
 processor model name and no computer name is recorded. The envelope
 copies each pinned output’s context, and a file whose bytes no longer
 match its record reads “production context unknown”.</p>
-<p>That is how a difference is explained rather than guessed. A
-verification puts each differing output’s production context beside
-the rerun’s. A step whose outputs were made under different settings or
-hardware says “Produced under different execution settings or hardware”
-and names what differs, as information, not as a failure. When every
-manifest mismatch is explained that way, <strong>Check Files Against
-Manifest</strong> offers to make this computer’s results the published ones,
-by rerunning every step here and regenerating the manifest; nothing
-requires it.</p>
+<p>A recorded context makes the possible causes of a difference
+inspectable; it does not prove why the bytes changed, and acceptance
+rests on the published comparisons alone. A verification puts each
+differing output’s production context beside the rerun’s. A step whose
+outputs were made under different settings or hardware says “Produced
+under different execution settings or hardware” and names what
+differs, as information, not as a failure. When every manifest
+mismatch was made under different recorded settings or hardware,
+<strong>Check Files Against Manifest</strong> offers to make this computer’s results
+the published ones, by rerunning every step here and regenerating the
+manifest. Nothing requires it, and doing it replaces the published
+hashes, losing the comparison with them.</p>
 </section>
 </section>
 <section id="reproducing-a-published-project">
