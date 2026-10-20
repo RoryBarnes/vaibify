@@ -2779,13 +2779,15 @@ def test_loader_npy_std_aggregate(tmp_path):
 # -----------------------------------------------------------------------
 
 
+from vaibify.gui.llmTestGeneration import (
+    _fdictGenerateQuantitativeCategory,
+    _fdictGenerateSingleCategory,
+)
 from vaibify.gui.testGenerator import (
     _F_UNSEEDED_RTOL,
     _fbBenchmarkPassesFilter,
     _fdictAssignTolerance,
     _fdictMergeWithExistingStandards,
-    _fdictGenerateSingleCategory,
-    _fdictGenerateQuantitativeCategory,
     _fdictErrorResult,
     _fnAppendErrorLog,
     _ffToleranceForStochasticKind,

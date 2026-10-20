@@ -944,18 +944,19 @@ var VaibifyStepRenderer = (function () {
             var sCatState = dictContext.fsGetCategoryState(
                 step, sCategory);
             var sLabel = dictContext.fsTestCategoryLabel(sCategory);
+            var dictTests = dictContext.fdictGetTests(step);
+            var sCatKey = "dict" +
+                sCategory.charAt(0).toUpperCase() +
+                sCategory.slice(1);
             sHtml += fsRenderSubTestRow(
                 sLabel, sCatState, sCategory, iIndex, dictContext);
+            sHtml += _fsRenderGeneratorNote(dictTests[sCatKey]);
             var setExp = dictContext.fsetGetExpandedCategory(
                 sCategory);
             if (setExp.has(iIndex)) {
                 sHtml += fsRenderSubTestExpanded(
                     step, iIndex, sCategory, dictContext);
             }
-            var dictTests = dictContext.fdictGetTests(step);
-            var sCatKey = "dict" +
-                sCategory.charAt(0).toUpperCase() +
-                sCategory.slice(1);
             if (((dictTests[sCatKey] || {}).saCommands ||
                 []).length > 0) {
                 bAnyTests = true;
@@ -1007,6 +1008,25 @@ var VaibifyStepRenderer = (function () {
             sTriangle + fnEscapeHtml(sLabel) + '</span>' +
             sBadge + '</div>' +
             _fsRenderNeverRunNote(sState, sCategory, iIndex, dictContext);
+    }
+
+    var _DICT_MODEL_GENERATOR_NOTES = {
+        "llm-fallback": "Written by a language model because vaibify " +
+            "could not read this step's outputs. Review it before " +
+            "relying on it.",
+        "llm": "Written by a language model at your request. Review " +
+            "it before relying on it.",
+    };
+
+    function _fsRenderGeneratorNote(dictCategory) {
+        /* Who wrote a tier is recorded by the generator (sGenerator);
+           a model-written tier says so, because its standards are the
+           published criteria that judge outputs whose bytes moved.
+           Vaibify's own derivation needs no note. */
+        var sNote = _DICT_MODEL_GENERATOR_NOTES[
+            (dictCategory || {}).sGenerator];
+        return sNote ? '<div class="sub-test-note">' +
+            fnEscapeHtml(sNote) + '</div>' : "";
     }
 
     function _fsRenderNeverRunNote(sState, sCategory, iIndex, dictContext) {

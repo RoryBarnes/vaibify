@@ -6837,7 +6837,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-08-12): the program runs on the interpreter that has
     # vaibify's dependencies, which on the host is not python3.
     # 1214 -> 1215 (2026-10-01): the container twin reads TFRecord features from the decoded example.
-    "introspectionScript.py": 1215,
+    # 1215 -> 1213 (2026-10-19): two calls joined while the
+    # introspection failures became OutputAnalysisError.
+    "introspectionScript.py": 1213,
     # +30 (2026-08-24): per-category deterministic generation. A
     # researcher or agent asking for one tier must not have the other
     # two silently rewritten underneath them, so each write is gated
@@ -6855,7 +6857,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and SET_PRIOR_TEMPLATE_HASHES, required by the same invariant.
     # +6 (2026-10-12): re-exports the conftest loader text and the
     # marker plugin's path and write helpers, same invariant.
-    "testGenerator.py": 1151,
+    # 1151 -> 1052 (2026-10-19): language-model generation moved to
+    # llmTestGeneration, which also holds the narrow fallback policy.
+    "testGenerator.py": 1052,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).

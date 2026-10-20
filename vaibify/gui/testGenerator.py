@@ -157,6 +157,9 @@ from .templateManager import (  # noqa: F401
     fsQualitativeTemplateHash,
     fbIsVaibifyTemplateHash,
     SET_PRIOR_TEMPLATE_HASHES,
+    S_GENERATOR_DETERMINISTIC,
+    S_GENERATOR_LLM,
+    S_GENERATOR_LLM_FALLBACK,
     _QUANTITATIVE_TEMPLATE_HEADER,
     _QUANTITATIVE_TEMPLATE_FOOTER,
     fsBuildQuantitativeTestCode,
@@ -847,6 +850,7 @@ def _fdictWriteQuantitativeFiles(
 ):
     """Write quantitative standards JSON and test file, return dict."""
     sStandardsPath = fsQuantitativeStandardsPath(sDirectory)
+    dictStandards.setdefault("sGenerator", S_GENERATOR_DETERMINISTIC)
     dictMerged = _fdictMergeWithExistingStandards(
         connectionDocker, sContainerId, sStandardsPath, dictStandards,
     )
@@ -915,6 +919,7 @@ def _fdictWriteIntegrityFiles(
 ):
     """Write integrity standards JSON and test file, return dict."""
     sStandardsPath = fsIntegrityStandardsPath(sDirectory)
+    dictStandards.setdefault("sGenerator", S_GENERATOR_DETERMINISTIC)
     sJsonContent = json.dumps(dictStandards, indent=4)
     connectionDocker.fnWriteFile(
         sContainerId, sStandardsPath,
@@ -957,6 +962,7 @@ def _fdictWriteQualitativeFiles(
 ):
     """Write qualitative standards JSON and test file, return dict."""
     sStandardsPath = fsQualitativeStandardsPath(sDirectory)
+    dictStandards.setdefault("sGenerator", S_GENERATOR_DETERMINISTIC)
     sJsonContent = json.dumps(dictStandards, indent=4)
     connectionDocker.fnWriteFile(
         sContainerId, sStandardsPath,
@@ -1003,124 +1009,19 @@ def fdictGenerateAllTests(
     dictWorkflow, dictVariables, bUseApi=False, sApiKey=None,
     sUser=None, bDeterministic=True, bForceOverwrite=False,
 ):
-    """Generate all three test categories via LLM or deterministically."""
-    if bDeterministic:
-        return fdictGenerateAllTestsDeterministic(
-            connectionDocker, sContainerId, iStepIndex,
-            dictWorkflow, dictVariables, bForceOverwrite,
-        )
-    return _fdictGenerateAllTestsViaLlm(
-        connectionDocker, sContainerId, iStepIndex,
-        dictWorkflow, dictVariables, bUseApi, sApiKey, sUser,
+    """Generate all three test categories via LLM or deterministically.
+
+    Deterministic generation falls back to a consented language model
+    only where it could not understand the outputs; ``llmTestGeneration``
+    holds that allow-list and records which generator wrote each
+    category.
+    """
+    from .llmTestGeneration import fdictGenerateAndStampTests
+    return fdictGenerateAndStampTests(
+        connectionDocker, sContainerId, iStepIndex, dictWorkflow,
+        dictVariables, bUseApi, sApiKey, sUser, bDeterministic,
+        bForceOverwrite,
     )
-
-
-def _fdictGenerateAllTestsViaLlm(
-    connectionDocker, sContainerId, iStepIndex,
-    dictWorkflow, dictVariables, bUseApi, sApiKey, sUser,
-):
-    """Generate all three test categories via LLM."""
-    dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
-    fTolerance = dictWorkflow.get("fTolerance", 1e-6)
-    sDataFiles = ", ".join(dictStep.get("saOutputDataFiles", []))
-    sScripts, sPreviews = ftBuildStepContext(
-        connectionDocker, sContainerId, dictStep, dictVariables,
-    )
-    if not bUseApi:
-        fnEnsureClaudeMdInstructions(connectionDocker, sContainerId)
-    fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
-    fnWriteConftestMarker(
-        connectionDocker, sContainerId, sDirectory,
-        dictWorkflow.get("sProjectRepoPath", ""),
-    )
-    return _fdictDispatchLlmCategories(
-        connectionDocker, sContainerId, sDirectory,
-        sDataFiles, sScripts, sPreviews,
-        fTolerance, bUseApi, sApiKey, sUser,
-    )
-
-
-def _fdictDispatchLlmCategories(
-    connectionDocker, sContainerId, sDirectory,
-    sDataFiles, sScripts, sPreviews,
-    fTolerance, bUseApi, sApiKey, sUser,
-):
-    """Dispatch LLM generation for each test category."""
-    dictResult = {}
-    for sCategory in ("integrity", "qualitative"):
-        dictResult[f"dict{sCategory.capitalize()}"] = (
-            _fdictGenerateSingleCategory(
-                connectionDocker, sContainerId, sDirectory,
-                sCategory, sDataFiles, sScripts, sPreviews,
-                bUseApi, sApiKey, sUser,
-            )
-        )
-    dictResult["dictQuantitative"] = _fdictGenerateQuantitativeCategory(
-        connectionDocker, sContainerId, sDirectory,
-        sDataFiles, sScripts, sPreviews,
-        fTolerance, bUseApi, sApiKey, sUser,
-    )
-    return dictResult
-
-
-_DICT_CATEGORY_PATHS = {
-    "integrity": fsIntegrityTestPath,
-    "qualitative": fsQualitativeTestPath,
-}
-
-
-def _fdictGenerateSingleCategory(
-    connectionDocker, sContainerId, sDirectory,
-    sCategory, sDataFiles, sScriptContents, sDataPreviews,
-    bUseApi, sApiKey, sUser,
-):
-    """Generate one Python test category via LLM, with error isolation."""
-    sPrompt = _fsBuildCategoryPrompt(
-        sCategory, sDirectory, sDataFiles, sScriptContents, sDataPreviews,
-    )
-    sFilePath = _DICT_CATEGORY_PATHS[sCategory](sDirectory)
-    sRaw = ""
-    try:
-        sRaw = _fsInvokeLlm(
-            connectionDocker, sContainerId, sPrompt,
-            bUseApi, sApiKey, sUser=sUser,
-        )
-        sCode = fsParseGeneratedCode(sRaw)
-        return _fdictWriteTestFile(
-            connectionDocker, sContainerId, sCode, sFilePath,
-        )
-    except Exception as error:
-        _fnAppendErrorLog(
-            f"[{sCategory}] {error}\n"
-            f"First 300 chars of raw output:\n{sRaw[:300]}"
-        )
-        return _fdictErrorResult(str(error))
-
-
-def _fdictGenerateQuantitativeCategory(
-    connectionDocker, sContainerId, sDirectory,
-    sDataFiles, sScriptContents, sDataPreviews,
-    fTolerance, bUseApi, sApiKey, sUser,
-):
-    """Generate quantitative standards JSON via LLM."""
-    sPrompt = _fsBuildQuantitativePrompt(
-        sDirectory, sDataFiles, sScriptContents,
-        sDataPreviews, fTolerance,
-    )
-    try:
-        sRaw = _fsInvokeLlm(
-            connectionDocker, sContainerId, sPrompt,
-            bUseApi, sApiKey, sUser=sUser,
-        )
-        logger.debug("Quantitative raw output: %s", sRaw[:500])
-        dictStandards = fdictParseQuantitativeJson(sRaw)
-        dictStandards["fDefaultRtol"] = fTolerance
-        return _fdictWriteQuantitativeFiles(
-            connectionDocker, sContainerId, sDirectory,
-            dictStandards,
-        )
-    except Exception as error:
-        return _fdictErrorResult(str(error))
 
 
 # ---------------------------------------------------------------------------

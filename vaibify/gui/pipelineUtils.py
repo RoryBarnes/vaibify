@@ -18,6 +18,7 @@ __all__ = [
     "fsBuildUniqueTemporaryPath",
     "fbStepIsInteractive",
     "fbStepHasUnseededRandomnessWarning",
+    "OutputAnalysisError",
     "fsLabelFromStepIndex",
     "fiStepIndexFromLabel",
     "flistStepsWithLabels",
@@ -465,6 +466,19 @@ def fbStepIsInteractive(dictStep):
         return valueFlag.strip().lower() \
             not in _T_INTERACTIVE_FALSE_TOKENS
     return bool(valueFlag)
+
+
+class OutputAnalysisError(RuntimeError, ValueError):
+    """Vaibify's own analysis could not understand a step's outputs.
+
+    Raised where the introspection program fails or prints nothing a
+    reader can parse -- the failures a language model may get past by
+    reading the outputs itself, so the narrow test-generation fallback
+    names this type and nothing broader. A container write, a refusal
+    or a missing step is a different failure and never this one. Both
+    bases are kept so every earlier ``except RuntimeError`` or
+    ``except ValueError`` around introspection still catches it.
+    """
 
 
 def fbStepHasUnseededRandomnessWarning(dictStep):

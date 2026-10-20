@@ -298,7 +298,7 @@ def test_fdictGenerateAllTests_dispatches_to_llm_when_not_deterministic():
     dictVars = {}
     mockDocker = MagicMock()
     with patch(
-        "vaibify.gui.testGenerator._fdictGenerateAllTestsViaLlm",
+        "vaibify.gui.llmTestGeneration._fdictGenerateAllTestsViaLlm",
         return_value={"dictIntegrity": {}, "dictQualitative": {},
                       "dictQuantitative": {}},
     ) as mockLlm:

@@ -31559,6 +31559,35 @@ LIST_FALSIFICATIONS = [
         old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
         new='    iSwapBytes = iDesiredBytes\n',
     ),
+    # --- 2026-10-19: test generation falls back to a model only for
+    # the allow-listed analysis failures, and records who wrote what.
+    Falsification(
+        nodeid=(
+            'tests/testNarrowLlmFallback.py::'
+            'testAWriteFailureSurfacesUnchangedAndAsksNoModel'
+        ),
+        source='vaibify/gui/llmTestGeneration.py',
+        old='    except OutputAnalysisError as error:\n',
+        new='    except Exception as error:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testNarrowLlmFallback.py::'
+            'testUnparseableOutputsFallBackForQuantitativeAndSayWhoWroteThem'
+        ),
+        source='vaibify/gui/llmTestGeneration.py',
+        old='    dictStandards["sGenerator"] = sGenerator\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testGeneratedTestsSayWhoWroteThem.py::'
+            'testAModelWrittenTierSaysSoOnItsRow'
+        ),
+        source='vaibify/gui/static/scriptTestManager.js',
+        old='            if (dictCatResult.sGenerator) {\n',
+        new='            if (false) {\n',
+    ),
     # --- 2026-10-19: the unintrospectable toast is built from the
     # payload; it claimed an LLM fallback that never ran.
     Falsification(
