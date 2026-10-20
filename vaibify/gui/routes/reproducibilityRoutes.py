@@ -35,7 +35,8 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
-from ...reproducibility import gitEvidence, reproductionRecord
+from ...reproducibility import (
+    comparisonPolicyNotes, gitEvidence, reproductionRecord)
 from ...reproducibility.shadowRerun import S_ENUMERATE_PACKAGES_COMMAND
 from ...reproducibility.manifestWriter import (
     S_REPRODUCED_MANIFEST_HISTORY_DIR,
@@ -625,10 +626,7 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     bHasRepo = bool(fsRepoRootOf(filesRepo))
     dictCurrent = fdictReadAttestation(filesRepo) if bHasRepo else None
-    listHistory = (
-        flistReadAttestationHistory(filesRepo)
-        if bHasRepo else []
-    )
+    listHistory = flistReadAttestationHistory(filesRepo) if bHasRepo else []
     # Enumerated here and NEVER on the file-status poll: the snapshot
     # adapter the poll uses cannot list a directory, and a gate that
     # tried would 500 the poll.
@@ -638,9 +636,13 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
     )
     # Whether each record predates the current assessment contract is
     # the SERVER's judgement, shipped beside the record, so the page
-    # labels a previous check without deciding what counts as one.
-    for dictRecord in ([dictCurrent] if dictCurrent else []) + listHistory:
+    # labels a previous check without deciding what counts as one; so
+    # are vaibify's notes beside a frozen policy's reasons.
+    listRecords = ([dictCurrent] if dictCurrent else []) + listHistory
+    for dictRecord in listRecords:
         dictRecord["bHistorical"] = fbAttestationIsHistorical(dictRecord)
+    for dictRecord in listRecords + listReproductions:
+        comparisonPolicyNotes.fnAttachPolicyNotes(dictRecord)
     return {
         "dictCurrentAttestation": dictCurrent,
         "listHistory": listHistory,
@@ -652,9 +654,7 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
             sContainerId, fsRepoRootOf(filesRepo),
         ),
         "sLiveManifestDigest": (
-            fsCurrentManifestDigest(filesRepo)
-            if bHasRepo else ""
-        ),
+            fsCurrentManifestDigest(filesRepo) if bHasRepo else ""),
     }
 
 

@@ -387,6 +387,23 @@ _T_MKL_DISTRIBUTION_NAMES = (
     "mkl_random", "mkl-random",
 )
 
+# Libraries that choose their own code by processor, which neither
+# execution profile covers (design, "Known limits"): each family is
+# named with the lock distributions that bring it, matched exactly or
+# by prefix after normalising "_" to "-". SciPy's wheels bundle their
+# own OpenBLAS, which stays here until a live test shows the profiles
+# reach it (design Stage 5, 0c).
+_T_UNCOVERED_LIBRARY_FAMILIES = (
+    ("SciPy's own OpenBLAS", ("scipy",), ()),
+    ("oneDNN (inside PyTorch or TensorFlow)",
+     ("torch", "tensorflow", "tensorflow-cpu"), ()),
+    ("Numba", ("numba", "llvmlite"), ()),
+    ("FFTW", ("pyfftw",), ()),
+    ("Julia", ("juliacall", "julia", "juliapkg"), ()),
+)
+_T_GPU_DISTRIBUTION_NAMES = ("pycuda",)
+_T_GPU_DISTRIBUTION_PREFIXES = ("cupy", "nvidia-", "jax-cuda")
+
 S_LOCK_FILENAME = "requirements.lock"
 
 
@@ -422,11 +439,14 @@ def fdictDetectMathsLibrary(filesRepo):
             "cannot tell which maths library this project uses."
         )
     listFound = _flistFindMklDistributions(sLock)
+    listUncovered = flistFindUncoveredLibraries(sLock)
     return {
         "bMklFound": bool(listFound),
         "listMklPackages": listFound,
         "sNote": _fsDescribeMathsLibrary(listFound),
         "sHeadline": _fsHeadlineMathsLibrary(listFound),
+        "listUncoveredLibraries": listUncovered,
+        "sUncoveredNote": _fsDescribeUncoveredLibraries(listUncovered),
     }
 
 
@@ -435,6 +455,7 @@ def _fdictMathsLibraryUnknown(sNote):
     return {
         "bMklFound": None, "listMklPackages": [],
         "sNote": sNote, "sHeadline": "Maths library: could not tell.",
+        "listUncoveredLibraries": [], "sUncoveredNote": "",
     }
 
 
@@ -458,14 +479,52 @@ def _fsHeadlineMathsLibrary(listFound):
     )
 
 
+def _flistLockDistributionNames(sLock):
+    """Return the lower-cased distribution name on each line of a lock."""
+    return [re.split(r"[=<>!;\[ ]", sLine.strip(), 1)[0].lower()
+            for sLine in sLock.splitlines()]
+
+
 def _flistFindMklDistributions(sLock):
     """Return the MKL distribution names pinned in a lock file."""
+    return sorted({sName for sName in _flistLockDistributionNames(sLock)
+                   if sName in _T_MKL_DISTRIBUTION_NAMES})
+
+
+def flistFindUncoveredLibraries(sLock):
+    """Return ``[{sLibrary, listPackages}]`` for each uncovered family the lock pins.
+
+    Intel MKL has its own reading above; GPU packages come last, named
+    as one family, because GPU work is outside both profiles entirely.
+    """
+    setNames = {sName.replace("_", "-")
+                for sName in _flistLockDistributionNames(sLock) if sName}
     listFound = []
-    for sLine in sLock.splitlines():
-        sName = re.split(r"[=<>!;\[ ]", sLine.strip(), 1)[0].lower()
-        if sName in _T_MKL_DISTRIBUTION_NAMES:
-            listFound.append(sName)
-    return sorted(set(listFound))
+    for sLibrary, tNames, tPrefixes in _T_UNCOVERED_LIBRARY_FAMILIES + (
+            ("GPU libraries", _T_GPU_DISTRIBUTION_NAMES,
+             _T_GPU_DISTRIBUTION_PREFIXES),):
+        listPackages = sorted(
+            sName for sName in setNames if sName in tNames
+            or any(sName.startswith(sPrefix) for sPrefix in tPrefixes))
+        if listPackages:
+            listFound.append(
+                {"sLibrary": sLibrary, "listPackages": listPackages})
+    return listFound
+
+
+def _fsDescribeUncoveredLibraries(listUncovered):
+    """Name the uncovered libraries the lock pins, or say nothing."""
+    if not listUncovered:
+        return ""
+    sNamed = "; ".join(
+        f"{dictFound['sLibrary']} ({', '.join(dictFound['listPackages'])})"
+        for dictFound in listUncovered)
+    return (
+        "Your requirements.lock also pins libraries that choose their "
+        "own code by processor or run on a GPU, which neither "
+        f"execution profile covers: {sNamed}. Files they produce can "
+        "differ between computers whichever answer you give; Level 3 "
+        "judges them by your published comparisons.")
 
 
 def _fsDescribeMathsLibrary(listFound):

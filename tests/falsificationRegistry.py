@@ -31559,6 +31559,44 @@ LIST_FALSIFICATIONS = [
         old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
         new='    iSwapBytes = iDesiredBytes\n',
     ),
+    # --- 2026-10-19: vaibify's note beside policy v1's vector remedy,
+    # and the libraries the execution profiles do not cover.
+    Falsification(
+        nodeid=(
+            'tests/testComparisonPolicyNotes.py::'
+            'testTheAttestationResponseCarriesTheNoteBesideTheVectorReason'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old='        comparisonPolicyNotes.fnAttachPolicyNotes(dictRecord)\n',
+        new='        del dictRecord\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVectorFigureNoteOnScreen.py::'
+            'testTheVectorRowCarriesTheNoteAndTheDataRowItsReason'
+        ),
+        source='vaibify/gui/static/scriptFileOutcomes.js',
+        old='            "</span></div>" + _fsRenderVaibifyNote(dictOutcome) +\n',
+        new='            "</span></div>" +\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testUncoveredLibrariesAreNamed.py::'
+            'testEveryUncoveredFamilyIsNamedWithTheDistributionsThatBringIt'
+        ),
+        source='vaibify/reproducibility/determinismGate.py',
+        old='    ("SciPy\'s own OpenBLAS", ("scipy",), ()),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testUncoveredLibrariesOnScreen.py::'
+            'testTheRowShowsTheUncoveredLibrariesNote'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='            (dictMaths.sUncoveredNote ?\n',
+        new='            (false ?\n',
+    ),
     # --- 2026-10-19: test generation falls back to a model only for
     # the allow-listed analysis failures, and records who wrote what.
     Falsification(

@@ -16,8 +16,9 @@ the data outputs after the data section completed with every command
 exiting 0, the plot outputs after the plot section likewise. Nothing
 else relabels a file -- a tests-only run, "Run tests" from the
 dashboard, a failed section and an interactive step all leave every
-record as it was. A byte difference is then EXPLAINED from what was
-recorded, never predicted.
+record as it was. A byte difference can then be set beside what was
+recorded -- possible causes made inspectable, never proved, and never
+predicted.
 
 The file is tracked and never pinned: the shadow's own runner writes
 it too, so pinning it would make every rerun change a pinned input.
@@ -547,7 +548,7 @@ def fdictReportManifestMismatches(filesRepo, listMismatches, dictWorkflow):
 
 
 def _fsSummarizeExplained(listExplained, listMismatches):
-    """Return one sentence naming how many differences a context explains."""
+    """Return one sentence counting differences made under other contexts."""
     if not listExplained:
         return ""
     sFacts = "; ".join(

@@ -269,8 +269,8 @@ var VaibifyProofTab = (function () {
             {sStateKey: "bDockerfilePinned",
              sLabel: "Dockerfile pinned",
              sWhat: "The Dockerfile builds from an exact base-image " +
-                 "digest so the container can be rebuilt " +
-                 "bit-for-bit years later.",
+                 "digest, so the container can be rebuilt from the " +
+                 "same starting image years later.",
              sHow: "Edit the Dockerfile to pin the base image " +
                  "(FROM <image>@sha256:…), or ask the in-container " +
                  "agent to pin it.",

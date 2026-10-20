@@ -4714,6 +4714,14 @@ body.proof-level-3 .toolbar-label {
     overflow-wrap: anywhere;
 }
 
+.file-outcome-note {
+    /* Vaibify's note beside a frozen policy's reason: information,
+       never a verdict, so it wears no outcome colour. */
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
+}
+
 .file-outcomes .file-outcome-diverged,
 .file-outcomes .file-outcome-missing {
     color: var(--color-red-text);

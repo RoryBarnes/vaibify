@@ -377,6 +377,18 @@ proof that a figure carries the same science. Anything outside it is
 "not enough evidence", with the reason named; the remedy is a
 quantitative standard over the data the figure shows.
 
+**A changed vector figure cannot pass under policy v1.** A vector
+figure (`.pdf`, `.eps`, `.svg`) whose bytes differ is "not enough
+evidence" whatever comparisons exist: the policy does not compare
+vector figures, so one reaches Level 3 only if its bytes match.
+Answering "Repeatable across computers" makes matching bytes more
+likely, not certain. The policy's own remedy also suggests a raster
+companion or a quantitative standard over the plotted data; neither
+changes the verdict on the vector file itself, and the dashboard says
+so beside it. Publishing the figure as a raster puts it under the image
+check. The remedy's wording cannot be corrected inside the frozen
+policy; a future policy version can compare vector figures.
+
 **The comparison policy is frozen.** These rules are the comparison
 policy `comparison-v1`, recorded on the second line of
 `.vaibify/rerunAssessment.py`. A reproduction grades under the policy
@@ -409,15 +421,18 @@ processor model name and no computer name is recorded. The envelope
 copies each pinned output's context, and a file whose bytes no longer
 match its record reads "production context unknown".
 
-That is how a difference is explained rather than guessed. A
-verification puts each differing output's production context beside
-the rerun's. A step whose outputs were made under different settings or
-hardware says "Produced under different execution settings or hardware"
-and names what differs, as information, not as a failure. When every
-manifest mismatch is explained that way, **Check Files Against
-Manifest** offers to make this computer's results the published ones,
-by rerunning every step here and regenerating the manifest; nothing
-requires it.
+A recorded context makes the possible causes of a difference
+inspectable; it does not prove why the bytes changed, and acceptance
+rests on the published comparisons alone. A verification puts each
+differing output's production context beside the rerun's. A step whose
+outputs were made under different settings or hardware says "Produced
+under different execution settings or hardware" and names what
+differs, as information, not as a failure. When every manifest
+mismatch was made under different recorded settings or hardware,
+**Check Files Against Manifest** offers to make this computer's results
+the published ones, by rerunning every step here and regenerating the
+manifest. Nothing requires it, and doing it replaces the published
+hashes, losing the comparison with them.
 
 ## Reproducing a published project
 
