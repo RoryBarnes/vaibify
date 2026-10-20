@@ -55,7 +55,10 @@ class ContainerDouble:
         self.dictFiles = dict(dictExistingFiles or {})
 
     def fnWriteFile(self, sContainerId, sPath, baContent):
-        if self.errorOnTestWrite and sPath.startswith(S_STEP + "/tests/"):
+        """Fail only the integrity TEST file, so a fallback that wrongly
+        caught the failure would get as far as asking the model."""
+        if self.errorOnTestWrite and sPath == (
+                testGenerator.fsIntegrityTestPath(S_STEP)):
             raise self.errorOnTestWrite
         self.dictFiles[sPath] = baContent
 
