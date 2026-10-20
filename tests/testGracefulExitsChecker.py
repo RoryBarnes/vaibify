@@ -111,7 +111,11 @@ def testABroadExceptThatReportsOrReraisesIsNotReported(tmp_path, capsys):
 
 @pytest.mark.falsification
 def testAnErrorPathExitWithNoMessageIsReported(tmp_path, capsys):
-    """Kills: treating an exit inside an except handler as a success path."""
+    """Kills: treating an exit inside an except handler as a success path.
+
+    Both exits carry no failure status, so only the handler marks them as
+    error paths -- the bare one even reports success to the caller.
+    """
     assert _flistRulesFound(tmp_path, """
         import sys
 
@@ -119,8 +123,10 @@ def testAnErrorPathExitWithNoMessageIsReported(tmp_path, capsys):
             try:
                 return open(sPath).read()
             except OSError:
-                sys.exit(1)
-        """, capsys) == ["exit-without-message"]
+                sys.exit()
+            except ValueError:
+                raise SystemExit
+        """, capsys) == ["exit-without-message"] * 2
 
 
 def testEveryExitSpellingWithAFailureStatusIsReported(tmp_path, capsys):
