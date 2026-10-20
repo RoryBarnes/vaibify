@@ -230,15 +230,19 @@ def _fsWorkflowBlockerFingerprint(dictWorkflow):
 
 def _fdictBlockerRelevantStep(dictStep):
     """Capture the per-step fields that determine blocker output."""
-    return {sKey: dictStep.get(sKey) for sKey in (
+    from vaibify.gui.pipelineUtils import fbStepHasUnseededRandomnessWarning
+    dictRelevant = {sKey: dictStep.get(sKey) for sKey in (
         "sName", "sDirectory", "sLabel", "sStepKind",
         "saOutputDataFiles", "saPlotFiles",
         "saInputDataFiles", "bNoInputData",
         "saDataCommands", "saPlotCommands", "saTestCommands",
         "saSetupCommands", "saCommands", "saDependencies",
         "dictVerification", "dictTests", "sLastUserUpdate",
-        "bUnseededRandomnessWarning", "bInteractive",
+        "bInteractive",
     )}
+    dictRelevant["bUnseededRandomnessWarning"] = (
+        fbStepHasUnseededRandomnessWarning(dictStep))
+    return dictRelevant
 
 
 def _fdictWorkflowTopLevelFingerprint(dictWorkflow):
@@ -3819,12 +3823,13 @@ def _fsetReadManifestPaths(filesRepo):
 
 def _fsetNondeterministicSteps(dictWorkflow):
     """Return the set of 0-based step indices flagged for unseeded RNG."""
+    from vaibify.gui.pipelineUtils import fbStepHasUnseededRandomnessWarning
     setIndices = set()
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
     for iIndex, dictStep in enumerate(listSteps):
         if not isinstance(dictStep, dict):
             continue
-        if dictStep.get("bUnseededRandomnessWarning") is True:
+        if fbStepHasUnseededRandomnessWarning(dictStep):
             setIndices.add(iIndex)
     return setIndices
 
@@ -4763,6 +4768,7 @@ def _fsetStepApplicableLevel3Criteria(
     dependency named only in ``saBinaryDependencies`` (e.g.
     maxlev->vplanet), which the command scan cannot see.
     """
+    from vaibify.gui.pipelineUtils import fbStepHasUnseededRandomnessWarning
     from .manifestPaths import flistStepScriptRepoPaths
     if not isinstance(dictStep, dict):
         return set()
@@ -4773,7 +4779,7 @@ def _fsetStepApplicableLevel3Criteria(
         setApplicable.add("missing-from-manifest")
     if flistStepScriptRepoPaths(dictStep):
         setApplicable.add("script-not-pinned")
-    if dictStep.get("bUnseededRandomnessWarning") is True:
+    if fbStepHasUnseededRandomnessWarning(dictStep):
         setApplicable.add("nondeterminism-undeclared")
     listCommands = _flistStepCommandStrings(dictStep)
     if _fbStepInvokesAnyKnownBinary(listCommands, listDeclaredBinaries):

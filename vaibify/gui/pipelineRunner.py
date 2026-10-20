@@ -61,7 +61,7 @@ from .pipelineUtils import (  # noqa: F401
     fdictMapOutputTokenStems,
     fsShellQuote,
     fsBuildUniqueTemporaryPath,
-    fbStepIsInteractive,
+    fbStepIsInteractive, fbStepHasUnseededRandomnessWarning,
     fsLabelFromStepIndex,
     fiStepIndexFromLabel,
     flistStepsWithLabels,

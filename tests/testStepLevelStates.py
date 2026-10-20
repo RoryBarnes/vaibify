@@ -516,7 +516,8 @@ def testEveryFailingCriterionCountsNotJustTheDominantOne():
     applicable criterion must read none with zero satisfied — the old
     dominant-only counting could never drop below 4 of 5."""
     dictStep = _fdictActiveCleanStep()
-    dictStep["bUnseededRandomnessWarning"] = True
+    dictStep.setdefault("dictVerification", {})[
+        "bUnseededRandomnessWarning"] = True
     dictBlocker = _fdictStepBlocker(3, 0, "missing-from-manifest")
     dictBlocker["listFailingCriteria"] = [
         "missing-from-manifest", "nondeterminism-undeclared",

@@ -491,15 +491,16 @@ def _fsDescribeMathsLibrary(listFound):
 def flistAuditWorkflow(dictWorkflow):
     """Return workflow-level determinism issues (BLAS declaration + per-step flags).
 
-    Steps whose `bUnseededRandomnessWarning` is True surface as
-    explicit issues so the dashboard can surface them in the
-    readiness card without re-running the scanner.
+    Steps the randomness lint flagged as unseeded surface as explicit
+    issues so the dashboard can surface them in the readiness card
+    without re-running the scanner.
     """
+    from vaibify.gui.pipelineUtils import fbStepHasUnseededRandomnessWarning
     listIssues = list(_flistDescribeUnansweredQuestions(dictWorkflow))
     for dictStep in (dictWorkflow or {}).get("listSteps", []) or []:
         if not isinstance(dictStep, dict):
             continue
-        if dictStep.get("bUnseededRandomnessWarning") is True:
+        if fbStepHasUnseededRandomnessWarning(dictStep):
             sName = dictStep.get("sName") or dictStep.get("sLabel") or "?"
             listIssues.append(
                 f"Step '{sName}' has bUnseededRandomnessWarning=True"

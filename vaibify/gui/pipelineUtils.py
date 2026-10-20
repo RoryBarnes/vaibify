@@ -17,6 +17,7 @@ __all__ = [
     "fsShellQuote",
     "fsBuildUniqueTemporaryPath",
     "fbStepIsInteractive",
+    "fbStepHasUnseededRandomnessWarning",
     "fsLabelFromStepIndex",
     "fiStepIndexFromLabel",
     "flistStepsWithLabels",
@@ -464,6 +465,22 @@ def fbStepIsInteractive(dictStep):
         return valueFlag.strip().lower() \
             not in _T_INTERACTIVE_FALSE_TOKENS
     return bool(valueFlag)
+
+
+def fbStepHasUnseededRandomnessWarning(dictStep):
+    """Return True iff the randomness lint flagged this step as unseeded.
+
+    The lint writes the flag into ``dictStep["dictVerification"]``, and
+    this is its one reader. Three Level 3 checks once read it from the
+    step's top level, where nothing writes it, so the criterion never
+    fired. Only the literal ``True`` counts, as the lint writes it.
+    """
+    if not isinstance(dictStep, dict):
+        return False
+    dictVerification = dictStep.get("dictVerification")
+    if not isinstance(dictVerification, dict):
+        return False
+    return dictVerification.get("bUnseededRandomnessWarning") is True
 
 
 def fsLabelFromStepIndex(dictWorkflow, iStepIndex):

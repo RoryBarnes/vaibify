@@ -1478,9 +1478,9 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_unseeded_warning_requires_literal_true',
-        source='vaibify/reproducibility/determinismGate.py',
-        old="""if dictStep.get("bUnseededRandomnessWarning") is True:""",
-        new="""if dictStep.get("bUnseededRandomnessWarning"):""",
+        source='vaibify/gui/pipelineUtils.py',
+        old="""    return dictVerification.get("bUnseededRandomnessWarning") is True\n""",
+        new="""    return bool(dictVerification.get("bUnseededRandomnessWarning"))\n""",
     ),
     Falsification(
         nodeid='tests/testConftestManagerCoverage.py::test_item_outcome_words_follow_the_call_report',
@@ -3059,9 +3059,9 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_randomness_criterion_requires_literal_true',
-        source='vaibify/reproducibility/levelGates.py',
-        old='    if dictStep.get("bUnseededRandomnessWarning") is True:\n        setApplicable.add("nondeterminism-undeclared")',
-        new='    if dictStep.get("bUnseededRandomnessWarning") == True:\n        setApplicable.add("nondeterminism-undeclared")',
+        source='vaibify/gui/pipelineUtils.py',
+        old='    return dictVerification.get("bUnseededRandomnessWarning") is True\n',
+        new='    return dictVerification.get("bUnseededRandomnessWarning") == True\n',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_binary_reference_reads_the_declared_path',
@@ -31558,6 +31558,22 @@ LIST_FALSIFICATIONS = [
         source='vaibify/config/resourceLimits.py',
         old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
         new='    iSwapBytes = iDesiredBytes\n',
+    ),
+    # --- 2026-10-19: the randomness lint's nested flag reaches Level 3.
+    Falsification(
+        nodeid=(
+            'tests/testUnseededRandomnessReachesLevelThree.py::'
+            'testAnUnseededConfigFailsTheLevelThreeRandomnessCriterion'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if fbStepHasUnseededRandomnessWarning(dictStep):\n'
+            '        setApplicable.add("nondeterminism-undeclared")'
+        ),
+        new=(
+            '    if dictStep.get("bUnseededRandomnessWarning") is True:\n'
+            '        setApplicable.add("nondeterminism-undeclared")'
+        ),
     ),
     # --- 2026-10-19: Check Files Against Manifest lists every differing
     # file with what is recorded about it, and never advises the rerun
