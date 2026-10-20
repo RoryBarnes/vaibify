@@ -18,6 +18,7 @@ from vaibify.gui import actionCatalog
 from vaibify.gui import containerOwnership
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
+from tests.typedHashDouble import TypedHashFromServedBytes
 
 
 S_CONTAINER_ID = "abc123container"
@@ -50,7 +51,7 @@ DICT_WORKFLOW = {
 }
 
 
-class MockDockerConnection:
+class MockDockerConnection(TypedHashFromServedBytes):
     """Mimic the DockerConnection surface these routes touch.
 
     The reported container *name* deliberately differs from the

@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
+from tests.typedHashDouble import TypedHashFromServedBytes
 
 
 S_CONTAINER_ID = "isolation_test_cid"
@@ -59,7 +60,7 @@ DICT_WORKFLOW_FIXTURE = {
 }
 
 
-class _MockDockerIsolation:
+class _MockDockerIsolation(TypedHashFromServedBytes):
     """Docker mock returning canned exec results.
 
     The real ``docker inspect`` call that powers

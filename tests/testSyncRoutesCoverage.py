@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
+from tests.typedHashDouble import TypedHashFromServedBytes
 
 
 S_CONTAINER_ID = "sync_test_cid"
@@ -58,7 +59,7 @@ DICT_WORKFLOW_SYNC = {
 }
 
 
-class MockDockerSync:
+class MockDockerSync(TypedHashFromServedBytes):
     """Docker mock that simulates sync command results."""
 
     def __init__(self):
