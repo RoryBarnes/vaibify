@@ -464,6 +464,11 @@ then releases it, so a container open in a dashboard tab is refused
 rather than taken over: close that tab, or run the action from inside
 the container with `vaibify-do`.
 
+An action that starts work the hub carries on with, such as a run or
+**Verify Level 3**, returns once that work has finished: the release
+waits for it, says so, and gives up after `--timeout` seconds with the
+hub's reason. Pass a longer `--timeout` for a long verification.
+
 A run that reaches an interactive step asks at the terminal whether to
 run it or skip it. To run it, it prints the step's commands for you to
 run in a container shell (`vaibify connect`), then asks for the exit

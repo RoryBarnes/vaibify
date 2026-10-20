@@ -4208,14 +4208,10 @@ LIST_FALSIFICATIONS = [
         # held. Observed live before this test existed.
         nodeid='tests/testCliHubSessionMutationCoverage.py::test_release_sends_the_lease_where_the_route_reads_it',
         source='vaibify/cli/hubSession.py',
-        old="""            None, F_BOOTSTRAP_TIMEOUT_SECONDS,
-            sLeaseId=dictSession["sLeaseId"],
-        )
-    except HubSessionError as error:""",
-        new="""            {"sLeaseId": dictSession["sLeaseId"]},
-            F_BOOTSTRAP_TIMEOUT_SECONDS,
-        )
-    except HubSessionError as error:""",
+        old="""        None, F_BOOTSTRAP_TIMEOUT_SECONDS, sLeaseId=dictSession["sLeaseId"],
+    )""",
+        new="""        {"sLeaseId": dictSession["sLeaseId"]}, F_BOOTSTRAP_TIMEOUT_SECONDS,
+    )""",
     ),
     Falsification(
         # Paths a route by the lease's key (container name) instead of
@@ -31647,6 +31643,47 @@ LIST_FALSIFICATIONS = [
              '        dictWorkflow, filesRepo,\n'
              '    ):\n'),
         new='    for sPath in []:\n',
+    ),
+    # --- 2026-10-20: four defects a template project met on its way
+    # through the host CLI (tests/testCliTemplateProjectTowardLevelThreeLive.py
+    # found them against a real hub; these pin them without a daemon).
+    Falsification(
+        nodeid=(
+            'tests/testHostCliRunsThroughTheHub.py::'
+            'testARunFrameEchoesTheWorkflowTheSocketAnnounced'
+        ),
+        source='vaibify/cli/hubSession.py',
+        old=('    if dictBound.get("sType") != "workflowBound":\n'
+             '        return dictPayload\n'),
+        new='    if True:\n        return dictPayload\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCliRunsThroughTheHub.py::'
+            'testTheReleaseWaitsForTheWorkTheCommandStarted'
+        ),
+        source='vaibify/cli/hubSession.py',
+        old='        if iStatusCode != 409 or (\n',
+        new='        if True or (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCliRunsThroughTheHub.py::'
+            'testAnActionWithNoFieldsStillSendsABody'
+        ),
+        source='vaibify/cli/hubSession.py',
+        old='        if sMethod != "GET":\n            dictKeywords["json"] = dictFields\n',
+        new=('        if sMethod != "GET" and dictFields:\n'
+             '            dictKeywords["json"] = dictFields\n'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCliRunsThroughTheHub.py::'
+            'testPreflightAsksNothingOfAStepThatRunsNothing'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='                or not fbStepExecutesAnything(dictStep)):\n',
+        new='                or False):\n',
     ),
     # --- 2026-10-19: every dashboard action has a command-line
     # equivalent, the researcher list never reaches the container, the

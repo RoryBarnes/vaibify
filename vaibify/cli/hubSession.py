@@ -33,6 +33,7 @@ takeover — and this client releases its lease when the command finishes.
 """
 
 import json
+import time
 
 import click
 
@@ -45,6 +46,7 @@ S_LEASE_HEADER = "X-Vaibify-Lease"
 S_BOOTSTRAP_ENDPOINT = "/api/bootstrap"
 F_DEFAULT_TIMEOUT_SECONDS = 300.0
 F_BOOTSTRAP_TIMEOUT_SECONDS = 30.0
+F_RELEASE_POLL_SECONDS = 1.0
 _T_TERMINAL_EVENT_TYPES = (
     "completed", "error", "pipelineError", "runRefused",
 )
@@ -142,13 +144,15 @@ def ftSendHttpRequest(
     if baRawBody is not None:
         dictHeaders["Content-Type"] = "application/octet-stream"
         dictKeywords["data"] = baRawBody
-    elif dictFields:
-        if sMethod == "GET":
+    elif dictFields is not None:
+        # An empty dict on a write is still a body: a route whose body
+        # fields are all optional refuses a request with none (422).
+        if sMethod != "GET":
+            dictKeywords["json"] = dictFields
+        elif dictFields:
             dictKeywords["params"] = dict(
                 dictKeywords.get("params", {}), **dictFields
             )
-        else:
-            dictKeywords["json"] = dictFields
     try:
         response = requests.request(
             sMethod, sBaseUrl + sPath, headers=dictHeaders,
@@ -359,7 +363,7 @@ def fsExplainClaimConflict(sContainerName, objDetail):
     return "%s %s" % (sExplanation, S_AGENT_LANE_POINTER)
 
 
-def fnReleaseContainer(dictSession):
+def fnReleaseContainer(dictSession, fWaitSeconds=0.0):
     """Release the lease this session claimed, and say so if it failed.
 
     A release that quietly does nothing leaves the container held until
@@ -367,27 +371,53 @@ def fnReleaseContainer(dictSession):
     with no explanation. The hub answers 200 with ``bReleased: false``
     when the lease did not match, so the body — not the status — is the
     thing to check.
+
+    The hub refuses a release (409) while work this session started is
+    still live: a run whose terminal event arrived before its record
+    settled, or a durable task such as a Level 3 verification. The
+    command is not finished until that work is, so the release waits
+    for it, up to ``fWaitSeconds`` (``None`` waits without a limit,
+    ``0`` not at all), and says once that it is waiting.
     """
     if not dictSession.get("sLeaseId"):
         return
-    try:
-        iStatusCode, jsonBody = ftSendHttpRequest(
-            dictSession["sBaseUrl"], dictSession["sCredential"],
-            "POST",
-            "/api/registry/%s/release" % dictSession["sContainerName"],
-            None, F_BOOTSTRAP_TIMEOUT_SECONDS,
-            sLeaseId=dictSession["sLeaseId"],
-        )
-    except HubSessionError as error:
-        click.echo("Warning: lease release failed: %s" % error, err=True)
-        return
+    fDeadline = None if fWaitSeconds is None else (
+        time.monotonic() + fWaitSeconds)
+    bAnnounced = False
+    while True:
+        try:
+            iStatusCode, jsonBody = _ftRequestRelease(dictSession)
+        except HubSessionError as error:
+            click.echo("Warning: lease release failed: %s" % error, err=True)
+            return
+        if iStatusCode != 409 or (
+                fDeadline is not None and time.monotonic() >= fDeadline):
+            break
+        if not bAnnounced:
+            click.echo("Waiting for the work this command started on '%s' "
+                       "to finish before releasing it." %
+                       dictSession["sContainerName"], err=True)
+            bAnnounced = True
+        time.sleep(F_RELEASE_POLL_SECONDS)
     if iStatusCode != 200 or not (jsonBody or {}).get("bReleased"):
+        sReason = (jsonBody or {}).get("sMessage", "") if isinstance(
+            jsonBody, dict) else ""
         click.echo(
             "Warning: the hub still holds '%s'; the next command may "
-            "be refused as in use."
-            % dictSession["sContainerName"],
+            "be refused as in use.%s"
+            % (dictSession["sContainerName"],
+               (" The hub said: " + sReason) if sReason else ""),
             err=True,
         )
+
+
+def _ftRequestRelease(dictSession):
+    """Ask the hub once to release this session's lease."""
+    return ftSendHttpRequest(
+        dictSession["sBaseUrl"], dictSession["sCredential"], "POST",
+        "/api/registry/%s/release" % dictSession["sContainerName"],
+        None, F_BOOTSTRAP_TIMEOUT_SECONDS, sLeaseId=dictSession["sLeaseId"],
+    )
 
 
 def fsSelectWorkflowPath(dictSession, sWorkflowPath=None):
@@ -586,7 +616,9 @@ def fiStreamPipelineAction(
             open_timeout=F_BOOTSTRAP_TIMEOUT_SECONDS,
             max_size=None,
         ) as connection:
-            connection.send(json.dumps(dictPayload))
+            connection.send(json.dumps(
+                _fdictAcknowledgeBoundWorkflow(connection, dictPayload, bJson)
+            ))
             return _fiStreamUntilTerminalEvent(
                 connection, bJson, fTimeoutSeconds, bNonInteractive,
             )
@@ -594,6 +626,34 @@ def fiStreamPipelineAction(
         raise HubSessionError(
             "pipeline socket failed: %s" % error
         )
+
+
+def _fdictAcknowledgeBoundWorkflow(connection, dictPayload, bJson):
+    """Return the payload echoing the workflow the socket announced.
+
+    The hub's first frame names the workflow it bound and that file's
+    source fingerprint, and it refuses a run frame that does not echo
+    both ("workflowSuperseded"), so a project edited on disk after it
+    was announced is never run unseen. The dashboard and the
+    in-container vaibify-do echo it; this lane sent its frame blind, so
+    every run the host CLI asked for was refused. A first frame of any
+    other kind is shown and the payload goes unacknowledged, which the
+    hub then refuses in its own words.
+    """
+    try:
+        dictBound = json.loads(
+            connection.recv(timeout=F_BOOTSTRAP_TIMEOUT_SECONDS))
+    except (ValueError, TypeError):
+        return dictPayload
+    _fnPrintPipelineEvent(dictBound, bJson)
+    if dictBound.get("sType") != "workflowBound":
+        return dictPayload
+    return dict(
+        dictPayload,
+        sAcknowledgedSourceFingerprint=dictBound.get(
+            "sExactSourceFingerprint", ""),
+        sAcknowledgedWorkflowPath=dictBound.get("sWorkflowPath", ""),
+    )
 
 
 def _fbAnswerInteractivePause(connection, dictEvent, bNonInteractive):

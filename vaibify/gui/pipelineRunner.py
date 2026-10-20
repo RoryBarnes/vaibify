@@ -90,6 +90,7 @@ from .pipelineUtils import (  # noqa: F401
 # ---------------------------------------------------------------------------
 
 from .pipelineValidator import (  # noqa: F401
+    fbStepExecutesAnything,
     _fnValidateStepDirectory,
     _fnValidateStepCommands,
     _fnValidateSingleCommand,
@@ -183,11 +184,9 @@ def _flistValidateStepsBlocking(
         return [dictVariables[S_EXECUTION_PROFILE_ERROR_KEY]]
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
-        if not _fbStepIncludedInRun(
-            dictStep, iIndex, setRunStepIndices,
-        ):
-            continue
-        if iStepNumber < iStartStep:
+        if (not _fbStepIncludedInRun(dictStep, iIndex, setRunStepIndices)
+                or iStepNumber < iStartStep
+                or not fbStepExecutesAnything(dictStep)):
             continue
         sStepDir = workflowManager.fsResolveStepWorkdir(
             dictStep.get("sDirectory", ""), dictVariables,

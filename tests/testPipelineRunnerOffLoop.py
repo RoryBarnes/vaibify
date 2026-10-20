@@ -42,7 +42,9 @@ def testPreflightChecksRunOffTheEventLoop():
     recorder = RecordingThreads()
     dictWorkflow = {
         "sWorkflowName": "w",
-        "listSteps": [{"sName": "A", "sStepId": "step-a", "sDirectory": "a"}],
+        # A command to run: preflight asks nothing of a step without one.
+        "listSteps": [{"sName": "A", "sStepId": "step-a", "sDirectory": "a",
+                       "saDataCommands": ["python3 a.py"]}],
     }
 
     def fnValidateDirectory(*tArguments):

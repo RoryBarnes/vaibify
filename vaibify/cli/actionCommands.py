@@ -479,7 +479,11 @@ def _fnDispatchUnderLease(dictEntry, sContainerName, dictParams):
     try:
         iExitCode = _fiDispatchAction(dictEntry, dictSession, dictParams)
     finally:
-        hubSession.fnReleaseContainer(dictSession)
+        # The action is not over until the work it started is: a run
+        # still settling, or a durable task it launched. --timeout 0
+        # means no limit here as it does for the action itself.
+        hubSession.fnReleaseContainer(
+            dictSession, fWaitSeconds=(dictParams["fTimeoutSeconds"] or None))
     sys.exit(iExitCode)
 
 
