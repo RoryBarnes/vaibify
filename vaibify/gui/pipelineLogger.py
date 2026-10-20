@@ -595,6 +595,14 @@ async def _fnFinalizeRun(
             "sDetail": "no workflow path; run results not recorded",
         }
     dictCompleted = pipelineState.fdictBuildCompletedState(iResult)
+    from . import runOutputBaseline
+    dictCompleted[runOutputBaseline.S_RUN_OUTPUT_MODTIMES_KEY] = (
+        await asyncio.to_thread(
+            runOutputBaseline.fdictMeasureRunOutputModTimes,
+            connectionDocker, sContainerId, dictState, dictWorkflow,
+            sWorkflowPath,
+        )
+    )
     dictCompleted["bRunMetadataPersisted"] = dictOutcome["bPersisted"]
     dictCompleted["sRunMetadataDetail"] = dictOutcome["sDetail"]
     if stateWriter is not None:

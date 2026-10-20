@@ -2825,6 +2825,26 @@ LIST_FALSIFICATIONS = [
         new='',
     ),
     Falsification(
+        nodeid=(
+            'tests/testARunsOwnOutputsAreNotModifications.py::'
+            'testTheFirstCheckAfterARunDoesNotReportTheRunsOwnOutputs'
+        ),
+        source='vaibify/gui/runOutputBaseline.py',
+        old=('    _fnMergeIntoModTimeBaseline(\n'
+             '        dictCtx, sContainerId, dictRunModTimes, dictWorkflow)\n'),
+        new='    del dictRunModTimes\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testARunsOwnOutputsAreNotModifications.py::'
+            'testAChangeAcknowledgedAfterTheRunIsNotReportedAgain'
+        ),
+        source='vaibify/gui/runOutputBaseline.py',
+        old=('    if dictAbsorbed.get(sContainerId) == tRun:\n'
+             '        return\n'),
+        new='',
+    ),
+    Falsification(
         nodeid='tests/testDependencyPinningMutationCoverage.py::test_verify_accepts_flush_left_hash_continuation',
         source='vaibify/reproducibility/dependencyPinning.py',
         old="""if sLine[:1].isspace() or sLine.lstrip().startswith("--hash"):""",

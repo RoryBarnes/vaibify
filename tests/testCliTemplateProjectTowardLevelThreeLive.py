@@ -259,14 +259,11 @@ def _fnClimbLevelOne(dictHub):
             } == {"scanned"}
     dictRun = _fdictDo(dictHub, "run-all", "--timeout", "600")
     assert (dictRun["sType"], dictRun["iExitCode"]) == ("completed", 0)
-    # A run through the CLI leaves its own outputs flagged modified: no
-    # poll measures them during the run, so the next connect compares
-    # them with the mtimes from before it (logged for the maintainer;
-    # the fix belongs to the verification state machine). The remedy a
-    # researcher has is the one the dashboard offers, acknowledging the
-    # step after looking at it.
-    for sStep in ("A01", "A02"):
-        _fdictDo(dictHub, "acknowledge-step", sStep)
+    # No poll measures the outputs during a CLI run, so the next connect
+    # once compared them with the mtimes from before it and flagged the
+    # run's own work as modified. The run's recorded measurement is now
+    # merged into the baseline: no step is modified, nothing to
+    # acknowledge.
     assert set(_flistLevelOneCriteria(dictHub)) == {
         ("A01", "user-not-approved"), ("A02", "user-not-approved")}
     for sStep in ("A01", "A02"):

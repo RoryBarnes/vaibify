@@ -5371,7 +5371,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4326 -> 4339 (2026-10-17): the poll names steps whose outputs
     # another context produced, and the manifest verify says which
     # mismatches a recorded context difference explains (F5).
-    "routes/pipelineRoutes.py": 4339,
+    # 4339 -> 4343 (2026-10-20): the poll merges a finished run's own
+    # output mtimes into its baseline before comparing, and the state
+    # route does not ship that map (runOutputBaseline holds the logic).
+    "routes/pipelineRoutes.py": 4343,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record

@@ -209,6 +209,21 @@ are flagged as upstream-modified. The researcher sees verification
 badges dim automatically; no one has to remember to invalidate
 anything by hand.
 
+A run's own writes are never a modification. Each check compares the
+mtimes it measures with the baseline the previous check measured, and
+while a run is live it moves that baseline without flagging anything.
+A check after a run would otherwise compare the run's outputs with a
+baseline from before them whenever nothing checked in between: every
+command-line run (nothing polls during one), and on the dashboard every
+output written after the run's last poll. So the runner measures the
+outputs of the steps it executed just before its terminal state is
+written, and records them in that same write
+(`runOutputBaseline.S_RUN_OUTPUT_MODTIMES_KEY`). Whichever check first
+sees the finished run, a poll or a command's connect, merges them into
+its baseline, once per run and only for the run's own project. A file
+changed after the run still differs from the run's measurement, and
+still reads as changed.
+
 Declared input data (`saInputDataFiles` — raw files a step consumes
 that no step produces) rides the same poll: input paths join the
 stat batch, an mtime delta on a declared input invalidates every

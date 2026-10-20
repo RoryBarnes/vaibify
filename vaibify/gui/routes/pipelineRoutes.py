@@ -26,6 +26,7 @@ from ...reproducibility.reproductionLabel import (
 from .. import archiveProgress
 from .. import containerOwnership
 from .. import outputProvenance
+from .. import runOutputBaseline
 from .. import verificationProgress
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
@@ -645,6 +646,7 @@ def _fnRegisterPipelineState(app, dictCtx):
         if dictState is None:
             return {"bRunning": False, "iSyncEpoch": iSyncEpoch}
         dictState["iSyncEpoch"] = iSyncEpoch
+        dictState.pop(runOutputBaseline.S_RUN_OUTPUT_MODTIMES_KEY, None)
         return dictState
 
 
@@ -1427,6 +1429,8 @@ async def _fdictFetchOutputStatus(
     dictPipelineState = await _fdictReconcilePipelineState(
         dictCtx, sContainerId,
     )
+    runOutputBaseline.fnAbsorbFinishedRunOutputs(
+        dictCtx, sContainerId, dictWorkflow, dictPipelineState)
     bPipelineRunning = bool(dictPipelineState.get("bRunning"))
     dictModTimes, dictReload, sWorkflowPath = await _ftFetchAndReload(
         dictCtx, sContainerId, dictWorkflow, dictVars,
