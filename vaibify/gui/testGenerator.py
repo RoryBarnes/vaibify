@@ -862,9 +862,7 @@ def _fdictWriteQuantitativeFiles(
     ):
         return {"bNeedsOverwriteConfirm": True, "sFilePath": sTestPath}
     connectionDocker.fnWriteFile(
-        sContainerId, sTestPath,
-        sTestCode.encode("utf-8"),
-    )
+        sContainerId, sTestPath, sTestCode.encode("utf-8"))
     sFilename = posixpath.basename(sTestPath)
     return {
         "sFilePath": sTestPath,
@@ -874,6 +872,8 @@ def _fdictWriteQuantitativeFiles(
         "sStochasticityClassification": dictMerged.get(
             "sStochasticityClassification", "deterministic",
         ),
+        "sIntrospectorError": dictMerged.get("sIntrospectorError", ""),
+        "iStandardCount": len(dictMerged.get("listStandards", [])),
         "saCommands": [f"python3 -m pytest tests/{sFilename}"],
     }
 

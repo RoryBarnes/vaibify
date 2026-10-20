@@ -31559,6 +31559,21 @@ LIST_FALSIFICATIONS = [
         old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
         new='    iSwapBytes = iDesiredBytes\n',
     ),
+    # --- 2026-10-19: the unintrospectable toast is built from the
+    # payload; it claimed an LLM fallback that never ran.
+    Falsification(
+        nodeid=(
+            'tests/browser/testUnintrospectableToastSaysWhatHappened.py::'
+            'testTheToastCarriesTheIntrospectorErrorAndNoLlmClaim'
+        ),
+        source='vaibify/gui/static/scriptTestManager.js',
+        old='                fsDescribeUnintrospectable(sStepLabel, dictQ),\n',
+        new=(
+            '                sStepLabel + ": introspector could not parse '
+            'this step\'s outputs. Standards came from the LLM fallback '
+            '\\u2014 review them carefully.",\n'
+        ),
+    ),
     # --- 2026-10-19: the randomness lint's nested flag reaches Level 3.
     # Both levelGates readers revert together: the step's applicable
     # set is unioned with its failing set by design, so either reader

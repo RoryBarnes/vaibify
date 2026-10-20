@@ -200,12 +200,25 @@ var VaibifyTestManager = (function () {
                 "source of randomness, then regenerate.",
                 "warning");
         } else if (sClass === "unintrospectable") {
+            /* What happened, from the payload. This toast claimed
+               "Standards came from the LLM fallback" from 2026-04 to
+               2026-10, and no LLM ran: the generator only reports the
+               introspector's error. */
             VaibifyApp.fnShowToast(
-                sStepLabel + ": introspector could not parse this " +
-                "step's outputs. Standards came from the LLM " +
-                "fallback \u2014 review them carefully.",
+                fsDescribeUnintrospectable(sStepLabel, dictQ),
                 "warning");
         }
+    }
+
+    function fsDescribeUnintrospectable(sStepLabel, dictQ) {
+        var iStandards = dictQ.iStandardCount || 0;
+        var sError = dictQ.sIntrospectorError || "";
+        return sStepLabel + ": the introspector could not parse " +
+            "this step's outputs, so " +
+            (iStandards === 0 ? "no quantitative standards were " +
+                "derived" : iStandards + " quantitative standard(s) " +
+                "were derived") +
+            (sError ? " (" + sError + ")" : "") + ".";
     }
 
     function fnShowApiKeyDialog(iStep) {
