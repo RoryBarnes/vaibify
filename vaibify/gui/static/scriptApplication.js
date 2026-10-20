@@ -3226,6 +3226,18 @@ const VaibifyApp = (function () {
                 "results and approve it",
             sClass: "step-blocker-glyph-user",
         },
+        "dependency-unreconciled": {
+            sIcon: "⚠",
+            sLabel: "The dependency scan found a cross-step read the " +
+                "workflow does not declare — declare it or dismiss it",
+            sClass: "step-blocker-glyph-l1-dependency",
+        },
+        "dependency-scan-not-current": {
+            sIcon: "?",
+            sLabel: "Dependency scan not current — rescan " +
+                "dependencies",
+            sClass: "step-blocker-glyph-l1-dependency-unknown",
+        },
         "test-freshness-unchecked": {
             /* Not a failure and not stale: this poll could not compare
              * the files with the digests the last test run recorded.
@@ -3301,6 +3313,12 @@ const VaibifyApp = (function () {
                 "a new deposit from the Repos panel",
             sClass: "step-blocker-glyph-l2-zenodo",
         },
+        "basename-collision": {
+            sIcon: "⚠",
+            sLabel: "Two published files share a name, and a " +
+                "Zenodo deposit is flat — rename one",
+            sClass: "step-blocker-glyph-l2-zenodo",
+        },
         "github-verify-stale": {
             sIcon: "⚠",
             sLabel: "GitHub sync check is stale — re-verify from " +
@@ -3344,6 +3362,19 @@ const VaibifyApp = (function () {
             sLabel: "Plot not pushed to Overleaf at recorded commit — " +
                 "push manuscript figures",
             sClass: "step-blocker-glyph-l2-figure",
+        },
+        "overleaf-verify-stale": {
+            sIcon: "⚠",
+            sLabel: "The Overleaf check is missing or stale — click " +
+                "Verify now on the Overleaf manuscript row",
+            sClass: "step-blocker-glyph-l2-overleaf-stale",
+        },
+        "not-in-overleaf": {
+            sIcon: "⚠",
+            sLabel: "The last Overleaf check did not find every " +
+                "figure matching — push figures from the Repos " +
+                "panel, then verify again",
+            sClass: "step-blocker-glyph-l2-overleaf",
         },
         "arxiv-mismatch": {
             sIcon: "⚠",
@@ -4294,22 +4325,29 @@ const VaibifyApp = (function () {
                         "files match their pinned hashes.",
                         sType: "info"};
                 }
-                /* A difference the server explains by recorded
-                   hardware or settings is said in its words, with the
-                   option it offers -- never as an alarm (design F5). */
+                /* The check compares bytes, so the toast counts and
+                   the server's report says the rest: every file with
+                   its recorded contexts, what the check cannot judge,
+                   and regenerating only as a choice with its cost.
+                   It once told everyone to "re-run the project or
+                   regenerate the envelope" -- the first may reproduce
+                   the same bytes, the second erases the comparison.
+                   Differences made under recorded other settings or
+                   hardware are never an alarm (design F5). */
                 var dictExplain =
                     (dictResult || {}).dictContextExplanation || {};
-                if (dictExplain.bOnlyContextDifferences) {
-                    return {sMessage: dictExplain.sSummary + " " +
-                        dictExplain.sOption, sType: "info"};
-                }
+                var dictReport =
+                    (dictResult || {}).dictMismatchReport || {};
                 return {sMessage: listBad.length + " of " + iTotal +
-                    " files differ from the manifest (first: " +
-                    (listBad[0].sPath || listBad[0]) + "). Re-run " +
-                    "the project or regenerate the envelope." +
+                    " files differ from the manifest." +
                     (dictExplain.sSummary ? " " + dictExplain.sSummary
-                        : ""),
-                    sType: "warning"};
+                        : "") + " Click for every file and what it " +
+                    "means.",
+                    sType: dictExplain.bOnlyContextDifferences ?
+                        "info" : "warning",
+                    fnOnClick: function () {
+                        _fnShowManifestMismatchReport(dictReport);
+                    }};
             },
         },
         "copy-image-dockerfile": {
@@ -4754,6 +4792,28 @@ const VaibifyApp = (function () {
         };
     }
 
+    function _fnShowManifestMismatchReport(dictReport) {
+        /* Every sentence is the server's (dictMismatchReport); this
+           only lays them out, so the page cannot word a remedy the
+           backend does not stand behind. */
+        var listFiles = dictReport.listFiles || [];
+        var sHtml = '<ul class="manifest-mismatch-files">' +
+            listFiles.map(function (dictFile) {
+                return '<li><code>' + fnEscapeHtml(dictFile.sPath) +
+                    '</code>: ' + fnEscapeHtml(dictFile.sDescription) +
+                    '</li>';
+            }).join("") + '</ul>';
+        ["sScope", "sDeterminismNote", "sRegenerateChoice"].forEach(
+            function (sKey) {
+                if (dictReport[sKey]) {
+                    sHtml += '<p>' + fnEscapeHtml(dictReport[sKey]) +
+                        '</p>';
+                }
+            });
+        VaibifyModals.fnShowInfoModal(
+            "Files that differ from the manifest", sHtml);
+    }
+
     function _fsDescribeManifestProvenance(dictResult) {
         /* Which manifest the check read, when that is not the one the
            author committed. Empty when the working copy IS the
@@ -4889,7 +4949,8 @@ const VaibifyApp = (function () {
             if (dictAction.fdictAfterResponse) {
                 var dictOutcome = dictAction.fdictAfterResponse(
                     dictResult, sArg);
-                fnShowToast(dictOutcome.sMessage, dictOutcome.sType);
+                fnShowToast(dictOutcome.sMessage, dictOutcome.sType,
+                    dictOutcome.fnOnClick);
             } else {
                 fnShowToast(dictAction.sToast, "info");
             }
@@ -5244,20 +5305,39 @@ const VaibifyApp = (function () {
         return listDeps;
     }
 
+    function _fdictStepIndexById(listSteps) {
+        var dictIndexById = {};
+        listSteps.forEach(function (dictStep, iIndex) {
+            if (dictStep && dictStep.sStepId) {
+                dictIndexById[dictStep.sStepId] = iIndex;
+            }
+        });
+        return dictIndexById;
+    }
+
     function _flistComputeStepDependencies(iStep) {
+        /* A display mirror of workflowManager.fsetExtractUpstreamIndices
+           (both token forms; the symbolic one resolved by step id). The
+           regex once read only {StepNN.x}, so every canonical
+           {step:<id>.<stem>} edge was missing from this row. The Level 1
+           dependency check is the backend's, never this. */
         var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
         var step = listSteps[iStep];
+        var dictIndexById = _fdictStepIndexById(listSteps);
         var setDeps = {};
         var listArrays = ["saDataCommands", "saPlotCommands",
             "saTestCommands", "saOutputDataFiles", "saPlotFiles",
             "saDependencies", "saSetupCommands", "saCommands"];
         listArrays.forEach(function (sKey) {
             (step[sKey] || []).forEach(function (sVal) {
-                var rRef = /\{Step(\d+)\.\w+\}/g;
+                var rRef = /\{Step(\d+)\.[^}]+\}|\{step:([^.}\s]+)\.[^}]+\}/g;
                 var match;
                 while ((match = rRef.exec(sVal)) !== null) {
-                    var iDep = parseInt(match[1]) - 1;
-                    if (iDep !== iStep) setDeps[iDep] = true;
+                    var iDep = match[1] !== undefined ?
+                        parseInt(match[1]) - 1 : dictIndexById[match[2]];
+                    if (iDep !== undefined && iDep !== iStep) {
+                        setDeps[iDep] = true;
+                    }
                 }
             });
         });
@@ -5267,9 +5347,11 @@ const VaibifyApp = (function () {
                     setDeps[j] = true;
             }
         }
-        (step.saSourceCodeDeps || []).forEach(function (iDepNumber) {
-            var iDep = iDepNumber - 1;
-            if (iDep >= 0 && iDep !== iStep) setDeps[iDep] = true;
+        /* Scan-found upstream steps, by step ID (the backend files
+           them by id so a reorder never redraws an edge). */
+        (step.saSourceCodeDeps || []).forEach(function (sStepId) {
+            var iDep = dictIndexById[sStepId];
+            if (iDep !== undefined && iDep !== iStep) setDeps[iDep] = true;
         });
         return Object.keys(setDeps).map(Number).sort(
             function (a, b) { return a - b; }
@@ -7696,7 +7778,10 @@ const VaibifyApp = (function () {
                 el.remove();
             });
         }
-        if (sType !== "error" && sType !== "warning") {
+        /* A toast that offers an action stays until it is taken or
+           closed: an offer that vanishes in four seconds is one most
+           researchers never get to accept. */
+        if (sType !== "error" && sType !== "warning" && !fnOnClick) {
             setTimeout(function () { el.remove(); }, 4000);
         }
         document.getElementById("toastContainer").appendChild(el);

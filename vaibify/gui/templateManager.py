@@ -21,8 +21,12 @@ The top-level dict also carries an optional
 ``sStochasticityClassification`` (``deterministic`` / ``stochastic``
 / ``stochastic_unseeded`` / ``unintrospectable``) and, when the
 classification is ``unintrospectable``, an ``sIntrospectorError``
-string. Adding new optional fields does not require a template-hash
-bump; the runtime ignores fields it does not consume.
+string, and ``sGenerator`` -- who derived the standards:
+``deterministic`` (vaibify, from the outputs), ``llm-fallback`` (a
+language model, after vaibify could not understand the outputs) or
+``llm`` (a language model, at the researcher's request). Adding new
+optional fields does not require a template-hash bump; the runtime
+ignores fields it does not consume.
 """
 
 __all__ = [
@@ -34,10 +38,18 @@ __all__ = [
     "fsBuildQuantitativeTestCode",
     "fsBuildIntegrityTestCode",
     "fsBuildQualitativeTestCode",
+    "S_GENERATOR_DETERMINISTIC",
+    "S_GENERATOR_LLM_FALLBACK",
+    "S_GENERATOR_LLM",
 ]
 
 import hashlib
 import re
+
+
+S_GENERATOR_DETERMINISTIC = "deterministic"
+S_GENERATOR_LLM_FALLBACK = "llm-fallback"
+S_GENERATOR_LLM = "llm"
 
 
 def _fsComputeTemplateHash(sTemplate):

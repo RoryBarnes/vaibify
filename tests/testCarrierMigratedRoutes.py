@@ -1307,6 +1307,15 @@ def _fdictAllGreenSyncCache():
             "sZenodoDoi": "10.1000/example",
             "sEndpointVerified": "sandbox",
         },
+        # A bound Overleaf project passes only what its row shows: a
+        # fresh check that found every figure matching (ruling F5).
+        "overleaf": {
+            "sService": "overleaf",
+            "sLastVerified": _fsFreshIsoTimestamp(),
+            "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+            "listComparedPaths": [S_PUBLISHED_FIGURE_RELPATH],
+            "iScopeVersion": I_PUBLICATION_SCOPE_VERSION,
+        },
     }
 
 
@@ -1344,6 +1353,12 @@ def _fdictPublishedWorkflow():
     """
     dictDeclaration = _fdictGreenStepNamed("Decl")
     dictDeclaration["sStepKind"] = S_AI_DECLARATION_STEP_KIND
+    # Names of its own, as in testLevelGateL2Arxiv: a flat Zenodo
+    # deposit cannot hold two files called data.csv (basename-collision).
+    dictDeclaration["saOutputDataFiles"] = ["Decl/declaration.csv"]
+    # No figure: with Overleaf bound, every declared figure must be
+    # pushed (ruling F5), and only A's is in the push manifest below.
+    dictDeclaration["saPlotFiles"] = []
     return {
         "sWorkflowName": "Published", "sPlotDirectory": "Plot",
         "sFigureType": "pdf", "iNumberOfCores": 4,

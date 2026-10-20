@@ -388,7 +388,7 @@ def test_read_manifest_paths_empty_without_manifest(tmp_path):
 
 def test_nondeterministic_steps_skips_non_dict_entries():
     dictWorkflow = {"listSteps": [
-        None, {"bUnseededRandomnessWarning": True},
+        None, {"dictVerification": {"bUnseededRandomnessWarning": True}},
     ]}
     assert lg._fsetNondeterministicSteps(dictWorkflow) == {1}
 

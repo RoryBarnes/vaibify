@@ -4714,6 +4714,14 @@ body.proof-level-3 .toolbar-label {
     overflow-wrap: anywhere;
 }
 
+.file-outcome-note {
+    /* Vaibify's note beside a frozen policy's reason: information,
+       never a verdict, so it wears no outcome colour. */
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
+}
+
 .file-outcomes .file-outcome-diverged,
 .file-outcomes .file-outcome-missing {
     color: var(--color-red-text);
@@ -6976,6 +6984,14 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     color: var(--color-orange);
 }
 
+/* A dependency the scan found but the workflow does not declare is
+   pending work, and a scan that is not current is unknown, never a
+   pass: both orange, like the other recoverable marks. */
+.step-blocker-glyph-l1-dependency,
+.step-blocker-glyph-l1-dependency-unknown {
+    color: var(--color-orange);
+}
+
 .step-blocker-glyph-script-stale {
     color: var(--color-orange);
 }
@@ -7021,6 +7037,8 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .step-blocker-glyph-l2-personal-layer,
 .step-blocker-glyph-l2-image-archive,
 .step-blocker-glyph-l2-figure,
+.step-blocker-glyph-l2-overleaf,
+.step-blocker-glyph-l2-overleaf-stale,
 .step-blocker-glyph-l2-arxiv-submit,
 .step-blocker-glyph-l2-arxiv-mismatch,
 .step-blocker-glyph-l2-arxiv-version {

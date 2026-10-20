@@ -163,7 +163,7 @@ def testDominantEntryCarriesEveryFailingCriterion(fixtureL3Repo):
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
-        "bUnseededRandomnessWarning": True,
+        "dictVerification": {"bUnseededRandomnessWarning": True},
     }]
     listBlockers = flistLevel3Blockers(
         dictWorkflow, str(fixtureL3Repo), False,

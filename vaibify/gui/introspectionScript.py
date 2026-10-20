@@ -1162,7 +1162,7 @@ def _fsRunIntrospection(
     import secrets
     from . import projectRoots
     from .helperPrograms import fsResolveHelperInterpreter
-    from .pipelineUtils import fsShellQuote
+    from .pipelineUtils import OutputAnalysisError, fsShellQuote
     sScript = _fsBuildIntrospectionScript(
         listDataFiles, sDirectory,
         bScriptStochastic=bScriptStochastic,
@@ -1175,8 +1175,7 @@ def _fsRunIntrospection(
         sOperationName + ".py",
     )
     connectionDocker.fnWriteFile(
-        sContainerId, sScriptPath, sScript.encode("utf-8"),
-    )
+        sContainerId, sScriptPath, sScript.encode("utf-8"))
     # Quoted because a host scratch path descends from the
     # researcher's home directory, whose name they chose; the
     # container path was a literal and never needed it.
@@ -1189,14 +1188,14 @@ def _fsRunIntrospection(
         sContainerId, f"rm -f {sQuotedPath}",
     )
     if iExitCode != 0:
-        raise RuntimeError(
-            f"Introspection failed (exit {iExitCode}): {sOutput}"
-        )
+        raise OutputAnalysisError(
+            f"Introspection failed (exit {iExitCode}): {sOutput}")
     return _flistParseIntrospectionOutput(sOutput)
 
 
 def _flistParseIntrospectionOutput(sOutput):
     """Extract JSON from introspection output, ignoring non-JSON lines."""
+    from .pipelineUtils import OutputAnalysisError
     sStripped = sOutput.strip()
     try:
         return json.loads(sStripped)
@@ -1209,7 +1208,6 @@ def _flistParseIntrospectionOutput(sOutput):
                 return json.loads(sLine)
             except json.JSONDecodeError:
                 continue
-    raise ValueError(
-        f"Introspection output is not valid JSON: {sStripped[:200]}"
-    )
+    raise OutputAnalysisError(
+        f"Introspection output is not valid JSON: {sStripped[:200]}")
 

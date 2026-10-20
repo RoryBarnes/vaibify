@@ -177,3 +177,9 @@ is refused by name while the checks hold the drain).
 kill-confirmed guards; the browser one reads `animationName` off a live
 element, because asserting the CSS class alone passes against a
 stylesheet with no rule in it.
+
+- A message about what happened is built from the result payload,
+  never fixed text. The test-generation toast claimed "Standards came
+  from the LLM fallback" from 2026-04 to 2026-10 although no LLM ran.
+  Generated tests carry their generator (`deterministic`,
+  `llm-fallback`, `llm`) and the step's test rows show it.

@@ -147,7 +147,8 @@ def test_audit_surfaces_unseeded_step_warning():
     dictWorkflow = {
         "dictDeterminism": {S_MKL_CBWR_KEY: "COMPATIBLE"},
         "listSteps": [
-            {"sName": "S", "bUnseededRandomnessWarning": True},
+            {"sName": "S",
+             "dictVerification": {"bUnseededRandomnessWarning": True}},
         ],
     }
     listIssues = flistAuditWorkflow(dictWorkflow)
@@ -292,14 +293,14 @@ def test_unseeded_warning_requires_literal_true():
     A truthy-but-not-True value ('false') must not produce a spurious
     warning issue, and the otherwise-clean workflow yields no issues.
 
-    Kills: flistAuditWorkflow:214 —
-    'dictStep.get("bUnseededRandomnessWarning") is True' weakened to
-    truthy test
+    Kills: pipelineUtils.fbStepHasUnseededRandomnessWarning --
+    'bUnseededRandomnessWarning") is True' weakened to a truthy test
     """
     dictWorkflow = {
         "dictDeterminism": {S_MKL_CBWR_KEY: "COMPATIBLE"},
         "listSteps": [
-            {"sName": "S", "bUnseededRandomnessWarning": "false"},
+            {"sName": "S",
+             "dictVerification": {"bUnseededRandomnessWarning": "false"}},
         ],
     }
     listIssues = flistAuditWorkflow(dictWorkflow)

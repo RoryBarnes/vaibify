@@ -3093,85 +3093,6 @@ var VaibifySyncManager = (function () {
         return false;
     }
 
-    async function fdictVerifyManifest(sContainerId) {
-        if (!sContainerId) return null;
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/workflow/" + encodeURIComponent(sContainerId) +
-                "/manifest/verify", {}
-            );
-            _fnShowManifestVerifyToast(dictResult);
-            return dictResult;
-        } catch (error) {
-            VaibifyApp.fnShowToast(
-                _DICT_SYNC_ERROR_MESSAGES.verifyFailed + " (" +
-                _fsSanitizeError(error.message) + ")",
-                "error");
-            return null;
-        }
-    }
-
-    function _fnShowManifestVerifyToast(dictResult) {
-        var dict = dictResult || {};
-        var iTotal = dict.iTotal || 0;
-        var iMatching = dict.iMatching || 0;
-        var listMismatches = dict.listMismatches || [];
-        var saIncomplete = dict.saIncomplete || [];
-        var iIncomplete = saIncomplete.length;
-        if (listMismatches.length === 0 && iIncomplete === 0) {
-            VaibifyApp.fnShowToast(
-                "Manifest verified: " + iMatching + "/" + iTotal +
-                " files match.", "success");
-            return;
-        }
-        if (listMismatches.length === 0) {
-            VaibifyApp.fnShowToast(
-                "Manifest verified " + iMatching + "/" + iTotal +
-                ", but " + iIncomplete +
-                " declared path(s) not pinned: " +
-                _fsBuildMismatchSummary(saIncomplete) +
-                " Re-run to refresh coverage.",
-                "warning");
-            return;
-        }
-        var sList = _fsBuildMismatchSummary(listMismatches);
-        var sExtra = iIncomplete > 0
-            ? " Plus " + iIncomplete + " not pinned."
-            : "";
-        // Explained by recorded hardware or settings: the server's
-        // words and its option, never an error (design F5).
-        var dictExplain = dict.dictContextExplanation || {};
-        if (dictExplain.bOnlyContextDifferences) {
-            VaibifyApp.fnShowToast(
-                "Manifest: " + iMatching + "/" + iTotal + " match. " +
-                dictExplain.sSummary + " " + dictExplain.sOption + sExtra,
-                "info");
-            return;
-        }
-        VaibifyApp.fnShowToast(
-            "Manifest mismatch: " + iMatching + "/" + iTotal +
-            " match. " + sList + sExtra +
-            (dictExplain.sSummary ? " " + dictExplain.sSummary : ""),
-            "error");
-    }
-
-    function _fsBuildMismatchSummary(listMismatches) {
-        var iMaxShown = 5;
-        var listSample = listMismatches.slice(0, iMaxShown).map(
-            function (item) {
-                if (item && typeof item === "object") {
-                    return item.sPath || item.sName || "(unknown)";
-                }
-                return String(item);
-            });
-        var sJoined = listSample.join(", ");
-        if (listMismatches.length > iMaxShown) {
-            sJoined += " \u2026and " +
-                (listMismatches.length - iMaxShown) + " more";
-        }
-        return sJoined;
-    }
-
     function fnResetState() {
         _setActiveFileSyncs.clear();
         fnInvalidateVerifyCache();
@@ -3298,7 +3219,6 @@ var VaibifySyncManager = (function () {
         fsFormatFileCount: fsFormatFileCount,
         fnRenderRemoteSyncPanel: fnRenderRemoteSyncPanel,
         fnRenderRemoteConsistencyBanner: fnRenderRemoteConsistencyBanner,
-        fdictVerifyManifest: fdictVerifyManifest,
         fnInvalidateVerifyCache: fnInvalidateVerifyCache,
         fnResetState: fnResetState,
         fnOpenRemotePicklistForBadge: fnOpenRemotePicklistForBadge,

@@ -19,6 +19,7 @@ decision lives in one module.
 
 import hashlib
 import json
+import posixpath
 import threading
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -230,15 +231,19 @@ def _fsWorkflowBlockerFingerprint(dictWorkflow):
 
 def _fdictBlockerRelevantStep(dictStep):
     """Capture the per-step fields that determine blocker output."""
-    return {sKey: dictStep.get(sKey) for sKey in (
+    from vaibify.gui.pipelineUtils import fbStepHasUnseededRandomnessWarning
+    dictRelevant = {sKey: dictStep.get(sKey) for sKey in (
         "sName", "sDirectory", "sLabel", "sStepKind",
         "saOutputDataFiles", "saPlotFiles",
         "saInputDataFiles", "bNoInputData",
         "saDataCommands", "saPlotCommands", "saTestCommands",
         "saSetupCommands", "saCommands", "saDependencies",
         "dictVerification", "dictTests", "sLastUserUpdate",
-        "bUnseededRandomnessWarning", "bInteractive",
+        "bInteractive",
     )}
+    dictRelevant["bUnseededRandomnessWarning"] = (
+        fbStepHasUnseededRandomnessWarning(dictStep))
+    return dictRelevant
 
 
 def _fdictWorkflowTopLevelFingerprint(dictWorkflow):
@@ -300,7 +305,7 @@ def _fsFreshnessVerdictFingerprint(dictUnknownFreshnessByStep):
 
 
 def _fsSyncStatusFingerprint(filesRepo):
-    """SHA over GitHub + Zenodo sync caches so verify-completion busts L2/L3.
+    """SHA over the remotes' sync caches so verify-completion busts L2/L3.
 
     The previous L2/L3 cache keys ignored
     ``scheduledReverify.fdictReadCachedSyncStatus`` results, so a GitHub
@@ -311,7 +316,9 @@ def _fsSyncStatusFingerprint(filesRepo):
     field. Returns ``"none"`` when the repo has no sync cache yet.
     """
     listEntries = []
-    for sService in ("github", "zenodo"):
+    # Overleaf joined with ruling F5: a bound project's Overleaf check
+    # is a Level 2 blocker, so its verify must be able to clear one.
+    for sService in ("github", "zenodo", "overleaf"):
         try:
             dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
                 filesRepo, sService,
@@ -491,6 +498,11 @@ def flistLevel1Blockers(
     Consumers must tolerate its absence.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    # The scan verdict reads script hashes and the scan annotation,
+    # neither of which the workflow or repo fingerprint can see, so the
+    # verdict itself joins the key (the declaration-freshness pattern).
+    dictDependencyStates = _fdictDependencyStatesByStep(
+        dictWorkflow, filesRepo)
     tCacheKey = (
         "L1",
         _fsWorkflowBlockerFingerprint(dictWorkflow),
@@ -498,37 +510,62 @@ def flistLevel1Blockers(
         _fsRepoFingerprint(filesRepo),
         _fsScriptStatusFingerprint(dictScriptStatus),
         _fsFreshnessVerdictFingerprint(dictUnknownFreshnessByStep),
+        json.dumps(dictDependencyStates, sort_keys=True, default=str),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
         return listCached
     listResult = _flistComputeLevel1Blockers(
         dictWorkflow, dictNewModTimes, filesRepo, dictScriptStatus,
-        dictUnknownFreshnessByStep,
+        dictUnknownFreshnessByStep, dictDependencyStates,
     )
     _fnBlockerCacheStore(tCacheKey, listResult)
     return listResult
 
 
+def _fdictDependencyStatesByStep(dictWorkflow, filesRepo):
+    """Return each scanned step's dependency verdict (``dependencyFindings``)."""
+    from .dependencyFindings import fdictDependencyStatesByStep
+    return fdictDependencyStatesByStep(
+        dictWorkflow, filesRepo, _fdictUpstreamStepsByConsumer(dictWorkflow))
+
+
 def _flistComputeLevel1Blockers(
     dictWorkflow, dictNewModTimes, filesRepo, dictScriptStatus,
-    dictUnknownFreshnessByStep=None,
+    dictUnknownFreshnessByStep=None, dictDependencyStates=None,
 ):
-    """Uncached L1-blocker evaluation — the body of the original gate."""
+    """Uncached L1-blocker evaluation — the body of the original gate.
+
+    A step whose scan-found dependencies are unreconciled or not current
+    carries ``sDependencyState`` on whichever blocker dominates it, so
+    the step's cell sees that state even when another criterion wins
+    the glyph.
+    """
     if not fbWorkflowHasProjectRepo(filesRepo):
         return []
     listSteps = dictWorkflow.get("listSteps", []) or []
     if not listSteps:
         return []
+    if dictDependencyStates is None:
+        dictDependencyStates = _fdictDependencyStatesByStep(
+            dictWorkflow, filesRepo)
     dictUpstreamByStep = _fdictUpstreamStepsByConsumer(dictWorkflow)
     listBlockers = []
     for iStepIndex, dictStep in enumerate(listSteps):
+        dictState = dictDependencyStates.get(iStepIndex) or {}
         dictBlocker = _fdictBuildStepBlocker(
             dictWorkflow, iStepIndex, dictStep,
             dictNewModTimes, dictUpstreamByStep,
             dictScriptStatus, filesRepo, dictUnknownFreshnessByStep,
+            dictState,
         )
         if dictBlocker is not None:
+            if dictState.get("sState") in _T_DEPENDENCY_BLOCKING_STATES:
+                dictBlocker["sDependencyState"] = dictState["sState"]
+                dictBlocker["listDependencyFindings"] = list(
+                    dictState.get("listFindings") or [])
+                dictBlocker["sDependencyReason"] = dictState.get(
+                    "sReason", "")
             listBlockers.append(dictBlocker)
     return sorted(listBlockers, key=lambda dictEntry: dictEntry["iStepIndex"])
 
@@ -537,7 +574,7 @@ def _fdictBuildStepBlocker(
     dictWorkflow, iStepIndex, dictStep,
     dictNewModTimes, dictUpstreamByStep,
     dictScriptStatus=None, filesRepo=None,
-    dictUnknownFreshnessByStep=None,
+    dictUnknownFreshnessByStep=None, dictDependencyState=None,
 ):
     """Return the single dominant blocker dict for a step, or None.
 
@@ -563,6 +600,10 @@ def _fdictBuildStepBlocker(
         return None
     if _fbStepInputDataUndeclared(dictStep):
         return _fdictInputUndeclaredBlocker(dictWorkflow, iStepIndex)
+    sDependencyState = (dictDependencyState or {}).get("sState")
+    if sDependencyState == S_DEPENDENCY_UNRECONCILED_STATE:
+        return _fdictDependencyUnreconciledBlocker(
+            dictWorkflow, iStepIndex, dictDependencyState)
     if not fbStepTimingClean(dictStep):
         return _fdictUpstreamModifiedBlocker(
             dictWorkflow, iStepIndex, dictStep,
@@ -583,9 +624,88 @@ def _fdictBuildStepBlocker(
         return _fdictFreshnessUncheckedBlocker(
             dictWorkflow, iStepIndex, listUnchecked,
         )
+    if sDependencyState == S_DEPENDENCY_NOT_CURRENT_STATE:
+        return _fdictDependencyNotCurrentBlocker(
+            dictWorkflow, iStepIndex, dictDependencyState)
     return _fdictUserDispositionBlocker(
         dictWorkflow, iStepIndex, dictStep,
     )
+
+
+S_DEPENDENCY_UNRECONCILED_STATE = "unreconciled"
+S_DEPENDENCY_NOT_CURRENT_STATE = "not-current"
+_T_DEPENDENCY_BLOCKING_STATES = (
+    S_DEPENDENCY_UNRECONCILED_STATE, S_DEPENDENCY_NOT_CURRENT_STATE,
+)
+_DICT_DEPENDENCY_PSEUDO_CRITERIA = {
+    S_DEPENDENCY_UNRECONCILED_STATE: "dependency-unreconciled",
+    S_DEPENDENCY_NOT_CURRENT_STATE: "dependency-scan-not-current",
+}
+
+
+def _fdictDependencyUnreconciledBlocker(
+    dictWorkflow, iStepIndex, dictDependencyState,
+):
+    """Build the ``dependency-unreconciled`` blocker for one step.
+
+    The scanner found this step's script reading another step's
+    declared output, and the workflow neither declares the edge nor
+    records the researcher dismissing it: the graph the workflow JSON
+    states is missing an edge its own scripts take.
+    """
+    listFindings = dictDependencyState.get("listFindings") or []
+    dictIndexById = {
+        dictStep.get("sStepId"): iIndex for iIndex, dictStep in enumerate(
+            dictWorkflow.get("listSteps", []) or [])
+        if isinstance(dictStep, dict)}
+    sFound = "; ".join(
+        f"{dictFinding.get('sScriptPath')} reads "
+        f"{dictFinding.get('sScannedPath')} "
+        f"({dictFinding.get('sUpstreamStepId')}'s "
+        f"{dictFinding.get('sMatchedOutput')})"
+        for dictFinding in listFindings)
+    return {
+        "iLevel": 1,
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
+        "sCriterion": "dependency-unreconciled",
+        "listOffendingFiles": sorted({
+            dictFinding.get("sScriptPath", "") for dictFinding in listFindings}),
+        "listOffendingUpstreamSteps": sorted({
+            dictIndexById[dictFinding["sUpstreamStepId"]]
+            for dictFinding in listFindings
+            if dictFinding.get("sUpstreamStepId") in dictIndexById}),
+        "listDependencyFindings": listFindings,
+        "sRemediationHint":
+            "The dependency scan found an undeclared cross-step read: "
+            + sFound + ". Declare it with a {step:<id>.<stem>} token or "
+            "saDependencies, or dismiss the finding.",
+    }
+
+
+def _fdictDependencyNotCurrentBlocker(
+    dictWorkflow, iStepIndex, dictDependencyState,
+):
+    """Build the ``dependency-scan-not-current`` blocker for one step.
+
+    Not a failure: the scan's findings no longer describe the files, or
+    the scan failed, so nothing is known about this step's hidden
+    reads until it is scanned again.
+    """
+    return {
+        "iLevel": 1,
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
+        "sCriterion": "dependency-scan-not-current",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "Dependency scan not current: "
+            + (dictDependencyState.get("sReason") or "unknown reason")
+            + ". Rescan dependencies.",
+    }
 
 
 def _fdictFreshnessUncheckedBlocker(dictWorkflow, iStepIndex, listPaths):
@@ -1232,9 +1352,16 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
     Overleaf manuscript is bound) leaves the conjunct trivially True —
     manuscript posting happens outside vaibify on its own timeline and
     must not block publication of the code and data.
+
+    The Overleaf conjunct is opt-in the same way: an unbound project is
+    not applicable, and a BOUND one passes only when its Overleaf
+    blockers are empty, so the chip and the rows beneath it fail on
+    the same set (ruling F5, 2026-10-19).
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not fbAtLeastLevel1(dictWorkflow, filesRepo):
+        return False
+    if flistLevel2BasenameCollisions(dictWorkflow):
         return False
     if not fbWorkflowFullySyncedWithGithub(
         dictWorkflow, filesRepo,
@@ -1251,6 +1378,8 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
     if not replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow):
         return False
     if not fbImageArchiveQuestionSettled(dictWorkflow, filesRepo):
+        return False
+    if _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):
         return False
     if not fbWorkflowFullySyncedWithArxiv(
         dictWorkflow, filesRepo,
@@ -2427,6 +2556,7 @@ def _flistComputeLevel2Blockers(dictWorkflow, filesRepo):
     listBlockers.extend(_flistZenodoLevel2Blockers(
         dictWorkflow, filesRepo,
     ))
+    listBlockers.extend(_flistBasenameCollisionLevel2Blockers(dictWorkflow))
     listBlockers.extend(_flistAiDeclarationLevel2Blockers(
         dictWorkflow, filesRepo,
     ))
@@ -2503,6 +2633,61 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
     ):
         return listBlockers
     return [_fdictZenodoUnexplainedRefusalBlocker(dictStatus)]
+
+
+S_BASENAME_COLLISION_CRITERION = "basename-collision"
+
+
+def flistLevel2BasenameCollisions(dictWorkflow):
+    """Return each group of published Level 2 files sharing a basename.
+
+    A Zenodo deposit is FLAT: files upload under their basenames, the
+    second of a colliding pair overwrites the first, and the archive
+    therefore refuses such a selection (``_fnRefuseBasenameCollisions``).
+    This states that refusal before the researcher clicks. Read from
+    the workflow alone, so the poll can answer it.
+    """
+    dictByBasename = {}
+    for sPath in _flistLevel2CanonicalPaths(dictWorkflow):
+        dictByBasename.setdefault(posixpath.basename(sPath), []).append(sPath)
+    return [sorted(listPaths) for _sName, listPaths in sorted(
+        dictByBasename.items()) if len(listPaths) > 1]
+
+
+def _flistBasenameCollisionLevel2Blockers(dictWorkflow):
+    """Return a blocker on each step owning a colliding file, homing the rest."""
+    listGroups = flistLevel2BasenameCollisions(dictWorkflow)
+    if not listGroups:
+        return []
+    setColliding = {sPath for listGroup in listGroups for sPath in listGroup}
+    sHint = (
+        "A Zenodo deposit is flat, so files sharing a name overwrite "
+        "each other: " + "; ".join(", ".join(listGroup)
+                                   for listGroup in listGroups)
+        + ". Rename one of each.")
+    dictTemplateValues = fdictWorkflowTemplateValues(dictWorkflow)
+    listBlockers, setClaimed = [], set()
+    for iStepIndex, dictStep in enumerate(
+            dictWorkflow.get("listSteps", []) or []):
+        if not isinstance(dictStep, dict):
+            continue
+        listOffending = sorted(setColliding & set(
+            _flistStepPublishedPaths(dictStep, dictTemplateValues)))
+        if listOffending:
+            setClaimed.update(listOffending)
+            listBlockers.append(_fdictBuildSyncStepBlocker(
+                dictWorkflow, iStepIndex, listOffending,
+                S_BASENAME_COLLISION_CRITERION, sHint))
+    listUnclaimed = sorted(setColliding - setClaimed)
+    if listUnclaimed:
+        listBlockers.append({
+            "iLevel": 2, "iStepIndex": -1,
+            "sStepLabel": _S_WORKFLOW_SCOPE_LABEL, "sScope": "workflow",
+            "sCriterion": "basename-collision",
+            "listOffendingFiles": listUnclaimed,
+            "listOffendingUpstreamSteps": [], "sRemediationHint": sHint,
+        })
+    return listBlockers
 
 
 def _flistAiDeclarationLevel2Blockers(dictWorkflow, filesRepo):
@@ -2978,7 +3163,13 @@ def _fdictWorkflowScopeLevel2Blocker(sCriterion, sRemediationHint):
 
 
 def _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):
-    """Return per-step ``figure-not-frozen`` blockers, or empty list."""
+    """Return a bound project's Overleaf L2 blockers, or empty list.
+
+    A per-step ``figure-not-frozen`` for each step with a figure not
+    pushed at the recorded commit, and one workflow-scope blocker when
+    the Overleaf row is not green. The Level 2 gate reads this list, so
+    it is the single authority on what Overleaf requires (ruling F5).
+    """
     if not fbWorkflowHasOverleafBinding(dictWorkflow):
         return []
     setPushed = _fsetPushedFigurePaths(dictWorkflow, filesRepo)
@@ -2992,7 +3183,49 @@ def _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):
             listBlockers.append(_fdictFigureNotFrozenBlocker(
                 dictWorkflow, iStepIndex, listOffending,
             ))
-    return listBlockers
+    return listBlockers + _flistOverleafVerifyBlockers(filesRepo)
+
+
+def _flistOverleafVerifyBlockers(filesRepo):
+    """Return the workflow-scope blocker while the Overleaf row is not green.
+
+    The row is green on exactly a fresh, scope-current check that
+    compared figures and found every one matching, which is what the
+    two cached-status predicates the GitHub and Zenodo gates use say.
+    """
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        filesRepo, "overleaf",
+    )
+    if not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS):
+        return [_fdictOverleafWorkflowBlocker(
+            sCriterion="overleaf-verify-stale", listOffendingFiles=[],
+            sHint=("The Overleaf check is missing or stale — click "
+                   "Verify now on the Overleaf manuscript row"))]
+    if _fbCachedSyncStatusFullMatch(dictStatus):
+        return []
+    listDiverged = [
+        dictEntry.get("sPath") for dictEntry in
+        dictStatus.get("listDiverged") or [] if isinstance(dictEntry, dict)
+    ]
+    return [_fdictOverleafWorkflowBlocker(
+        sCriterion="not-in-overleaf", listOffendingFiles=listDiverged,
+        sHint=("The last Overleaf check did not find every figure "
+               "matching — push figures from the Repos panel, then "
+               "verify again"))]
+
+
+def _fdictOverleafWorkflowBlocker(sCriterion, listOffendingFiles, sHint):
+    """Build one workflow-scope Overleaf blocker entry."""
+    return {
+        "iLevel": 2,
+        "iStepIndex": -1,
+        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
+        "sScope": "workflow",
+        "sCriterion": sCriterion,
+        "listOffendingFiles": listOffendingFiles,
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint": sHint,
+    }
 
 
 def _fsetPushedFigurePaths(dictWorkflow, filesRepo):
@@ -3819,12 +4052,13 @@ def _fsetReadManifestPaths(filesRepo):
 
 def _fsetNondeterministicSteps(dictWorkflow):
     """Return the set of 0-based step indices flagged for unseeded RNG."""
+    from vaibify.gui.pipelineUtils import fbStepHasUnseededRandomnessWarning
     setIndices = set()
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
     for iIndex, dictStep in enumerate(listSteps):
         if not isinstance(dictStep, dict):
             continue
-        if dictStep.get("bUnseededRandomnessWarning") is True:
+        if fbStepHasUnseededRandomnessWarning(dictStep):
             setIndices.add(iIndex)
     return setIndices
 
@@ -4233,6 +4467,12 @@ _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA = (
     "arxiv-mismatch", "arxiv-version-stale",
 )
 
+# Counted only while an Overleaf project is bound (ruling F5), exactly
+# as the gate reads them; unbound, the row is not applicable.
+_T_WORKFLOW_LEVEL2_OVERLEAF_CRITERIA = (
+    "overleaf-verify-stale", "not-in-overleaf",
+)
+
 # ``image-not-published`` is deliberately ABSENT, and so is every other
 # registry criterion (ruled 2026-09-05): a container registry is a
 # commercial convenience with no preservation commitment, like Overleaf
@@ -4352,7 +4592,7 @@ def _fdictBuildPerLevelCriteriaLookups(
 ):
     """Index each level's per-step blocker criteria by step index."""
     return {
-        "dictLevel1CriteriaByStep": _fdictCriteriaByStep(
+        "dictLevel1CriteriaByStep": _fdictLevel1CriteriaByStep(
             listLevel1Blockers,
         ),
         "dictLevel2CriteriaByStep": _fdictCriteriaByStep(
@@ -4383,6 +4623,23 @@ def _fdictLevel3FailingCriteriaByStep(listLevel3Blockers):
         dictResult.setdefault(iStepIndex, set()).update(
             sCriterion for sCriterion in listFailing if sCriterion
         )
+    return dictResult
+
+
+def _fdictLevel1CriteriaByStep(listLevel1Blockers):
+    """Index each step's L1 criteria, plus its carried dependency state.
+
+    The dependency state rides on whichever blocker dominates the step
+    (``sDependencyState``), and is added here as its own criterion so
+    the dependency requirement reads the same verdict as the gate.
+    """
+    dictResult = _fdictCriteriaByStep(listLevel1Blockers)
+    for dictEntry in listLevel1Blockers or []:
+        sPseudo = _DICT_DEPENDENCY_PSEUDO_CRITERIA.get(
+            dictEntry.get("sDependencyState"))
+        iStepIndex = dictEntry.get("iStepIndex", -1)
+        if sPseudo and isinstance(iStepIndex, int) and iStepIndex >= 0:
+            dictResult.setdefault(iStepIndex, set()).add(sPseudo)
     return dictResult
 
 
@@ -4607,6 +4864,11 @@ def _flistStepLevel1Requirements(
     listRequirements.append(
         ("input-data-declared",
          not _fbStepInputDataUndeclared(dictStep)))
+    if "dependency-unreconciled" in setCriteria:
+        listRequirements.append(("dependencies-reconciled", False))
+    elif "dependency-scan-not-current" in setCriteria:
+        # Unknown: counted in the total, never as satisfied.
+        listRequirements.append(("dependencies-reconciled", None))
     return listRequirements
 
 
@@ -4674,6 +4936,10 @@ def _flistStepLevel2Requirements(dictStep, setCriteria, dictContext):
         listRequirements.append(
             ("figure-frozen",
              "figure-not-frozen" not in setCriteria))
+    if S_BASENAME_COLLISION_CRITERION in setCriteria:
+        # Counted only while it fails, so a project with unique names
+        # keeps the totals it had; the cell still drops with the row.
+        listRequirements.append(("unique-basenames", False))
     if fbStepIsAiDeclaration(dictStep):
         # The declaration's researcher sign-off is a Level 2
         # requirement (its L1 cell reads not-applicable). A sign-off
@@ -4763,6 +5029,7 @@ def _fsetStepApplicableLevel3Criteria(
     dependency named only in ``saBinaryDependencies`` (e.g.
     maxlev->vplanet), which the command scan cannot see.
     """
+    from vaibify.gui.pipelineUtils import fbStepHasUnseededRandomnessWarning
     from .manifestPaths import flistStepScriptRepoPaths
     if not isinstance(dictStep, dict):
         return set()
@@ -4773,7 +5040,7 @@ def _fsetStepApplicableLevel3Criteria(
         setApplicable.add("missing-from-manifest")
     if flistStepScriptRepoPaths(dictStep):
         setApplicable.add("script-not-pinned")
-    if dictStep.get("bUnseededRandomnessWarning") is True:
+    if fbStepHasUnseededRandomnessWarning(dictStep):
         setApplicable.add("nondeterminism-undeclared")
     listCommands = _flistStepCommandStrings(dictStep)
     if _fbStepInvokesAnyKnownBinary(listCommands, listDeclaredBinaries):
@@ -5156,6 +5423,11 @@ def _ftWorkflowLevel2Counts(dictWorkflow, listLevel2Blockers, bHasRepo):
     tApplicable = _T_WORKFLOW_LEVEL2_BASE_CRITERIA
     if fbWorkflowHasArxivConnection(dictWorkflow):
         tApplicable = tApplicable + _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA
+    if fbWorkflowHasOverleafBinding(dictWorkflow):
+        tApplicable = tApplicable + _T_WORKFLOW_LEVEL2_OVERLEAF_CRITERIA
+    if S_BASENAME_COLLISION_CRITERION in _fsetWorkflowScopeCriteria(
+            listLevel2Blockers):
+        tApplicable = tApplicable + (S_BASENAME_COLLISION_CRITERION,)
     return _ftCountWorkflowCriteria(
         listLevel2Blockers, tApplicable, bHasRepo,
     )

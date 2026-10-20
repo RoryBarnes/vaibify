@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
+from tests.typedHashDouble import TypedHashFromServedBytes
 
 
 S_CONTAINER_ID = "sync_test_cid"
@@ -58,7 +59,7 @@ DICT_WORKFLOW_SYNC = {
 }
 
 
-class MockDockerSync:
+class MockDockerSync(TypedHashFromServedBytes):
     """Docker mock that simulates sync command results."""
 
     def __init__(self):
@@ -2933,6 +2934,50 @@ def test_zenodo_archive_refuses_basename_collisions(clientHttp):
     assert "StepBeta/tests/test_qualitative.py" in sDetail
     assert "overwrite" in sDetail
     assert listArchiveCommands == []
+
+
+@pytest.mark.falsification
+def test_make_permanent_refuses_basename_collisions(clientHttp):
+    """Make Permanent publishes through the same flat deposit, so it
+    refuses colliding basenames by name too, before any upload.
+
+    Kills: dropping the ``_fnRefuseBasenameCollisions`` call from the
+    promote route -- the second of a pair silently overwrites the first
+    on production Zenodo, where the record is permanent.
+    """
+    _fnConnectToContainer(clientHttp)
+    listArchiveCommands = []
+
+    def _ftRecordArchive(sContainerId, sCommand):
+        listArchiveCommands.append(sCommand)
+        return (0, "")
+
+    with patch.object(
+        _mockDockerInstance, "ftResultExecuteCommand", _ftRecordArchive,
+    ), patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={
+            "listSteps": [],
+            "sZenodoService": "sandbox",
+            "sZenodoDepositionId": "551",
+            "dictRemotes": {"zenodo": {
+                "sRecordId": "551", "sService": "sandbox",
+            }},
+        },
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/promote",
+            json={"listFilePaths": [
+                "/workspace/StepAlpha/tests/test_qualitative.py",
+                "/workspace/StepBeta/tests/test_qualitative.py",
+            ]},
+        )
+    assert responseHttp.status_code == 400, responseHttp.text
+    sDetail = responseHttp.json()["detail"]
+    assert "StepAlpha/tests/test_qualitative.py" in sDetail
+    assert "StepBeta/tests/test_qualitative.py" in sDetail
+    assert not any("zenodo" in sCommand.lower()
+                   for sCommand in listArchiveCommands), listArchiveCommands
 
 
 @pytest.mark.falsification

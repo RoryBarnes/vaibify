@@ -2598,6 +2598,46 @@ def test_unintrospectable_classification_emits_no_benchmarks():
     assert "blob.bin" in dictResult["sIntrospectorError"]
 
 
+class _ContainerFilesInMemory:
+    """Container file double: reads find nothing, writes are kept."""
+
+    def __init__(self):
+        self.dictWritten = {}
+
+    def fbaFetchFile(self, sContainerId, sPath):
+        raise FileNotFoundError(sPath)
+
+    def fnWriteFile(self, sContainerId, sPath, baContent):
+        self.dictWritten[sPath] = baContent
+
+
+def test_the_written_payload_says_what_the_introspector_found():
+    """The client's toast is built from these two fields, so they must
+    travel: an unintrospectable step derives no standards and says why.
+    """
+    from vaibify.gui.testGenerator import _fdictWriteQuantitativeFiles
+    listdictReports = [{
+        "sFileName": "blob.bin", "sError": "unsupported binary format",
+        "bLoadable": False, "listBenchmarks": [],
+    }]
+    dictStandards = _fdictBuildQuantitativeStandards(
+        listdictReports, 1e-6, "unintrospectable")
+    dictPayload = _fdictWriteQuantitativeFiles(
+        _ContainerFilesInMemory(), "cid", "/workspace/repo/step",
+        dictStandards, bForceOverwrite=True)
+    assert dictPayload["sStochasticityClassification"] == "unintrospectable"
+    assert dictPayload["sIntrospectorError"] == (
+        "blob.bin: unsupported binary format")
+    assert dictPayload["iStandardCount"] == 0
+    dictDeterministic = _fdictWriteQuantitativeFiles(
+        _ContainerFilesInMemory(), "cid", "/workspace/repo/step",
+        _fdictBuildQuantitativeStandards(
+            _flistdictStochasticReports(iSamples=256), 1e-6,
+            "deterministic"), bForceOverwrite=True)
+    assert dictDeterministic["sIntrospectorError"] == ""
+    assert dictDeterministic["iStandardCount"] > 0
+
+
 def test_unintrospectable_prompt_includes_conservative_tolerance():
     from vaibify.gui.llmInvoker import _CLAUDE_MD_TEST_SECTION
     assert "Conservative Tolerance Rules" in _CLAUDE_MD_TEST_SECTION
@@ -2739,13 +2779,15 @@ def test_loader_npy_std_aggregate(tmp_path):
 # -----------------------------------------------------------------------
 
 
+from vaibify.gui.llmTestGeneration import (
+    _fdictGenerateQuantitativeCategory,
+    _fdictGenerateSingleCategory,
+)
 from vaibify.gui.testGenerator import (
     _F_UNSEEDED_RTOL,
     _fbBenchmarkPassesFilter,
     _fdictAssignTolerance,
     _fdictMergeWithExistingStandards,
-    _fdictGenerateSingleCategory,
-    _fdictGenerateQuantitativeCategory,
     _fdictErrorResult,
     _fnAppendErrorLog,
     _ffToleranceForStochasticKind,

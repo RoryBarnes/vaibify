@@ -1478,9 +1478,9 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid='tests/testDeterminismGate.py::test_unseeded_warning_requires_literal_true',
-        source='vaibify/reproducibility/determinismGate.py',
-        old="""if dictStep.get("bUnseededRandomnessWarning") is True:""",
-        new="""if dictStep.get("bUnseededRandomnessWarning"):""",
+        source='vaibify/gui/pipelineUtils.py',
+        old="""    return dictVerification.get("bUnseededRandomnessWarning") is True\n""",
+        new="""    return bool(dictVerification.get("bUnseededRandomnessWarning"))\n""",
     ),
     Falsification(
         nodeid='tests/testConftestManagerCoverage.py::test_item_outcome_words_follow_the_call_report',
@@ -2781,11 +2781,68 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testDependencyPinningMutationCoverage.py::test_verify_flags_empty_but_present_lockfile',
         source='vaibify/reproducibility/dependencyPinning.py',
         old='''    if not listEntries:
-        return [
-            "requirements.lock at '"''',
+        if S_NO_DEPENDENCIES_MARKER in sContents.splitlines():''',
         new='''    if False:
-        return [
-            "requirements.lock at '"''',
+        if S_NO_DEPENDENCIES_MARKER in sContents.splitlines():''',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testALockThatDeclaresNothing.py::'
+            'testAGeneratedLockThatPinsNothingPassesTheDependencyRow'
+        ),
+        source='vaibify/reproducibility/dependencyPinning.py',
+        old=('        if S_NO_DEPENDENCIES_MARKER in sContents.splitlines():\n'
+             '            return []\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testALockThatDeclaresNothing.py::'
+            'testAnEmptyLockNobodyGeneratedStillFailsAndNamesTheRemedy'
+        ),
+        source='vaibify/reproducibility/dependencyPinning.py',
+        old='        if S_NO_DEPENDENCIES_MARKER in sContents.splitlines():\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordPublishesNoRawDigestOracle.py::'
+            'testThePublishedIndexHoldsNoBareHashOfAnyRawPrefix'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old=('    return hmac.new(\n'
+             '        _fbaLoadOrCreateDigestKey(), baRawPrefix, hashlib.sha256,\n'
+             '    ).hexdigest()\n'),
+        new='    return hashlib.sha256(baRawPrefix).hexdigest()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordPublishesNoRawDigestOracle.py::'
+            'testAnIndexFromAnEarlierVersionLosesItsBareHashesAtItsNextWrite'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old='    dictIndex.pop("dictSessionRawSha256", None)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testARunsOwnOutputsAreNotModifications.py::'
+            'testTheFirstCheckAfterARunDoesNotReportTheRunsOwnOutputs'
+        ),
+        source='vaibify/gui/runOutputBaseline.py',
+        old=('    _fnMergeIntoModTimeBaseline(\n'
+             '        dictCtx, sContainerId, dictRunModTimes, dictWorkflow)\n'),
+        new='    del dictRunModTimes\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testARunsOwnOutputsAreNotModifications.py::'
+            'testAChangeAcknowledgedAfterTheRunIsNotReportedAgain'
+        ),
+        source='vaibify/gui/runOutputBaseline.py',
+        old=('    if dictAbsorbed.get(sContainerId) == tRun:\n'
+             '        return\n'),
+        new='',
     ),
     Falsification(
         nodeid='tests/testDependencyPinningMutationCoverage.py::test_verify_accepts_flush_left_hash_continuation',
@@ -3059,9 +3116,9 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_randomness_criterion_requires_literal_true',
-        source='vaibify/reproducibility/levelGates.py',
-        old='    if dictStep.get("bUnseededRandomnessWarning") is True:\n        setApplicable.add("nondeterminism-undeclared")',
-        new='    if dictStep.get("bUnseededRandomnessWarning") == True:\n        setApplicable.add("nondeterminism-undeclared")',
+        source='vaibify/gui/pipelineUtils.py',
+        old='    return dictVerification.get("bUnseededRandomnessWarning") is True\n',
+        new='    return dictVerification.get("bUnseededRandomnessWarning") == True\n',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_binary_reference_reads_the_declared_path',
@@ -4208,14 +4265,10 @@ LIST_FALSIFICATIONS = [
         # held. Observed live before this test existed.
         nodeid='tests/testCliHubSessionMutationCoverage.py::test_release_sends_the_lease_where_the_route_reads_it',
         source='vaibify/cli/hubSession.py',
-        old="""            None, F_BOOTSTRAP_TIMEOUT_SECONDS,
-            sLeaseId=dictSession["sLeaseId"],
-        )
-    except HubSessionError as error:""",
-        new="""            {"sLeaseId": dictSession["sLeaseId"]},
-            F_BOOTSTRAP_TIMEOUT_SECONDS,
-        )
-    except HubSessionError as error:""",
+        old="""        None, F_BOOTSTRAP_TIMEOUT_SECONDS, sLeaseId=dictSession["sLeaseId"],
+    )""",
+        new="""        {"sLeaseId": dictSession["sLeaseId"]}, F_BOOTSTRAP_TIMEOUT_SECONDS,
+    )""",
     ),
     Falsification(
         # Paths a route by the lease's key (container name) instead of
@@ -5439,9 +5492,10 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testVaibifyDoHeadless.py::test_do_bootstraps_over_the_socket_and_acts_under_its_lease',
         source='vaibify/cli/hubSession.py',
         old='''        sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
-        sLeaseId=dictSession["sLeaseId"],
+        sLeaseId=dictSession["sLeaseId"], baRawBody=baRawBody,
     )''',
         new='''        sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
+        baRawBody=baRawBody,
     )''',
     ),
 
@@ -23743,13 +23797,9 @@ LIST_FALSIFICATIONS = [
             'tests/testProjectScopedRegistries.py::'
             'testADependencyScanIsReadOnlyForTheWorkflowItScanned'
         ),
-        source='vaibify/gui/pipelineServer.py',
-        old=(
-            '    return dictByWorkflow.get(\n'
-            '        (dictWorkflow or {}).get(workflowManager.S_LOADED_FROM_KEY,'
-            ' ""),\n'
-            '    )\n'
-        ),
+        source='vaibify/gui/stepDependencyScan.py',
+        old=('    return dictByWorkflow.get('
+             '_fsWorkflowCacheKey(dictWorkflow))\n'),
         new='    return next(iter(dictByWorkflow.values()), None)\n',
     ),
     Falsification(
@@ -23928,8 +23978,9 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/promptRecordManager.py',
         old=(
-            '    return _fsSha256Hex(baRaw[:iCapturedBytes]) == '
-            'sCapturedSha256\n'
+            '    return hmac.compare_digest(\n'
+            '        _fsRawPrefixDigest(baRaw[:iCapturedBytes]), '
+            'sCapturedDigest)\n'
         ),
         new='    return True\n',
     ),
@@ -30404,12 +30455,12 @@ LIST_FALSIFICATIONS = [
         source='vaibify/reproducibility/levelGates.py',
         old=(
             '        _fsFreshnessVerdictFingerprint(dictUnknownFreshnessByStep),\n'
-            '    )\n'
-            '    listCached = _flistBlockerCacheLookup(tCacheKey)\n'
+            '        json.dumps(dictDependencyStates, sort_keys=True, '
+            'default=str),\n'
         ),
         new=(
-            '    )\n'
-            '    listCached = _flistBlockerCacheLookup(tCacheKey)\n'
+            '        json.dumps(dictDependencyStates, sort_keys=True, '
+            'default=str),\n'
         ),
     ),
     Falsification(
@@ -31558,6 +31609,477 @@ LIST_FALSIFICATIONS = [
         source='vaibify/config/resourceLimits.py',
         old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
         new='    iSwapBytes = iDesiredBytes\n',
+    ),
+    # --- 2026-10-19: Make Permanent refuses colliding basenames too.
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_make_permanent_refuses_basename_collisions'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=('        _fnRefuseBasenameCollisions(request.listFilePaths)\n'
+             '        dictResult, sZenodoService = await '
+             '_ftPerformZenodoArchive(\n'),
+        new=('        dictResult, sZenodoService = await '
+             '_ftPerformZenodoArchive(\n'),
+    ),
+    # --- 2026-10-20: a read-only council runs nothing. The server half
+    # (no baseline re-run) predates this; the runner half removes the
+    # command tools Codex and Antigravity keep under their sandboxes.
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilLedger.py::'
+            'testReadOnlyCouncilProducesNoConfirmedClaims'
+        ),
+        source='vaibify/gui/agentCouncilEvidence.py',
+        old=('            if bReadOnly:\n'
+             '                self._fnRevertClaim(dictClaim, "readOnlyCouncil")\n'),
+        new=('            if False:\n'
+             '                self._fnRevertClaim(dictClaim, "readOnlyCouncil")\n'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testEveryTurnOfAReadOnlyCouncilSaysSo'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        old=('            dictSettings["sExecutionPermission"] == '
+             'S_EXECUTION_READ_ONLY))\n'),
+        new='            False))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testACodexParticipantInAReadOnlyCouncilHasNoCommandTool'
+        ),
+        source='vaibify/gui/agentCouncilCodexProvider.py',
+        old=('    if bReadOnlyCouncil:\n'
+             '        saArgv.extend(LIST_CODEX_READ_ONLY_COUNCIL_FLAGS)\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testAnAntigravityParticipantInAReadOnlyCouncilPlansOnly'
+        ),
+        source='vaibify/gui/agentCouncilAntigravityProvider.py',
+        old=('    if bReadOnlyCouncil:\n'
+             '        saArgv.extend(["--mode", "plan"])\n'),
+        new='',
+    ),
+    # --- 2026-10-20: the convene form sends its maximum rounds.
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilMaximumRoundsReachesTheRecord.py::'
+            'testTheConveneFormSendsTheMaximumRounds'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old=('            iMaximumRounds: iMaximumRounds > 0\n'
+             '                ? iMaximumRounds : DICT_DEFAULT_SETTINGS.iMaximumRounds,\n'),
+        new='',
+    ),
+    # --- 2026-10-20: ruling F5 -- a bound Overleaf project's chip and
+    # rows fail on the same set.
+    Falsification(
+        nodeid=(
+            'tests/testOverleafChipAgreesWithRows.py::'
+            'testAnUnpushedFigureOfABoundProjectHoldsTheChipBelowLevelTwo'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('    if _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):\n'
+             '        return False\n'),
+        new='',
+    ),
+    # --- 2026-10-20: the Zenodo publish offers what Level 3 reads.
+    Falsification(
+        nodeid=(
+            'tests/testZenodoCandidatesCoverLevelThree.py::'
+            'testTheZenodoCandidatesCarryTheEnvelopeAndTheAttestation'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old=('    for sPath in publicationScope.flistCollectComparisonPaths(\n'
+             '        dictWorkflow, filesRepo,\n'
+             '    ):\n'),
+        new='    for sPath in []:\n',
+    ),
+    # --- 2026-10-20: four defects a template project met on its way
+    # through the host CLI (tests/testCliTemplateProjectTowardLevelThreeLive.py
+    # found them against a real hub; these pin them without a daemon).
+    Falsification(
+        nodeid=(
+            'tests/testHostCliRunsThroughTheHub.py::'
+            'testARunFrameEchoesTheWorkflowTheSocketAnnounced'
+        ),
+        source='vaibify/cli/hubSession.py',
+        old=('    if dictBound.get("sType") != "workflowBound":\n'
+             '        return dictPayload\n'),
+        new='    if True:\n        return dictPayload\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCliRunsThroughTheHub.py::'
+            'testTheReleaseWaitsForTheWorkTheCommandStarted'
+        ),
+        source='vaibify/cli/hubSession.py',
+        old='        if iStatusCode != 409 or (\n',
+        new='        if True or (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCliRunsThroughTheHub.py::'
+            'testAnActionWithNoFieldsStillSendsABody'
+        ),
+        source='vaibify/cli/hubSession.py',
+        old='        if sMethod != "GET":\n            dictKeywords["json"] = dictFields\n',
+        new=('        if sMethod != "GET" and dictFields:\n'
+             '            dictKeywords["json"] = dictFields\n'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCliRunsThroughTheHub.py::'
+            'testPreflightAsksNothingOfAStepThatRunsNothing'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='                or not fbStepExecutesAnything(dictStep)):\n',
+        new='                or False):\n',
+    ),
+    # --- 2026-10-19: every dashboard action has a command-line
+    # equivalent, the researcher list never reaches the container, the
+    # hub lane claims nothing, the credential stays in the body, and an
+    # interactive step under --non-interactive stops at once.
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testEveryGuiInvokedMutationHasCliEquivalent'
+        ),
+        source='vaibify/gui/researcherActions.py',
+        old='    ("POST", "/api/sync/{sContainerId}/setup"): "credential",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResearcherActions.py::'
+            'testTheResearcherListIsNeverShippedNorCallableByAnAgent'
+        ),
+        source='vaibify/gui/actionCatalog.py',
+        old=('        "listActions": [dict(dictEntry) for dictEntry in '
+             'LIST_AGENT_ACTIONS],\n'),
+        new=('        "listActions": [dict(dictEntry) for dictEntry in '
+             'LIST_AGENT_ACTIONS + __import__('
+             '"vaibify.gui.researcherActions", fromlist=["_"])'
+             '.LIST_RESEARCHER_ACTIONS],\n'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResearcherActions.py::'
+            'testAHubLaneActionAddressesTheProjectByNameAndClaimsNothing'
+        ),
+        source='vaibify/cli/actionCommands.py',
+        old=('        if fbEntryUsesHubLane(dictEntry):\n'
+             '            sys.exit(_fiDispatchAction(\n'),
+        new=('        if False:\n'
+             '            sys.exit(_fiDispatchAction(\n'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResearcherActions.py::'
+            'testTheCredentialTokenTravelsOnlyInTheRequestBody'
+        ),
+        source='vaibify/cli/commandCredential.py',
+        old='    sToken = click.prompt("%s token" % sService, hide_input=True)\n',
+        new='    sToken = click.prompt("%s token" % sService, hide_input=False)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResearcherActions.py::'
+            'testANonInteractiveRunStopsAtAnInteractiveStepAndSaysWhy'
+        ),
+        source='vaibify/cli/hubSession.py',
+        old='    if bNonInteractive:\n        click.echo(\n',
+        new='    if False:\n        click.echo(\n',
+    ),
+    # --- 2026-10-19: scan-found dependencies gate Level 1 (F2): the
+    # blocker, the dismissal's hash binding, the staleness rule, and the
+    # route's refusal to dismiss a stale finding.
+    Falsification(
+        nodeid=(
+            'tests/testDependencyReconciliationGatesLevelOne.py::'
+            'testAnUndeclaredScanFoundReadBlocksLevelOne'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('    if sDependencyState == S_DEPENDENCY_UNRECONCILED_STATE:\n'
+             '        return _fdictDependencyUnreconciledBlocker(\n'
+             '            dictWorkflow, iStepIndex, dictDependencyState)\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyReconciliationGatesLevelOne.py::'
+            'testADismissalHoldsOnlyAtTheScriptHashItWasMadeAgainst'
+        ),
+        source='vaibify/reproducibility/dependencyFindings.py',
+        old=('            and dictDismissal.get("sScriptSha256") == '
+             'sScriptSha256)\n'),
+        new='            and True)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyReconciliationGatesLevelOne.py::'
+            'testAScriptEditedSinceTheScanReadsNotCurrentUntilRescanned'
+        ),
+        source='vaibify/reproducibility/dependencyFindings.py',
+        old='        if dictContext["dictHashes"].get(sScript) != sSha256:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyDismissalRoute.py::'
+            'testAFindingWhoseScanIsNotCurrentCannotBeDismissed'
+        ),
+        source='vaibify/gui/routes/scriptRoutes.py',
+        old=('    if (dictStates.get(iStepIndex) or {}).get("sState") == (\n'
+             '            S_DEPENDENCY_NOT_CURRENT):\n'),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSymbolicTokenDependenciesOnScreen.py::'
+            'testASymbolicTokenDeclaresTheDependency'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='                var rRef = /\\{Step(\\d+)\\.[^}]+\\}|\\{step:([^.}\\s]+)\\.[^}]+\\}/g;\n',
+        new='                var rRef = /\\{Step(\\d+)\\.\\w+\\}/g;\n',
+    ),
+    # --- 2026-10-19: colliding basenames block Level 2 (F4), in the
+    # scalar gate and in each owning step's cell alike.
+    Falsification(
+        nodeid=(
+            'tests/testBasenameCollisionBlocksLevelTwo.py::'
+            'testACollisionBlocksTheScalarGate'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=('    if flistLevel2BasenameCollisions(dictWorkflow):\n'
+             '        return False\n'),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBasenameCollisionBlocksLevelTwo.py::'
+            'testEachOwningStepCarriesTheBlockerAndItsCellDrops'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='        listRequirements.append(("unique-basenames", False))\n',
+        new='        pass\n',
+    ),
+    # --- 2026-10-19: vaibify's note beside policy v1's vector remedy,
+    # and the libraries the execution profiles do not cover.
+    Falsification(
+        nodeid=(
+            'tests/testComparisonPolicyNotes.py::'
+            'testTheAttestationResponseCarriesTheNoteBesideTheVectorReason'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old='        comparisonPolicyNotes.fnAttachPolicyNotes(dictRecord)\n',
+        new='        del dictRecord\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVectorFigureNoteOnScreen.py::'
+            'testTheVectorRowCarriesTheNoteAndTheDataRowItsReason'
+        ),
+        source='vaibify/gui/static/scriptFileOutcomes.js',
+        old='            "</span></div>" + _fsRenderVaibifyNote(dictOutcome) +\n',
+        new='            "</span></div>" +\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testUncoveredLibrariesAreNamed.py::'
+            'testEveryUncoveredFamilyIsNamedWithTheDistributionsThatBringIt'
+        ),
+        source='vaibify/reproducibility/determinismGate.py',
+        old='    ("SciPy\'s own OpenBLAS", ("scipy",), ()),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testUncoveredLibrariesOnScreen.py::'
+            'testTheRowShowsTheUncoveredLibrariesNote'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='            (dictMaths.sUncoveredNote ?\n',
+        new='            (false ?\n',
+    ),
+    # --- 2026-10-19: test generation falls back to a model only for
+    # the allow-listed analysis failures, and records who wrote what.
+    Falsification(
+        nodeid=(
+            'tests/testNarrowLlmFallback.py::'
+            'testAWriteFailureSurfacesUnchangedAndAsksNoModel'
+        ),
+        source='vaibify/gui/llmTestGeneration.py',
+        old='    except OutputAnalysisError as error:\n',
+        new='    except Exception as error:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testNarrowLlmFallback.py::'
+            'testUnparseableOutputsFallBackForQuantitativeAndSayWhoWroteThem'
+        ),
+        source='vaibify/gui/llmTestGeneration.py',
+        old='    dictStandards["sGenerator"] = sGenerator\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testNarrowLlmFallback.py::'
+            'testTheEveryCategoryFallbackAsksBeforeReplacingAResearchersTest'
+        ),
+        source='vaibify/gui/llmTestGeneration.py',
+        old='    if listCustomized:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDependencyReconciliationGatesLevelOne.py::'
+            'testACleanScanGoesStaleWhenItsScriptGainsARead'
+        ),
+        source='vaibify/reproducibility/dependencyFindings.py',
+        old='            (dictScan.get(S_SCRIPT_HASHES_KEY) or {}).items()):\n',
+        new='            {}.items()):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResearcherActions.py::'
+            'testANonInteractiveRunIsStoppedSoItsReleaseNeedNotWait'
+        ),
+        source='vaibify/cli/hubSession.py',
+        old='    if iExitCode == I_INTERACTIVE_REFUSED_EXIT_CODE:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVaibifyDoCli.py::'
+            'test_fiSendHttpRequest_post_with_no_fields_still_sends_a_body'
+        ),
+        source='vaibify/containerImage/vaibifyDo.py',
+        old=('        dataBody = json.dumps(dictTarget["dictBody"] or {})'
+             '.encode("utf-8")\n'),
+        new=('        dataBody = json.dumps(dictTarget["dictBody"])'
+             '.encode("utf-8") if dictTarget["dictBody"] else None\n'),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testGeneratedTestsSayWhoWroteThem.py::'
+            'testAModelWrittenTierSaysSoOnItsRow'
+        ),
+        source='vaibify/gui/static/scriptTestManager.js',
+        old='            if (dictCatResult.sGenerator) {\n',
+        new='            if (false) {\n',
+    ),
+    # --- 2026-10-19: the unintrospectable toast is built from the
+    # payload; it claimed an LLM fallback that never ran.
+    Falsification(
+        nodeid=(
+            'tests/browser/testUnintrospectableToastSaysWhatHappened.py::'
+            'testTheToastCarriesTheIntrospectorErrorAndNoLlmClaim'
+        ),
+        source='vaibify/gui/static/scriptTestManager.js',
+        old='                fsDescribeUnintrospectable(sStepLabel, dictQ),\n',
+        new=(
+            '                sStepLabel + ": introspector could not parse '
+            'this step\'s outputs. Standards came from the LLM fallback '
+            '\\u2014 review them carefully.",\n'
+        ),
+    ),
+    # --- 2026-10-19: the randomness lint's nested flag reaches Level 3.
+    # Both levelGates readers revert together: the step's applicable
+    # set is unioned with its failing set by design, so either reader
+    # alone still carries the criterion.
+    Falsification(
+        nodeid=(
+            'tests/testUnseededRandomnessReachesLevelThree.py::'
+            'testAnUnseededConfigFailsTheLevelThreeRandomnessCriterion'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='if fbStepHasUnseededRandomnessWarning(dictStep):',
+        new='if dictStep.get("bUnseededRandomnessWarning") is True:',
+        iExpectedOccurrences=2,
+    ),
+    # --- 2026-10-19: Check Files Against Manifest lists every differing
+    # file with what is recorded about it, and never advises the rerun
+    # or regenerate that settles nothing or erases the comparison.
+    Falsification(
+        nodeid=(
+            'tests/testManifestCheckReport.py::'
+            'testEveryDifferingFileIsListedWithWhatIsRecordedAboutIt'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        old='    for dictMismatch in listMismatches:\n',
+        new='    for dictMismatch in listMismatches[:1]:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testManifestCheckReportOnScreen.py::'
+            'testTheToastCountsAndTheReportListsEveryFile'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='                    " files differ from the manifest." +\n',
+        new=(
+            '                    " files differ from the manifest. Re-run '
+            'the project or regenerate the envelope." +\n'
+        ),
+    ),
+    # --- 2026-10-19: the graceful-exits checker never passes over a
+    # language it cannot read, and an exit in a handler is an error path.
+    Falsification(
+        nodeid=(
+            'tests/testGracefulExitsChecker.py::'
+            'testAnUncheckedLanguageIsReportedNotChecked'
+        ),
+        source='vaibify/containerImage/skills/graceful-exits/checkGracefulExits.py',
+        old='        return [], [sPath + ": NOT CHECKED: no " + sLanguage\n',
+        new='        return [], [] and [sPath + ": NOT CHECKED: no " + sLanguage\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGracefulExitsChecker.py::'
+            'testAnErrorPathExitWithNoMessageIsReported'
+        ),
+        source='vaibify/containerImage/skills/graceful-exits/checkGracefulExits.py',
+        old='        bErrorPath = fbIsInsideHandler(node, dictParents) or (\n',
+        new='        bErrorPath = False or (\n',
+    ),
+    # --- 2026-10-19: the Jupyter token stays off the process list.
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileHardening.py::'
+            'test_jupyter_token_never_reaches_a_command_line'
+        ),
+        source='vaibify/containerImage/Dockerfile.jupyter',
+        old='--ip=127.0.0.1 --port=8888 --no-browser"]',
+        new=(
+            '--ip=127.0.0.1 --port=8888 --no-browser '
+            '--ServerApp.token=\\"$(cat /run/vaibify/jupyter-token)\\""]'
+        ),
+    ),
+    # --- 2026-10-19: the in-container guide yields to the researcher.
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointInstructionPrecedence.py::'
+            'testTheGuideOpensBySayingTheResearchersInstructionsWin'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        old='## Whose instructions win\n',
+        new='## Notes\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointInstructionPrecedence.py::'
+            'testTheConventionsAreDefaultsTheResearcherCanReplace'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        old='## Conventions (defaults)\n',
+        new='## Conventions\n',
     ),
     Falsification(
         nodeid='tests/testEntrypointResourcesGuidance.py::testTheGuideTellsTheAgentWhereItsMemoryLimitIs',

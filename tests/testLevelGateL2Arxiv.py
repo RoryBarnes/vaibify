@@ -138,6 +138,11 @@ def _fdictAiDeclarationStep():
     """Return a minimal ai-declaration step dict."""
     dictStep = _fdictGreenStep(sName="Decl")
     dictStep["sStepKind"] = S_AI_DECLARATION_STEP_KIND
+    # Names of its own: a flat Zenodo deposit cannot hold two files
+    # called data.csv, so a project that published both could never
+    # reach Level 2 (basename-collision, 2026-10-19).
+    dictStep["saOutputDataFiles"] = ["Decl/declaration.csv"]
+    dictStep["saPlotFiles"] = ["Decl/declaration.pdf"]
     return dictStep
 
 
@@ -190,7 +195,22 @@ def testOverleafBindingWithoutArxivIdEmitsNoBlockerAndPassesGate(tmp_path):
     no arXiv blocker and leaves the L2 gate closeable.
     """
     sProjectRepo = str(tmp_path)
-    _fnWriteAllGreenSyncCache(sProjectRepo)
+    # Overleaf itself pushed and verified, since a bound project
+    # passes only what its Overleaf rows show (ruling F5).
+    listPlots = ["A/plot.pdf", "Decl/declaration.pdf"]
+    _fnWriteSyncStatusFile(sProjectRepo, {
+        "github": _fdictFreshGithubCache(),
+        "zenodo": _fdictFreshZenodoCache(),
+        "overleaf": {
+            "sService": "overleaf",
+            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
+            "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
+            "listComparedPaths": listPlots,
+            "iScopeVersion": _I_SCOPE_VERSION,
+        },
+    })
+    overleafSync.fnRecordOverleafPushManifest(
+        sProjectRepo, "commitabc", listPlots)
     dictWorkflow = _fdictWorkflowWithOverleaf(dictArxiv={})
     listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
     listMatch = [

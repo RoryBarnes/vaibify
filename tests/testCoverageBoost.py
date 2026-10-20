@@ -20,6 +20,7 @@ from vaibify.gui.syncDispatcher import (
 )
 from vaibify.gui.pipelineRunner import fnClearOutputModifiedFlags
 from tests.sessionTokenTestHelper import fsBootstrapCredential
+from tests.typedHashDouble import TypedHashFromServedBytes
 
 
 # -----------------------------------------------------------------------
@@ -102,7 +103,7 @@ DICT_WORKFLOW_MULTI = {
 # -----------------------------------------------------------------------
 
 
-class MockDockerBoost:
+class MockDockerBoost(TypedHashFromServedBytes):
     """Mock Docker connection for coverage boost tests."""
 
     def __init__(self):

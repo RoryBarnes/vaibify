@@ -16,8 +16,9 @@ the data outputs after the data section completed with every command
 exiting 0, the plot outputs after the plot section likewise. Nothing
 else relabels a file -- a tests-only run, "Run tests" from the
 dashboard, a failed section and an interactive step all leave every
-record as it was. A byte difference is then EXPLAINED from what was
-recorded, never predicted.
+record as it was. A byte difference can then be set beside what was
+recorded -- possible causes made inspectable, never proved, and never
+predicted.
 
 The file is tracked and never pinned: the shadow's own runner writes
 it too, so pinning it would make every rerun change a pinned input.
@@ -49,6 +50,7 @@ __all__ = [
     "fdictBuildEnvelopeOutputProvenance",
     "fdictBuildOutputContextNotes",
     "fdictExplainManifestMismatches",
+    "fdictReportManifestMismatches",
 ]
 
 
@@ -60,7 +62,22 @@ S_RERUN_HERE_OPTION = (
     "These files were produced under different execution settings or "
     "hardware from the copies the manifest pins. If you want this "
     "computer's results to be the published ones, you can rerun every "
-    "step here and regenerate the manifest. Nothing requires it.")
+    "step here and regenerate the manifest. Nothing requires it, and "
+    "doing it replaces the published hashes, so the comparison with "
+    "the published copies is lost.")
+S_REGENERATE_CHOICE = (
+    "Regenerate the envelope only for a change you intended to publish: "
+    "it replaces the published hashes with this computer's, and the "
+    "comparison with the published copies is lost. Rerunning on this "
+    "computer may reproduce the same bytes and settles nothing.")
+S_MANIFEST_CHECK_SCOPE = (
+    "This check compares each file's bytes with the hash the manifest "
+    "pins and runs none of the published tests. Verify Level 3 reruns "
+    "the project and judges each difference against the published "
+    "comparisons.")
+S_MISSING_ON_DISK = "missing on disk"
+S_SAME_RECORDED_CONTEXT = (
+    "recorded under the same settings and hardware as the pinned copy")
 I_OUTPUT_PROVENANCE_SCHEMA = 1
 S_RUN_CONTEXT_KEY = "__dictRunContext"
 S_TEMPLATE_VALUES_KEY = "__dictOutputTemplateValues"
@@ -414,38 +431,52 @@ def _fdictNoteForPaths(filesRepo, dictRecord, listPaths, dictCurrent):
             "listDifferences": list(dictByFact.values())}
 
 
-def fdictExplainManifestMismatches(filesRepo, listMismatches):
-    """Return which manifest mismatches a different production context explains.
-
-    The envelope records the context that made the PINNED bytes, and the
-    output record the one that made the bytes on disk; where both are
-    recorded and differ, the mismatch is a known difference of hardware
-    or settings rather than an unexplained one. When every mismatch is
-    explained, the option to make this computer's results the published
-    ones is offered -- as an option, never as the only way forward.
-    """
+def _ftReadPinnedAndOnDiskRecords(filesRepo):
+    """Return the envelope's provenance subset and the on-disk record."""
     from vaibify.reproducibility.environmentSnapshot import (
         fdictReadEnvironmentJson,
     )
     dictEnvelope = (fdictReadEnvironmentJson(filesRepo) or {}).get(
         "dictOutputProvenance") or {}
-    dictRecord = fdictReadOutputProvenance(filesRepo)
+    return dictEnvelope, fdictReadOutputProvenance(filesRepo)
+
+
+def _ftPinnedAndOnDiskContexts(dictEnvelope, dictRecord, dictMismatch):
+    """Return (pinned context, on-disk context) for one mismatch, None if unrecorded."""
+    sPath = dictMismatch.get("sPath", "")
+    dictPinnedRef = (dictEnvelope.get("dictOutputs") or {}).get(sPath) or {}
+    dictPinned = (dictEnvelope.get("dictRunContexts") or {}).get(
+        dictPinnedRef.get("sRunContextId"))
+    dictOnDisk = fdictProductionContextFor(
+        dictRecord, sPath, dictMismatch.get("sActual") or "")
+    return (dictPinned if isinstance(dictPinned, dict) else None,
+            dictOnDisk.get("dictRunContext")
+            if dictOnDisk["sState"] == "recorded" else None)
+
+
+def fdictExplainManifestMismatches(filesRepo, listMismatches):
+    """Return which manifest mismatches were made under a different recorded context.
+
+    The envelope records the context that made the PINNED bytes, and the
+    output record the one that made the bytes on disk; where both are
+    recorded and differ, the mismatch was produced under different
+    hardware or settings -- which makes those possible causes
+    inspectable and proves none of them. When every mismatch is of that
+    kind, the option to make this computer's results the published ones
+    is offered -- as an option, never as the only way forward.
+    """
+    dictEnvelope, dictRecord = _ftReadPinnedAndOnDiskRecords(filesRepo)
     listExplained = []
     for dictMismatch in listMismatches or []:
-        sPath = dictMismatch.get("sPath", "")
-        dictPinnedRef = (dictEnvelope.get("dictOutputs") or {}).get(sPath) or {}
-        dictPinned = (dictEnvelope.get("dictRunContexts") or {}).get(
-            dictPinnedRef.get("sRunContextId"))
-        dictOnDisk = fdictProductionContextFor(
-            dictRecord, sPath, dictMismatch.get("sActual") or "")
-        if not isinstance(dictPinned, dict) or (
-                dictOnDisk["sState"] != "recorded"):
+        dictPinned, dictOnDisk = _ftPinnedAndOnDiskContexts(
+            dictEnvelope, dictRecord, dictMismatch)
+        if dictPinned is None or dictOnDisk is None:
             continue
         listDifferences = flistDescribeContextDifferences(
-            dictPinned, dictOnDisk["dictRunContext"])
+            dictPinned, dictOnDisk)
         if listDifferences:
             listExplained.append({
-                "sPath": sPath,
+                "sPath": dictMismatch.get("sPath", ""),
                 "listDifferences": _flistWordDifferences(listDifferences)})
     bOnly = bool(listMismatches) and len(listExplained) == len(listMismatches)
     return {"listExplained": listExplained,
@@ -454,8 +485,70 @@ def fdictExplainManifestMismatches(filesRepo, listMismatches):
             "sOption": S_RERUN_HERE_OPTION if bOnly else ""}
 
 
+def _ftDescribeMismatchContext(dictEnvelope, dictRecord, dictMismatch):
+    """Return (what is recorded about one differing file, contexts differ?)."""
+    if dictMismatch.get("sActual") is None:
+        return S_MISSING_ON_DISK, False
+    dictPinned, dictOnDisk = _ftPinnedAndOnDiskContexts(
+        dictEnvelope, dictRecord, dictMismatch)
+    if dictPinned is None or dictOnDisk is None:
+        return S_CONTEXT_UNKNOWN, False
+    listDifferences = _flistWordDifferences(
+        flistDescribeContextDifferences(dictPinned, dictOnDisk))
+    if not listDifferences:
+        return S_SAME_RECORDED_CONTEXT, False
+    return "produced under different settings or hardware: " + "; ".join(
+        f"{dictDifference['sFact']}: pinned copy {dictDifference['sThere']}, "
+        f"this copy {dictDifference['sHere']}"
+        for dictDifference in listDifferences), True
+
+
+def _fsDescribeSpeedAnswer(dictWorkflow):
+    """Return the recorded "speed" answer in the question's own words, else ''."""
+    from vaibify.reproducibility.determinismGate import (
+        LIST_DETERMINISM_QUESTIONS, S_REPEATABILITY_ANSWER_KEY,
+        S_REPEATABILITY_SPEED,
+    )
+    dictAnswers = (dictWorkflow or {}).get("dictDeterminism") or {}
+    if dictAnswers.get(S_REPEATABILITY_ANSWER_KEY) != S_REPEATABILITY_SPEED:
+        return ""
+    for dictQuestion in LIST_DETERMINISM_QUESTIONS:
+        for dictChoice in dictQuestion.get("listChoices", ()):
+            if dictChoice.get("sAnswer") == S_REPEATABILITY_SPEED:
+                return (f"This project answered \"{dictChoice['sLabel']}\": "
+                        f"{dictChoice['sDescription']}")
+    return ""
+
+
+def fdictReportManifestMismatches(filesRepo, listMismatches, dictWorkflow):
+    """Return every differing file with what is recorded about it, and what follows.
+
+    The manifest check compares bytes and nothing else, so its report
+    names every differing file with both recorded production contexts
+    (or "production context unknown"), says what the check cannot
+    judge and which verification can, names a "speed" determinism
+    answer, and offers regenerating the envelope only as a choice with
+    its cost stated. Empty when nothing differs.
+    """
+    if not listMismatches:
+        return {}
+    dictEnvelope, dictRecord = _ftReadPinnedAndOnDiskRecords(filesRepo)
+    listFiles, bOnlyContext = [], True
+    for dictMismatch in listMismatches:
+        sDescription, bContextsDiffer = _ftDescribeMismatchContext(
+            dictEnvelope, dictRecord, dictMismatch)
+        listFiles.append({"sPath": dictMismatch.get("sPath", ""),
+                          "sDescription": sDescription})
+        bOnlyContext = bOnlyContext and bContextsDiffer
+    return {"listFiles": listFiles,
+            "sScope": S_MANIFEST_CHECK_SCOPE,
+            "sDeterminismNote": _fsDescribeSpeedAnswer(dictWorkflow),
+            "sRegenerateChoice": (S_RERUN_HERE_OPTION if bOnlyContext
+                                  else S_REGENERATE_CHOICE)}
+
+
 def _fsSummarizeExplained(listExplained, listMismatches):
-    """Return one sentence naming how many differences a context explains."""
+    """Return one sentence counting differences made under other contexts."""
     if not listExplained:
         return ""
     sFacts = "; ".join(

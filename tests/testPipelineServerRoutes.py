@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
+from tests.typedHashDouble import TypedHashFromServedBytes
 
 
 S_CONTAINER_ID = "abc123container"
@@ -39,7 +40,7 @@ DICT_WORKFLOW = {
 }
 
 
-class MockDockerConnection:
+class MockDockerConnection(TypedHashFromServedBytes):
     """Mimics the DockerConnection API for testing."""
 
     def __init__(self):

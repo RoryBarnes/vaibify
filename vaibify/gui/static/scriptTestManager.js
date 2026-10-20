@@ -137,7 +137,8 @@ var VaibifyTestManager = (function () {
             if (!dictCatResult) continue;
             if (dictCatResult.sError) {
                 listErrors.push(
-                    VaibifyUtilities.fsTestCategoryLabel(sCategory));
+                    VaibifyUtilities.fsTestCategoryLabel(sCategory) +
+                    ": " + dictCatResult.sError);
                 var sVerifKey = "s" +
                     sCategory.charAt(0).toUpperCase() +
                     sCategory.slice(1);
@@ -151,6 +152,10 @@ var VaibifyTestManager = (function () {
             if (dictCatResult.sStandardsPath) {
                 dictStep.dictTests[sCatKey].sStandardsPath =
                     dictCatResult.sStandardsPath;
+            }
+            if (dictCatResult.sGenerator) {
+                dictStep.dictTests[sCatKey].sGenerator =
+                    dictCatResult.sGenerator;
             }
             listAllCommands = listAllCommands.concat(
                 dictCatResult.saCommands || []);
@@ -168,10 +173,13 @@ var VaibifyTestManager = (function () {
         var iSuccessCount = listCategories.length - listErrors.length;
         var sStepLabel = VaibifyApp.fsComputeStepLabel(iStep);
         if (listErrors.length > 0) {
+            /* Each tier's own reason, from the payload: a fallback
+               that could not run names both what vaibify failed to
+               read and why no model was asked. */
             VaibifyApp.fnShowErrorModal(
-                listErrors.join(", ") +
-                " failed to generate.\n" +
-                "Fix manually or ask a coding agent to fix.");
+                "These test categories failed to generate:\n\n" +
+                listErrors.join("\n") +
+                "\n\nFix manually or ask a coding agent to fix.");
         }
         VaibifyApp.fnShowToast(
             sStepLabel + ": " + iSuccessCount +
@@ -200,12 +208,25 @@ var VaibifyTestManager = (function () {
                 "source of randomness, then regenerate.",
                 "warning");
         } else if (sClass === "unintrospectable") {
+            /* What happened, from the payload. This toast claimed
+               "Standards came from the LLM fallback" from 2026-04 to
+               2026-10, and no LLM ran: the generator only reports the
+               introspector's error. */
             VaibifyApp.fnShowToast(
-                sStepLabel + ": introspector could not parse this " +
-                "step's outputs. Standards came from the LLM " +
-                "fallback \u2014 review them carefully.",
+                fsDescribeUnintrospectable(sStepLabel, dictQ),
                 "warning");
         }
+    }
+
+    function fsDescribeUnintrospectable(sStepLabel, dictQ) {
+        var iStandards = dictQ.iStandardCount || 0;
+        var sError = dictQ.sIntrospectorError || "";
+        return sStepLabel + ": the introspector could not parse " +
+            "this step's outputs, so " +
+            (iStandards === 0 ? "no quantitative standards were " +
+                "derived" : iStandards + " quantitative standard(s) " +
+                "were derived") +
+            (sError ? " (" + sError + ")" : "") + ".";
     }
 
     function fnShowApiKeyDialog(iStep) {

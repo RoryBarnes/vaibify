@@ -6,7 +6,11 @@ assert hardening properties that audit findings C1, C2, H1, and M5
 require to hold for every build.
 """
 
+import json
 import os
+import re
+
+import pytest
 
 
 _S_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -78,12 +82,61 @@ def test_jupyter_overlay_does_not_allow_root():
     assert "--allow-root" not in sContent
 
 
+def _fsJupyterStartScript():
+    """Return the shell script the overlay's CMD hands to ``bash -c``.
+
+    Parsed the way Docker parses it: backslash-newline continuations
+    joined, then the exec-form array decoded as JSON.
+    """
+    sJoined = re.sub(r"\\\n", "", _fsReadJupyterDockerfile())
+    sCmdLine = next(sLine for sLine in sJoined.splitlines()
+                    if sLine.startswith("CMD "))
+    listArguments = json.loads(sCmdLine[len("CMD "):])
+    assert listArguments[:2] == ["/bin/bash", "-c"]
+    return listArguments[2]
+
+
+def _fsJupyterExecCommand():
+    """Return the ``exec jupyter lab ...`` command, the one ps shows."""
+    sScript = _fsJupyterStartScript()
+    return sScript[sScript.index("exec jupyter lab"):]
+
+
 def test_jupyter_overlay_generates_per_session_token():
     """A fresh token is generated and persisted to a mode-600 file."""
+    sScript = _fsJupyterStartScript()
+    assert "secrets.token_urlsafe" in sScript
+    assert "install -m 0600 /dev/null /run/vaibify/jupyter-token" in sScript
+
+
+def test_jupyter_reads_its_token_from_a_mode_600_config_file():
+    """The config file is created 0600 before the token line is written."""
+    sScript = _fsJupyterStartScript()
+    sConfig = "/run/vaibify/jupyter_server_config.py"
+    iCreate = sScript.index("install -m 0600 /dev/null " + sConfig)
+    iWrite = sScript.index("> " + sConfig)
+    assert iCreate < iWrite
+    assert ('c.IdentityProvider.token = '
+            'open("/run/vaibify/jupyter-token").read().strip()') in sScript
+    assert "--config=" + sConfig in _fsJupyterExecCommand()
+
+
+@pytest.mark.falsification
+def test_jupyter_token_never_reaches_a_command_line():
+    """Kills: passing the token to jupyter lab as an argument again.
+
+    Arguments are visible to every process in the container (ps).
+    """
+    assert "token" not in _fsJupyterExecCommand().lower()
+
+
+def test_jupyter_token_never_reaches_an_environment_variable():
+    """No shell or ENV variable carries the token, exported or not."""
     sContent = _fsReadJupyterDockerfile()
-    assert "secrets.token_urlsafe" in sContent
-    assert "0600" in sContent
-    assert "ServerApp.token" in sContent
+    assert "JUPYTER_TOKEN" not in sContent
+    assert "$(cat /run/vaibify/jupyter-token)" not in sContent
+    assert not re.search(r"^\s*ENV\b.*token", sContent,
+                         re.IGNORECASE | re.MULTILINE)
 
 
 # -----------------------------------------------------------------------

@@ -468,6 +468,38 @@ var VaibifyEventBindings = (function () {
             elMatch.dataset.service || "", elMatch);
     }
 
+    async function _fnPostDependencyAction(sUrl, dictBody, sDone) {
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        try {
+            await VaibifyApi.fdictPost(sUrl, dictBody);
+            VaibifyApp.fnShowToast(sDone, "info");
+            await VaibifyPolling.fnPollFileStatusOnce(sContainerId);
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+        }
+    }
+
+    function _fnHandleDismissDependency(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        _fnPostDependencyAction(
+            "/api/steps/" + VaibifyApp.fsGetContainerId() + "/" +
+            elMatch.dataset.step + "/dependencies/dismiss",
+            {sScannedPath: elMatch.dataset.scanned || "",
+             sUpstreamStepId: elMatch.dataset.upstream || ""},
+            "Finding dismissed.");
+    }
+
+    function _fnHandleRescanDependencies(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        _fnPostDependencyAction(
+            "/api/workflow/" + VaibifyApp.fsGetContainerId() +
+            "/dependencies/rescan", {}, "Dependencies rescanned.");
+    }
+
     function _fnHandleViewAttestation(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -631,6 +663,8 @@ var VaibifyEventBindings = (function () {
         ".wf-push-envelope": _fnHandlePushEnvelope,
         ".wf-view-attestation": _fnHandleViewAttestation,
         ".wf-verify-remote": _fnHandleVerifyRemote,
+        ".wf-dismiss-dependency": _fnHandleDismissDependency,
+        ".wf-rescan-dependencies": _fnHandleRescanDependencies,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
         ".wf-file-link": _fnHandleProjectFileLink,
         // The Align button sits inside the Steps banner; it must
@@ -1043,8 +1077,11 @@ var VaibifyEventBindings = (function () {
                 _fnCloseVerifyReproducibilityModal();
             },
             btnVerifyReproducibilityManifest: function () {
-                VaibifySyncManager.fdictVerifyManifest(
-                    VaibifyApp.fsGetContainerId());
+                /* The third entry point to the ONE verify-manifest
+                   action. It used to call the sync manager's own copy
+                   of the verdict, which drifted into a red "Manifest
+                   mismatch" while the action's wording moved on. */
+                VaibifyApp.fnRunProjectAction("verify-manifest");
             },
             btnShowDag: function () {
                 VaibifyApp.fnShowDag();

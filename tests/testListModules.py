@@ -52,6 +52,8 @@ def testExtractsDunderAll():
         "fsShellQuote",
         "fsBuildUniqueTemporaryPath",
         "fbStepIsInteractive",
+        "fbStepHasUnseededRandomnessWarning",
+        "OutputAnalysisError",
         "fsLabelFromStepIndex",
         "fiStepIndexFromLabel",
         "flistStepsWithLabels",

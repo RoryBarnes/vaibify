@@ -16,6 +16,8 @@ Each test fails if the property breaks: drop the reversion and a stale
 ledger records the wrong state.
 """
 
+import pytest
+
 from vaibify.gui.agentCouncilStore import (
     CouncilEventRing,
     CouncilEvidenceLedger,
@@ -80,9 +82,12 @@ def testBaselineClaimIsRecordedAgainstTheServerSnapshotNotTheModelHash():
     assert listEntries[0]["sSnapshotHash"] != "MODEL-ASSERTED-HASH"
 
 
+@pytest.mark.falsification
 def testReadOnlyCouncilProducesNoConfirmedClaims():
     """A read-only council reverts every confirmed claim; nothing runs
-    and nothing is ledgered (section 6.3.2)."""
+    and nothing is ledgered (section 6.3.2).
+
+    Kills: letting a read-only claim reach the baseline executor."""
     listEvidence = [{"sStatus": "confirmed", "sStateForm": "baseline",
                      "sCommandText": "pytest -q"}]
     fixture = fixtureBuildCouncil(

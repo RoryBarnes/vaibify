@@ -17,7 +17,6 @@ import sys
 
 import click
 import pytest
-from click.testing import CliRunner
 
 from vaibify.cli import commandRemote, commandRemoteHelper, hubSession
 from vaibify.cli.commandRemote import (
@@ -33,20 +32,13 @@ from vaibify.cli.remoteProtocol import (
     fsFormatStartupRecord,
 )
 from vaibify.gui import hostControlChannel
+from tests.cliRunnerStreams import frunnerSeparatingStreams
 
 I_TUNNEL_PORT = 18123
 S_CAPABILITY = "c" * 43
 S_OTHER_CAPABILITY = "t" * 43
 S_PROJECT_NAME = "projectAlpha"
 I_OWNER_GENERATION = 7
-
-
-def frunnerSeparatingStreams():
-    """Return a CliRunner whose result keeps stderr apart from stdout."""
-    try:
-        return CliRunner(mix_stderr=False)
-    except TypeError:
-        return CliRunner()
 
 
 def fnAssertCleanExit(resultInvoke, iExpectedCode):

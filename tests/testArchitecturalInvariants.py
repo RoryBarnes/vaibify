@@ -1588,6 +1588,104 @@ def testAgentActionCatalogShape():
     )
 
 
+_T_PIPELINE_SEND_PATTERNS = (
+    r'fnSendPipelineAction\(\{\s*sAction:\s*"(\w+)"',
+    r'_fnSendPipelineMessage\("(\w+)"\)',
+    r'fnSendDirect\(\{\s*sAction:\s*"(\w+)"',
+)
+
+
+def _fsetCollectGuiPipelineActions():
+    """Return the pipeline-socket actions the page sends."""
+    setActions = set()
+    for pathFile in sorted(STATIC_DIR.glob("*.js")):
+        sSource = fsReadSource(pathFile)
+        for sPattern in _T_PIPELINE_SEND_PATTERNS:
+            setActions.update(re.findall(sPattern, sSource))
+    return setActions
+
+
+def _fsetCollectAllStateMutatingRoutes():
+    """Return every state-mutating (method, path) on the viewer and hub."""
+    from tests.testSecurityBoundaryInvariants import _fappBuildHubApplication
+    setRoutes = set()
+    for app in (_fappBuildApplication(), _fappBuildHubApplication()):
+        for sMethod, sPath, _ in _flistCollectAppStateMutatingRoutes(app):
+            setRoutes.add((sMethod, sPath))
+    return setRoutes
+
+
+@pytest.mark.falsification
+def testEveryGuiInvokedMutationHasCliEquivalent():
+    """Every mutating route has exactly one command-line equivalent.
+
+    Level 3 must be reachable from the command line alone. A route the
+    agent catalog does not list is registered in EXACTLY one of
+    ``LIST_RESEARCHER_ACTIONS`` (generated into ``vaibify do``),
+    ``DICT_ROUTE_TO_HOST_COMMAND`` (a hand-written ``vaibify`` command),
+    or ``SET_GUI_ONLY_ROUTES`` (browser plumbing, with a reason). Every
+    route is classified, not only those a scan of the page finds: a
+    route reached through a built-up string would slip a scan. The
+    pipeline-socket actions the page sends are held to the same rule,
+    and an entry naming a route, an action or a command that no longer
+    exists fails as stale.
+
+    Kills: dropping the credential route from the host-command map.
+    """
+    from vaibify.cli.main import main
+    from vaibify.gui import actionCatalog, researcherActions
+    setRoutes = _fsetCollectAllStateMutatingRoutes()
+    setAgent = {
+        (dictEntry["sMethod"], dictEntry["sPath"])
+        for dictEntry in actionCatalog.LIST_AGENT_ACTIONS
+        if dictEntry["sMethod"] != "WS"
+    }
+    dictClasses = {
+        "LIST_RESEARCHER_ACTIONS": {
+            (dictEntry["sMethod"], dictEntry["sPath"])
+            for dictEntry in researcherActions.LIST_RESEARCHER_ACTIONS},
+        "DICT_ROUTE_TO_HOST_COMMAND": set(
+            researcherActions.DICT_ROUTE_TO_HOST_COMMAND),
+        "SET_GUI_ONLY_ROUTES": set(researcherActions.SET_GUI_ONLY_ROUTES),
+    }
+    listViolations = []
+    for tRoute in sorted(setRoutes - setAgent):
+        listHomes = [sName for sName, setMembers in dictClasses.items()
+                     if tRoute in setMembers]
+        if len(listHomes) != 1:
+            listViolations.append(
+                f"{tRoute[0]} {tRoute[1]} has {len(listHomes)} CLI homes "
+                f"{listHomes}; it needs exactly one")
+    for sName, setMembers in dictClasses.items():
+        for tRoute in sorted(setMembers - (setRoutes - setAgent)):
+            listViolations.append(
+                f"{sName} names {tRoute[0]} {tRoute[1]}, which is not a "
+                f"mutating route outside the agent catalog")
+    setCommands = set(main.commands)
+    for tRoute, sCommand in researcherActions.DICT_ROUTE_TO_HOST_COMMAND.items():
+        if sCommand not in setCommands:
+            listViolations.append(
+                f"{tRoute} maps to 'vaibify {sCommand}', which is not a "
+                f"command")
+    setAgentPipeline = {
+        dictEntry["sPath"] for dictEntry in actionCatalog.LIST_AGENT_ACTIONS
+        if dictEntry["sMethod"] == "WS"}
+    setGuiPipeline = _fsetCollectGuiPipelineActions()
+    dictWs = researcherActions.DICT_WS_ACTION_TO_HOST_COMMAND
+    for sAction in sorted(setGuiPipeline - setAgentPipeline - set(dictWs)):
+        listViolations.append(
+            f"the page sends pipeline action {sAction!r}, which has no "
+            f"CLI equivalent")
+    for sAction, sCommand in dictWs.items():
+        if sAction not in setGuiPipeline or sCommand not in setCommands:
+            listViolations.append(
+                f"DICT_WS_ACTION_TO_HOST_COMMAND entry {sAction!r} -> "
+                f"{sCommand!r} is stale")
+    assert listViolations == [], (
+        "Dashboard actions without exactly one command-line equivalent:\n  "
+        + "\n  ".join(listViolations))
+
+
 def testEveryCatalogActionHasCliCommand():
     """Every catalog action must be reachable from the host CLI.
 
@@ -5273,7 +5371,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4326 -> 4339 (2026-10-17): the poll names steps whose outputs
     # another context produced, and the manifest verify says which
     # mismatches a recorded context difference explains (F5).
-    "routes/pipelineRoutes.py": 4339,
+    # 4339 -> 4343 (2026-10-20): the poll merges a finished run's own
+    # output mtimes into its baseline before comparing, and the state
+    # route does not ship that map (runOutputBaseline holds the logic).
+    "routes/pipelineRoutes.py": 4343,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -6837,7 +6938,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-08-12): the program runs on the interpreter that has
     # vaibify's dependencies, which on the host is not python3.
     # 1214 -> 1215 (2026-10-01): the container twin reads TFRecord features from the decoded example.
-    "introspectionScript.py": 1215,
+    # 1215 -> 1213 (2026-10-19): two calls joined while the
+    # introspection failures became OutputAnalysisError.
+    "introspectionScript.py": 1213,
     # +30 (2026-08-24): per-category deterministic generation. A
     # researcher or agent asking for one tier must not have the other
     # two silently rewritten underneath them, so each write is gated
@@ -6855,7 +6958,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and SET_PRIOR_TEMPLATE_HASHES, required by the same invariant.
     # +6 (2026-10-12): re-exports the conftest loader text and the
     # marker plugin's path and write helpers, same invariant.
-    "testGenerator.py": 1151,
+    # 1151 -> 1052 (2026-10-19): language-model generation moved to
+    # llmTestGeneration, which also holds the narrow fallback policy.
+    "testGenerator.py": 1052,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).
@@ -7321,7 +7426,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # exclusions, with why an agent must never make them.
     # 1519 -> 1525 (2026-10-14): the reproduction retry's catalog entry,
     # human-only like its run and discard siblings.
-    "actionCatalog.py": 1525,
+    # 1525 -> 1540 (2026-10-19): the dependency rescan (agent-safe) and
+    # the researcher-only dismissal of a scan-found dependency.
+    "actionCatalog.py": 1540,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

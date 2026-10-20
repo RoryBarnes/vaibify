@@ -641,7 +641,7 @@ def testTestFileChangesNameNewMissingAndEditedFiles():
 
 def testAManifestThatDoesNotExistReportsZeroEntries(tmp_path):
     dictResult = pipelineRoutes._fdictBuildManifestVerifyResult(
-        ffilesEnsureRepoFiles(str(tmp_path)), [], ["stepA/out.csv"],
+        ffilesEnsureRepoFiles(str(tmp_path)), [], ["stepA/out.csv"], {},
     )
     assert dictResult["iTotal"] == 0
     assert dictResult["iMatching"] == 0

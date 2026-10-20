@@ -1130,12 +1130,22 @@ predictions to check, not promises.
   regenerate `reproduce.sh`, `.vaibify/environment.json` and
   `MANIFEST.sha256`, then commit, push and run a fresh assessment. The
   old attestation is historical under D7.
-- **The data deposit changes only if output bytes change.** It holds
-  declared outputs and tests
-  (`dataArchiver.flistCollectArchiveFilePaths`), not the manifest or the
-  envelope. At the `v3` floor on one thread, the outputs were identical
-  to the current deposit on one machine. Whether that holds on the
-  author's machine is item 1 of Stage 8.
+- **The data deposit changes whenever the envelope does.** The
+  dashboard's Zenodo publish offers the whole publication union
+  (`syncDispatcher.flistCollectZenodoArchiveCandidates`): declared
+  outputs, scripts and tests, the project definition, the AI
+  declaration, the envelope (`MANIFEST.sha256`,
+  `.vaibify/environment.json` and the rest of
+  `publicationScope.TUPLE_LEVEL3_ENVELOPE_PATHS`) and the attestation.
+  Level 3 requires the archived envelope to match
+  (`fbEnvelopeMatchesZenodoArchive`) and the archived attestation to
+  cover the archived manifest (`fbAttestationIsPubliclyArchived`), and
+  the live QuickStart record holds the whole envelope. Regenerating
+  `reproduce.sh`, `environment.json` and the manifest above therefore
+  needs a new deposit version, even where the outputs are unchanged.
+  At the `v3` floor on one thread, the outputs were identical to the
+  current deposit on one machine. Whether that holds on the author's
+  machine is item 1 of Stage 8.
 
 ---
 

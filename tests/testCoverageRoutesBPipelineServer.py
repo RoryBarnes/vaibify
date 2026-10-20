@@ -486,21 +486,29 @@ def testViewerOwnershipIsSkippedWithoutAnOwnerMap():
     assert "sViewerLease" not in dictCtx
 
 
-def testDependencyScanFailureIsLoggedAndCachesNothing(caplog):
+def testDependencyScanFailureIsLoggedAndFailsEveryStep(caplog):
+    """A scan that dies says so, and keeps no earlier finding alive."""
     dictCtx = {"docker": UnreachableConnection(), "sourceCodeDeps": {}}
     dictWorkflow = {
         "sProjectRepoPath": "/workspace/projectAlpha",
         "listSteps": [{"sName": "stepAlpha", "sDirectory": "stepAlpha",
-                       "saDataCommands": ["python dataAlpha.py"]}],
+                       "sStepId": "step-alpha",
+                       "saDataCommands": ["python dataAlpha.py"],
+                       "dictDependencyScan": {
+                           "sState": "scanned", "sError": "",
+                           "listFindings": [{"sUpstreamStepId": "old"}]}}],
     }
     with patch(
-        "vaibify.gui.routes.scriptRoutes.fdictScanAllDependencies",
+        "vaibify.gui.stepDependencyScan.fdictScanWorkflowDependencies",
         side_effect=ConnectionError("daemon unreachable"),
     ), caplog.at_level(logging.WARNING):
         asyncio.run(pipelineServer._fnScanDependenciesBackground(
             dictCtx, S_DOCKER_ID, dictWorkflow,
         ))
-    assert dictCtx["sourceCodeDeps"] == {}
+    dictEntry = dictWorkflow["listSteps"][0]["dictDependencyScan"]
+    assert dictEntry["sState"] == "failed"
+    assert dictEntry["listFindings"] == []
+    assert "daemon unreachable" in dictEntry["sError"]
     assert any(
         "Source-code dep scan failed" in recordLog.getMessage()
         for recordLog in caplog.records

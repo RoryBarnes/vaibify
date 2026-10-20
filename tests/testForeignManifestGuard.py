@@ -195,12 +195,12 @@ def test_the_reproduce_script_repin_skips_a_foreign_manifest(tmp_path):
 def test_the_manifest_check_says_which_manifest_it_read(tmp_path):
     """Kills: dropping the provenance from the check's answer."""
     sRepo = _fsRepositoryWithACommittedManifest(tmp_path, S_OTHER_EMAIL)
-    dictResult = pipelineRoutes._fdictBuildManifestVerifyResult(sRepo, [], [])
+    dictResult = pipelineRoutes._fdictBuildManifestVerifyResult(sRepo, [], [], {})
     assert dictResult["sManifestOwnership"] == "foreign"
     assert dictResult["bManifestDiffersFromHead"] is False
     fnWriteText(sRepo, "data.txt", "3 2 1\n")
     fnWriteManifest(sRepo, ["data.txt"])
-    dictResult = pipelineRoutes._fdictBuildManifestVerifyResult(sRepo, [], [])
+    dictResult = pipelineRoutes._fdictBuildManifestVerifyResult(sRepo, [], [], {})
     assert dictResult["bManifestDiffersFromHead"] is True
     assert dictResult["iTotal"] == 1 and dictResult["iMatching"] == 1
 

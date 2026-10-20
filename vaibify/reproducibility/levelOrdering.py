@@ -3,11 +3,12 @@
 Most of the ladder is order-free: a researcher can declare their
 binaries, answer the determinism questions and pin a Dockerfile in any
 sequence, and nothing they do undoes anything else. A handful of
-remedies are not like that. Regenerating ``MANIFEST.sha256`` before
-``reproduce.sh`` pins the hash of the script that is about to be
-replaced; publishing to Zenodo before attesting puts an attestation in
-the archive that does not cover the archived manifest, and Zenodo
-deposits are immutable, so that mistake costs a whole new version.
+remedies are not like that. Publishing to Zenodo before attesting puts
+an attestation in the archive that does not cover the archived
+manifest, and Zenodo deposits are immutable, so that mistake costs a
+whole new version. Regenerating ``MANIFEST.sha256`` before
+``reproduce.sh`` is the mild case: generating the script re-pins the
+manifest anyway, so the earlier regeneration is repeated, not undone.
 
 Vaibify has always KNOWN this and never said it. The sequencing was
 stated ten times, in prose, inside ``_DICT_L3_REMEDIATION_HINTS``

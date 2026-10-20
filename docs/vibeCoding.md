@@ -30,7 +30,7 @@ Vaibify's animating assumption is:
 > human-only code and analysis.*
 
 The value proposition follows: after an hour of setup, a researcher can
-generate and verify byte-reproducible results in less time than without
+generate results and verify that they reproduce in less time than without
 agents. The bet is that verifying outputs is the part of
 science that most benefits from human attention, and that delegating
 the mechanical code-writing frees the researcher to ask the right

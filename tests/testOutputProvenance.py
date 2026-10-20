@@ -374,9 +374,20 @@ def testAManifestMismatchExplainedByContextOffersAnOption(tmp_path, monkeypatch)
         dictExplained["sOption"])
     assert "x86-64 level: was x86-64-v3, now x86-64-v2" in (
         dictExplained["sSummary"])
+    dictReport = outputProvenance.fdictReportManifestMismatches(
+        sRoot, listMismatches, dictWorkflow)
+    assert dictReport["listFiles"][0]["sDescription"].startswith(
+        "produced under different settings or hardware: ")
+    assert "x86-64 level: pinned copy x86-64-v3, this copy x86-64-v2" in (
+        dictReport["listFiles"][0]["sDescription"])
+    assert dictReport["sRegenerateChoice"] == dictExplained["sOption"]
+    assert "replaces the published hashes" in dictExplained["sOption"]
     listMixed = listMismatches + [{"sPath": "Other/unrecorded.txt",
                                    "sExpected": "0" * 64, "sActual": None}]
     dictMixed = outputProvenance.fdictExplainManifestMismatches(
         sRoot, listMixed)
     assert dictMixed["bOnlyContextDifferences"] is False
     assert dictMixed["sOption"] == ""
+    assert outputProvenance.fdictReportManifestMismatches(
+        sRoot, listMixed, dictWorkflow)["sRegenerateChoice"] == (
+        outputProvenance.S_REGENERATE_CHOICE)

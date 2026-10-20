@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
+from tests.typedHashDouble import TypedHashFromServedBytes
 
 
 S_CONTAINER_ID = "srv123container"
@@ -49,7 +50,7 @@ DICT_WORKFLOW = {
 }
 
 
-class MockDockerFull:
+class MockDockerFull(TypedHashFromServedBytes):
     """Extended mock Docker connection."""
 
     def __init__(self):

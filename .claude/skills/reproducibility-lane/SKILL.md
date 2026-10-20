@@ -601,8 +601,9 @@ each is a way to turn a verdict back into a claim nobody earned:
   tests-only run, a failed section and a skipped one relabel nothing;
   an identical rerun leaves the record byte-identical; no processor
   model or computer name is ever recorded
-  (`tests/testOutputProvenance.py`). A difference explained by
-  provenance is information, never a failure, and never red.
+  (`tests/testOutputProvenance.py`). A provenance difference is
+  context, never an explanation of the difference; it is information,
+  never a failure, and never red.
 - **Ordinary runs are unchanged.** Without `dictRerunEvidence`, no
   command carries an evidence export or an invocation identity
   (`testAnOrdinaryRunCarriesNoEvidenceExportAndNoInvocationIdentity`).
@@ -851,3 +852,34 @@ mid-workflow. `daemonCapacity` keeps the two figures apart by name —
 space, `iDaemonMemoryBytes` bounds the container — and
 `tests/testDaemonCapacity.py` drives them 16x apart so a test cannot
 pass while reading the wrong one.
+
+## Contracts added with the appendix-consistency work
+
+- **Unseeded randomness** is written by the lint into
+  `dictStep["dictVerification"]["bUnseededRandomnessWarning"]` and read
+  ONLY through `fbStepHasUnseededRandomnessWarning`. Three gates once
+  read it from the step's top level, where nothing writes it, and the
+  Level 3 check never fired.
+- **Scan-found dependencies** (`dependency-unreconciled`, Level 1): a
+  scan counts only while everything it examined still holds — every
+  script it read (a clean scan included), the scripts the step's
+  commands name, and every step's output declarations in step order.
+  When any of these has moved, a step reorder included, or the scan
+  failed, the step reads "dependency scan not current" — never a pass
+  and never a red verdict drawn from old data. A failed scan clears the
+  step's findings. Findings and dismissals are keyed by step id.
+- **Context is not cause.** A recorded production/rerun context
+  difference makes possible causes inspectable; it never explains a
+  difference. Messages say "produced under different settings or
+  hardware: <both contexts>". Acceptance rests on published
+  comparisons only.
+- **Byte identity of regenerated outputs is observed, never an
+  acceptance rule.** No gate and no test may require a rerun's outputs
+  to be byte-identical under either execution profile. Exact integrity
+  checks are NOT relaxed: published inputs, scripts, standards, the
+  manifest and environment records stay byte-exact, and byte-sensitive
+  regression tests remain valid.
+- **Policy v1 is frozen.** A changed vector figure cannot pass under v1
+  whatever comparisons exist; `S_VECTOR_REMEDY` overstates the options
+  and must not be edited in place. Corrections live outside the frozen
+  file or in a future policy version.

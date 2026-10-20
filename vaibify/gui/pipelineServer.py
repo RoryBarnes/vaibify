@@ -2506,54 +2506,43 @@ def fsProjectModeOfResource(sResourceId):
 async def _fnScanDependenciesBackground(
     dictCtx, sContainerId, dictWorkflow,
 ):
-    """Scan source-code dependencies and cache results."""
-    from .routes.scriptRoutes import fdictScanAllDependencies
+    """Scan every step's scripts for dependencies and file the result.
+
+    A scan that dies records every step FAILED rather than keeping the
+    previous findings: old findings would let old data pass or fail a
+    step (``stepDependencyScan``).
+    """
+    from . import stepDependencyScan
     try:
-        dictDeps = await fdictScanAllDependencies(
+        dictScan = await stepDependencyScan.fdictScanWorkflowDependencies(
             dictCtx, sContainerId, dictWorkflow,
         )
-        dictCtx["sourceCodeDeps"].setdefault(sContainerId, {})[
-            dictWorkflow.get(workflowManager.S_LOADED_FROM_KEY, "")
-        ] = dictDeps
-        _fnAnnotateStepsWithDeps(dictWorkflow, dictDeps)
     except Exception as error:
         logger.warning("Source-code dep scan failed: %s", error)
-
-
-def fdictCachedSourceCodeDeps(dictCtx, sContainerId, dictWorkflow):
-    """Return the dependency scan of THIS workflow, or None if not scanned.
-
-    Filed under the workflow file the scan read, because a container
-    hosts several projects: a scan of one project finishing after the
-    dashboard switched to another used to replace the other's edges,
-    drawing one project's dependencies on the other's step numbers.
-    """
-    dictByWorkflow = (dictCtx.get("sourceCodeDeps") or {}).get(
-        sContainerId,
-    ) or {}
-    return dictByWorkflow.get(
-        (dictWorkflow or {}).get(workflowManager.S_LOADED_FROM_KEY, ""),
+        dictScan = stepDependencyScan.fdictFailEveryStep(dictWorkflow, error)
+    stepDependencyScan.fnStoreScanResults(
+        dictCtx, sContainerId, dictWorkflow, dictScan,
     )
 
 
-def _fnAnnotateStepsWithDeps(dictWorkflow, dictDeps):
-    """Add saSourceCodeDeps to each step from scan results."""
-    listSteps = dictWorkflow.get("listSteps", [])
-    dictDownToUp = _fdictInvertDeps(dictDeps, len(listSteps))
-    for iStep, dictStep in enumerate(listSteps):
-        listUpstream = sorted(dictDownToUp.get(iStep, set()))
-        dictStep["saSourceCodeDeps"] = [
-            i + 1 for i in listUpstream
-        ]
+def fdictCachedSourceCodeDeps(dictCtx, sContainerId, dictWorkflow):
+    """Return the scanned edges of THIS workflow, or None if not scanned.
 
-
-def _fdictInvertDeps(dictUpToDown, iStepCount):
-    """Invert {upstream: set(downstream)} to {downstream: set(upstream)}."""
-    dictResult = {}
-    for iUpstream, setDownstream in dictUpToDown.items():
-        for iDown in setDownstream:
-            dictResult.setdefault(iDown, set()).add(iUpstream)
-    return dictResult
+    Filed under the workflow file the scan read, because a container
+    hosts several projects: a scan of one project finishing after the
+    dashboard switched to another used to replace the other's edges.
+    Stored by step id and returned at the CURRENT step order, so a
+    reordered workflow never draws an edge onto the wrong step.
+    """
+    from . import stepDependencyScan
+    dictScan = stepDependencyScan.fdictCachedScanByStepId(
+        dictCtx, sContainerId, dictWorkflow,
+    )
+    if dictScan is None:
+        return None
+    return stepDependencyScan.fdictDeriveIndexDependencies(
+        dictWorkflow, dictScan,
+    )
 
 
 def _fsValidateConnectWorkflowPath(sWorkflowPath, sProjectRoot):
@@ -2963,6 +2952,8 @@ async def fdictHandleConnect(
         dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
+        from .stepDependencyScan import fnReapplyCachedScan
+        fnReapplyCachedScan(dictCtx, sContainerId, dictWorkflow)
         dictCtx["workflows"][sContainerId] = dictWorkflow
         # The cache's POPULATION logs beside its eviction and its
         # refusals: a session whose project was never cached is

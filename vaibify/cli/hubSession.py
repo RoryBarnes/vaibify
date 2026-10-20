@@ -33,6 +33,7 @@ takeover — and this client releases its lease when the command finishes.
 """
 
 import json
+import time
 
 import click
 
@@ -45,6 +46,7 @@ S_LEASE_HEADER = "X-Vaibify-Lease"
 S_BOOTSTRAP_ENDPOINT = "/api/bootstrap"
 F_DEFAULT_TIMEOUT_SECONDS = 300.0
 F_BOOTSTRAP_TIMEOUT_SECONDS = 30.0
+F_RELEASE_POLL_SECONDS = 1.0
 _T_TERMINAL_EVENT_TYPES = (
     "completed", "error", "pipelineError", "runRefused",
 )
@@ -113,7 +115,7 @@ def _fjsonParseResponseBody(response):
 def ftSendHttpRequest(
     sBaseUrl, sCredential, sMethod, sPath, dictFields=None,
     fTimeoutSeconds=F_DEFAULT_TIMEOUT_SECONDS, dictQuery=None,
-    sLeaseId="",
+    sLeaseId="", baRawBody=None,
 ):
     """Return ``(iStatusCode, jsonBody)`` for one researcher-lane call.
 
@@ -127,6 +129,8 @@ def ftSendHttpRequest(
     ``sLeaseId``, when set, rides the ``X-Vaibify-Lease`` header (never a
     query param, which would leak into logs): claim's re-claim lease,
     release's owning lease, connect's owning lease.
+    ``baRawBody`` is sent as the body itself, for the routes that read a
+    file's bytes from the request stream.
     """
     import requests
     dictHeaders = (
@@ -137,13 +141,18 @@ def ftSendHttpRequest(
     dictKeywords = {}
     if dictQuery:
         dictKeywords["params"] = dict(dictQuery)
-    if dictFields:
-        if sMethod == "GET":
+    if baRawBody is not None:
+        dictHeaders["Content-Type"] = "application/octet-stream"
+        dictKeywords["data"] = baRawBody
+    elif dictFields is not None:
+        # An empty dict on a write is still a body: a route whose body
+        # fields are all optional refuses a request with none (422).
+        if sMethod != "GET":
+            dictKeywords["json"] = dictFields
+        elif dictFields:
             dictKeywords["params"] = dict(
                 dictKeywords.get("params", {}), **dictFields
             )
-        else:
-            dictKeywords["json"] = dictFields
     try:
         response = requests.request(
             sMethod, sBaseUrl + sPath, headers=dictHeaders,
@@ -172,6 +181,7 @@ def _fjsonRequireOkResponse(tResponse, sWhat):
 def ftSendSessionRequest(
     dictSession, sMethod, sPath, dictFields=None,
     fTimeoutSeconds=F_DEFAULT_TIMEOUT_SECONDS, dictQuery=None,
+    baRawBody=None,
 ):
     """Send one OWNER-SCOPED request: the credential AND the lease, always.
 
@@ -185,7 +195,7 @@ def ftSendSessionRequest(
     return ftSendHttpRequest(
         dictSession["sBaseUrl"], dictSession["sCredential"], sMethod,
         sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
-        sLeaseId=dictSession["sLeaseId"],
+        sLeaseId=dictSession["sLeaseId"], baRawBody=baRawBody,
     )
 
 
@@ -353,7 +363,7 @@ def fsExplainClaimConflict(sContainerName, objDetail):
     return "%s %s" % (sExplanation, S_AGENT_LANE_POINTER)
 
 
-def fnReleaseContainer(dictSession):
+def fnReleaseContainer(dictSession, fWaitSeconds=0.0):
     """Release the lease this session claimed, and say so if it failed.
 
     A release that quietly does nothing leaves the container held until
@@ -361,27 +371,53 @@ def fnReleaseContainer(dictSession):
     with no explanation. The hub answers 200 with ``bReleased: false``
     when the lease did not match, so the body — not the status — is the
     thing to check.
+
+    The hub refuses a release (409) while work this session started is
+    still live: a run whose terminal event arrived before its record
+    settled, or a durable task such as a Level 3 verification. The
+    command is not finished until that work is, so the release waits
+    for it, up to ``fWaitSeconds`` (``None`` waits without a limit,
+    ``0`` not at all), and says once that it is waiting.
     """
     if not dictSession.get("sLeaseId"):
         return
-    try:
-        iStatusCode, jsonBody = ftSendHttpRequest(
-            dictSession["sBaseUrl"], dictSession["sCredential"],
-            "POST",
-            "/api/registry/%s/release" % dictSession["sContainerName"],
-            None, F_BOOTSTRAP_TIMEOUT_SECONDS,
-            sLeaseId=dictSession["sLeaseId"],
-        )
-    except HubSessionError as error:
-        click.echo("Warning: lease release failed: %s" % error, err=True)
-        return
+    fDeadline = None if fWaitSeconds is None else (
+        time.monotonic() + fWaitSeconds)
+    bAnnounced = False
+    while True:
+        try:
+            iStatusCode, jsonBody = _ftRequestRelease(dictSession)
+        except HubSessionError as error:
+            click.echo("Warning: lease release failed: %s" % error, err=True)
+            return
+        if iStatusCode != 409 or (
+                fDeadline is not None and time.monotonic() >= fDeadline):
+            break
+        if not bAnnounced:
+            click.echo("Waiting for the work this command started on '%s' "
+                       "to finish before releasing it." %
+                       dictSession["sContainerName"], err=True)
+            bAnnounced = True
+        time.sleep(F_RELEASE_POLL_SECONDS)
     if iStatusCode != 200 or not (jsonBody or {}).get("bReleased"):
+        sReason = (jsonBody or {}).get("sMessage", "") if isinstance(
+            jsonBody, dict) else ""
         click.echo(
             "Warning: the hub still holds '%s'; the next command may "
-            "be refused as in use."
-            % dictSession["sContainerName"],
+            "be refused as in use.%s"
+            % (dictSession["sContainerName"],
+               (" The hub said: " + sReason) if sReason else ""),
             err=True,
         )
+
+
+def _ftRequestRelease(dictSession):
+    """Ask the hub once to release this session's lease."""
+    return ftSendHttpRequest(
+        dictSession["sBaseUrl"], dictSession["sCredential"], "POST",
+        "/api/registry/%s/release" % dictSession["sContainerName"],
+        None, F_BOOTSTRAP_TIMEOUT_SECONDS, sLeaseId=dictSession["sLeaseId"],
+    )
 
 
 def fsSelectWorkflowPath(dictSession, sWorkflowPath=None):
@@ -446,6 +482,28 @@ def fdictInspectHubSession(sContainerName, iPort=None):
     }
 
 
+def fdictOpenHubControlSession(sContainerName, iPort=None):
+    """Return a researcher session on the hub's control plane: no claim.
+
+    The control-plane routes address a project by NAME (start a stopped
+    container, change its limits, containerize a host project), so they
+    need the researcher's credential and nothing a running container
+    session would supply; claiming would be impossible for a container
+    that is not running and wrong for one a dashboard tab holds.
+    """
+    iHubPort = fiResolveHubPort(iPort)
+    sBaseUrl = "http://127.0.0.1:%d" % iHubPort
+    return {
+        "sBaseUrl": sBaseUrl,
+        "iHubPort": iHubPort,
+        "sCredential": fsRedeemHostLaneCredential(iHubPort, sBaseUrl),
+        "sContainerName": sContainerName,
+        "sContainerId": "",
+        "sLeaseId": "",
+        "sWorkflowPath": "",
+    }
+
+
 def fdictOpenResearcherSession(
     sContainerName, iPort=None, sWorkflowPath=None,
 ):
@@ -491,6 +549,7 @@ def _fnPrintPayload(jsonBody, bJson):
 
 def fiSendHttpAction(
     dictSession, sMethod, sPath, dictFields, bJson, fTimeoutSeconds,
+    baRawBody=None,
 ):
     """Perform one HTTP action, print the body, return the exit code.
 
@@ -499,6 +558,7 @@ def fiSendHttpAction(
     """
     iStatusCode, jsonBody = ftSendSessionRequest(
         dictSession, sMethod, sPath, dictFields, fTimeoutSeconds,
+        baRawBody=baRawBody,
     )
     _fnPrintPayload(jsonBody, bJson)
     if 200 <= iStatusCode < 300:
@@ -532,14 +592,22 @@ def _fnPrintPipelineEvent(dictEvent, bJson):
     click.echo(" ".join(listParts))
 
 
+I_INTERACTIVE_REFUSED_EXIT_CODE = 3
+
+
 def fiStreamPipelineAction(
     dictSession, dictPayload, bJson, fTimeoutSeconds,
+    bNonInteractive=False,
 ):
     """Send one action on the pipeline socket and stream its events.
 
     Presents the loopback origin, the browser credential, and the
     owning lease — the browser gate, all three. Returns the process exit
-    code: the run's own exit code on completion, 1 on refusal or error.
+    code: the run's own exit code on completion, 1 on refusal or error,
+    and 3 when an interactive step needs a person and
+    ``bNonInteractive`` says none is there; that run is stopped first,
+    because a run left paused holds the container, and this command's
+    release, until the hub abandons the step hours later.
     """
     from websockets.sync.client import connect
     from websockets.exceptions import WebSocketException
@@ -550,17 +618,110 @@ def fiStreamPipelineAction(
             open_timeout=F_BOOTSTRAP_TIMEOUT_SECONDS,
             max_size=None,
         ) as connection:
-            connection.send(json.dumps(dictPayload))
-            return _fiStreamUntilTerminalEvent(
-                connection, bJson, fTimeoutSeconds,
+            connection.send(json.dumps(
+                _fdictAcknowledgeBoundWorkflow(connection, dictPayload, bJson)
+            ))
+            iExitCode = _fiStreamUntilTerminalEvent(
+                connection, bJson, fTimeoutSeconds, bNonInteractive,
             )
     except (WebSocketException, OSError) as error:
         raise HubSessionError(
             "pipeline socket failed: %s" % error
         )
+    if iExitCode == I_INTERACTIVE_REFUSED_EXIT_CODE:
+        _fnStopTheRunNobodyCanAnswer(dictSession)
+    return iExitCode
 
 
-def _fiStreamUntilTerminalEvent(connection, bJson, fTimeoutSeconds):
+def _fnStopTheRunNobodyCanAnswer(dictSession):
+    """Stop the run paused on an interactive step, as the Stop button does."""
+    try:
+        iStatusCode, _ = ftSendSessionRequest(
+            dictSession, "POST",
+            "/api/pipeline/%s/kill" % dictSession["sContainerId"], None,
+            F_BOOTSTRAP_TIMEOUT_SECONDS,
+        )
+    except HubSessionError as error:
+        click.echo("Warning: could not stop the paused run: %s" % error,
+                   err=True)
+        return
+    if iStatusCode != 200:
+        click.echo("Warning: the hub did not stop the paused run "
+                   "(HTTP %d); stop it from the dashboard." % iStatusCode,
+                   err=True)
+        return
+    click.echo("Stopped the run at that step.", err=True)
+
+
+def _fdictAcknowledgeBoundWorkflow(connection, dictPayload, bJson):
+    """Return the payload echoing the workflow the socket announced.
+
+    The hub's first frame names the workflow it bound and that file's
+    source fingerprint, and it refuses a run frame that does not echo
+    both ("workflowSuperseded"), so a project edited on disk after it
+    was announced is never run unseen. The dashboard and the
+    in-container vaibify-do echo it; this lane sent its frame blind, so
+    every run the host CLI asked for was refused. A first frame of any
+    other kind is shown and the payload goes unacknowledged, which the
+    hub then refuses in its own words.
+    """
+    try:
+        dictBound = json.loads(
+            connection.recv(timeout=F_BOOTSTRAP_TIMEOUT_SECONDS))
+    except (ValueError, TypeError):
+        return dictPayload
+    _fnPrintPipelineEvent(dictBound, bJson)
+    if dictBound.get("sType") != "workflowBound":
+        return dictPayload
+    return dict(
+        dictPayload,
+        sAcknowledgedSourceFingerprint=dictBound.get(
+            "sExactSourceFingerprint", ""),
+        sAcknowledgedWorkflowPath=dictBound.get("sWorkflowPath", ""),
+    )
+
+
+def _fbAnswerInteractivePause(connection, dictEvent, bNonInteractive):
+    """Answer an interactive step's pause; False when nobody can.
+
+    The dashboard asks in a dialog; here the researcher answers at the
+    terminal. With --non-interactive the run stops at once and says why,
+    rather than waiting out the timeout or skipping the step silently.
+    """
+    sStepName = dictEvent.get("sStepName", "")
+    if bNonInteractive:
+        click.echo(
+            "Error: step '%s' is interactive and waits for you. Answer it "
+            "in the dashboard, or run again without --non-interactive."
+            % sStepName, err=True)
+        return False
+    sChoice = click.prompt(
+        "Step '%s' is interactive. Run it in the container terminal (r) "
+        "or skip it (s)?" % sStepName,
+        type=click.Choice(["r", "s"]), default="r")
+    connection.send(json.dumps({
+        "sAction": "interactiveResume" if sChoice == "r"
+        else "interactiveSkip"}))
+    return True
+
+
+def _fnReportInteractiveCompletion(connection, dictEvent):
+    """Show the step's commands; send the exit code the researcher reports."""
+    dictStep = dictEvent.get("dictStep") or {}
+    click.echo("Run step '%s' in a container shell ('vaibify connect'):"
+               % dictEvent.get("sStepName", ""))
+    for sKey in ("saDataCommands", "saPlotCommands", "saTestCommands"):
+        for sCommand in dictStep.get(sKey, []) or []:
+            click.echo("  %s" % sCommand)
+    iExitCode = click.prompt(
+        "When it has finished, enter its exit code", type=int, default=0)
+    connection.send(json.dumps({
+        "sAction": "interactiveComplete", "iExitCode": iExitCode}))
+
+
+def _fiStreamUntilTerminalEvent(
+    connection, bJson, fTimeoutSeconds, bNonInteractive=False,
+):
     """Print events until a terminal one arrives; return the exit code."""
     while True:
         sMessage = connection.recv(timeout=(fTimeoutSeconds or None))
@@ -572,6 +733,11 @@ def _fiStreamUntilTerminalEvent(connection, bJson, fTimeoutSeconds):
             continue
         _fnPrintPipelineEvent(dictEvent, bJson)
         sType = dictEvent.get("sType", "")
+        if sType == "interactivePause" and not _fbAnswerInteractivePause(
+                connection, dictEvent, bNonInteractive):
+            return I_INTERACTIVE_REFUSED_EXIT_CODE
+        if sType == "interactiveTerminalStart":
+            _fnReportInteractiveCompletion(connection, dictEvent)
         if sType == "completed":
             return int(dictEvent.get("iExitCode", 0) or 0)
         if sType in _T_TERMINAL_EVENT_TYPES:

@@ -1,10 +1,30 @@
 """Preflight validation for pipeline steps."""
 
-__all__ = []
+__all__ = ["fbStepExecutesAnything"]
 
 from . import workflowManager
 from .commandUtilities import fsExtractScriptPath
 from .pipelineUtils import T_EXECUTED_COMMAND_KEYS, fsShellQuote
+
+
+def fbStepExecutesAnything(dictStep):
+    """Return True when a run would execute a command in the step's directory.
+
+    The directory and script checks exist because commands run there. A
+    step with none, such as an AI Declaration, which records a sign-off
+    and computes nothing, needs no working directory; demanding one
+    stopped every run of a project whose declaration step names a
+    directory nobody created, the Level 3 rerun included.
+    """
+    for sKey in T_EXECUTED_COMMAND_KEYS + ("saTestCommands",):
+        if dictStep.get(sKey):
+            return True
+    for jsonCategory in (dictStep.get("dictTests") or {}).values():
+        if isinstance(jsonCategory, dict) and jsonCategory.get("saCommands"):
+            return True
+        if isinstance(jsonCategory, list) and jsonCategory:
+            return True
+    return False
 
 
 def _fnValidateStepDirectory(

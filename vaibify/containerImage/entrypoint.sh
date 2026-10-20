@@ -1077,6 +1077,21 @@ fnWriteClaudeMd() {
 
 You are running inside a **Vaibify container** — a secure, isolated environment for AI-assisted scientific data analysis.
 
+## Whose instructions win
+
+The researcher's own instructions take precedence over this file
+wherever the two conflict: what they tell you directly, and their
+project context file (`<repository>/.vaibify/AGENTS.md`, which
+`CLAUDE.md`, `AGENTS.md` and `GEMINI.md` at the repository root point
+to). This file supplies vaibify's defaults and the rules of the
+container. Two things are not defaults: the container's security
+boundaries, and the user-only actions listed below. A researcher's
+instruction can ask you to surface a user-only action, never to perform
+it yourself — the hub refuses it from this container regardless.
+
+**This file is rewritten every time the container starts.** Edits to it
+are lost; put lasting instructions in the project context file.
+
 ## How to refer to steps
 
 Every step in a project JSON carries an `sLabel` field — `A09` for the 9th *automated* step, `I01` for the 1st *interactive* step. Labels are per-type sequential, so `A09` is **not** `listSteps[9]`; the 0-based index depends on how many interactive steps precede it.
@@ -1238,12 +1253,16 @@ Two rules that must never be violated, skill or not:
   `accept-plots-as-standard`; surface the request and let the
   researcher click. `push-to-github` is agent-callable on request.
 
-## Conventions
+## Conventions (defaults)
 
-- Follow Hungarian notation for variable names (b=bool, i=int, f=float, s=string, etc.)
-- Function names start with return-type prefix (fb, fi, fs, fn, flist, fdict)
+Use these unless the researcher's instructions declare a different
+convention; theirs win.
+
+- Hungarian notation for variable names (b=bool, i=int, f=float, s=string, etc.)
+- Function names start with a return-type prefix (fb, fi, fs, fn, flist, fdict)
 - Functions are usually 20-30 lines; split for reuse or a genuine conceptual boundary, never to satisfy a line count
 - Output figures go in `Plot/` subdirectories
+- A script that can fail on its inputs, files or external tools should stop with a message naming what failed; the **graceful-exits** skill has a checker
 
 ## Creating New Pipeline Steps
 

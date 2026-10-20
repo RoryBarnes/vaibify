@@ -356,6 +356,28 @@ def test_fiSendHttpRequest_post_method_still_uses_json_body(modCli):
     ) == {"sFoo": "bar"}
 
 
+@pytest.mark.falsification
+def test_fiSendHttpRequest_post_with_no_fields_still_sends_a_body(modCli):
+    """Kills: dropping the body when no field was given, which a route
+    whose body fields are all optional answers with 422."""
+    dictCaptured = {}
+
+    def fnFakeUrlopen(request, timeout=None):
+        dictCaptured[request.get_method()] = (
+            request.data, request.get_header("Content-type"))
+        return _MockResponse(b'{"ok": true}')
+
+    with patch.object(
+        modCli.urllib.request, "urlopen", side_effect=fnFakeUrlopen,
+    ):
+        for sMethod in ("POST", "GET"):
+            modCli.fiSendHttpRequest(
+                {"sUrl": "http://x/api/anything", "dictBody": {}},
+                "tok", sMethod, False)
+    assert dictCaptured["POST"] == (b"{}", "application/json")
+    assert dictCaptured["GET"] == (None, None)
+
+
 # -----------------------------------------------------------------------
 # flistPathPlaceholders + fsFillPath
 # -----------------------------------------------------------------------

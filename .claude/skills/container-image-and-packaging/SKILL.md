@@ -175,6 +175,17 @@ compromised" as "every configured provider's session was exposed"
 when reasoning about a threat, and do not add a fourth provider
 without revisiting that.
 
+Two more things not to undo:
+
+- The generated instructions' "Whose instructions win" section and
+  conditional conventions are a contract; do not restore unconditional
+  conventions. `tests/testEntrypointInstructionPrecedence.py` guards
+  both.
+- No credential or token on a command line or in an environment
+  variable inside an image. The JupyterLab token reaches the server
+  through a mode-600 config file;
+  `test_jupyter_token_never_reaches_a_command_line` guards it.
+
 ## Runtime resources live inside the package
 
 `vaibify/templates/` and `vaibify/containerImage/` ship in the wheel.

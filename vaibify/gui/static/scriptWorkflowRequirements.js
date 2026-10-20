@@ -619,7 +619,10 @@ var VaibifyWorkflowRequirements = (function () {
         var dictMaths = dictDetail.dictMathsLibrary;
         if (!dictMaths || !dictMaths.sNote) return "";
         return '<div class="determinism-evidence">' +
-            fnEscapeHtml(dictMaths.sNote) + '</div>';
+            fnEscapeHtml(dictMaths.sNote) + '</div>' +
+            (dictMaths.sUncoveredNote ?
+                '<div class="determinism-evidence">' +
+                fnEscapeHtml(dictMaths.sUncoveredNote) + '</div>' : "");
     }
 
     function _fsRenderDeterminismScanHint(dictDetail) {

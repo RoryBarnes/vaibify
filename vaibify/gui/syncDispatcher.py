@@ -1876,7 +1876,7 @@ def _ftRenderDagThroughDot(
 def ftResultArchiveProject(
     connectionDocker, sContainerId, dictWorkflow,
 ):
-    """Build a Zenodo archive with data + archive plots + metadata."""
+    """NOT CALLED (kept by decision): publish a sandbox draft with no files."""
     import json
     sWorkflowJson = json.dumps(dictWorkflow)
     sImport = (

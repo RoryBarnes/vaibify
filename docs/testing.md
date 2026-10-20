@@ -82,7 +82,8 @@ reads each of the step's declared output files, and records what it
 finds: shape, data type, NaN and infinity counts, column names, JSON
 keys, and benchmark values. vaibify then writes the three standards
 files and the three test files mechanically from that report. No
-language model is involved.
+language model is involved unless vaibify could not understand the
+outputs at all (see the fallback below).
 
 The generator also classifies each step's randomness, because a
 tolerance that suits a deterministic calculation is meaningless for a
@@ -93,7 +94,7 @@ sampler:
 | `deterministic` | No random-number framework is used in the step's scripts, or no array is large enough to summarize | Single values and means, at the default tolerance |
 | `stochastic` | A random-number framework is used and an output array holds at least 64 samples | Means, standard deviations and percentiles, each with a tolerance derived from its sampling standard error at three sigma (following Oberkampf & Roy 2010 and Vehtari et al. 2021) |
 | `stochastic_unseeded` | As above, and the step's randomness is flagged as unseeded | Mean and median only, at a placeholder 10% tolerance with a note asking you to seed the source of randomness |
-| `unintrospectable` | Output files exist but yield no numeric benchmark | None; the introspector's errors are recorded instead |
+| `unintrospectable` | Output files exist but yield no numeric benchmark | None from vaibify; the introspector's errors are recorded, and the fallback below may apply |
 
 The generator is a foundation, not a complete answer. Generating
 meaningful tests for arbitrary data structures is hard, so you, or an
@@ -102,13 +103,34 @@ in your science. An agent asked for tests is steered to the
 deterministic generator (`generate-tests-deterministic`), which pins
 what is actually in the data and never overwrites an edited file.
 
-Two other paths exist. A quantitative standards file can be refreshed
-from live data outside the dashboard, from the command line; see
-[CLI Reference](cli.md). And the generation route can still ask a language model (the
-in-container Claude Code, or a provider API key you have stored) to
-write tests, but only when a caller explicitly turns the deterministic
-mode off; the dashboard's **Generate** button does not. That route is
-researcher-only, because model-written test content must be reviewed.
+A quantitative standards file can also be refreshed from live data
+outside the dashboard, from the command line; see
+[CLI Reference](cli.md).
+
+A language model writes tests in two cases only, and each tier records
+which: `sGenerator` in its standards file and in the step
+(`deterministic`, `llm-fallback` or `llm`), a
+`# vaibify-generator:` first line in a model-written test file, and a
+note on the step's test rows for a model-written tier.
+
+- **Fallback (`llm-fallback`).** When vaibify cannot understand a
+  step's outputs -- the introspection script fails or prints nothing
+  readable (every tier), or no output yields a benchmark, so no
+  quantitative standards can be derived (the quantitative tier) --
+  **Generate** asks a model you have already enabled: Claude Code
+  installed in the container, or the provider API key you chose to
+  use. It never asks for a key. Nothing else causes a fallback: a
+  refused or failed write, a pending overwrite confirmation and a
+  missing step are reported as they are. With no model available, the
+  error names both what vaibify could not read and why no model was
+  asked.
+- **On request (`llm`).** A caller can turn the deterministic mode off
+  explicitly; the dashboard's **Generate** button does not.
+
+Both are researcher-only, because model-written test content must be
+reviewed, and the agent's deterministic generator cannot reach a model.
+Generated standards are the published criteria that judge an output
+whose bytes moved, which is why their author is recorded.
 
 ### Checking that your tests have teeth
 

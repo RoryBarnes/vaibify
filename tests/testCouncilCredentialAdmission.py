@@ -227,6 +227,9 @@ def test_a_refused_admission_is_filed_as_needing_the_researcher():
 
     engine = agentCouncil.CouncilEngine.__new__(agentCouncil.CouncilEngine)
     engine.dictConnections = {"p1": RefusingConnection()}
+    # The drive reads the execution permission onto every turn request.
+    engine.dictCampaign = {"dictSettings": {
+        "sExecutionPermission": "fullSandbox"}}
     dictAttempt = asyncio.run(engine._fdictDriveConnection(
         {"sParticipantId": "p1"}, {"sTurnId": "t1"}))
     assert dictAttempt["sFailureClass"] == "credentialAdmissionRefused"

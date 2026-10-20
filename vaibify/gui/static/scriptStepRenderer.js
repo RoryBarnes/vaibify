@@ -278,6 +278,8 @@ var VaibifyStepRenderer = (function () {
         "user-attestation": "Your sign-off recorded",
         "timing-clean": "Nothing changed since verification",
         "input-data-declared": "Input data declared",
+        "dependencies-reconciled": "Cross-step reads declared or " +
+            "dismissed",
         // "Outputs" until 2026-08-25, when the projection behind
         // these rows widened from the step's output arrays to every
         // path it declares — inputs, scripts, test standards,
@@ -287,6 +289,7 @@ var VaibifyStepRenderer = (function () {
         "github-mirror": "Published files match the GitHub mirror",
         "zenodo-deposit": "Published files match the Zenodo deposit",
         "figure-frozen": "Manuscript figures frozen in Overleaf",
+        "unique-basenames": "File names unique across the deposit",
         "ai-declaration-attested": "AI declaration signed off",
         "missing-from-manifest": "Outputs pinned in the manifest",
         "script-not-pinned": "Scripts match the manifest",
@@ -299,6 +302,8 @@ var VaibifyStepRenderer = (function () {
     var _DICT_UNMET_REQUIREMENT_HINTS = {
         "figure-frozen": "Freeze via each plot file's Overleaf " +
             "badge, then re-verify",
+        "unique-basenames": "A Zenodo deposit is flat: rename one " +
+            "of the files that share this name",
         "ai-declaration-attested": "Sign off in the declaration " +
             "body above",
         "missing-from-manifest": "Refresh the manifest (Project " +
@@ -322,6 +327,7 @@ var VaibifyStepRenderer = (function () {
         "github-mirror": "not-in-github-mirror",
         "zenodo-deposit": "not-in-zenodo-deposit",
         "figure-frozen": "figure-not-frozen",
+        "unique-basenames": "basename-collision",
     };
 
     var _DICT_VERIFY_SERVICE_BY_REQUIREMENT = {
@@ -475,9 +481,46 @@ var VaibifyStepRenderer = (function () {
         return dictEntry.sRemediationHint || "";
     }
 
+    function _fsDependencyFindingsHtml(dictReq, iIndex, dictContext) {
+        /* The scan's own findings and reason, carried on the step's
+           Level 1 blocker whichever criterion dominates it. Each
+           unreconciled read is declared in the workflow or dismissed
+           by the researcher; a scan that is not current is rescanned. */
+        var dictEntry = (dictContext.dictBlockersByStep || {})[iIndex] ||
+            {};
+        if (dictReq.bMet === null) {
+            return '<div class="step-level-requirement-hint">' +
+                fnEscapeHtml("Dependency scan not current: " +
+                    (dictEntry.sDependencyReason || "unknown reason") +
+                    ".") + ' <button class="btn btn-small ' +
+                'wf-rescan-dependencies">Rescan dependencies</button>' +
+                '</div>';
+        }
+        return (dictEntry.listDependencyFindings || []).map(
+            function (dictFinding) {
+                return '<div class="step-level-requirement-hint">' +
+                    fnEscapeHtml(dictFinding.sScriptPath + " reads " +
+                        dictFinding.sScannedPath + " (" +
+                        dictFinding.sUpstreamStepId + "'s " +
+                        dictFinding.sMatchedOutput + ") — declare it " +
+                        "with {step:" + dictFinding.sUpstreamStepId +
+                        ".<stem>} or dismiss it.") +
+                    ' <button class="btn btn-small ' +
+                    'wf-dismiss-dependency" data-step="' + iIndex +
+                    '" data-scanned="' +
+                    fnEscapeHtml(dictFinding.sScannedPath) +
+                    '" data-upstream="' +
+                    fnEscapeHtml(dictFinding.sUpstreamStepId) +
+                    '">Dismiss</button></div>';
+            }).join("");
+    }
+
     function _fsRequirementHintHtml(dictReq, iIndex, iLevel,
         dictContext) {
         if (dictReq.bMet === true) return "";
+        if (dictReq.sName === "dependencies-reconciled") {
+            return _fsDependencyFindingsHtml(dictReq, iIndex, dictContext);
+        }
         var listParts = [];
         var listOffenders = _flistRequirementOffenders(
             dictReq, iIndex, iLevel, dictContext);
@@ -944,18 +987,19 @@ var VaibifyStepRenderer = (function () {
             var sCatState = dictContext.fsGetCategoryState(
                 step, sCategory);
             var sLabel = dictContext.fsTestCategoryLabel(sCategory);
+            var dictTests = dictContext.fdictGetTests(step);
+            var sCatKey = "dict" +
+                sCategory.charAt(0).toUpperCase() +
+                sCategory.slice(1);
             sHtml += fsRenderSubTestRow(
                 sLabel, sCatState, sCategory, iIndex, dictContext);
+            sHtml += _fsRenderGeneratorNote(dictTests[sCatKey]);
             var setExp = dictContext.fsetGetExpandedCategory(
                 sCategory);
             if (setExp.has(iIndex)) {
                 sHtml += fsRenderSubTestExpanded(
                     step, iIndex, sCategory, dictContext);
             }
-            var dictTests = dictContext.fdictGetTests(step);
-            var sCatKey = "dict" +
-                sCategory.charAt(0).toUpperCase() +
-                sCategory.slice(1);
             if (((dictTests[sCatKey] || {}).saCommands ||
                 []).length > 0) {
                 bAnyTests = true;
@@ -1007,6 +1051,25 @@ var VaibifyStepRenderer = (function () {
             sTriangle + fnEscapeHtml(sLabel) + '</span>' +
             sBadge + '</div>' +
             _fsRenderNeverRunNote(sState, sCategory, iIndex, dictContext);
+    }
+
+    var _DICT_MODEL_GENERATOR_NOTES = {
+        "llm-fallback": "Written by a language model because vaibify " +
+            "could not read this step's outputs. Review it before " +
+            "relying on it.",
+        "llm": "Written by a language model at your request. Review " +
+            "it before relying on it.",
+    };
+
+    function _fsRenderGeneratorNote(dictCategory) {
+        /* Who wrote a tier is recorded by the generator (sGenerator);
+           a model-written tier says so, because its standards are the
+           published criteria that judge outputs whose bytes moved.
+           Vaibify's own derivation needs no note. */
+        var sNote = _DICT_MODEL_GENERATOR_NOTES[
+            (dictCategory || {}).sGenerator];
+        return sNote ? '<div class="sub-test-note">' +
+            fnEscapeHtml(sNote) + '</div>' : "";
     }
 
     function _fsRenderNeverRunNote(sState, sCategory, iIndex, dictContext) {

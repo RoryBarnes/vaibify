@@ -1574,9 +1574,8 @@ def fnAttachComputedTrackedPaths(dictWorkflow):
 
 
 _T_TRANSIENT_STEP_KEYS = (
-    "saSourceCodeDeps",
-    "saStepScripts",
-    "saTestStandards",
+    "saSourceCodeDeps", "saStepScripts", "saTestStandards",
+    "dictDependencyScan",
 )
 
 

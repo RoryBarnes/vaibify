@@ -122,6 +122,15 @@ var VaibifyFileOutcomes = (function () {
         return _DICT_STATUS_WORDS[sStatus] || sStatus;
     }
 
+    function _fsRenderVaibifyNote(dictOutcome) {
+        /* The server's correction beside a frozen policy's reason
+           (comparisonPolicyNotes): the reason above stays the policy's
+           own words, and this says what vaibify knows about it now. */
+        if (!dictOutcome.sVaibifyNote) return "";
+        return '<div class="file-outcome-note">' +
+            fnEscapeHtml(dictOutcome.sVaibifyNote) + "</div>";
+    }
+
     function _fsRenderOutcomeRow(dictOutcome) {
         /* Two lines per file, not four columns: these cards sit in a
            narrow panel, where a table gave the hashes their full width
@@ -137,7 +146,8 @@ var VaibifyFileOutcomes = (function () {
             '<span class="file-outcome-path">' +
             fnEscapeHtml(dictOutcome.sPath || "") + "</span>" +
             '<span class="file-outcome-word">' + fnEscapeHtml(sWord) +
-            "</span></div>" + '<div class="file-outcome-hashes">' +
+            "</span></div>" + _fsRenderVaibifyNote(dictOutcome) +
+            '<div class="file-outcome-hashes">' +
             _fsRenderHash("expected", dictOutcome.sExpected) + " \u00b7 " +
             _fsRenderHash("observed", dictOutcome.sObserved) + "</div></li>";
     }

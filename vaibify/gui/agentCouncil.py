@@ -1088,6 +1088,9 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
     async def _fdictDriveConnection(self, dictParticipant, dictRequest):
         connectionForTurn = self.dictConnections[
             dictParticipant["sParticipantId"]]
+        dictSettings = self.dictCampaign["dictSettings"]
+        dictRequest = dict(dictRequest, bReadOnlyCouncil=(
+            dictSettings["sExecutionPermission"] == S_EXECUTION_READ_ONLY))
         try:
             await connectionForTurn.fdictPrepareImmutableContext(dictRequest)
             await connectionForTurn.fnStartTurn(dictRequest)
@@ -1106,21 +1109,18 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                     "sFailureReason": f"{sFailureClass}: {error}"}
         iResultBytes = len(json.dumps(dictRawResult, default=str)
                            .encode("utf-8"))
-        iOutputBudget = self.dictCampaign["dictSettings"][
-            "iMaximumOutputBytesPerTurn"]
-        if iResultBytes > iOutputBudget:
+        if iResultBytes > dictSettings["iMaximumOutputBytesPerTurn"]:
             return {"sOutcome": "overBudget", "sCompletion": sCompletion,
                     "sFailureClass": "outputByteBudgetExceeded",
                     "sFailureReason": "outputByteBudgetExceeded"}
-        # An EMPTY result is not a schema problem, and running the
-        # validator over it produces the worst of both: fifteen "must
-        # be an array" complaints plus a list of the diagnostic fields
-        # themselves as "unknown keys", with the actual cause buried in
-        # the middle. A researcher read exactly that and could not tell
-        # a rate-limited model from a badly formatted one (2026-08-24).
-        # Repair is skipped too: there is nothing to repair, and a
-        # second turn against a provider that just throttled us is a
-        # second turn thrown away.
+        # An EMPTY result is not a schema problem, and running the validator
+        # over it produces the worst of both: fifteen "must be an array"
+        # complaints plus a list of the diagnostic fields themselves as
+        # "unknown keys", with the actual cause buried in the middle. A
+        # researcher read exactly that and could not tell a rate-limited model
+        # from a badly formatted one (2026-08-24). Repair is skipped too: there
+        # is nothing to repair, and a second turn against a provider that just
+        # throttled us is a second turn thrown away.
         sEmptyReason = (dictRawResult or {}).get("sEmptyResultReason")
         if sEmptyReason:
             return {

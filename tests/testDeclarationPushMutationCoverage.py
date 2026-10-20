@@ -435,7 +435,7 @@ def test_step_l3_satisfied_arithmetic_is_subtraction():
     """
     dictStep = {
         "saOutputDataFiles": ["results/output.dat"],
-        "bUnseededRandomnessWarning": True,
+        "dictVerification": {"bUnseededRandomnessWarning": True},
         "saDataCommands": ["simtool run config.in"],
     }
     listDeclared = [{"sBinaryPath": "/usr/local/bin/simtool"}]
@@ -452,12 +452,13 @@ def test_randomness_criterion_requires_literal_true():
     warning is the literal True — False and truthy non-booleans (a
     lint writing 1) must not create a requirement.
 
-    Kills: levelGates.py 'bUnseededRandomnessWarning") is True'
-    -> '== True'.
+    Kills: pipelineUtils.fbStepHasUnseededRandomnessWarning
+    'bUnseededRandomnessWarning") is True' -> '== True'.
     """
     def _fsetFor(xFlagValue):
         return levelGates._fsetStepApplicableLevel3Criteria(
-            {"bUnseededRandomnessWarning": xFlagValue}, [], {},
+            {"dictVerification": {"bUnseededRandomnessWarning": xFlagValue}},
+            [], {},
         )
     assert "nondeterminism-undeclared" in _fsetFor(True)
     assert "nondeterminism-undeclared" not in _fsetFor(False)

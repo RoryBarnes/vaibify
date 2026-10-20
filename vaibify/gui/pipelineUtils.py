@@ -17,6 +17,8 @@ __all__ = [
     "fsShellQuote",
     "fsBuildUniqueTemporaryPath",
     "fbStepIsInteractive",
+    "fbStepHasUnseededRandomnessWarning",
+    "OutputAnalysisError",
     "fsLabelFromStepIndex",
     "fiStepIndexFromLabel",
     "flistStepsWithLabels",
@@ -464,6 +466,35 @@ def fbStepIsInteractive(dictStep):
         return valueFlag.strip().lower() \
             not in _T_INTERACTIVE_FALSE_TOKENS
     return bool(valueFlag)
+
+
+class OutputAnalysisError(RuntimeError, ValueError):
+    """Vaibify's own analysis could not understand a step's outputs.
+
+    Raised where the introspection program fails or prints nothing a
+    reader can parse -- the failures a language model may get past by
+    reading the outputs itself, so the narrow test-generation fallback
+    names this type and nothing broader. A container write, a refusal
+    or a missing step is a different failure and never this one. Both
+    bases are kept so every earlier ``except RuntimeError`` or
+    ``except ValueError`` around introspection still catches it.
+    """
+
+
+def fbStepHasUnseededRandomnessWarning(dictStep):
+    """Return True iff the randomness lint flagged this step as unseeded.
+
+    The lint writes the flag into ``dictStep["dictVerification"]``, and
+    this is its one reader. Three Level 3 checks once read it from the
+    step's top level, where nothing writes it, so the criterion never
+    fired. Only the literal ``True`` counts, as the lint writes it.
+    """
+    if not isinstance(dictStep, dict):
+        return False
+    dictVerification = dictStep.get("dictVerification")
+    if not isinstance(dictVerification, dict):
+        return False
+    return dictVerification.get("bUnseededRandomnessWarning") is True
 
 
 def fsLabelFromStepIndex(dictWorkflow, iStepIndex):

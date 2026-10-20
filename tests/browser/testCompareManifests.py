@@ -467,8 +467,8 @@ def test_mismatches_against_the_authors_manifest_are_named_not_called_a_self_com
 
     The reader's container holds the outputs their own computer made,
     and the manifest is the author's, untouched: the toast names how
-    many files differ and the first of them, and says nothing about a
-    manifest this machine wrote.
+    many files differ, the report it opens names every one of them,
+    and nothing says this machine wrote the manifest.
     """
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.route(
@@ -482,6 +482,11 @@ def test_mismatches_against_the_authors_manifest_are_named_not_called_a_self_com
                 ],
                 "saIncomplete": [], "sManifestOwnership": "foreign",
                 "bManifestDiffersFromHead": False,
+                "dictMismatchReport": {"listFiles": [
+                    {"sPath": S_MATCHED_PATH,
+                     "sDescription": "production context unknown"},
+                    {"sPath": S_DIVERGED_PATH,
+                     "sDescription": "production context unknown"}]},
             }),
         ),
     )
@@ -492,6 +497,11 @@ def test_mismatches_against_the_authors_manifest_are_named_not_called_a_self_com
     )
     sToast = pageDashboard.text_content("#toastContainer .toast.warning")
     assert "2 of 24 files differ from the manifest" in sToast, sToast
-    assert S_MATCHED_PATH in sToast, sToast
     assert "this machine wrote" not in sToast, sToast
+    pageDashboard.click("#toastContainer .toast.warning")
+    pageDashboard.wait_for_selector("#modalInfo", state="visible",
+                                    timeout=5000)
+    sReport = pageDashboard.inner_text("#modalInfo")
+    assert S_MATCHED_PATH in sReport and S_DIVERGED_PATH in sReport, sReport
+    assert "this machine wrote" not in sReport, sReport
     assert pageDashboard.listPageErrors == []

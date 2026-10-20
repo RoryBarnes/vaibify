@@ -315,6 +315,14 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
         agentCouncilSnapshotScope, "fsResolveSnapshotScopeDirectory",
         lambda: os.path.join(sHome, "agentCouncils", "snapshotScope"),
     )
+    # The Prompt Record's raw-prefix digest key is resolved at call time
+    # too, and a capture that reached it unredirected would CREATE a key
+    # in the researcher's real home.
+    from vaibify.gui import promptRecordManager
+    monkeypatch.setattr(
+        promptRecordManager, "fsResolveDigestKeyPath",
+        lambda: os.path.join(sHome, "promptRecordDigestKey"),
+    )
     # ephemeralStore is deliberately NOT redirected here: it computes
     # its root from os.path.expanduser("~") at call time (no import-time
     # constant to patch), and its own tests exercise that real behaviour
