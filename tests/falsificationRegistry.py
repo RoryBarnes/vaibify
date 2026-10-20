@@ -31560,20 +31560,18 @@ LIST_FALSIFICATIONS = [
         new='    iSwapBytes = iDesiredBytes\n',
     ),
     # --- 2026-10-19: the randomness lint's nested flag reaches Level 3.
+    # Both levelGates readers revert together: the step's applicable
+    # set is unioned with its failing set by design, so either reader
+    # alone still carries the criterion.
     Falsification(
         nodeid=(
             'tests/testUnseededRandomnessReachesLevelThree.py::'
             'testAnUnseededConfigFailsTheLevelThreeRandomnessCriterion'
         ),
         source='vaibify/reproducibility/levelGates.py',
-        old=(
-            '    if fbStepHasUnseededRandomnessWarning(dictStep):\n'
-            '        setApplicable.add("nondeterminism-undeclared")'
-        ),
-        new=(
-            '    if dictStep.get("bUnseededRandomnessWarning") is True:\n'
-            '        setApplicable.add("nondeterminism-undeclared")'
-        ),
+        old='if fbStepHasUnseededRandomnessWarning(dictStep):',
+        new='if dictStep.get("bUnseededRandomnessWarning") is True:',
+        iExpectedOccurrences=2,
     ),
     # --- 2026-10-19: Check Files Against Manifest lists every differing
     # file with what is recorded about it, and never advises the rerun
