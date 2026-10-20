@@ -140,12 +140,12 @@ def fbFindingMatchesDismissal(dictFinding, dictDismissal, sScriptSha256):
             and dictDismissal.get("sScriptSha256") == sScriptSha256)
 
 
-def _fsWhyNotCurrent(dictFinding, dictWorkflow, dictIndexById, dictHashes):
-    """Return why a finding no longer describes the files, or ''."""
-    sScript = dictFinding.get("sScriptPath", "")
-    sHashNow = dictHashes.get(sScript)
-    if not sHashNow or sHashNow != dictFinding.get("sScriptSha256"):
-        return f"{sScript} changed since the dependency scan"
+def _fsWhyNotCurrent(dictFinding, dictWorkflow, dictIndexById):
+    """Return why a finding's upstream declaration no longer holds, or ''.
+
+    Its script is checked with every other script the scan read, in
+    ``_fsWhyScanNotCurrent``.
+    """
     sUpstreamId = dictFinding.get("sUpstreamStepId", "")
     if sUpstreamId not in dictIndexById:
         return f"step '{sUpstreamId}' no longer exists"
@@ -181,7 +181,7 @@ def _fdictStateForStep(iStepIndex, dictStep, dictContext):
     for dictFinding in listFindings:
         sWhy = _fsWhyNotCurrent(
             dictFinding, dictContext["dictWorkflow"],
-            dictContext["dictIndexById"], dictContext["dictHashes"])
+            dictContext["dictIndexById"])
         if sWhy:
             return {"sState": S_DEPENDENCY_NOT_CURRENT, "listFindings": [],
                     "sReason": sWhy}

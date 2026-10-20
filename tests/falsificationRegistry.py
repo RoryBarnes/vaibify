@@ -31770,9 +31770,8 @@ LIST_FALSIFICATIONS = [
             'testAScriptEditedSinceTheScanReadsNotCurrentUntilRescanned'
         ),
         source='vaibify/reproducibility/dependencyFindings.py',
-        old=('    if not sHashNow or sHashNow != '
-             'dictFinding.get("sScriptSha256"):\n'),
-        new='    if not sHashNow:\n',
+        old='        if dictContext["dictHashes"].get(sScript) != sSha256:\n',
+        new='        if False:\n',
     ),
     Falsification(
         nodeid=(
