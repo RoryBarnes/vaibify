@@ -35387,7 +35387,7 @@ LIST_FALSIFICATIONS = [
         ),
         # the no-project dashboard never asks whose files the viewers hold
         source='vaibify/gui/static/scriptApplication.js',
-        old='            VaibifyFigureViewer.fnBindViewersToProject(sId, "");\n',
+        old='            _fnBindViewersAndGraphToProject(sId, "");\n',
         new='',
     ),
     Falsification(
@@ -35398,7 +35398,7 @@ LIST_FALSIFICATIONS = [
         # a project's dashboard never asks whose files the viewers hold
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '        VaibifyFigureViewer.fnBindViewersToProject('
+            '        _fnBindViewersAndGraphToProject('
             'sId, data.sWorkflowPath);\n'
         ),
         new='',
