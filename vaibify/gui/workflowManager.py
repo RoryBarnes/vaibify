@@ -1378,7 +1378,7 @@ def _fnWriteSidecarBookkeeping(
 def fdictCreateStep(
     sName,
     sDirectory,
-    bPlotOnly=True,
+    bPlotOnly=False,
     bInteractive=False,
     saDataCommands=None,
     saOutputDataFiles=None,
@@ -1386,6 +1386,7 @@ def fdictCreateStep(
     saPlotCommands=None,
     saPlotFiles=None,
     saInputDataFiles=None,
+    bNoInputData=False,
 ):
     """Return a new step dictionary with validated fields."""
     return {
@@ -1400,7 +1401,7 @@ def fdictCreateStep(
         "saPlotCommands": saPlotCommands if saPlotCommands else [],
         "saPlotFiles": saPlotFiles if saPlotFiles else [],
         "saInputDataFiles": saInputDataFiles if saInputDataFiles else [],
-        "bNoInputData": False,
+        "bNoInputData": bNoInputData,
         "listRemoteData": [],
         "dictTests": {
             "dictQualitative": {"saCommands": [], "sFilePath": ""},

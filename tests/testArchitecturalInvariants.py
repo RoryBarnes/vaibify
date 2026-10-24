@@ -7428,7 +7428,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # human-only like its run and discard siblings.
     # 1525 -> 1540 (2026-10-19): the dependency rescan (agent-safe) and
     # the researcher-only dismissal of a scan-found dependency.
-    "actionCatalog.py": 1540,
+    # 1540 -> 1544 (2026-10-24): create-step and insert-step say that
+    # bPlotOnly defaults off and that bNoInputData is accepted.
+    "actionCatalog.py": 1544,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

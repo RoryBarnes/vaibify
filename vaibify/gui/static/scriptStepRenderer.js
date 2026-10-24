@@ -607,6 +607,22 @@ var VaibifyStepRenderer = (function () {
         }).join("");
     }
 
+    function _fsBuildSkippedDataMarker(step, bInteractive) {
+        /* An execution setting, not a warning, so it sits beside the
+           name rather than in the level strip: a Plot only step that
+           has data commands never runs them, and nothing else on the
+           collapsed row says so. Matches the runner, which skips only
+           on an explicit true. */
+        if (bInteractive || step.bPlotOnly !== true ||
+                (step.saDataCommands || []).length === 0) {
+            return "";
+        }
+        return '<span class="step-execution-setting" title="' +
+            'This step is set to Plot only, so its data commands ' +
+            'do not run. Untick Plot only in its Level 1 section ' +
+            'to run them.">Data commands skipped (plots only)</span>';
+    }
+
     function fsRenderStepItem(step, iIndex, dictVars, dictContext) {
         var bInteractive = fbStepIsInteractive(step);
         // The run light is EXECUTION-ONLY (its original meaning):
@@ -639,6 +655,7 @@ var VaibifyStepRenderer = (function () {
             '<span class="step-name" title="' +
             fnEscapeHtml(step.sName) + '">' +
             fnEscapeHtml(step.sName) + "</span>" +
+            _fsBuildSkippedDataMarker(step, bInteractive) +
             // Every warning the step carries — staleness, blockers,
             // unseeded randomness, regressions — is consolidated
             // into the ⚠ column of the level strip, one

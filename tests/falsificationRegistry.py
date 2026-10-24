@@ -35842,4 +35842,23 @@ LIST_FALSIFICATIONS = [
         old='    bOnly = bool(listMismatches) and len(listExplained) == len(listMismatches)\n',
         new='    bOnly = bool(listExplained)\n',
     ),
+    # --- 2026-10-23: a new step defaulted to plots-only, so its data
+    # commands never ran ---
+    Falsification(
+        nodeid='tests/testStepRoutes.py::testAnOmittedPlotOnlyIsFalse',
+        source='vaibify/gui/pipelineServer.py',
+        # the request model defaults a new step to plots-only again
+        old='    bPlotOnly: bool = False\n',
+        new='    bPlotOnly: bool = True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testANewStepRunsItsDataCommands.py::'
+            'testTheAddStepFormOpensWithPlotsOnlyUnchecked'
+        ),
+        source='vaibify/gui/static/scriptStepEditor.js',
+        # the add-step form opens with Plot only ticked again
+        old='        document.getElementById("inputPlotOnly").checked = false;\n',
+        new='        document.getElementById("inputPlotOnly").checked = true;\n',
+    ),
 ]
