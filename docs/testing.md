@@ -615,6 +615,7 @@ report on a pull request.
 | `freshImageBuild.yml` | a full image build from scratch, then acceptance | amd64 and arm64; weekly, manual, and on pull requests that touch the image, its build code, or the documents staged into it |
 | `publishedReproduction.yml` | reproduces a published project in its author's environment and fails unless the report's verdict is `reproduced` | one Linux cell; weekly and manual |
 | `toolchainEpoch.yml` | asks whether Ubuntu has moved past the pinned toolchain snapshot and opens or updates a standing issue describing the change | one Linux cell; monthly and manual |
+| `runtimeSetup.yml` | runs `vaibify setup-docker` for real: on Ubuntu with the runner's Docker removed, then requires a buildx build and a container run as the user; on macOS the Homebrew install, stopping before Colima, which GitHub's Apple Silicon runners cannot start | one Ubuntu and one macOS cell; weekly, manual, and on pull requests that touch the setup code |
 
 ### Check names and required checks
 

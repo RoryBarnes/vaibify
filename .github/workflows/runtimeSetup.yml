@@ -1,0 +1,132 @@
+name: runtime-setup
+
+# Runs `vaibify setup-docker` FOR REAL on fresh GitHub runners: the one
+# place the installer's vendor commands meet a real package manager.
+# The unit suite drives the planner from fixture evidence and the runner
+# against stub programs; neither can say whether Docker's repository,
+# Homebrew's formulae, or the scripts' own syntax still work today.
+#
+# Weekly and on changes to the setup code only, never on every pull
+# request: the macOS leg needs a macOS runner, which GitHub allocates
+# slowly to public repositories, and an unrelated pull request should
+# not wait for one (ruled 2026-10-24).
+#
+# What each leg does NOT show:
+# - Linux: only Ubuntu (the runner's own distribution), only through
+#   passwordless sudo, and with the runner user already in the docker
+#   group. Fedora/RHEL, pkexec, rootless, and the log-out step are
+#   exercised by unit tests only.
+# - macOS: installs with Homebrew and stops before `colima start`,
+#   because GitHub's Apple Silicon runners do not allow the nested
+#   virtualization Colima needs. MacPorts and the macOS administrator
+#   dialog are exercised by unit tests only.
+
+on:
+  schedule:
+    # 07:00 UTC every Monday.
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'vaibify/install/runtimeSetup*.py'
+      - 'vaibify/cli/commandSetupDocker.py'
+      - '.github/workflows/runtimeSetup.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: 'runtime-setup (ubuntu)'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install vaibify
+        timeout-minutes: 30
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Remove the runner's own Docker
+        # The runner image ships Docker; the installer is only tested by
+        # a machine without one. Every package that provides it goes,
+        # with Docker's apt source if the image added one.
+        timeout-minutes: 30
+        run: |
+          sudo systemctl stop docker.socket docker.service containerd || true
+          listPackages=$(dpkg-query -W -f '${Package}\n' \
+            | grep -E '^(docker|moby|containerd|runc)' || true)
+          if [ -n "$listPackages" ]; then
+            sudo apt-get purge -y $listPackages
+          fi
+          sudo rm -f /etc/apt/sources.list.d/docker.list \
+            /etc/apt/sources.list.d/docker.sources /etc/apt/keyrings/docker.asc
+          if command -v docker; then
+            echo "::error::a docker command is still on PATH"; exit 1
+          fi
+
+      - name: Set up Docker with vaibify
+        timeout-minutes: 60
+        run: vaibify setup-docker --yes </dev/null
+
+      - name: Prove the engine and buildx work as this user
+        timeout-minutes: 30
+        run: |
+          docker info --format '{{.ServerVersion}}'
+          docker buildx version
+          mkdir -p "$RUNNER_TEMP/buildContext"
+          printf 'FROM ubuntu:24.04\nRUN echo built\n' \
+            > "$RUNNER_TEMP/buildContext/Dockerfile"
+          docker buildx build --load -t vaibify-runtime-setup-check \
+            "$RUNNER_TEMP/buildContext"
+          docker run --rm vaibify-runtime-setup-check true
+
+  macos:
+    name: 'runtime-setup (macos)'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install vaibify
+        timeout-minutes: 30
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Install with vaibify, stopping before Colima starts
+        # Homebrew's docker-buildx is a plugin Docker cannot find until
+        # it is linked, so the wizard is EXPECTED to stop at that step,
+        # a step only the researcher does (exit 2). Anything else is a
+        # change in what Homebrew ships and should be read, not passed.
+        timeout-minutes: 60
+        run: |
+          set +e
+          vaibify setup-docker --yes --no-start </dev/null | tee setup.log
+          iExit=${PIPESTATUS[0]}
+          set -e
+          command -v colima && command -v docker
+          if [ "$iExit" -eq 2 ]; then
+            grep -q "Let Docker find buildx" setup.log
+          elif [ "$iExit" -ne 0 ]; then
+            exit "$iExit"
+          fi
+
+      - name: Follow the link step, then continue
+        timeout-minutes: 30
+        run: |
+          mkdir -p ~/.docker/cli-plugins
+          ln -sfn "$(brew --prefix)/opt/docker-buildx/bin/docker-buildx" \
+            ~/.docker/cli-plugins/docker-buildx
+          docker buildx version
+          vaibify setup-docker --yes --no-start </dev/null | tee resume.log
+          grep -q "Stopping before this step (--no-start)." resume.log
