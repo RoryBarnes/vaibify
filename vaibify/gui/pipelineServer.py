@@ -74,7 +74,6 @@ __all__ = [
 ]
 
 from . import actionCatalog
-from . import agentClientFreshness
 from . import agentProjectScope
 from . import agentSessionBridge
 from . import browserSession
@@ -2117,6 +2116,7 @@ async def _fnDrainAndCloseTerminalSession(
 
 async def fnHandlePipelineWs(
     websocket, dictCtx, sContainerId, fbFrameCredentialStillActive=None,
+    sClientWarning="",
 ):
     """Accept and run the pipeline WebSocket session.
 
@@ -2150,9 +2150,6 @@ async def fnHandlePipelineWs(
             "_sSourceFingerprint", "",
         ),
     }
-    sClientWarning = agentClientFreshness.fsStaleClientWarningForSocket(
-        websocket,
-    )
     if sClientWarning:
         dictBoundEvent["sClientWarning"] = sClientWarning
     await websocket.send_json(dictBoundEvent)

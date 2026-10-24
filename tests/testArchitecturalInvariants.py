@@ -5374,7 +5374,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4339 -> 4343 (2026-10-20): the poll merges a finished run's own
     # output mtimes into its baseline before comparing, and the state
     # route does not ship that map (runOutputBaseline holds the logic).
-    "routes/pipelineRoutes.py": 4343,
+    # 4343 -> 4345 (2026-10-24): the pipeline-socket route asks whether
+    # an agent's vaibify-do predates this hub; a transport question,
+    # so it is answered where the real socket is (agentClientFreshness
+    # holds the logic).
+    "routes/pipelineRoutes.py": 4345,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record

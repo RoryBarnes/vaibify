@@ -29,6 +29,7 @@ from .. import outputProvenance
 from .. import runOutputBaseline
 from .. import verificationProgress
 from ..actionCatalog import ffnAgentAction
+from ..agentClientFreshness import fsStaleClientWarningForSocket
 from ..pipelineRunner import fsShellQuote
 from ..pipelineUtils import fbStepIsInteractive, fsLabelFromStepIndex
 from ..templateManager import fbIsVaibifyTemplateHash
@@ -976,6 +977,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
                         iAcceptedGeneration=iAcceptedGeneration,
                     )
                 ),
+                sClientWarning=fsStaleClientWarningForSocket(websocket),
             )
 
         await fnServeUnderLiveConnectionCounters(
