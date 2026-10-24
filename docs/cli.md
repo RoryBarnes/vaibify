@@ -40,6 +40,7 @@ directory.
 | `register [DIRECTORY]` | Register an existing directory containing a `vaibify.yml`; writes no files |
 | `setup` | Open the setup wizard in a browser, on port 8051 |
 | `config edit \| export FILE \| import FILE` | Edit `vaibify.yml` in `$EDITOR`, write it to a file, or replace it from one |
+| `setup-docker` | Install and start the Docker runtime vaibify's containers need |
 | `doctor` | Diagnose this machine, the container, and the project; changes nothing |
 | `repair dns` | Clear a container's stale name-resolution state |
 | `build` | Build the image from `vaibify.yml` |
@@ -167,6 +168,38 @@ running, which is required when DNS servers were baked into the
 container from outside vaibify. `--yes` skips the confirmation prompt.
 
 ## Environment lifecycle
+
+### vaibify setup-docker
+
+```bash
+vaibify setup-docker [--yes] [--no-start] [--cpus N] [--memory GB]
+```
+
+Gives this machine a Docker that vaibify can use, the same plan the
+dashboard's **Set up Docker** button follows. It reads the machine,
+shows the next step, runs it when you agree, and reads the machine
+again, so it resumes from wherever the machine is:
+
+- **macOS:** installs Colima, Docker and buildx with Homebrew or
+  MacPorts, then starts Colima with all CPUs but one and half the RAM
+  (at least 4 GB). With neither package manager it tells you how to
+  install one. A stopped Colima machine, Docker Desktop, OrbStack or
+  Rancher Desktop is started rather than replaced.
+- **Ubuntu, Debian, Fedora, RHEL, CentOS** (and distributions that
+  declare one of them as their parent): installs Docker Engine from
+  Docker's own repository and starts it, then offers the `docker`
+  group or rootless Docker. Docker publishes no repository for other
+  distributions, so for those it points to their own instructions.
+
+A step that needs an administrator asks through `sudo` in your
+terminal. A step only you can do (installing a package manager,
+logging out and back in) is printed with its commands; in a terminal
+the command waits for you, otherwise it exits with status 2. `--yes`
+runs every step without asking and never restarts a running Colima
+machine. `--no-start` installs what is missing but starts nothing.
+`--cpus` and `--memory` set a new Colima machine's size. A step that
+runs without changing the machine stops the command rather than
+repeating.
 
 ### vaibify build
 

@@ -1246,6 +1246,10 @@ LIST_AGENT_ACTIONS = [
 
 
 SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
+    # Setting up Docker installs software on the researcher's machine,
+    # some of it as root, and starts a virtual machine there: never an
+    # agent's to do. The handler also rejects the agent token by name.
+    ("POST", "/api/runtime/setup/run"),
     # A pending containerization is the researcher's decision at every
     # step: try again after a failed download, finish the switch once
     # the project is closed, or give up and delete the partial. The

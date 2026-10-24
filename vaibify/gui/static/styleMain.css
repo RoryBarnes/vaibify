@@ -1589,6 +1589,90 @@ body.proof-level-3 .toolbar-label {
     cursor: not-allowed;
 }
 
+/* Set up Docker wizard (scriptRuntimeSetup.js) */
+.runtime-setup-modal {
+    max-width: 640px;
+}
+
+.runtime-setup-message {
+    font-size: 13px;
+    color: var(--text-secondary);
+    min-height: 1em;
+}
+
+.runtime-setup-message.error {
+    color: var(--color-red-text);
+}
+
+.runtime-setup-message.warning {
+    color: var(--color-orange);
+}
+
+.runtime-setup-step h3 {
+    margin: 8px 0 4px;
+    font-size: 15px;
+}
+
+.runtime-setup-step p,
+.runtime-setup-later,
+.runtime-setup-ready {
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.runtime-setup-later {
+    color: var(--text-secondary);
+}
+
+.runtime-setup-command {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin: 6px 0;
+}
+
+.runtime-setup-command code {
+    flex: 1;
+    font-size: 12px;
+    padding: 6px 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+}
+
+.runtime-setup-settings {
+    display: flex;
+    gap: 16px;
+    margin: 8px 0;
+    font-size: 13px;
+}
+
+.runtime-setup-settings input {
+    width: 5em;
+}
+
+.runtime-setup-tail {
+    height: 220px;
+    overflow: auto;
+    padding: 10px;
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-top: 8px;
+}
+
+.runtime-setup-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+
 /* Global settings panel */
 .global-settings {
     display: none;

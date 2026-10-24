@@ -118,12 +118,18 @@ var VaibifyContainerManager = (function () {
                 : '') +
             '</div>' +
             '<div class="docker-status-banner-actions">' +
+            '<button id="btnSetupDocker" type="button">'
+            + 'Set up Docker</button>' +
             '<button id="btnRetryDockerStatus" type="button">'
             + 'Retry</button></div>';
         elBanner.style.display = "flex";
         var elRetry = document.getElementById("btnRetryDockerStatus");
         if (elRetry) {
             elRetry.addEventListener("click", _fnRetryDockerStatus);
+        }
+        var elSetup = document.getElementById("btnSetupDocker");
+        if (elSetup) {
+            elSetup.addEventListener("click", VaibifyRuntimeSetup.fnOpen);
         }
     }
 
@@ -3316,5 +3322,6 @@ var VaibifyContainerManager = (function () {
         fnAcquireImage: fnAcquireImage,
         fnSurfaceReadinessOutcome: _fnSurfaceReadinessOutcome,
         fnShowContainerSettings: fnShowContainerSettings,
+        fnRetryDockerStatus: _fnRetryDockerStatus,
     };
 })();

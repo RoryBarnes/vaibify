@@ -7453,7 +7453,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the researcher-only dismissal of a scan-found dependency.
     # 1540 -> 1544 (2026-10-24): create-step and insert-step say that
     # bPlotOnly defaults off and that bNoInputData is accepted.
-    "actionCatalog.py": 1544,
+    # 1544 -> 1548 (2026-10-24): the setup wizard's step route is excluded from the agent catalog, with why.
+    "actionCatalog.py": 1548,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7999,7 +8000,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # operations. Four rows in a map of rows.
     # +1 (2026-10-14): the reproduction retry's scope row, beside its
     # run and discard siblings.
-    "routeScope.py": 1193,
+    # 1193 -> 1198 (2026-10-24): the setup wizard's step route is declared browser-hub scoped, with why.
+    "routeScope.py": 1198,
 }
 
 

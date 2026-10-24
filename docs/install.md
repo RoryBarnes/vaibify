@@ -92,8 +92,16 @@ The data formats vaibify's tests can read are listed in
 
 ## Docker
 
-Vaibify does not install a container runtime for you. Whichever
-platform you use, confirm the result before building anything:
+Vaibify can set Docker up for you: run `vaibify setup-docker`, or
+press **Set up Docker** on the dashboard's "Docker is unavailable"
+banner. Both read your machine, show each step before it runs, and
+stop at anything only you can do. A step that needs an administrator
+uses your computer's own password prompt; vaibify never sees the
+password. The [CLI Reference](cli.md#vaibify-setup-docker) lists what
+each platform gets. The sections below are the same steps by hand.
+
+Whichever way you install it, confirm the result before building
+anything:
 
 ```bash
 docker info          # must succeed WITHOUT sudo

@@ -1,0 +1,131 @@
+"""The evidence the Docker setup wizard plans from, read from a machine.
+
+The parsers are driven with the real formats (an os-release file,
+``colima list --json`` lines), and the privilege channel with the
+environment that decides it: a graphical session gets the operating
+system's own prompt, an SSH session never does, because the dialog
+would open on a screen nobody is looking at.
+"""
+
+import sys
+
+import pytest
+
+from vaibify.install import runtimeSetupFacts as factsModule
+from vaibify.install.runtimeSetupFacts import (
+    S_PRIVILEGE_MACOS_DIALOG,
+    S_PRIVILEGE_NONE,
+    S_PRIVILEGE_PASSWORDLESS_SUDO,
+    S_PRIVILEGE_PKEXEC,
+    fdictParseOsRelease,
+    flistParseColimaMachines,
+)
+
+
+S_ROCKY_OS_RELEASE = '''NAME="Rocky Linux"
+VERSION="9.4 (Blue Onyx)"
+ID="rocky"
+ID_LIKE="rhel centos fedora"
+VERSION_ID="9.4"
+PRETTY_NAME="Rocky Linux 9.4 (Blue Onyx)"
+# a comment line
+'''
+
+S_COLIMA_LIST = (
+    '{"name":"default","status":"Running","arch":"aarch64","cpus":9,'
+    '"memory":8589934592,"disk":107374182400,"runtime":"docker"}\n'
+    'time="2026-10-24" level=warning msg="not json"\n'
+    '{"name":"work","status":"Stopped","arch":"x86_64","cpus":2,'
+    '"memory":2147483648}\n'
+)
+
+
+def testAnOsReleaseFileIsReadWithItsQuotesRemoved():
+    dictRelease = fdictParseOsRelease(S_ROCKY_OS_RELEASE)
+    assert dictRelease["ID"] == "rocky"
+    assert dictRelease["ID_LIKE"] == "rhel centos fedora"
+    assert dictRelease["PRETTY_NAME"] == "Rocky Linux 9.4 (Blue Onyx)"
+    assert "# a comment line" not in dictRelease.values()
+
+
+def testEveryColimaMachineIsReadAndANoiseLineIsSkipped():
+    listMachines = flistParseColimaMachines(S_COLIMA_LIST)
+    assert [d["sProfile"] for d in listMachines] == ["default", "work"]
+    assert listMachines[0]["iMemoryBytes"] == 8 * 2 ** 30
+    assert listMachines[1] == {
+        "sProfile": "work", "sStatus": "Stopped", "iCpus": 2,
+        "iMemoryBytes": 2 * 2 ** 30, "sArchitecture": "x86_64"}
+
+
+@pytest.fixture
+def fnSetSession(monkeypatch):
+    """Set the platform and session variables the channel is chosen from."""
+    def fnSet(sPlatform, dictEnvironment, bSudoWorks=False):
+        monkeypatch.setattr(factsModule.sys, "platform", sPlatform)
+        for sName in ("SSH_CONNECTION", "SSH_TTY", "DISPLAY",
+                      "WAYLAND_DISPLAY"):
+            monkeypatch.delenv(sName, raising=False)
+        for sName, sValue in dictEnvironment.items():
+            monkeypatch.setenv(sName, sValue)
+        monkeypatch.setattr(
+            factsModule, "_ftRunProbe",
+            lambda listCommand: (0 if bSudoWorks else 1, "", ""))
+    return fnSet
+
+
+@pytest.mark.parametrize("sPlatform, dictEnvironment, setCommands, sChannel", [
+    ("darwin", {}, {"osascript", "sudo"}, S_PRIVILEGE_MACOS_DIALOG),
+    ("linux", {"DISPLAY": ":0"}, {"pkexec", "sudo"}, S_PRIVILEGE_PKEXEC),
+    ("linux", {"WAYLAND_DISPLAY": "wayland-0"}, {"pkexec"}, S_PRIVILEGE_PKEXEC),
+    ("linux", {}, {"pkexec", "sudo"}, S_PRIVILEGE_NONE),
+])
+def testAPromptIsChosenOnlyWhereSomeoneCanSeeIt(
+        fnSetSession, sPlatform, dictEnvironment, setCommands, sChannel):
+    fnSetSession(sPlatform, dictEnvironment)
+    assert factsModule._fsDetectPrivilegeChannel(setCommands) == sChannel
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sPlatform", ["darwin", "linux"])
+def testAnSshSessionNeverGetsAGraphicalPrompt(fnSetSession, sPlatform):
+    """Kills: a dialog opened on a remote machine's unwatched screen."""
+    fnSetSession(sPlatform, {"SSH_CONNECTION": "10.0.0.2 51000 10.0.0.9 22",
+                             "DISPLAY": ":0"})
+    assert factsModule._fsDetectPrivilegeChannel(
+        {"osascript", "pkexec", "sudo"}) == S_PRIVILEGE_NONE
+
+
+def testPasswordlessSudoIsUsedWhenNoPromptCanBeShown(fnSetSession):
+    fnSetSession("linux", {"SSH_TTY": "/dev/pts/3"}, bSudoWorks=True)
+    assert factsModule._fsDetectPrivilegeChannel(
+        {"pkexec", "sudo"}) == S_PRIVILEGE_PASSWORDLESS_SUDO
+
+
+def testAMacsMemoryIsReadFromTheKernelNotSysconf(monkeypatch):
+    monkeypatch.setattr(factsModule.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        factsModule, "_ftRunProbe",
+        lambda listCommand: (0, "17179869184\n", "")
+        if listCommand == ["sysctl", "-n", "hw.memsize"] else (1, "", ""))
+    assert factsModule._fiReadHostMemoryBytes() == 16 * 2 ** 30
+
+
+def testAProbeWhoseCommandIsMissingAnswersAbsent():
+    assert factsModule._ftRunProbe(
+        ["vaibify-no-such-command-anywhere"]) == (-1, "", "")
+
+
+@pytest.mark.skipif(sys.platform != "darwin" and not sys.platform.startswith(
+    "linux"), reason="the facts are read only on macOS and Linux")
+def testTheFactsOfThisMachineCarryEveryKeyThePlannerReads():
+    """Read the real machine running the suite: no key may be missing."""
+    dictFacts = factsModule.fdictReadHostFacts()
+    for sKey in ("sPlatform", "sArchitecture", "listCommands",
+                 "bDaemonAnswers", "bBuildxWorks", "listColimaMachines",
+                 "sPrivilegeChannel", "sUserName", "iHostCpuCount",
+                 "iHostMemoryBytes", "bUserListedInDockerGroup",
+                 "bProcessHasDockerGroup", "sDockerHost",
+                 "bBuildxInstalledUnlinked", "listRunningVaibifyContainers"):
+        assert sKey in dictFacts, sKey
+    assert dictFacts["iHostMemoryBytes"] > 0
+    assert dictFacts["iHostCpuCount"] >= 1

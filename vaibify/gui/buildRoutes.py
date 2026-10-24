@@ -115,7 +115,11 @@ def _fnRegisterBuildContainer(app, dictCtx):
             # left the researcher with no container and no build
             # (2026-09-21). Asked first, the same refusals cost nothing.
             return {"bReady": True}
+        listHostWarnings = await asyncio.to_thread(
+            _flistHostResourceWarnings, dictProject)
         dictProgress = _fdictOpenBuildProgress(sName)
+        for sWarning in listHostWarnings:
+            _fnRecordBuildLine(dictProgress, sWarning)
         try:
             await asyncio.to_thread(
                 _fnExecuteBuild, dictProject, bNoCache, dictProgress,
@@ -207,6 +211,40 @@ def _fnRefuseUnbuildableConfiguration(dictProject):
         return
     for fnPreflight, sRefusal in _flistConfigurationPreflights():
         _fnRefuseOnFailedPreflight(fnPreflight(configProject), sRefusal)
+
+
+S_REFUSAL_HOST_CANNOT_BUILD = "host-cannot-build"
+
+
+def _flistHostResourceWarnings(dictProject):
+    """Return the machine checks ``vaibify build`` prints, as log lines.
+
+    The daemon's memory and the virtual machine's architecture: a build
+    on an undersized or emulating machine is one the researcher should
+    hear about before it starts, not an hour into it, and the GUI build
+    used to skip both (alpha tester, 2026-10-24). A failure (the GPU
+    feature on an Apple Silicon Mac) refuses the build as the CLI does;
+    a warning is written at the top of the build log, where the build
+    window shows it, and the build goes on.
+    """
+    from vaibify.cli.commandBuild import (
+        _flistPreflightArch, _flistPreflightMemory,
+    )
+    from vaibify.cli.configLoader import fconfigLoadFromPath
+    try:
+        configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
+    except Exception:  # noqa: BLE001 -- the build reports an unreadable file
+        configProject = None
+    listLines = []
+    for preflightResult in (
+            _flistPreflightArch(configProject) + _flistPreflightMemory()):
+        _fnRefuseOnFailedPreflight(
+            preflightResult, S_REFUSAL_HOST_CANNOT_BUILD)
+        if preflightResult.sLevel == "warn":
+            listLines.append(
+                f"[vaib] WARNING: {preflightResult.sMessage} "
+                f"{preflightResult.sRemediation}".rstrip())
+    return listLines
 
 
 def _fnRefuseWhenDaemonDiskIsFull():

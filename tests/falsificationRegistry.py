@@ -36120,4 +36120,115 @@ LIST_FALSIFICATIONS = [
         old='    return flistImagePythonPackages(\n        getattr(configProject, "listPythonPackages", []) or [])\n',
         new='    return list(getattr(configProject, "listPythonPackages", []) or [])\n',
     ),
+    # --- 2026-10-24: the Docker setup wizard and `vaibify setup-docker` ---
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupPlan.py::'
+            'testOnlyAWholeNumberThisMachineCanHoldIsAccepted'
+        ),
+        source='vaibify/install/runtimeSetupPlan.py',
+        # a setting outside what the machine holds reaches colima start
+        old='        if not iLow <= iRequested <= iHigh:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupPlan.py::'
+            'testAStoppedColimaMachineStartsWithItsOwnSettings'
+        ),
+        source='vaibify/install/runtimeSetupPlan.py',
+        # a stopped machine is started as a new one, resize flags and all
+        old='        listSteps.append(_fdictStartExistingColimaStep(dictMachine))\n',
+        new='        listSteps.append(_fdictStartNewColimaStep(dictFacts, dictSettings))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupPlan.py::'
+            'testADistributionDockerPublishesNothingForRunsNothing'
+        ),
+        source='vaibify/install/runtimeSetupPlan.py',
+        # an unknown distribution is guessed to be a Debian
+        old='            return tFamily + (False,)\n    return None\n',
+        new='            return tFamily + (False,)\n    return ("apt", "debian", False)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupRunner.py::'
+            'testAKeyWhoseFingerprintDiffersIsNeverImported'
+        ),
+        source='vaibify/install/runtimeSetupPlan.py',
+        # Docker's key is imported whatever its fingerprint
+        old='    exit 1\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupFacts.py::'
+            'testAnSshSessionNeverGetsAGraphicalPrompt'
+        ),
+        source='vaibify/install/runtimeSetupFacts.py',
+        # a remote session is offered a dialog on the unwatched screen
+        old='    if os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupRunner.py::'
+            'testOnlyAnActionOfTheFirstStepCanRun'
+        ),
+        source='vaibify/install/runtimeSetupRunner.py',
+        # any step the plan mentions can be run, in any order
+        old='    for dictAction in dictStep["listActions"]:\n',
+        new='    for dictAction in [d for s in listSteps for d in s["listActions"]]:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupRunner.py::'
+            'testASecondSetupIsRefusedBeforeItTouchesTheFirstOnesRecord'
+        ),
+        source='vaibify/install/runtimeSetupRunner.py',
+        # the progress record is reset before the lock is held
+        old='    with fcontextHoldSetupLock():\n        if fnLockHeld is not None:\n            fnLockHeld()\n',
+        new='    if fnLockHeld is not None:\n        fnLockHeld()\n    with fcontextHoldSetupLock():\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupRoutes.py::'
+            'testEachSetupRouteRefusesTheAgentLaneItself'
+        ),
+        source='vaibify/gui/routes/runtimeSetupRoutes.py',
+        # the step-running handler serves the agent lane
+        old='        fnRejectAgentTokenLane(requestHttp)\n        dictRequested = {\n',
+        new='        dictRequested = {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommandSetupDocker.py::'
+            'testAStepThatChangesNothingStopsTheCommand'
+        ),
+        source='vaibify/cli/commandSetupDocker.py',
+        # a step that changed nothing is run again and again
+        old='        if dictStep["sStepName"] == sLastStepRun:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGuiBuildWarnsAboutTheMachine.py::'
+            'testAnUndersizedMachineIsNamedAtTheTopOfTheBuildLog'
+        ),
+        source='vaibify/gui/buildRoutes.py',
+        # the GUI build skips the machine checks again
+        old='        listHostWarnings = await asyncio.to_thread(\n            _flistHostResourceWarnings, dictProject)\n',
+        new='        listHostWarnings = []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSetUpDockerWizard.py::'
+            'testAStepOnlyTheResearcherCanDoOffersCloseAndContinue'
+        ),
+        source='vaibify/gui/static/scriptRuntimeSetup.js',
+        # Continue closes the wizard instead of reading the machine again
+        old='                "btnRuntimeSetupContinue", _fnContinue, true));\n',
+        new='                "btnRuntimeSetupContinue", fnClose, true));\n',
+    ),
 ]

@@ -316,6 +316,18 @@
     </div>
 </div>
 
+<!-- Set up Docker: the hub's plan for this machine, one step at a time.
+     Rendered by scriptRuntimeSetup.js from GET /api/runtime/setup. -->
+<div class="modal-overlay" id="modalRuntimeSetup" style="display: none;">
+    <div class="modal runtime-setup-modal">
+        <h2 style="color: var(--color-pale-blue);">Set up Docker</h2>
+        <p class="runtime-setup-message"></p>
+        <div class="runtime-setup-body"></div>
+        <pre class="runtime-setup-tail" style="display: none;"></pre>
+        <div class="runtime-setup-buttons"></div>
+    </div>
+</div>
+
 <!-- Acquisition window: a containerization watched and decided from here.
      Rendered entirely by scriptAcquisitionWindow.js from the hub's record;
      it stays until dismissed, never a toast. -->
@@ -1476,6 +1488,7 @@
 <script src="/static/scriptFilePull.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptReproducePublished.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptAcquisitionWindow.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptRuntimeSetup.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptContainerManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptRemnants.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptDependencyScanner.js?v=__CACHE_VERSION__"></script>
