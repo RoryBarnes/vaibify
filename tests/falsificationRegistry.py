@@ -35842,4 +35842,29 @@ LIST_FALSIFICATIONS = [
         old='    bOnly = bool(listMismatches) and len(listExplained) == len(listMismatches)\n',
         new='    bOnly = bool(listExplained)\n',
     ),
+    # --- 2026-10-23: the dependency graph repainted over whatever a
+    # viewer showed since, and painted a reply for another project ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheGraphLeavesOtherViewersAlone.py::'
+            'testAFigureOpenedOverTheGraphSurvivesARender'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # repaint whenever a viewport is remembered, owned or not
+        old='        if (!_sDagSvgText || !_fbDagOwnsItsViewport()) return;\n',
+        new='        if (!_sDagSvgText || !_elDagViewport) return;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheGraphLeavesOtherViewersAlone.py::'
+            'testAGraphThatArrivesAfterASwitchIsDropped'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # paint the reply whichever project is open when it lands
+        old=(
+            '            if (_fsDagProjectKey() !== sProjectKey) return;\n'
+            '            _sDagProjectKey = sProjectKey;\n'
+        ),
+        new='            _sDagProjectKey = sProjectKey;\n',
+    ),
 ]
