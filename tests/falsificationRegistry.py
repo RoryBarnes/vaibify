@@ -36086,4 +36086,26 @@ LIST_FALSIFICATIONS = [
         ),
         new='            _sDagProjectKey = sProjectKey;\n',
     ),
+    # --- 2026-10-24: a new project's image had no pytest or numpy, so
+    # the tests vaibify generated for it could not run ---
+    Falsification(
+        nodeid=(
+            'tests/testAnalysisStack.py::'
+            'testAProjectThatNamesNothingGetsPytestAndNumpy'
+        ),
+        source='vaibify/config/analysisStack.py',
+        # the image list is only what the project declared again
+        old='    listImagePackages.extend(\n',
+        new='    (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesBReproducibility.py::'
+            'testAnImageBuiltForAProjectThatNamesNothingMatchesIt'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # the check compares the image against pythonPackages alone
+        old='    return flistImagePythonPackages(\n        getattr(configProject, "listPythonPackages", []) or [])\n',
+        new='    return list(getattr(configProject, "listPythonPackages", []) or [])\n',
+    ),
 ]

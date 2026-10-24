@@ -34,6 +34,7 @@ import uuid
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
+from ...config.analysisStack import flistImagePythonPackages
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility import (
     comparisonPolicyNotes, gitEvidence, reproductionRecord)
@@ -162,7 +163,11 @@ def _flistDeclaredPackagesForContainer(sContainerName):
 
 
 def _flistLoadPackagesFromConfig(sConfigPath):
-    """Return pythonPackages from one config path, or [] when unreadable."""
+    """Return the packages one config's image installs, or [] when unreadable.
+
+    That is ``pythonPackages`` plus the analysis stack, which every
+    image carries and its mirror therefore lists.
+    """
     if not sConfigPath:
         return []
     from vaibify.cli.configLoader import fconfigLoadFromPath
@@ -170,7 +175,8 @@ def _flistLoadPackagesFromConfig(sConfigPath):
         configProject = fconfigLoadFromPath(sConfigPath)
     except Exception:  # noqa: BLE001 — an unreadable config disables the check
         return []
-    return list(getattr(configProject, "listPythonPackages", []) or [])
+    return flistImagePythonPackages(
+        getattr(configProject, "listPythonPackages", []) or [])
 
 
 def fdictCheckImageMatchesDeclaration(sContainerName, filesRepo):

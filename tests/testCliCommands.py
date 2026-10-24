@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 from vaibify.cli.main import main
+from vaibify.config.analysisStack import T_ANALYSIS_STACK_PACKAGES
 from vaibify.cli.commandInit import (
     flistAvailableTemplates,
     fsTemplatePath,
@@ -225,8 +226,14 @@ def test_fnWritePythonPackages_creates_file(tmp_path):
 
 
 def test_fnWritePythonPackages_empty_list(tmp_path):
+    """A project that names nothing still gets the analysis stack.
+
+    This asserted an empty file until 2026-10-24, when every image
+    began carrying the stack (a new project's generated tests could
+    not run without pytest and numpy).
+    """
     config = SimpleNamespace(listPythonPackages=[])
     fnWritePythonPackages(config, str(tmp_path))
     sPath = tmp_path / "requirements.txt"
     sContent = sPath.read_text()
-    assert sContent.strip() == ""
+    assert sContent.split() == list(T_ANALYSIS_STACK_PACKAGES)

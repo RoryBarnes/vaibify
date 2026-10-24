@@ -7871,7 +7871,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # PROOF tab labels them without deciding what counts as one.
     # 2390 -> 2394 (2026-10-17): the declare route records the one
     # answer beside the newest execution profile it names.
-    "routes/reproducibilityRoutes.py": 2394,
+    # 2394 -> 2400 (2026-10-24): the declared-vs-image check expects
+    # the analysis stack every image carries.
+    "routes/reproducibilityRoutes.py": 2400,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

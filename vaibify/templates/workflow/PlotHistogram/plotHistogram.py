@@ -8,7 +8,7 @@ this file instead would make the dependency invisible to the dashboard,
 so the figure would not be marked stale when the samples change.
 
 Standard library only, for the reason given in ``generateSamples.py``:
-a brand-new project has no packages installed yet, and the first Run
+a brand-new project may have no packages installed, and the first Run
 should still produce a figure. SVG is one of the formats the figure
 viewer renders, and it is plain text, so it costs no dependency to
 emit.
