@@ -25,6 +25,7 @@ from ..routeContext import (
     fdictCommitWorkflowSave,
     fgenericRunWorkerUnderTheDrain,
 )
+from ..researcherNotices import fnAnnounceAgentWorkflowChange
 from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
@@ -755,6 +756,9 @@ def _fnRegisterStepRename(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow, iStepIndex, dictPlan,
             requestHttp,
         )
+        fnAnnounceAgentWorkflowChange(
+            dictCtx, sContainerId, requestHttp, "The step rename",
+        )
         dictReport["dictStep"] = fdictStepWithLabel(
             dictWorkflow, iStepIndex)
         dictReport["sExactSourceFingerprint"] = dictWorkflow.get(
@@ -889,6 +893,11 @@ def _fnRegisterAlignDirectories(app, dictCtx):
         dictBatch = await _fdictAlignDirectoriesUnderTheDrain(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
         )
+        if dictBatch["listAligned"]:
+            fnAnnounceAgentWorkflowChange(
+                dictCtx, sContainerId, requestHttp,
+                "The step-directory alignment",
+            )
         return {
             "listAligned": dictBatch["listAligned"],
             "listSkipped": dictBatch["listSkipped"],

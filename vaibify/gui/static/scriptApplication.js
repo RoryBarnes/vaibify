@@ -101,6 +101,7 @@ const VaibifyApp = (function () {
             iL3BlockerCount: 0,
             iCachedProofLevel: null,
             iWorkflowEpoch: -1,
+            iLastNoticeId: -1,
             sWorkflowFingerprint: "",
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
@@ -830,6 +831,7 @@ const VaibifyApp = (function () {
                 data.iWorkflowEpoch : -1;
         _dictWorkflowState.sWorkflowFingerprint =
             data.sWorkflowFingerprint || "";
+        _dictWorkflowState.iLastNoticeId = -1;
         /* The freshness acknowledgment: what this dashboard has
            APPLIED, advanced only at apply points and on this
            client's own save responses — never merely displayed. */
@@ -996,7 +998,7 @@ const VaibifyApp = (function () {
     }
 
     function _fnApplyOutOfBandWorkflowReload(
-        dictWorkflowNew, iWorkflowEpoch
+        dictWorkflowNew, iWorkflowEpoch, sReloadOrigin
     ) {
         var iPriorSelected = _dictUiState.iSelectedStepIndex;
         var dictPriorExpanded = _fdictSnapshotExpansionSets();
@@ -1017,8 +1019,27 @@ const VaibifyApp = (function () {
         _dictWorkflowState.sAcknowledgedSourceFingerprint =
             dictWorkflowNew._sSourceFingerprint ||
             _dictWorkflowState.sAcknowledgedSourceFingerprint;
-        fnShowToast(
-            "Project definition reloaded from disk", "info");
+        /* An agent's change arrives with its own notice naming what
+           it did; "reloaded from disk" is for edits made on disk. */
+        if (sReloadOrigin !== "agent") {
+            fnShowToast(
+                "Project definition reloaded from disk", "info");
+        }
+    }
+
+    function _fnShowResearcherNotices(dictStatus) {
+        /* The hub repeats a notice until this tab acknowledges its id
+           on the next poll, so each is shown once and none is lost to
+           a dropped response. */
+        (dictStatus.listResearcherNotices || []).forEach(
+            function (dictNotice) {
+                if (dictNotice.iNoticeId <=
+                        _dictWorkflowState.iLastNoticeId) return;
+                fnShowToast(dictNotice.sMessage, dictNotice.sLevel);
+            });
+        if (typeof dictStatus.iNewestNoticeId === "number") {
+            _dictWorkflowState.iLastNoticeId = dictStatus.iNewestNoticeId;
+        }
     }
 
     function _fdictSnapshotExpansionSets() {
@@ -7034,6 +7055,7 @@ const VaibifyApp = (function () {
             return;
         }
         _fnRenderOtherProjectRuns(dictStatus.dictOtherProjectRuns);
+        _fnShowResearcherNotices(dictStatus);
         if (dictStatus.sWorkflowReloadError) {
             fnShowToast(
                 "project.json error: " +
@@ -7043,7 +7065,8 @@ const VaibifyApp = (function () {
         }
         if (dictStatus.bWorkflowReloaded && dictStatus.dictWorkflow) {
             _fnApplyOutOfBandWorkflowReload(
-                dictStatus.dictWorkflow, dictStatus.iWorkflowEpoch);
+                dictStatus.dictWorkflow, dictStatus.iWorkflowEpoch,
+                dictStatus.sWorkflowReloadOrigin);
         } else if (!dictStatus.bWorkflowReloaded &&
             typeof dictStatus.iWorkflowEpoch === "number") {
             _dictWorkflowState.iWorkflowEpoch =
@@ -7891,6 +7914,9 @@ const VaibifyApp = (function () {
         fnRefreshWorkflowData: fnRefreshWorkflowData,
         fiGetWorkflowEpoch: function () {
             return _dictWorkflowState.iWorkflowEpoch;
+        },
+        fiGetLastNoticeId: function () {
+            return _dictWorkflowState.iLastNoticeId;
         },
         fnEnterNoWorkflow: fnEnterNoWorkflow,
         fnSaveStepUpdate: fnSaveStepUpdate,

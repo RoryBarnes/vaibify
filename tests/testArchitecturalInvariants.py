@@ -4431,7 +4431,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # carried save it guards, which must refuse before its carrier
     # opens a journal record.
     # 934 -> 936 (2026-10-02): the save-time refusal also grades the x11Forwarding conflict.
-    "routeContext.py": 936,
+    # 936 -> 940 (2026-10-24): a committed workflow save announces an
+    # in-container agent's change to the open tab (researcherNotices
+    # holds the logic).
+    "routeContext.py": 940,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -5378,7 +5381,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # an agent's vaibify-do predates this hub; a transport question,
     # so it is answered where the real socket is (agentClientFreshness
     # holds the logic).
-    "routes/pipelineRoutes.py": 4345,
+    # 4345 -> 4353 (2026-10-24): the file-status poll carries the
+    # researcher notices the tab has not acknowledged and what last
+    # advanced the workflow epoch (researcherNotices holds the logic).
+    "routes/pipelineRoutes.py": 4353,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -7592,7 +7598,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # declared plot, refuses (409) when one cannot be read, and carries
     # the stored baseline through every other update; the route's
     # mode-(b) drain is where the capture must run.
-    "routes/stepRoutes.py": 1035,
+    # 1035 -> 1044 (2026-10-24): rename and directory alignment save
+    # inside their own workers, so they announce an agent's change
+    # after the worker returns, as fdictCommitWorkflowSave does.
+    "routes/stepRoutes.py": 1044,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write

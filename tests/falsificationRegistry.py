@@ -35868,4 +35868,75 @@ LIST_FALSIFICATIONS = [
             'sPresentedDigest != sShippedDigest\n'
         ),
     ),
+    # --- 2026-10-23: an agent's edit never reached the tab that had
+    # the project open ---
+    Falsification(
+        nodeid=(
+            'tests/testAgentEditsReachTheOpenTab.py::'
+            'testAnAgentsNewStepReachesTheOpenTab'
+        ),
+        source='vaibify/gui/researcherNotices.py',
+        # the agent's committed save leaves the epoch where it was
+        old=(
+            '    workflowReloadDetector.fnBumpWorkflowEpoch(\n'
+            '        dictCtx, sContainerId,\n'
+            '        workflowReloadDetector.S_EPOCH_ORIGIN_AGENT,\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentEditsReachTheOpenTab.py::'
+            'testTheTabsOwnSaveIsNeitherReloadedNorAnnounced'
+        ),
+        source='vaibify/gui/researcherNotices.py',
+        # every committed save is announced, the researcher's own too
+        old=(
+            '    if not fbRequestRidesAgentLane(requestHttp):\n'
+            '        return\n'
+            '    workflowReloadDetector'
+        ),
+        new='    workflowReloadDetector',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentEditsReachTheOpenTab.py::'
+            'testASaveRefusedForAnotherProjectAnnouncesNothing'
+        ),
+        source='vaibify/gui/routeContext.py',
+        # announce at the top, before the save is refused or written
+        old='    from . import commitCarrier, researcherNotices, workflowManager\n',
+        new=(
+            '    from . import commitCarrier, researcherNotices, workflowManager\n'
+            '    researcherNotices.fnAnnounceAgentWorkflowChange(\n'
+            '        dictCtx, sContainerId, requestHttp, sOperationName,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentEditsReachTheOpenTab.py::'
+            'testASaveWhoseWriteFailsAnnouncesNothing'
+        ),
+        source='vaibify/gui/routeContext.py',
+        # announce at the top, before the save is refused or written
+        old='    from . import commitCarrier, researcherNotices, workflowManager\n',
+        new=(
+            '    from . import commitCarrier, researcherNotices, workflowManager\n'
+            '    researcherNotices.fnAnnounceAgentWorkflowChange(\n'
+            '        dictCtx, sContainerId, requestHttp, sOperationName,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnAgentsEditAppearsWithoutNavigation.py::'
+            'testAnAgentsChangeIsShownAndNamedOnce'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # an agent's change is announced as an edit made on disk
+        old='        if (sReloadOrigin !== "agent") {\n',
+        new='        if (true) {\n',
+    ),
 ]

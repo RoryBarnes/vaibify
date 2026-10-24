@@ -30,6 +30,8 @@ __all__ = [
     "fbClientIsStale",
     "fsStaleClientWarning",
     "fsStaleClientWarningForSocket",
+    "S_STALE_CLIENT_NOTICE",
+    "fnNoticeStaleClientOnce",
 ]
 
 logger = logging.getLogger("vaibify")
@@ -42,6 +44,12 @@ S_STALE_CLIENT_WARNING = (
     "This container's vaibify-do is older than the installed vaibify; "
     "ask the researcher to rebuild the container image."
 )
+S_STALE_CLIENT_NOTICE = (
+    "This container's vaibify-do is older than the installed vaibify, "
+    "so the in-container agent is using an outdated client. Rebuild "
+    "the container image to update it."
+)
+S_STALE_CLIENT_NOTICE_KEY = "stale-vaibify-do"
 
 
 @functools.lru_cache(maxsize=1)
@@ -94,6 +102,29 @@ def fsStaleClientWarningForSocket(websocket):
 
     if not serverMiddleware.fbRequestRidesAgentLane(websocket):
         return ""
-    return fsStaleClientWarning(
+    sWarning = fsStaleClientWarning(
         websocket.query_params.get(S_CLIENT_DIGEST_QUERY, ""),
+    )
+    if sWarning:
+        fnNoticeStaleClientOnce(
+            getattr(websocket.app.state, "dictRouteContext", None),
+            websocket.path_params.get("sContainerId", ""),
+        )
+    return sWarning
+
+
+def fnNoticeStaleClientOnce(dictCtx, sContainerId):
+    """Tell the researcher once per container that its client is stale.
+
+    The agent is warned on every call; the researcher, who is the one
+    who can rebuild, is told once per hub process rather than toasted
+    on every agent request.
+    """
+    from . import researcherNotices
+
+    if dictCtx is None or not sContainerId:
+        return
+    researcherNotices.fnQueueResearcherNoticeOnce(
+        dictCtx, sContainerId, S_STALE_CLIENT_NOTICE_KEY,
+        researcherNotices.S_NOTICE_LEVEL_WARNING, S_STALE_CLIENT_NOTICE,
     )

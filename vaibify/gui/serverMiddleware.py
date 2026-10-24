@@ -135,6 +135,10 @@ def _fnStampStaleClientWarning(request, response):
         response.headers[agentClientFreshness.S_CLIENT_WARNING_HEADER] = (
             sWarning
         )
+        agentClientFreshness.fnNoticeStaleClientOnce(
+            getattr(request.app.state, "dictRouteContext", None),
+            _fsContainerIdFromPath(request.url.path),
+        )
 
 
 async def _fresponseServeAgentRequestInItsProject(

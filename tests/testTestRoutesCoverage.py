@@ -48,13 +48,31 @@ def fnRunCarrierWorkersInline(monkeypatch):
 
 
 def _frequestBuildStoodDownRequest():
-    """Return the minimal request a stood-down carrier still reaches for.
+    """Return the minimal researcher request a stood-down carrier reaches for.
 
     ``fgenericRunWorkerUnderTheDrain`` reads ``requestHttp.app.state``
     before the stand-down's replacement discards it, so the attribute
-    chain has to exist even though nothing consults it.
+    chain has to exist even though nothing consults it. A committed
+    workflow save asks the request which lane it rode, so it carries
+    the headers and path of a browser request: no agent token.
     """
-    return SimpleNamespace(app=SimpleNamespace(state=None))
+    return SimpleNamespace(
+        app=SimpleNamespace(state=None), headers={},
+        url=SimpleNamespace(path=""), state=SimpleNamespace(),
+    )
+
+
+def _frequestBuildBrowserJsonRequest():
+    """Return a request double whose body is read with ``await json()``.
+
+    Its headers and path are a browser request's, as a real request's
+    are plain values: a committed workflow save asks which lane the
+    request rode, and an ``AsyncMock`` would answer with coroutines.
+    """
+    mockRequest = AsyncMock()
+    mockRequest.headers = {}
+    mockRequest.url = SimpleNamespace(path="")
+    return mockRequest
 
 
 def _fnSetExecResult(
@@ -421,7 +439,7 @@ class TestRunTestCategoryRoute:
         )
         fnHandler = listHandlers[sPath]
 
-        mockRequest = AsyncMock()
+        mockRequest = _frequestBuildBrowserJsonRequest()
         mockRequest.json = AsyncMock(
             return_value={"sCategory": "bogus"})
 
@@ -446,7 +464,7 @@ class TestRunTestCategoryRoute:
         )
         fnHandler = listHandlers[sPath]
 
-        mockRequest = AsyncMock()
+        mockRequest = _frequestBuildBrowserJsonRequest()
         mockRequest.json = AsyncMock(
             return_value={"sCategory": "integrity"})
 
@@ -479,7 +497,7 @@ class TestRunTestCategoryRoute:
         )
         fnHandler = listHandlers[sPath]
 
-        mockRequest = AsyncMock()
+        mockRequest = _frequestBuildBrowserJsonRequest()
         mockRequest.json = AsyncMock(
             return_value={"sCategory": "qualitative"})
 
@@ -528,7 +546,7 @@ class TestRunTestCategoryRoute:
         )
         fnHandler = listHandlers[sPath]
 
-        mockRequest = AsyncMock()
+        mockRequest = _frequestBuildBrowserJsonRequest()
         mockRequest.json = AsyncMock(
             return_value={"sCategory": "integrity"})
 
@@ -568,7 +586,7 @@ class TestRunTestCategoryRoute:
         )
         fnHandler = listHandlers[sPath]
 
-        mockRequest = AsyncMock()
+        mockRequest = _frequestBuildBrowserJsonRequest()
         mockRequest.json = AsyncMock(
             return_value={"sCategory": "quantitative"})
 
@@ -609,7 +627,7 @@ class TestRunTestCategoryRoute:
         )
         fnHandler = listHandlers[sPath]
 
-        mockRequest = AsyncMock()
+        mockRequest = _frequestBuildBrowserJsonRequest()
         mockRequest.json = AsyncMock(
             return_value={"sCategory": "quantitative"})
 
@@ -1200,7 +1218,7 @@ class TestRunTestCategoryResolvesRepoRoot:
             "/run-test-category"
         )
         fnHandler = listHandlers[sPath]
-        mockRequest = AsyncMock()
+        mockRequest = _frequestBuildBrowserJsonRequest()
         mockRequest.json = AsyncMock(
             return_value={"sCategory": "integrity"})
         dictStep = {
