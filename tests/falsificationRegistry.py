@@ -16497,6 +16497,18 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/browser/testCouncilChairbotChat.py::'
+            'testARenderMidQuestionKeepsTheKeystrokesLanding'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # The rebuilt panel never gets its focused field back, so focus
+        # falls to the body and every keystroke after the rebuild lands
+        # on nothing -- the webkit lane's empty composer (2026-10-24).
+        old='        _fnRestoreFocusedField(dictFocusedField);\n',
+        new='        void dictFocusedField;\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testCouncilStoppingPoint.py::'
             'testAnAcceptedCampaignIsFinishedNotResumable'
         ),

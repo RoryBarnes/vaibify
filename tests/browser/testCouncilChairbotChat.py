@@ -312,6 +312,69 @@ def testAPollTickDoesNotWipeAHalfTypedQuestion(pageDashboard, serverHub):
     assert pageDashboard.listConsoleErrors == []
 
 
+@pytest.mark.falsification
+def testARenderMidQuestionKeepsTheKeystrokesLanding(pageDashboard,
+                                                   serverHub):
+    """A panel rebuild while the researcher types leaves them typing.
+
+    Opening the chat appends an event, and the poll that reads it
+    rebuilds the panel for that real reason, usually within a second of
+    the composer appearing. The rebuild replaces the focused textarea
+    through ``innerHTML``. The draft machinery hands back what was
+    already typed, but focus went with the old node, so every later
+    keystroke landed on nothing.
+
+    Playwright's ``fill`` is two round trips, focus-and-select and then
+    an insert into whatever holds focus, so the same rebuild landing
+    between them emptied the composer while ``fill`` reported success.
+    The Ask click then read an empty box and sent nothing. That is the
+    intermittent webkit failure of
+    ``testTheChairbotConversationRunsInTheBrowser`` (CI trace,
+    2026-10-24): the panel was rebuilt inside the fill, the composer was
+    still empty when the wait timed out, and no ``/chat/ask`` request
+    was ever issued.
+
+    The rebuild is forced here through the module's real render path,
+    and the stamp proves it happened, so the test does not depend on a
+    poll landing in a window a few milliseconds wide.
+
+    Kills: the render dropping the focused field's focus and caret.
+    """
+    _fdictClaimAndActivate(pageDashboard, serverHub)
+    _fnConveneThroughTheForm(pageDashboard)
+
+    pageDashboard.click('.council-tab[data-tab="chat"]')
+    pageDashboard.wait_for_selector("#btnCouncilChatOpen", timeout=16000)
+    pageDashboard.click("#btnCouncilChatOpen")
+    pageDashboard.wait_for_selector("#councilChatQuestion", timeout=16000)
+
+    pageDashboard.click("#councilChatQuestion")
+    pageDashboard.keyboard.type("Why did you reject the cache?")
+    # The caret is placed directly: Home does not move it on webkit,
+    # whose macOS key bindings scroll the document instead.
+    pageDashboard.evaluate(
+        "() => { document.getElementById('councilChatQuestion')"
+        ".setSelectionRange(0, 0); }")
+    pageDashboard.keyboard.type("So, ")
+    pageDashboard.evaluate(
+        "() => { document.getElementById("
+        "'councilChatQuestion').dataset.renderStamp = 'before'; }")
+    pageDashboard.evaluate(
+        "() => { VaibifyAgentCouncil.fnSelectTabForTest('chat'); }")
+    bRebuilt = pageDashboard.evaluate(
+        "() => !document.getElementById('councilChatQuestion')"
+        ".dataset.renderStamp")
+    assert bRebuilt, "the forced render did not rebuild the composer"
+
+    pageDashboard.keyboard.type("why ")
+    assert pageDashboard.input_value("#councilChatQuestion") == (
+        "So, why Why did you reject the cache?"), (
+        "keystrokes typed after a panel rebuild were lost or landed "
+        "away from the caret")
+    assert pageDashboard.listPageErrors == []
+    assert pageDashboard.listConsoleErrors == []
+
+
 def test_isolation_root_is_a_directory(tmp_path):
     """A guard that the isolation import path is intact off the browser."""
     import os

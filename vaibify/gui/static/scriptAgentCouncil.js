@@ -2423,10 +2423,12 @@ var VaibifyAgentCouncil = (function () {
         }
         _fnNoticeWallClockKills(dictCampaign);
         _fnHarvestDraftInputs(elBody);
+        var dictFocusedField = _fdictCaptureFocusedField(elBody);
         elBody.innerHTML = _fsTabBar(dictCampaign) +
             "<div class=\"council-tab-content\">" +
             _fsActiveTabContent(dictCampaign) + "</div>";
         _fnRestoreDraftInputs(elBody);
+        _fnRestoreFocusedField(dictFocusedField);
         _fnBindWorkspace(dictCampaign);
         if (_dictState.bActionPending) {
             /* Derived HERE, in the render path, from module state: a
@@ -2571,6 +2573,39 @@ var VaibifyAgentCouncil = (function () {
                         _dictDraftFields.listDecisionAnswers[iIndex];
                 }
             });
+    }
+
+    /* The draft restore hands back the WORDS a rebuild would wipe; this
+       hands back the place the researcher was typing them. innerHTML
+       replaces the focused field, focus falls to the body, and every
+       later keystroke lands on nothing -- the poll that reads the
+       chat's own "opened" event rebuilt the composer about a second
+       after it appeared (webkit trace, 2026-10-24). Only a field with
+       an id can be found again in the rebuilt panel. */
+    function _fdictCaptureFocusedField(elBody) {
+        var elActive = document.activeElement;
+        if (!elActive || !elActive.id || !elBody.contains(elActive)) {
+            return null;
+        }
+        return {
+            sId: elActive.id,
+            iSelectionStart: elActive.selectionStart,
+            iSelectionEnd: elActive.selectionEnd,
+            sSelectionDirection: elActive.selectionDirection,
+        };
+    }
+
+    function _fnRestoreFocusedField(dictFocusedField) {
+        if (!dictFocusedField) return;
+        var elField = document.getElementById(dictFocusedField.sId);
+        if (!elField || elField === document.activeElement) return;
+        elField.focus({preventScroll: true});
+        if (typeof dictFocusedField.iSelectionStart === "number") {
+            elField.setSelectionRange(
+                dictFocusedField.iSelectionStart,
+                dictFocusedField.iSelectionEnd,
+                dictFocusedField.sSelectionDirection || "none");
+        }
     }
 
     function _fsTabBar(dictCampaign) {
