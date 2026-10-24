@@ -35388,7 +35388,7 @@ LIST_FALSIFICATIONS = [
         ),
         # the no-project dashboard never asks whose files the viewers hold
         source='vaibify/gui/static/scriptApplication.js',
-        old='            VaibifyFigureViewer.fnBindViewersToProject(sId, "");\n',
+        old='            _fnBindViewersAndGraphToProject(sId, "");\n',
         new='',
     ),
     Falsification(
@@ -35399,7 +35399,7 @@ LIST_FALSIFICATIONS = [
         # a project's dashboard never asks whose files the viewers hold
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '        VaibifyFigureViewer.fnBindViewersToProject('
+            '        _fnBindViewersAndGraphToProject('
             'sId, data.sWorkflowPath);\n'
         ),
         new='',
@@ -36060,5 +36060,30 @@ LIST_FALSIFICATIONS = [
         # the add-step form opens with Plot only ticked again
         old='        document.getElementById("inputPlotOnly").checked = false;\n',
         new='        document.getElementById("inputPlotOnly").checked = true;\n',
+    ),
+    # --- 2026-10-23: the dependency graph repainted over whatever a
+    # viewer showed since, and painted a reply for another project ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheGraphLeavesOtherViewersAlone.py::'
+            'testAFigureOpenedOverTheGraphSurvivesARender'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # repaint whenever a viewport is remembered, owned or not
+        old='        if (!_sDagSvgText || !_fbDagOwnsItsViewport()) return;\n',
+        new='        if (!_sDagSvgText || !_elDagViewport) return;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheGraphLeavesOtherViewersAlone.py::'
+            'testAGraphThatArrivesAfterASwitchIsDropped'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # paint the reply whichever project is open when it lands
+        old=(
+            '            if (_fsDagProjectKey() !== sProjectKey) return;\n'
+            '            _sDagProjectKey = sProjectKey;\n'
+        ),
+        new='            _sDagProjectKey = sProjectKey;\n',
     ),
 ]
