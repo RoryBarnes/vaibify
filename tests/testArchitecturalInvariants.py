@@ -5713,7 +5713,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # digests the step recorded consuming; its state-machine docstring
     # says so (2648). -> 2654: a sign-off with recorded plot bytes is
     # left to the content check, not re-judged by timestamp each poll.
-    "fileStatusManager.py": 2654,
+    # 2654 -> 2658 (2026-10-24): the researcher-notice maps and the
+    # workflow-epoch origins join the container-keyed sweep list.
+    "fileStatusManager.py": 2658,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,

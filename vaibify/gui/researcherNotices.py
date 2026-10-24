@@ -37,7 +37,7 @@ I_NOTICES_KEPT_PER_CONTAINER = 50
 
 _S_NOTICES_KEY = "dictResearcherNotices"
 _S_NEWEST_ID_KEY = "dictNewestResearcherNoticeId"
-_S_ONCE_KEYS_KEY = "setResearcherNoticeOnceKeys"
+_S_ONCE_KEYS_KEY = "dictResearcherNoticeOnceKeys"
 _T_NOTICE_LEVELS = (
     S_NOTICE_LEVEL_INFO, S_NOTICE_LEVEL_WARNING, S_NOTICE_LEVEL_ERROR,
 )
@@ -74,11 +74,12 @@ def fnQueueResearcherNoticeOnce(
     re-detects (a stale in-container client) would otherwise toast on
     every agent call.
     """
-    setOnceKeys = dictCtx.setdefault(_S_ONCE_KEYS_KEY, set())
-    tKey = (sContainerId, sOnceKey)
-    if tKey in setOnceKeys:
+    setOnceKeys = dictCtx.setdefault(_S_ONCE_KEYS_KEY, {}).setdefault(
+        sContainerId, set(),
+    )
+    if sOnceKey in setOnceKeys:
         return
-    setOnceKeys.add(tKey)
+    setOnceKeys.add(sOnceKey)
     fnQueueResearcherNotice(dictCtx, sContainerId, sLevel, sMessage)
 
 
