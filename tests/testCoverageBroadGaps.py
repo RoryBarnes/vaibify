@@ -1373,7 +1373,10 @@ class TestPipelineServerBuildGenerateResponse:
         dictCtx = {"save": mockSave, "paths": {}}
         _fnApplyGeneratedTests(
             dictCtx, "ctn1", dictWorkflow, 0, dictResult,
-            SimpleNamespace(app=SimpleNamespace(state=None)),
+            SimpleNamespace(
+                app=SimpleNamespace(state=None), headers={},
+                url=SimpleNamespace(path=""), state=SimpleNamespace(),
+            ),
         )
         mockSave.assert_called_once()
         dictStep = dictWorkflow["listSteps"][0]
