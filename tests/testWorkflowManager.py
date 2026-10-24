@@ -244,7 +244,9 @@ def test_fdictCreateStep_defaults():
         sDirectory="/workspace/min",
     )
 
-    assert dictStep["bPlotOnly"] is True
+    # Off unless asked for (ruling R1b, 2026-10-23): a plots-only step
+    # skips its data commands, so a True default ran half a new step.
+    assert dictStep["bPlotOnly"] is False
     assert dictStep["saDataCommands"] == []
     assert dictStep["saPlotCommands"] == []
     assert dictStep["saPlotFiles"] == []

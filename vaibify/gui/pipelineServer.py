@@ -140,8 +140,9 @@ def fsSanitizeExceptionForClient(errorCaught):
 class StepCreateRequest(BaseModel):
     sName: str
     sDirectory: str
-    bPlotOnly: bool = True
+    bPlotOnly: bool = False
     bInteractive: bool = False
+    bNoInputData: Optional[bool] = None
     saDataCommands: List[str] = []
     saOutputDataFiles: List[str] = []
     saTestCommands: List[str] = []
@@ -477,6 +478,7 @@ def fdictStepFromRequest(request):
         ),
         bPlotOnly=request.bPlotOnly,
         bInteractive=request.bInteractive,
+        bNoInputData=bool(request.bNoInputData),
         saDataCommands=request.saDataCommands,
         saOutputDataFiles=request.saOutputDataFiles,
         saTestCommands=request.saTestCommands,

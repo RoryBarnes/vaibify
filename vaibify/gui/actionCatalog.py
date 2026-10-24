@@ -251,12 +251,16 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/create",
      "bAgentSafe": True,
-     "sDescription": "Append a new step to the active workflow."},
+     "sDescription": "Append a new step to the active workflow. "
+                     "Args: the step's fields. bPlotOnly defaults to "
+                     "false; true skips the data commands on every "
+                     "run. bNoInputData=true declares no raw input."},
     {"sName": "insert-step", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/insert/{iPosition}",
      "bAgentSafe": True,
-     "sDescription": "Insert a new step at the given 0-based position."},
+     "sDescription": "Insert a new step at the given 0-based "
+                     "position. Args: as create-step."},
     {"sName": "align-step-directories", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/align-directories",

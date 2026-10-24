@@ -187,6 +187,104 @@ def testWarnHundredNotFlippedBelowThreshold(tClientAndWorkflow):
 
 
 # -----------------------------------------------------------------------
+# A new step runs its data commands unless it asks not to
+# -----------------------------------------------------------------------
+#
+# create-step defaulted bPlotOnly to True and dropped bNoInputData, so
+# an agent's new step ran only its plot commands (alpha tester,
+# 2026-10-23). Every payload above sends bPlotOnly explicitly, which is
+# why none of them saw the default; these omit it.
+
+
+def _fdictPostNewStep(clientHttp, dictBody, sRoute="create"):
+    responseHttp = clientHttp.post(
+        f"/api/steps/{S_CONTAINER_ID}/{sRoute}", json=dictBody,
+    )
+    assert responseHttp.status_code == 200, responseHttp.text
+    return responseHttp
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("listDataCommands", [[], ["python3 makeData.py"]])
+def testAnOmittedPlotOnlyIsFalse(tClientAndWorkflow, listDataCommands):
+    """Kills: restoring the True default on the request model.
+
+    With and without data commands: the setting is never derived from
+    them, because data commands added later by update-step would then
+    be skipped.
+    """
+    clientHttp, dictWorkflow, _ = tClientAndWorkflow(1)
+    _fdictPostNewStep(clientHttp, {
+        "sName": "Fresh", "sDirectory": "",
+        "saDataCommands": listDataCommands,
+    })
+    assert dictWorkflow["listSteps"][-1]["bPlotOnly"] is False
+
+
+def testAnExplicitPlotOnlyPersists(tClientAndWorkflow):
+    clientHttp, dictWorkflow, _ = tClientAndWorkflow(1)
+    _fdictPostNewStep(clientHttp, {
+        "sName": "Figures", "sDirectory": "", "bPlotOnly": True,
+    })
+    assert dictWorkflow["listSteps"][-1]["bPlotOnly"] is True
+
+
+@pytest.mark.parametrize("sRoute,iExpectedIndex", [
+    ("create", -1), ("insert/0", 0),
+])
+def testDeclaredNoInputDataPersists(
+    tClientAndWorkflow, sRoute, iExpectedIndex,
+):
+    clientHttp, dictWorkflow, _ = tClientAndWorkflow(1)
+    _fdictPostNewStep(clientHttp, {
+        "sName": "Synthetic", "sDirectory": "", "bNoInputData": True,
+    }, sRoute)
+    assert dictWorkflow["listSteps"][iExpectedIndex]["bNoInputData"] is True
+
+
+def testAnOmittedNoInputDataIsUndeclared(tClientAndWorkflow):
+    clientHttp, dictWorkflow, _ = tClientAndWorkflow(1)
+    _fdictPostNewStep(clientHttp, {"sName": "Plain", "sDirectory": ""})
+    assert dictWorkflow["listSteps"][-1]["bNoInputData"] is False
+
+
+def testDataCommandsAddedAfterCreationRun(fixtureCarrierStoodDown):
+    """create-step with no commands, update-step adds data, a run executes it.
+
+    Through the real routes and the real step runner: the persisted
+    step is what the runner receives.
+    """
+    import asyncio
+    from tests.testPipelineRunnerFull import _fMockCallback, _fMockDocker
+    from vaibify.gui.pipelineRunner import ftRunStepCommands
+    dictWorkflow = _fdictBuildWorkflow(1)
+    dictCtx = _fdictBuildContext(dictWorkflow, [])
+    dictCtx["docker"] = _fMockDocker(0, "")
+    app = FastAPI()
+    stepRoutes.fnRegisterAll(app, dictCtx)
+    clientHttp = TestClient(app)
+    _fdictPostNewStep(clientHttp, {"sName": "Grown", "sDirectory": ""})
+    responseUpdate = clientHttp.put(
+        f"/api/steps/{S_CONTAINER_ID}/1",
+        json={"saDataCommands": ["python3 makeData.py"]},
+    )
+    assert responseUpdate.status_code == 200, responseUpdate.text
+    mockDocker = _fMockDocker(0, "")
+    fnCallback, _ = _fMockCallback()
+    asyncio.run(ftRunStepCommands(
+        mockDocker, "cid", dictWorkflow["listSteps"][1], "/work",
+        {"sPlotDirectory": "Plot"}, fnCallback,
+    ))
+    listCommandsRun = [
+        callRecorded.args[1] for callRecorded in
+        mockDocker.ftRunInContainerStreamedWithChunks.call_args_list
+    ]
+    assert any("makeData.py" in sCommand for sCommand in listCommandsRun), (
+        listCommandsRun
+    )
+
+
+# -----------------------------------------------------------------------
 # Input-data agent lane: add-input-data-file + declare-no-input-data
 # -----------------------------------------------------------------------
 
