@@ -99,33 +99,46 @@ def test_an_unknown_category_is_refused_by_name():
 
 
 def _fdictGenerateWithCategories(setCategories, dictWritten):
-    """Drive the generator's write stage with the category gate."""
-    from vaibify.gui import testGenerator
+    """Drive the generator's write stage with the category gate.
 
-    def ffnRecord(sKey):
-        def fdictWrite(*args, **kwargs):
-            dictWritten[sKey] = True
-            return {"sFilePath": f"tests/test_{sKey}.py"}
-        return fdictWrite
+    Every requested tier is planned and then carried out; the recorder
+    stands in for carrying a plan out, so what it saw is exactly the
+    set of tiers the gate let through.
+    """
+    from vaibify.gui import deterministicTestWriter, testGenerator
+
+    dictKeyToCategory = {
+        "dictIntegrity": "integrity", "dictQualitative": "qualitative",
+        "dictQuantitative": "quantitative",
+    }
+
+    def fdictRecordCarriedOutPlan(connectionDocker, sContainerId, dictPlan):
+        dictWritten[dictKeyToCategory[dictPlan["sKey"]]] = True
+        return {"sFilePath": dictPlan["sTestPath"]}
 
     listPatched = [
-        ("_fdictWriteIntegrityTests", "integrity"),
-        ("_fdictWriteQualitativeTests", "qualitative"),
-        ("_fdictWriteQuantitativeTests", "quantitative"),
+        (deterministicTestWriter, "_fdictCarryOutPlan",
+         fdictRecordCarriedOutPlan),
+        (deterministicTestWriter, "_fdictConfirmationNeeded",
+         lambda *args: {}),
+        (testGenerator, "fnWriteConftestMarker",
+         lambda *args, **kwargs: None),
+        (testGenerator, "fnEnsureTestsDirectory",
+         lambda *args, **kwargs: None),
     ]
-    dictOriginals = {}
-    for sName, sKey in listPatched:
-        dictOriginals[sName] = getattr(testGenerator, sName)
-        setattr(testGenerator, sName, ffnRecord(sKey))
-    setattr(testGenerator, "fnWriteConftestMarker", lambda *a, **k: None)
+    listOriginals = []
+    for moduleTarget, sName, fnReplacement in listPatched:
+        listOriginals.append(getattr(moduleTarget, sName))
+        setattr(moduleTarget, sName, fnReplacement)
     try:
-        return testGenerator._fdictWriteAllDeterministicTests(
+        return deterministicTestWriter.fdictWriteAllDeterministicTests(
             None, "cid", "/step", [], 1e-6, False, "/repo",
             "deterministic", setCategories,
         )
     finally:
-        for sName, _sKey in listPatched:
-            setattr(testGenerator, sName, dictOriginals[sName])
+        for (moduleTarget, sName, _fnReplacement), fnOriginal in zip(
+                listPatched, listOriginals):
+            setattr(moduleTarget, sName, fnOriginal)
 
 
 def test_requesting_one_category_leaves_the_others_untouched():

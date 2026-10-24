@@ -31973,8 +31973,9 @@ LIST_FALSIFICATIONS = [
             'testAModelWrittenTierSaysSoOnItsRow'
         ),
         source='vaibify/gui/static/scriptTestManager.js',
-        old='            if (dictCatResult.sGenerator) {\n',
-        new='            if (false) {\n',
+        # the page keeps its own copy instead of the hub's saved step
+        old='        dictStep.dictTests = dictSaved.dictTests || dictStep.dictTests;\n',
+        new='        dictStep.dictTests = dictStep.dictTests;\n',
     ),
     # --- 2026-10-19: the unintrospectable toast is built from the
     # payload; it claimed an LLM fallback that never ran.
@@ -35387,7 +35388,7 @@ LIST_FALSIFICATIONS = [
         ),
         # the no-project dashboard never asks whose files the viewers hold
         source='vaibify/gui/static/scriptApplication.js',
-        old='            VaibifyFigureViewer.fnBindViewersToProject(sId, "");\n',
+        old='            _fnBindViewersAndGraphToProject(sId, "");\n',
         new='',
     ),
     Falsification(
@@ -35398,7 +35399,7 @@ LIST_FALSIFICATIONS = [
         # a project's dashboard never asks whose files the viewers hold
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '        VaibifyFigureViewer.fnBindViewersToProject('
+            '        _fnBindViewersAndGraphToProject('
             'sId, data.sWorkflowPath);\n'
         ),
         new='',
@@ -35841,5 +35842,248 @@ LIST_FALSIFICATIONS = [
         # the option is offered when only some mismatches are explained
         old='    bOnly = bool(listMismatches) and len(listExplained) == len(listMismatches)\n',
         new='    bOnly = bool(listExplained)\n',
+    ),
+    # --- 2026-10-23: vaibify-do loses a workflowBound frame that
+    # arrives in the same read as the 101 reply, and a container's
+    # stale vaibify-do is reported ---
+    Falsification(
+        nodeid=(
+            'tests/testVaibifyDoCli.py::'
+            'test_a_workflow_bound_frame_sent_with_the_101_is_not_lost'
+        ),
+        source='vaibify/containerImage/vaibifyDo.py',
+        # the handshake discards what followed the header terminator
+        old='    return baLeftover\n',
+        new='    return b""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVaibifyDoCli.py::'
+            'test_a_client_that_sends_no_digest_is_warned'
+        ),
+        source='vaibify/gui/agentClientFreshness.py',
+        # a client that sends no digest is treated as current
+        old='    return sPresentedDigest != sShippedDigest\n',
+        new=(
+            '    return bool(sPresentedDigest) and '
+            'sPresentedDigest != sShippedDigest\n'
+        ),
+    ),
+    # --- 2026-10-23: an agent's edit never reached the tab that had
+    # the project open ---
+    Falsification(
+        nodeid=(
+            'tests/testAgentEditsReachTheOpenTab.py::'
+            'testAnAgentsNewStepReachesTheOpenTab'
+        ),
+        source='vaibify/gui/researcherNotices.py',
+        # the agent's committed save leaves the epoch where it was
+        old=(
+            '    workflowReloadDetector.fnBumpWorkflowEpoch(\n'
+            '        dictCtx, sContainerId,\n'
+            '        workflowReloadDetector.S_EPOCH_ORIGIN_AGENT,\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentEditsReachTheOpenTab.py::'
+            'testTheTabsOwnSaveIsNeitherReloadedNorAnnounced'
+        ),
+        source='vaibify/gui/researcherNotices.py',
+        # every committed save is announced, the researcher's own too
+        old=(
+            '    if not fbRequestRidesAgentLane(requestHttp):\n'
+            '        return\n'
+            '    workflowReloadDetector'
+        ),
+        new='    workflowReloadDetector',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentEditsReachTheOpenTab.py::'
+            'testASaveRefusedForAnotherProjectAnnouncesNothing'
+        ),
+        source='vaibify/gui/routeContext.py',
+        # announce at the top, before the save is refused or written
+        old='    from . import commitCarrier, researcherNotices, workflowManager\n',
+        new=(
+            '    from . import commitCarrier, researcherNotices, workflowManager\n'
+            '    researcherNotices.fnAnnounceAgentWorkflowChange(\n'
+            '        dictCtx, sContainerId, requestHttp, sOperationName,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentEditsReachTheOpenTab.py::'
+            'testASaveWhoseWriteFailsAnnouncesNothing'
+        ),
+        source='vaibify/gui/routeContext.py',
+        # announce at the top, before the save is refused or written
+        old='    from . import commitCarrier, researcherNotices, workflowManager\n',
+        new=(
+            '    from . import commitCarrier, researcherNotices, workflowManager\n'
+            '    researcherNotices.fnAnnounceAgentWorkflowChange(\n'
+            '        dictCtx, sContainerId, requestHttp, sOperationName,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnAgentsEditAppearsWithoutNavigation.py::'
+            'testAnAgentsChangeIsShownAndNamedOnce'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # an agent's change is announced as an edit made on disk
+        old='        if (sReloadOrigin !== "agent") {\n',
+        new='        if (true) {\n',
+    ),
+    # --- 2026-10-23: generated tests judged nothing when the outputs
+    # were missing, or a tier had nothing to check ---
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testGeneratingBeforeTheOutputsExistIsRefused'
+        ),
+        source='vaibify/gui/testGenerator.py',
+        # both checks ask this one probe; it reports nothing missing
+        old='    return [\n        sFile for sFile, bExists in zip(listDataFiles, listExists)\n        if not bExists\n    ]\n',
+        new='    return []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAnArrayOutputMakesOnlyTheQualitativeTierNotApplicable'
+        ),
+        source='vaibify/gui/deterministicTestWriter.py',
+        # a tier with nothing to check is written as a placeholder again
+        old='    return (\n        "The outputs have no column names or JSON keys to check."\n    )\n',
+        new='    return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAnUnreadableOutputIsUnknownNotInapplicable'
+        ),
+        source='vaibify/gui/deterministicTestWriter.py',
+        # an output nothing could read counts as analyzed
+        old='    return all(\n        dictReport.get("bLoadable") and not dictReport.get("sError")\n        for dictReport in listdictReports\n    )\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGuiTemplateManager.py::'
+            'testAStampedFileWithAnAppendedTestIsTheResearchers'
+        ),
+        source='vaibify/gui/templateManager.py',
+        # the stamp is trusted without hashing the file's own body
+        old='        and _fsComputeTemplateHash(sFileText) == sStampedHash\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAnEditedStandardsFileIsAskedAboutAndNothingIsTouched'
+        ),
+        source='vaibify/gui/deterministicTestWriter.py',
+        # a standards file is removed without checking its digest
+        old='        if isinstance(sStandardsText, str) and sStandardsText and not (\n',
+        new='        if False and (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAMalformedStandardsFileIsRefusedBeforeItIsWritten'
+        ),
+        source='vaibify/gui/standardsFiles.py',
+        # a standards file is written without being parsed first
+        old='    if sInvalid:\n        from fastapi import HTTPException\n',
+        new='    if False:\n        from fastapi import HTTPException\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGeneratorPure.py::'
+            'test_an_unparseable_model_reply_is_a_named_error'
+        ),
+        source='vaibify/gui/testParser.py',
+        # a reply with no JSON in it is empty standards again
+        old='        if not matchBrace:\n            raise UnreadableModelReplyError(',
+        new='        if not matchBrace:\n            return {"listStandards": []}\n            raise UnreadableModelReplyError(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAMissingOutputRefusalOpensNoCarrier'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # the route leaves the refusal to the generator, inside the carrier
+        old='    if listMissing:\n        _fnRaiseMissingOutputsRefusal(\n            dictCtx, sContainerId, dictWorkflow, iStepIndex, listMissing,\n',
+        new='    if False:\n        _fnRaiseMissingOutputsRefusal(\n            dictCtx, sContainerId, dictWorkflow, iStepIndex, listMissing,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAnOutputTheAnalysisCannotFindIsRefused'
+        ),
+        source='vaibify/gui/testGenerator.py',
+        # a report that says the file is gone is written from anyway
+        old='        if dictReport.get("sError") == "file not found"\n',
+        new='        if False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAnOutputThatVanishesUnderTheRouteIsRefusedWithoutQuarantine'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # the generator's refusal escapes the worker and poisons the record
+        old='        except MissingStepOutputsError as error:\n',
+        new='        except ZeroDivisionError as error:\n',
+    ),
+    # --- 2026-10-23: a new step defaulted to plots-only, so its data
+    # commands never ran ---
+    Falsification(
+        nodeid='tests/testStepRoutes.py::testAnOmittedPlotOnlyIsFalse',
+        source='vaibify/gui/pipelineServer.py',
+        # the request model defaults a new step to plots-only again
+        old='    bPlotOnly: bool = False\n',
+        new='    bPlotOnly: bool = True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testANewStepRunsItsDataCommands.py::'
+            'testTheAddStepFormOpensWithPlotsOnlyUnchecked'
+        ),
+        source='vaibify/gui/static/scriptStepEditor.js',
+        # the add-step form opens with Plot only ticked again
+        old='        document.getElementById("inputPlotOnly").checked = false;\n',
+        new='        document.getElementById("inputPlotOnly").checked = true;\n',
+    ),
+    # --- 2026-10-23: the dependency graph repainted over whatever a
+    # viewer showed since, and painted a reply for another project ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheGraphLeavesOtherViewersAlone.py::'
+            'testAFigureOpenedOverTheGraphSurvivesARender'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # repaint whenever a viewport is remembered, owned or not
+        old='        if (!_sDagSvgText || !_fbDagOwnsItsViewport()) return;\n',
+        new='        if (!_sDagSvgText || !_elDagViewport) return;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheGraphLeavesOtherViewersAlone.py::'
+            'testAGraphThatArrivesAfterASwitchIsDropped'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # paint the reply whichever project is open when it lands
+        old=(
+            '            if (_fsDagProjectKey() !== sProjectKey) return;\n'
+            '            _sDagProjectKey = sProjectKey;\n'
+        ),
+        new='            _sDagProjectKey = sProjectKey;\n',
     ),
 ]

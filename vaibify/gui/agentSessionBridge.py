@@ -22,6 +22,7 @@ __all__ = [
 
 import json
 
+from .. import __version__
 from . import actionCatalog
 
 
@@ -31,6 +32,7 @@ def fsBuildSessionEnvBody(sHostUrl, sAgentToken, sContainerId):
         f"VAIBIFY_HOST_URL={sHostUrl}",
         f"VAIBIFY_SESSION_TOKEN={sAgentToken}",
         f"VAIBIFY_CONTAINER_ID={sContainerId}",
+        f"VAIBIFY_VERSION={__version__}",
     ]
     return "\n".join(listLines) + "\n"
 

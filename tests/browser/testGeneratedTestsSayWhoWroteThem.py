@@ -45,6 +45,17 @@ def _fnServeGeneration(pageDashboard, dictQuantitative):
     dictPayload = {"bGenerated": True, "dictIntegrity": dict(dictEmpty),
                    "dictQualitative": dict(dictEmpty),
                    "dictQuantitative": dictQuantitative}
+    # The hub answers with the step as it saved it, and the page adopts
+    # that copy rather than rebuilding the categories itself.
+    dictPayload["dictStep"] = {
+        "dictTests": {
+            "dictIntegrity": dict(dictEmpty),
+            "dictQualitative": dict(dictEmpty),
+            "dictQuantitative": dictQuantitative,
+        },
+        "dictVerification": {"sUnitTest": "untested", "sUser": "untested"},
+        "saTestCommands": [],
+    }
     pageDashboard.route(
         "**/api/steps/**/generate-test",
         lambda route: route.fulfill(

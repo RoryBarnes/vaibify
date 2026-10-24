@@ -365,7 +365,10 @@ def test_fdictGenerateAllTestsDeterministic_mock():
     )
     assert "sStandardsPath" in dictResult["dictQuantitative"]
     assert "sStandardsPath" in dictResult["dictIntegrity"]
-    assert "sStandardsPath" in dictResult["dictQualitative"]
+    # A numeric array has no column names or JSON keys, so the
+    # qualitative tier is N/A rather than a placeholder that passes.
+    assert dictResult["dictQualitative"]["saCommands"] == []
+    assert dictResult["dictQualitative"]["sNotApplicableReason"]
 
 
 # -----------------------------------------------------------------------
@@ -2253,28 +2256,25 @@ def test_fdictGenerateAllTestsDeterministic_written_content():
 
 
 def test_fdictGenerateAllTestsDeterministic_no_data_files():
-    """Verify minimal tests when no data files are present."""
+    """A step that declares no outputs has nothing to check: every tier is N/A.
+
+    It used to write placeholder integrity and qualitative tests that
+    asserted True and ran as passes; ruling R3 (2026-10-23) makes a
+    tier with nothing to check N/A instead, by writing no file.
+    """
     from vaibify.gui.testGenerator import fdictGenerateAllTestsDeterministic
 
-    sIntrospectionOutput = json.dumps([])
     dictWrittenFiles = {}
-
-    def fMockExecute(sContainerId, sCommand, sUser=None):
-        if "mkdir" in sCommand:
-            return (0, "")
-        if "python3" in sCommand:
-            return (0, sIntrospectionOutput)
-        if "rm -f" in sCommand:
-            return (0, "")
-        return (0, "")
 
     def fMockWriteFile(sContainerId, sPath, baContent):
         dictWrittenFiles[sPath] = baContent
 
     mockConnection = MagicMock()
-    mockConnection.ftResultExecuteCommand.side_effect = fMockExecute
+    mockConnection.ftResultExecuteCommand.return_value = (0, "[]")
     mockConnection.fnWriteFile = fMockWriteFile
-
+    mockConnection.flistContainerPathsExist.side_effect = (
+        lambda sContainerId, listPaths: [False for _ in listPaths]
+    )
     dictWorkflow = {
         "listSteps": [{
             "sName": "Empty",
@@ -2287,16 +2287,11 @@ def test_fdictGenerateAllTestsDeterministic_no_data_files():
     dictResult = fdictGenerateAllTestsDeterministic(
         mockConnection, "cid123", 0, dictWorkflow, {},
     )
-    sIntegrityPath = "/work/step02/tests/test_integrity_step02.py"
-    sIntegrityCode = dictWrittenFiles[sIntegrityPath].decode("utf-8")
-    ast.parse(sIntegrityCode)
-    assert "test_no_integrity_outputs" in sIntegrityCode
-    sQualitativePath = "/work/step02/tests/test_qualitative_step02.py"
-    sQualitativeCode = dictWrittenFiles[sQualitativePath].decode(
-        "utf-8",
-    )
-    ast.parse(sQualitativeCode)
-    assert "test_no_qualitative_outputs" in sQualitativeCode
+    assert dictWrittenFiles == {}
+    for sKey in ("dictIntegrity", "dictQualitative", "dictQuantitative"):
+        assert dictResult[sKey]["saCommands"] == []
+        assert dictResult[sKey]["sNotApplicableReason"]
+        assert dictResult[sKey]["listFilesToRemove"] == []
 
 
 # -----------------------------------------------------------------------

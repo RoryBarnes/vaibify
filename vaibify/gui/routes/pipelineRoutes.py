@@ -26,9 +26,11 @@ from ...reproducibility.reproductionLabel import (
 from .. import archiveProgress
 from .. import containerOwnership
 from .. import outputProvenance
+from .. import researcherNotices
 from .. import runOutputBaseline
 from .. import verificationProgress
 from ..actionCatalog import ffnAgentAction
+from ..agentClientFreshness import fsStaleClientWarningForSocket
 from ..pipelineRunner import fsShellQuote
 from ..pipelineUtils import fbStepIsInteractive, fsLabelFromStepIndex
 from ..templateManager import fbIsVaibifyTemplateHash
@@ -111,6 +113,7 @@ from ..workflowReloadDetector import (
     fdictDetectNewlyAvailableWorkflows,
     fdictMaybeReloadWorkflow as _fdictMaybeReloadWorkflow,
     fiGetWorkflowEpoch,
+    fsGetWorkflowEpochOrigin,
 )
 
 logger = logging.getLogger("vaibify")
@@ -976,6 +979,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
                         iAcceptedGeneration=iAcceptedGeneration,
                     )
                 ),
+                sClientWarning=fsStaleClientWarningForSocket(websocket),
             )
 
         await fnServeUnderLiveConnectionCounters(
@@ -1232,7 +1236,7 @@ def _fnRegisterFileStatus(app, dictCtx):
     @app.get("/api/pipeline/{sContainerId}/file-status")
     async def fresponseHandleGetFileStatus(
         sContainerId: str, request: Request, response: Response,
-        iWorkflowEpoch: int = -1,
+        iWorkflowEpoch: int = -1, iLastNoticeId: int = -1,
     ):
         dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
@@ -1243,6 +1247,9 @@ def _fnRegisterFileStatus(app, dictCtx):
         )
         _fnReconcileWorkflowEpoch(
             dictCtx, sContainerId, dictResponse, iWorkflowEpoch,
+        )
+        researcherNotices.fnAttachNoticesToPoll(
+            dictCtx, sContainerId, dictResponse, iLastNoticeId,
         )
         sEtag = _fsBuildFileStatusEtag(
             dictResponse, fiGetSyncEpoch(dictCtx, sContainerId),
@@ -1287,6 +1294,9 @@ def _fnReconcileWorkflowEpoch(
     bClientStale = iClientEpoch != iServerEpoch
     dictResponse["iWorkflowEpoch"] = iServerEpoch
     dictResponse["bWorkflowReloaded"] = bClientStale
+    dictResponse["sWorkflowReloadOrigin"] = fsGetWorkflowEpochOrigin(
+        dictCtx, sContainerId,
+    )
     dictWorkflow = dictCtx["workflows"].get(sContainerId)
     if bClientStale and dictWorkflow:
         from ..pipelineUtils import fdictWorkflowWithLabels

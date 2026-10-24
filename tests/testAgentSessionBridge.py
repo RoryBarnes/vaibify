@@ -19,18 +19,22 @@ from vaibify.gui import agentSessionBridge
 # -----------------------------------------------------------------------
 
 
-def test_fsBuildSessionEnvBody_has_three_var_lines_in_order():
+def test_fsBuildSessionEnvBody_has_four_var_lines_in_order():
+    from vaibify import __version__
+
     sBody = agentSessionBridge.fsBuildSessionEnvBody(
         "http://host.docker.internal:8050",
         "tok-abc",
         "container-42",
     )
     listLines = sBody.split("\n")
-    # Three VAR=value lines and a trailing empty from final newline.
+    # Four VAR=value lines and a trailing empty from final newline; the
+    # version is what 'vaibify-do --version' reports as the hub's.
     assert listLines[0] == "VAIBIFY_HOST_URL=http://host.docker.internal:8050"
     assert listLines[1] == "VAIBIFY_SESSION_TOKEN=tok-abc"
     assert listLines[2] == "VAIBIFY_CONTAINER_ID=container-42"
-    assert listLines[3] == ""
+    assert listLines[3] == "VAIBIFY_VERSION=" + __version__
+    assert listLines[4] == ""
 
 
 def test_fsBuildSessionEnvBody_ends_with_newline():

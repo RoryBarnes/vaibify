@@ -143,6 +143,20 @@ def test_fdictParseQuantitativeJson_with_fences():
     assert dictResult["listStandards"][0]["fValue"] == 1361.0
 
 
+@pytest.mark.falsification
+def test_an_unparseable_model_reply_is_a_named_error():
+    """Kills: returning empty standards for a reply with no JSON in it."""
+    from vaibify.gui.pipelineUtils import (
+        OutputAnalysisError, UnreadableModelReplyError,
+    )
+    from vaibify.gui.testGenerator import fdictParseQuantitativeJson
+    for sReply in ("I could not find any numbers.",
+                   '{"listStandards": [{"sName": "a"}. {"sName": "b"}]}'):
+        with pytest.raises(UnreadableModelReplyError) as excInfo:
+            fdictParseQuantitativeJson(sReply)
+        assert isinstance(excInfo.value, OutputAnalysisError)
+
+
 def test_fdictParseQuantitativeJson_empty_list():
     from vaibify.gui.testGenerator import fdictParseQuantitativeJson
     sInput = '{"listStandards": []}'
@@ -313,12 +327,16 @@ def test_fdictParseQuantitativeJson_brace_fallback():
     assert dictResult["listStandards"][0]["sName"] == "x"
 
 
-def test_fdictParseQuantitativeJson_no_json_returns_empty():
-    """Line 501: completely invalid text returns empty list."""
+def test_fdictParseQuantitativeJson_no_json_raises():
+    """Completely invalid text is a named error, not empty standards.
+
+    It used to return ``{"listStandards": []}``, a standards file that
+    judged nothing and ran as a pass (plan D2 2.5, 2026-10-23).
+    """
+    from vaibify.gui.pipelineUtils import UnreadableModelReplyError
     from vaibify.gui.testGenerator import fdictParseQuantitativeJson
-    sInput = "this is not json at all"
-    dictResult = fdictParseQuantitativeJson(sInput)
-    assert dictResult == {"listStandards": []}
+    with pytest.raises(UnreadableModelReplyError):
+        fdictParseQuantitativeJson("this is not json at all")
 
 
 # -----------------------------------------------------------------------

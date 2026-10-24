@@ -167,7 +167,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 272 -> 271 (2026-10-12): the test generator's unclassified conftest
 # write and the new marker-plugin writes share one classified confined
 # write site, _fnWriteTextConfined.
-I_UNCLASSIFIED_ROW_BUDGET = 271
+I_UNCLASSIFIED_ROW_BUDGET = 267
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -433,7 +433,7 @@ I_UNCLASSIFIED_ROW_BUDGET = 271
 # only inside a reproduction container, with a fixed argv; it counts as
 # mutation-capable because its program is sys.executable, which the scan
 # cannot read. Classified at birth, lane reproduction-container.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 230
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 229
 
 
 # Every acquisition of a declared capability that still has no reviewed

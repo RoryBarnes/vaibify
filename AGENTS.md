@@ -241,6 +241,19 @@ into this file is wrong within weeks, and a reader who checks one and
 finds it false stops trusting the ones they cannot check. Where a
 number is genuinely wanted, give the command that computes it.
 
+**A plan ships as ONE pull request.** However many defects or stages
+a plan covers, it lands on one branch and one PR. This is a public
+repository, and GitHub allocates its macOS runners to open-source
+projects slowly, so every PR's macOS lanes sit queued long before
+they run. Several PRs multiply that wait, and a fix every PR needs
+(a CI timeout, a shared test) has to be pushed through each of them.
+Separate the work into commits on the one branch, never into PRs.
+
+**A CI timeout catches a hang, it is not a performance budget.** Set
+`timeout-minutes` well above what the step has ever taken, never just
+above the last measured run: a suite that grows a little then times
+out on every pull request at once.
+
 ## Contracts enforced by a test
 
 Each of these is a real rule whose violation fails CI. The test is the

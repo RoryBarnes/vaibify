@@ -28,7 +28,10 @@ __all__ = [
     "fnRecordSelfWriteFingerprint",
     "fdictMaybeReloadWorkflow",
     "fdictDetectNewlyAvailableWorkflows",
+    "S_EPOCH_ORIGIN_DISK",
+    "S_EPOCH_ORIGIN_AGENT",
     "fnBumpWorkflowEpoch",
+    "fsGetWorkflowEpochOrigin",
     "fiGetWorkflowEpoch",
 ]
 
@@ -58,16 +61,29 @@ def fnRecordSelfWriteFingerprint(dictCtx, sContainerId, sFingerprint):
     dictFingerprints[sContainerId] = sFingerprint
 
 
-def fnBumpWorkflowEpoch(dictCtx, sContainerId):
-    """Increment the per-container workflow epoch.
+S_EPOCH_ORIGIN_DISK = "disk"
+S_EPOCH_ORIGIN_AGENT = "agent"
 
-    Bumped on every out-of-band cache replacement so the file-status
+
+def fnBumpWorkflowEpoch(dictCtx, sContainerId, sOrigin=S_EPOCH_ORIGIN_DISK):
+    """Increment the per-container workflow epoch and record why.
+
+    Bumped on every out-of-band cache replacement -- an edit made on
+    disk, or a save by an in-container agent -- so the file-status
     route can re-send the workflow to any client whose last-applied
-    epoch is stale — per-client reconciliation instead of a one-shot
-    notification.
+    epoch is stale: per-client reconciliation instead of a one-shot
+    notification. The origin lets the tab say which of the two it was.
     """
     dictEpochs = dictCtx.setdefault("dictWorkflowEpochs", {})
     dictEpochs[sContainerId] = dictEpochs.get(sContainerId, 0) + 1
+    dictCtx.setdefault("dictWorkflowEpochOrigins", {})[sContainerId] = (
+        sOrigin
+    )
+
+
+def fsGetWorkflowEpochOrigin(dictCtx, sContainerId):
+    """Return what last advanced a container's epoch, "" if nothing has."""
+    return dictCtx.get("dictWorkflowEpochOrigins", {}).get(sContainerId, "")
 
 
 def fiGetWorkflowEpoch(dictCtx, sContainerId):

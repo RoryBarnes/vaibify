@@ -19,6 +19,7 @@ REAL ones, driven against a container double; only the model is faked,
 and every call to it is counted.
 """
 
+import copy
 import json
 
 import pytest
@@ -28,7 +29,12 @@ from tests.testCarrierMigratedRoutes import (
     S_INTROSPECT_COMMAND_MARKER,
     _tConnectGatedClient,
 )
-from tests.testDraftRoutes import S_CONTAINER_ID
+from tests.testDraftRoutes import (
+    DICT_WORKFLOW,
+    S_CONTAINER_ID,
+    S_PROJECT_REPO,
+    S_WORKFLOW_PATH,
+)
 from vaibify.config.mutationAdmission import ControlPlaneRefusalError
 from vaibify.gui import llmTestGeneration, testGenerator
 from vaibify.gui.pipelineUtils import OutputAnalysisError
@@ -36,9 +42,13 @@ from vaibify.gui.pipelineUtils import OutputAnalysisError
 
 S_REPO = "/workspace/repo"
 S_STEP = S_REPO + "/step"
+# Shaped as the real introspection program reports an unsupported file:
+# found (bExists, with its size), then not loadable.
 S_UNLOADABLE_REPORT = json.dumps([{
     "sFileName": "blob.bin", "sError": "unsupported binary format",
+    "bExists": True, "iByteSize": 64,
     "bLoadable": False, "listBenchmarks": []}])
+S_GATED_STEP_DIRECTORY = S_PROJECT_REPO + "/stepA"
 S_MODEL_REPLY = json.dumps({"listStandards": [{
     "sName": "fMean", "sDataFile": "blob.bin", "sAccessPath": "mean",
     "fValue": 1.5, "sUnit": ""}]})
@@ -81,6 +91,13 @@ class ContainerDouble:
 
     def fsReadText(self, sPath):
         return self.dictFiles[sPath].decode("utf-8")
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        """The step's declared output exists; anything else, if written."""
+        return [
+            sPath in self.dictFiles or sPath == S_STEP + "/blob.bin"
+            for sPath in listPaths
+        ]
 
 
 @pytest.fixture
@@ -130,7 +147,11 @@ def testUnparseableOutputsFallBackForQuantitativeAndSayWhoWroteThem(
     assert listModelCalls == [False]
     assert dictResult["dictQuantitative"]["sGenerator"] == "llm-fallback"
     assert dictResult["dictIntegrity"]["sGenerator"] == "deterministic"
-    assert dictResult["dictQualitative"]["sGenerator"] == "deterministic"
+    # Whether an unreadable output has columns is unknown, so the
+    # qualitative tier is a named error, not a placeholder that passes
+    # (ruling R3, 2026-10-23); it used to be stamped "deterministic".
+    assert "unsupported binary format" in (
+        dictResult["dictQualitative"]["sError"])
     assert _fdictStandardsOnDisk(containerDouble)["sGenerator"] == (
         "llm-fallback")
 
@@ -204,8 +225,12 @@ def testAPendingOverwriteConfirmationAsksNoModel(listModelCalls):
         bHasClaude=True,
         dictExistingFiles={sCustomTest: b"def test_mine():\n    pass\n"}))
     assert dictResult["bNeedsOverwriteConfirm"] is True
-    assert dictResult["dictQuantitative"][
-        "sStochasticityClassification"] == "unintrospectable"
+    # Since the confirmation is asked BEFORE anything is written
+    # (2026-10-24), the unintrospectable quantitative tier is no longer
+    # written beside it, so the result cannot report its class; that
+    # this same double does fall back without the custom file is
+    # testUnparseableOutputsFallBackForQuantitativeAndSayWhoWroteThem.
+    assert "dictQuantitative" not in dictResult
     assert listModelCalls == []
 
 
@@ -240,7 +265,23 @@ def testAMissingStepSurfacesUnchangedAndAsksNoModel(listModelCalls):
 
 
 class DockerDoubleWithUnloadableOutputs(DockerDoubleForTestGeneration):
-    """The route double, with an unloadable output and a Claude CLI."""
+    """The route double, with an unloadable output and a Claude CLI.
+
+    The step declares the output the introspection reports, and the
+    output exists: a report about a file the step never declared would
+    describe no real project.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.setExistingPaths.add(S_GATED_STEP_DIRECTORY + "/blob.bin")
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
+            dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
+            dictWorkflow["listSteps"][0]["saOutputDataFiles"] = ["blob.bin"]
+            self._dictFiles[sPath] = json.dumps(dictWorkflow).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
 
     def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None):
         tExec = super().ftResultExecuteCommand(

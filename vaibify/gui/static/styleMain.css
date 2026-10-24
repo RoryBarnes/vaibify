@@ -1842,6 +1842,17 @@ body.proof-level-3 .toolbar-label {
     font-style: italic;
 }
 
+.step-item .step-execution-setting {
+    flex: none;
+    margin: 0 6px;
+    padding: 0 6px;
+    font-size: 11px;
+    white-space: nowrap;
+    color: var(--text-muted);
+    border: 1px solid currentColor;
+    border-radius: 8px;
+}
+
 /* Run light vocabulary: hollow grey = never run this session,
    filled grey = queued, blinking orange = running, red = failed,
    blinking red = over budget, quiet pale-blue dot = last run

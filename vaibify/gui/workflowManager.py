@@ -1268,7 +1268,9 @@ def _fbApplyUnnecessaryToStep(dictStep):
     dictTests = dictStep.get("dictTests", {}) or {}
     bChanged = False
     for sCategory, sVerifyKey in _T_VERIFICATION_CATEGORY_KEYS:
-        if dictTests.get(sCategory, {}).get("saCommands"):
+        dictCategory = dictTests.get(sCategory, {})
+        # An underived category (sError) is an error, never green N/A.
+        if dictCategory.get("saCommands") or dictCategory.get("sError"):
             continue
         if dictVerify.get(sVerifyKey) != "untested":
             continue
@@ -1378,7 +1380,7 @@ def _fnWriteSidecarBookkeeping(
 def fdictCreateStep(
     sName,
     sDirectory,
-    bPlotOnly=True,
+    bPlotOnly=False,
     bInteractive=False,
     saDataCommands=None,
     saOutputDataFiles=None,
@@ -1386,6 +1388,7 @@ def fdictCreateStep(
     saPlotCommands=None,
     saPlotFiles=None,
     saInputDataFiles=None,
+    bNoInputData=False,
 ):
     """Return a new step dictionary with validated fields."""
     return {
@@ -1400,7 +1403,7 @@ def fdictCreateStep(
         "saPlotCommands": saPlotCommands if saPlotCommands else [],
         "saPlotFiles": saPlotFiles if saPlotFiles else [],
         "saInputDataFiles": saInputDataFiles if saInputDataFiles else [],
-        "bNoInputData": False,
+        "bNoInputData": bNoInputData,
         "listRemoteData": [],
         "dictTests": {
             "dictQualitative": {"saCommands": [], "sFilePath": ""},

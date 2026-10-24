@@ -8,6 +8,8 @@ __all__ = [
     "fbValidatePythonSyntax",
     "fdictGenerateAllTests",
     "fdictGenerateAllTestsDeterministic",
+    "flistMissingStepOutputs",
+    "fnRequireStepOutputsExist",
     "fdictGenerateTest",
     "fdictParseCombinedOutput",
     "fdictParseQuantitativeJson",
@@ -50,6 +52,7 @@ __all__ = [
     "ftResultGenerateViaClaude",
 ]
 
+import hashlib
 import json
 import logging
 import math
@@ -148,6 +151,14 @@ from .llmInvoker import (  # noqa: F401
     _fsBuildQuantitativePrompt,
 )
 
+from .pipelineUtils import MissingStepOutputsError
+from .standardsFiles import (  # noqa: F401
+    S_STANDARDS_DIGEST_KEY,
+    fbStandardsTextIsUnmodified,
+    fsComputeStandardsDigest,
+    fsSerializeStandards,
+)
+
 from .templateManager import (  # noqa: F401
     _fsComputeTemplateHash,
     _fsEmbedTemplateHash,
@@ -156,6 +167,7 @@ from .templateManager import (  # noqa: F401
     fsIntegrityTemplateHash,
     fsQualitativeTemplateHash,
     fbIsVaibifyTemplateHash,
+    fbStampedFileIsUnmodified,
     SET_PRIOR_TEMPLATE_HASHES,
     S_GENERATOR_DETERMINISTIC,
     S_GENERATOR_LLM,
@@ -746,6 +758,45 @@ def _fnWarnIfAllUnloadable(listdictReports):
 # ---------------------------------------------------------------------------
 
 
+def flistMissingStepOutputs(connectionDocker, sContainerId, dictWorkflow,
+                            iStepIndex):
+    """Return the step's declared outputs that do not exist, in order.
+
+    A typed read, so it is safe before any carrier opens. Paths resolve
+    against the step directory, as the introspection program and the
+    dashboard's "No Data for Tests" check both read them.
+    """
+    dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
+    listDataFiles = list(dictStep.get("saOutputDataFiles", []))
+    if not listDataFiles:
+        return []
+    listPaths = [
+        sFile if posixpath.isabs(sFile) else posixpath.join(sDirectory, sFile)
+        for sFile in listDataFiles
+    ]
+    listExists = connectionDocker.flistContainerPathsExist(
+        sContainerId, listPaths,
+    )
+    return [
+        sFile for sFile, bExists in zip(listDataFiles, listExists)
+        if not bExists
+    ]
+
+
+def fnRequireStepOutputsExist(connectionDocker, sContainerId, dictWorkflow,
+                              iStepIndex):
+    """Raise ``MissingStepOutputsError`` before anything is written.
+
+    Standards derived from files that do not exist judge nothing, and
+    their placeholder tests ran as passes.
+    """
+    listMissing = flistMissingStepOutputs(
+        connectionDocker, sContainerId, dictWorkflow, iStepIndex,
+    )
+    if listMissing:
+        raise MissingStepOutputsError(listMissing)
+
+
 def fdictGenerateAllTestsDeterministic(
     connectionDocker, sContainerId, iStepIndex,
     dictWorkflow, dictVariables, bForceOverwrite=False,
@@ -757,17 +808,20 @@ def fdictGenerateAllTestsDeterministic(
     caller. The introspection runs once regardless of how many
     categories are wanted: it reads the step's declared outputs, and
     reading them three times would be three container round-trips for
-    one answer.
+    one answer. Missing outputs refuse before anything is written,
+    the tests directory included.
     """
+    fnRequireStepOutputsExist(
+        connectionDocker, sContainerId, dictWorkflow, iStepIndex,
+    )
     dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
     fTolerance = dictWorkflow.get("fTolerance", 1e-6)
     listDataFiles = dictStep.get("saOutputDataFiles", [])
     if not listDataFiles:
         logger.warning(
-            "No data files for step %d; generating minimal tests",
+            "No data files for step %d; no output-derived tests apply",
             iStepIndex,
         )
-    fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
     sScripts, _sPreviews = ftBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables,
     )
@@ -777,12 +831,14 @@ def fdictGenerateAllTestsDeterministic(
     listdictReports = _fsRunIntrospection(
         connectionDocker, sContainerId, sDirectory, listDataFiles,
         bScriptStochastic=bScriptStochastic,
-    )
+    ) if listDataFiles else []
+    _fnRefuseOutputsIntrospectionCouldNotFind(listdictReports)
     _fnWarnIfAllUnloadable(listdictReports)
     sClassification = _fsClassifyStochasticity(
         dictStep, sScripts, listdictReports,
     )
-    return _fdictWriteAllDeterministicTests(
+    from .deterministicTestWriter import fdictWriteAllDeterministicTests
+    return fdictWriteAllDeterministicTests(
         connectionDocker, sContainerId, sDirectory,
         listdictReports, fTolerance, bForceOverwrite,
         dictWorkflow.get("sProjectRepoPath", ""),
@@ -790,74 +846,29 @@ def fdictGenerateAllTestsDeterministic(
     )
 
 
-def _fnRecordIfNeedsOverwrite(dictCategoryResult, listModified):
-    """Append the category's sFilePath to listModified if overwrite is pending."""
-    if dictCategoryResult.get("bNeedsOverwriteConfirm"):
-        listModified.append(dictCategoryResult["sFilePath"])
-
-
-def _fdictWriteAllDeterministicTests(
-    connectionDocker, sContainerId, sDirectory,
-    listdictReports, fTolerance, bForceOverwrite, sProjectRepoPath,
-    sClassification="deterministic", setCategories=None,
-):
-    """Write the requested deterministic test files; return result dict.
-
-    ``setCategories`` names the short category names to write; None
-    means all three, which is what every pre-existing caller wants. A
-    category left out is absent from the result rather than empty in
-    it, so ``_fnApplyGeneratedTests`` -- which copies only the keys it
-    finds -- leaves that category's existing declaration untouched. A
-    researcher asking for one tier must not have the other two
-    silently rewritten underneath them.
-    """
-    if setCategories is None:
-        setCategories = set(T_GENERATED_TEST_CATEGORIES)
-    fnWriteConftestMarker(
-        connectionDocker, sContainerId, sDirectory, sProjectRepoPath,
-    )
-    dictResult = {}
-    listModified = []
-    if "integrity" in setCategories:
-        dictResult["dictIntegrity"] = _fdictWriteIntegrityTests(
-            connectionDocker, sContainerId, sDirectory,
-            listdictReports, bForceOverwrite,
-        )
-        _fnRecordIfNeedsOverwrite(dictResult["dictIntegrity"], listModified)
-    if "qualitative" in setCategories:
-        dictResult["dictQualitative"] = _fdictWriteQualitativeTests(
-            connectionDocker, sContainerId, sDirectory,
-            listdictReports, bForceOverwrite,
-        )
-        _fnRecordIfNeedsOverwrite(dictResult["dictQualitative"], listModified)
-    if "quantitative" in setCategories:
-        dictResult["dictQuantitative"] = _fdictWriteQuantitativeTests(
-            connectionDocker, sContainerId, sDirectory,
-            listdictReports, fTolerance, bForceOverwrite,
-            sClassification,
-        )
-        _fnRecordIfNeedsOverwrite(
-            dictResult["dictQuantitative"], listModified)
-    if listModified:
-        dictResult["bNeedsOverwriteConfirm"] = True
-        dictResult["listModifiedFiles"] = listModified
-    return dictResult
+def _fnRefuseOutputsIntrospectionCouldNotFind(listdictReports):
+    """Refuse when an output vanished between the probe and the analysis."""
+    listMissing = [
+        dictReport["sFileName"] for dictReport in listdictReports
+        if dictReport.get("sError") == "file not found"
+    ]
+    if listMissing:
+        raise MissingStepOutputsError(listMissing)
 
 
 def _fdictWriteQuantitativeFiles(
     connectionDocker, sContainerId, sDirectory,
     dictStandards, bForceOverwrite=False,
 ):
-    """Write quantitative standards JSON and test file, return dict."""
+    """Write model-derived quantitative standards and the test file.
+
+    The language-model lane's writer. The test file is checked BEFORE
+    either file is written, so a pending confirmation touches nothing.
+    """
     sStandardsPath = fsQuantitativeStandardsPath(sDirectory)
     dictStandards.setdefault("sGenerator", S_GENERATOR_DETERMINISTIC)
     dictMerged = _fdictMergeWithExistingStandards(
         connectionDocker, sContainerId, sStandardsPath, dictStandards,
-    )
-    sJsonContent = json.dumps(dictMerged, indent=4)
-    connectionDocker.fnWriteFile(
-        sContainerId, sStandardsPath,
-        sJsonContent.encode("utf-8"),
     )
     sTestCode = fsBuildQuantitativeTestCode()
     sTestPath = fsQuantitativeTestPath(sDirectory)
@@ -865,6 +876,10 @@ def _fdictWriteQuantitativeFiles(
         connectionDocker, sContainerId, sTestPath, sTestCode,
     ):
         return {"bNeedsOverwriteConfirm": True, "sFilePath": sTestPath}
+    sJsonContent = fsSerializeStandards(dictMerged)
+    connectionDocker.fnWriteFile(
+        sContainerId, sStandardsPath, sJsonContent.encode("utf-8"),
+    )
     connectionDocker.fnWriteFile(
         sContainerId, sTestPath, sTestCode.encode("utf-8"))
     sFilename = posixpath.basename(sTestPath)
@@ -873,12 +888,19 @@ def _fdictWriteQuantitativeFiles(
         "sContent": sTestCode,
         "sStandardsPath": sStandardsPath,
         "sStandardsContent": sJsonContent,
-        "sStochasticityClassification": dictMerged.get(
+        **_fdictQuantitativeSummary(dictMerged),
+        "saCommands": [f"python3 -m pytest tests/{sFilename}"],
+    }
+
+
+def _fdictQuantitativeSummary(dictStandards):
+    """Return the classification fields a quantitative result reports."""
+    return {
+        "sStochasticityClassification": dictStandards.get(
             "sStochasticityClassification", "deterministic",
         ),
-        "sIntrospectorError": dictMerged.get("sIntrospectorError", ""),
-        "iStandardCount": len(dictMerged.get("listStandards", [])),
-        "saCommands": [f"python3 -m pytest tests/{sFilename}"],
+        "sIntrospectorError": dictStandards.get("sIntrospectorError", ""),
+        "iStandardCount": len(dictStandards.get("listStandards", [])),
     }
 
 
@@ -896,107 +918,6 @@ def _fdictMergeWithExistingStandards(
     except (ValueError, TypeError):
         return dictStandards
     return _fdictMergePreservingOverrides(dictStandards, dictPrior)
-
-
-def _fdictWriteQuantitativeTests(
-    connectionDocker, sContainerId, sDirectory,
-    listdictReports, fTolerance, bForceOverwrite=False,
-    sClassification="deterministic",
-):
-    """Build standards from reports and write quantitative test files."""
-    dictStandards = _fdictBuildQuantitativeStandards(
-        listdictReports, fTolerance, sClassification,
-    )
-    return _fdictWriteQuantitativeFiles(
-        connectionDocker, sContainerId, sDirectory,
-        dictStandards, bForceOverwrite,
-    )
-
-
-def _fdictWriteIntegrityFiles(
-    connectionDocker, sContainerId, sDirectory,
-    dictStandards, bForceOverwrite=False,
-):
-    """Write integrity standards JSON and test file, return dict."""
-    sStandardsPath = fsIntegrityStandardsPath(sDirectory)
-    dictStandards.setdefault("sGenerator", S_GENERATOR_DETERMINISTIC)
-    sJsonContent = json.dumps(dictStandards, indent=4)
-    connectionDocker.fnWriteFile(
-        sContainerId, sStandardsPath,
-        sJsonContent.encode("utf-8"),
-    )
-    sTestCode = fsBuildIntegrityTestCode()
-    sTestPath = fsIntegrityTestPath(sDirectory)
-    if not bForceOverwrite and not _fbFileMatchesTemplate(
-        connectionDocker, sContainerId, sTestPath, sTestCode,
-    ):
-        return {"bNeedsOverwriteConfirm": True, "sFilePath": sTestPath}
-    connectionDocker.fnWriteFile(
-        sContainerId, sTestPath, sTestCode.encode("utf-8"),
-    )
-    sFilename = posixpath.basename(sTestPath)
-    return {
-        "sFilePath": sTestPath,
-        "sContent": sTestCode,
-        "sStandardsPath": sStandardsPath,
-        "sStandardsContent": sJsonContent,
-        "saCommands": [f"python3 -m pytest tests/{sFilename}"],
-    }
-
-
-def _fdictWriteIntegrityTests(
-    connectionDocker, sContainerId, sDirectory,
-    listdictReports, bForceOverwrite=False,
-):
-    """Build standards and write integrity test files."""
-    dictStandards = _fdictBuildIntegrityStandards(listdictReports)
-    return _fdictWriteIntegrityFiles(
-        connectionDocker, sContainerId, sDirectory,
-        dictStandards, bForceOverwrite,
-    )
-
-
-def _fdictWriteQualitativeFiles(
-    connectionDocker, sContainerId, sDirectory,
-    dictStandards, bForceOverwrite=False,
-):
-    """Write qualitative standards JSON and test file, return dict."""
-    sStandardsPath = fsQualitativeStandardsPath(sDirectory)
-    dictStandards.setdefault("sGenerator", S_GENERATOR_DETERMINISTIC)
-    sJsonContent = json.dumps(dictStandards, indent=4)
-    connectionDocker.fnWriteFile(
-        sContainerId, sStandardsPath,
-        sJsonContent.encode("utf-8"),
-    )
-    sTestCode = fsBuildQualitativeTestCode()
-    sTestPath = fsQualitativeTestPath(sDirectory)
-    if not bForceOverwrite and not _fbFileMatchesTemplate(
-        connectionDocker, sContainerId, sTestPath, sTestCode,
-    ):
-        return {"bNeedsOverwriteConfirm": True, "sFilePath": sTestPath}
-    connectionDocker.fnWriteFile(
-        sContainerId, sTestPath, sTestCode.encode("utf-8"),
-    )
-    sFilename = posixpath.basename(sTestPath)
-    return {
-        "sFilePath": sTestPath,
-        "sContent": sTestCode,
-        "sStandardsPath": sStandardsPath,
-        "sStandardsContent": sJsonContent,
-        "saCommands": [f"python3 -m pytest tests/{sFilename}"],
-    }
-
-
-def _fdictWriteQualitativeTests(
-    connectionDocker, sContainerId, sDirectory,
-    listdictReports, bForceOverwrite=False,
-):
-    """Build standards and write qualitative test files."""
-    dictStandards = _fdictBuildQualitativeStandards(listdictReports)
-    return _fdictWriteQualitativeFiles(
-        connectionDocker, sContainerId, sDirectory,
-        dictStandards, bForceOverwrite,
-    )
 
 
 # ---------------------------------------------------------------------------

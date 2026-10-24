@@ -106,8 +106,11 @@ Project entry rules:
 - EVERY output file declared in `saOutputDataFiles` or `saPlotFiles` — no
   untracked outputs.
 - `saTestCommands` should include at least a basic sanity check.
-- `bPlotOnly: true` only when the step has no data commands;
-  `bInteractive: true` only for human-judgment steps.
+- `bPlotOnly` defaults to `false`. Set it `true` only when the step
+  has no data commands, because a plots-only step skips its data
+  commands on every run. `bInteractive: true` only for human-judgment
+  steps. Send `bNoInputData: true` when the step reads no raw input
+  data.
 - Add the entry via `vaibify-do create-step` (see
   `vaibify-do --describe create-step` for the schema) so it passes
   schema validation and atomic save.

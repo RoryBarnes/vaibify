@@ -52,6 +52,10 @@ from ..pipelineServer import (
     _fsSanitizeServerError,
 )
 from ..testGenerator import T_GENERATED_TEST_CATEGORIES
+from .. import researcherNotices
+from .. import standardsFiles
+from ..pipelineUtils import MissingStepOutputsError, fsLabelFromStepIndex
+from ..serverMiddleware import fbRequestRidesAgentLane
 from ..testStatusManager import (
     _LIST_TEST_CATEGORIES,
     _fdictBuildTestResponse,
@@ -135,18 +139,29 @@ async def _fdictRunTestGeneration(
         sContainerId, dictCtx.get("sTerminalUser")
     )
 
+    def fdictGenerateOrRefuse():
+        try:
+            return fdictGenerate(
+                dictCtx["docker"], sContainerId, iStepIndex,
+                dictWorkflow, dictVars,
+                request.bUseApi, sApiKey,
+                sUser=sUser,
+                bDeterministic=request.bDeterministic,
+                bForceOverwrite=request.bForceOverwrite,
+            )
+        except MissingStepOutputsError as error:
+            # Decided before anything is written, so it is carried
+            # back as a refusal rather than poisoning the record.
+            _fnRaiseMissingOutputsRefusal(
+                dictCtx, sContainerId, dictWorkflow, iStepIndex,
+                error.listMissingFiles, requestHttp,
+            )
+
     def fdictGenerateTheTests(supervisor=None):
         del supervisor
         try:
             return fdictCarryARefusalBackInsteadOfRaising(
-                lambda: fdictGenerate(
-                    dictCtx["docker"], sContainerId, iStepIndex,
-                    dictWorkflow, dictVars,
-                    request.bUseApi, sApiKey,
-                    sUser=sUser,
-                    bDeterministic=request.bDeterministic,
-                    bForceOverwrite=request.bForceOverwrite,
-                ),
+                fdictGenerateOrRefuse,
             )
         except Exception as error:
             fnReRaiseControlPlaneRefusal(error)
@@ -183,11 +198,13 @@ def _fnApplyGeneratedTests(
     from ..workflowMigrations import fnMigrateAbsoluteTestPaths
     dictStep = dictWorkflow["listSteps"][iStepIndex]
     dictTests = dictStep.setdefault("dictTests", {})
-    for sCategory in (
-        "dictIntegrity", "dictQualitative", "dictQuantitative"
-    ):
+    dictVerification = dictStep.setdefault("dictVerification", {})
+    for sCategory, sVerifKey in _LIST_TEST_CATEGORIES:
         if sCategory in dictResult:
             dictTests[sCategory] = dictResult[sCategory]
+            _fnSetAxisForGeneratedCategory(
+                dictVerification, sVerifKey, dictResult[sCategory],
+            )
     fnMigrateAbsoluteTestPaths(
         dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
     )
@@ -198,9 +215,139 @@ def _fnApplyGeneratedTests(
     )
 
 
-def _fdictBuildGenerateResponse(dictResult):
-    """Build the HTTP response dict for test generation."""
+def _fnSetAxisForGeneratedCategory(dictVerification, sVerifKey, dictCategory):
+    """Say what a freshly generated category can claim, before any run.
+
+    N/A is "unnecessary" (grey, nothing to check); a category the
+    generator could not derive is "error", never the green N/A an empty
+    command list would otherwise derive to; a category that was N/A and
+    now has checks starts again at "untested".
+    """
+    if dictCategory.get("sNotApplicableReason"):
+        dictVerification[sVerifKey] = "unnecessary"
+    elif dictCategory.get("sError"):
+        dictVerification[sVerifKey] = "error"
+    elif dictVerification.get(sVerifKey) == "unnecessary":
+        dictVerification[sVerifKey] = "untested"
+
+
+S_REFUSAL_OUTPUTS_MISSING = "outputs-missing"
+I_MISSING_FILES_NAMED = 5
+
+
+def _fsNameTheMissingFiles(listMissing):
+    """Return the first few missing names, and how many more there are."""
+    listNamed = [sFile[:120] for sFile in listMissing[:I_MISSING_FILES_NAMED]]
+    sNames = ", ".join(listNamed)
+    iMore = len(listMissing) - len(listNamed)
+    return sNames + (f", and {iMore} more" if iMore > 0 else "")
+
+
+def _fnRaiseMissingOutputsRefusal(
+    dictCtx, sContainerId, dictWorkflow, iStepIndex, listMissing,
+    requestHttp,
+):
+    """Raise the 409 for generating tests before the step's outputs exist.
+
+    The researcher sees the refusal in the dashboard even when an agent
+    asked: the agent's request queues an error notice naming the step
+    and the files. Both texts are composed here; the file names are the
+    workflow's own declarations, shown through the escaping toast.
+    """
+    sLabel = fsLabelFromStepIndex(dictWorkflow, iStepIndex)
+    sFiles = _fsNameTheMissingFiles(listMissing)
+    if fbRequestRidesAgentLane(requestHttp):
+        researcherNotices.fnQueueResearcherNotice(
+            dictCtx, sContainerId, researcherNotices.S_NOTICE_LEVEL_ERROR,
+            f"An in-container agent asked for tests for step {sLabel}, "
+            f"but its declared outputs do not exist yet: {sFiles}. "
+            "Nothing was written.",
+        )
+    raise HTTPException(409, {
+        "sRefusal": S_REFUSAL_OUTPUTS_MISSING,
+        "listMissingFiles": list(listMissing),
+        "sMessage": (
+            f"Tests were not generated for step {sLabel}: its declared "
+            f"outputs do not exist yet ({sFiles}). Run the step first, "
+            "then generate its tests."
+        ),
+    })
+
+
+async def _fnRefuseGenerationWithoutOutputs(
+    dictCtx, sContainerId, dictWorkflow, iStepIndex, requestHttp,
+):
+    """Refuse before any carrier opens when a declared output is missing.
+
+    A typed read, so no admission is needed and no journal record is
+    opened: nothing is written, the tests directory included, and no
+    model is asked.
+    """
+    from ..testGenerator import flistMissingStepOutputs
+    listMissing = await asyncio.to_thread(
+        flistMissingStepOutputs, dictCtx["docker"], sContainerId,
+        dictWorkflow, iStepIndex,
+    )
+    if listMissing:
+        _fnRaiseMissingOutputsRefusal(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex, listMissing,
+            requestHttp,
+        )
+
+
+def _fnRemoveFilesOfInapplicableCategories(
+    dictCtx, sContainerId, dictResult, requestHttp,
+):
+    """Remove the unmodified files of categories that became N/A.
+
+    The generator proved each file unmodified before naming it; the
+    removal runs under the same mode-(a) helper admission as the
+    tests-directory removal. ``listFilesToRemove`` never reaches the
+    workflow document.
+    """
+    listPaths = []
+    for sCategory, _sVerifKey in _LIST_TEST_CATEGORIES:
+        dictCategory = dictResult.get(sCategory)
+        if isinstance(dictCategory, dict):
+            listPaths.extend(dictCategory.pop("listFilesToRemove", []))
+    if not listPaths:
+        return
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Removing tests that no longer apply",
+    )
+    sCommand = "rm -f -- " + " ".join(
+        fsShellQuote(sPath) for sPath in listPaths
+    )
+    commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "remove-inapplicable-tests",
+        lambda: dictCtx["docker"].ftResultExecuteCommand(
+            sContainerId, sCommand,
+        ),
+        {
+            "iHolderPid": os.getpid(),
+            "iHolderProcessGroup": os.getpgrp(),
+        },
+    )
+
+
+def _fdictBuildGenerateResponse(dictResult, dictWorkflow, iStepIndex):
+    """Build the HTTP response dict for test generation.
+
+    Carries the step as the hub saved it, so the dashboard renders the
+    hub's verdict on each category -- N/A, error or untested -- rather
+    than deriving and saving its own over it.
+    """
+    from ..pipelineUtils import fdictStepWithLabel
     return {
+        "dictStep": fdictStepWithLabel(dictWorkflow, iStepIndex),
+        "sWorkflowFingerprint": (
+            workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+        ),
+        "sExactSourceFingerprint": dictWorkflow.get(
+            "_sSourceFingerprint", "",
+        ),
         "bGenerated": True,
         "dictIntegrity": dictResult.get("dictIntegrity", {}),
         "dictQualitative": dictResult.get(
@@ -279,13 +426,19 @@ def _fdictRunAllTestCategories(
     dictCategoryResults = {}
     dictGroups = fdictResolveTestCommandGroups(dictStep)
     for sCategory, listCommands in dictGroups.items():
-        dictResult = _fdictRunOneTestCategory(
-            dictCtx, sContainerId, sDir, listCommands, sWorkflowSlug,
-            sCategory,
+        sInvalid = fsInvalidStandardsReason(
+            dictCtx["docker"], sContainerId, sDir, sCategory,
+        )
+        dictResult = _fdictStandardsErrorResult(sInvalid) if sInvalid else (
+            _fdictRunOneTestCategory(
+                dictCtx, sContainerId, sDir, listCommands, sWorkflowSlug,
+                sCategory,
+            )
         )
         iExitCode = 0 if dictResult["bPassed"] else 1
         if sCategory in dictVerificationKeys:
             dictVerification[dictVerificationKeys[sCategory]] = (
+                "error" if sInvalid else
                 truthDerivation.fsResolveUnitTestFromExitCode(iExitCode))
         sCatOutput = dictResult.get("sOutput", "")
         if sCatOutput and sCategory in dictTests:
@@ -297,6 +450,43 @@ def _fdictRunAllTestCategories(
             dictWorkflowLive, dictStep, "dictVerification",
         )
     return dictCategoryResults
+
+
+def fsInvalidStandardsReason(
+    connectionDocker, sContainerId, sStepDirectory, sCategory,
+):
+    """Return why a category's standards file is not valid JSON, or "".
+
+    Read before the category runs, because text reaches a standards
+    file verbatim through the agent's shell as well as through the
+    hub's own write routes: a malformed one would otherwise surface as
+    a test error naming no file. An absent file is the test's own
+    business, and says nothing here.
+    """
+    dictPathByCategory = dict(zip(
+        ("dictIntegrity", "dictQualitative", "dictQuantitative"),
+        standardsFiles.flistStepStandardsPaths(sStepDirectory),
+    ))
+    sPath = dictPathByCategory.get(sCategory, "")
+    if not sPath:
+        return ""
+    try:
+        baContent = connectionDocker.fbaFetchFile(sContainerId, sPath)
+    except (FileNotFoundError, OSError):
+        return ""
+    if not isinstance(baContent, bytes):
+        return ""
+    return standardsFiles.fsDescribeInvalidStandardsText(
+        baContent.decode("utf-8", errors="replace"), sPath,
+    )
+
+
+def _fdictStandardsErrorResult(sReason):
+    """Return the run result for a category refused by its standards file."""
+    return {
+        "bPassed": False, "sOutput": sReason, "sStdout": "",
+        "sStderr": sReason, "iExitCode": 1,
+    }
 
 
 def _fdictRunOneTestCategory(
@@ -578,6 +768,9 @@ def _fnRegisterDeterministicGenerate(app, dictCtx):
             dictCtx["workflows"], sContainerId
         )
         _fnRequireStepIndexBeforeGenerating(dictWorkflow, iStepIndex)
+        await _fnRefuseGenerationWithoutOutputs(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex, requestHttp,
+        )
 
         def fdictGenerateTheCategories(
             connectionDocker, sCid, iStep, dictFlow, dictVars,
@@ -602,11 +795,16 @@ def _fnRegisterDeterministicGenerate(app, dictCtx):
                     "listModifiedFiles", []
                 ),
             }
+        _fnRemoveFilesOfInapplicableCategories(
+            dictCtx, sContainerId, dictResult, requestHttp,
+        )
         _fnApplyGeneratedTests(
             dictCtx, sContainerId, dictWorkflow,
             iStepIndex, dictResult, requestHttp,
         )
-        return _fdictBuildGenerateResponse(dictResult)
+        return _fdictBuildGenerateResponse(
+            dictResult, dictWorkflow, iStepIndex,
+        )
 
 
 def _fnRegisterTestGenerate(app, dictCtx):
@@ -633,6 +831,9 @@ def _fnRegisterTestGenerate(app, dictCtx):
             dictCtx["workflows"], sContainerId
         )
         _fnRequireStepIndexBeforeGenerating(dictWorkflow, iStepIndex)
+        await _fnRefuseGenerationWithoutOutputs(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex, requestHttp,
+        )
         sResolvedApiKey = (
             _fsRequireConfiguredProviderKey() if request.bUseApi else None
         )
@@ -648,11 +849,16 @@ def _fnRegisterTestGenerate(app, dictCtx):
                     "listModifiedFiles", []
                 ),
             }
+        _fnRemoveFilesOfInapplicableCategories(
+            dictCtx, sContainerId, dictResult, requestHttp,
+        )
         _fnApplyGeneratedTests(
             dictCtx, sContainerId, dictWorkflow,
             iStepIndex, dictResult, requestHttp,
         )
-        return _fdictBuildGenerateResponse(dictResult)
+        return _fdictBuildGenerateResponse(
+            dictResult, dictWorkflow, iStepIndex,
+        )
 
     @app.get("/api/provider-key/{sProvider}")
     async def fdictReportProviderKeyStatus(
@@ -952,6 +1158,9 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         sFilePath = _fsResolveTestFilePath(
             request.sFilePath, sProjectRepoPath, sProjectRoot,
         )
+        standardsFiles.fnRefuseInvalidStandardsWrite(
+            sFilePath, request.sContent,
+        )
 
         def ftWriteThenRunTheTest():
             _fnPersistTestEdit(
@@ -1063,7 +1272,17 @@ def _fnRegisterTestRun(app, dictCtx):
             dictCtx, sContainerId, iStepIndex, sCategory,
         )
 
+        sStepDirectory = _fsAbsoluteStepWorkdir(
+            dictStep, dictWorkflow.get("sProjectRepoPath", ""),
+        )
+
         def ftRunTheCategory():
+            sInvalid = fsInvalidStandardsReason(
+                dictCtx["docker"], sContainerId, sStepDirectory,
+                _DICT_TEST_CATEGORY_KEYS[sCategory][0],
+            )
+            if sInvalid:
+                return None, False, sInvalid
             return _ftRunCategoryCommands(
                 dictCtx["docker"], sContainerId, dictStep,
                 dictWorkflow, listCmds, sCategory,
@@ -1074,9 +1293,14 @@ def _fnRegisterTestRun(app, dictCtx):
             "run-test-category", ftRunTheCategory,
         )
         tExecResult, bPassed, sOutput = tRun
-        _fnRecordCategoryOutcome(
-            dictStep, dictCat, sVerifKey, bPassed, sOutput,
-        )
+        if tExecResult is None:
+            dictStep.setdefault("dictVerification", {})[sVerifKey] = "error"
+            dictCat["sLastOutput"] = sOutput
+            _fnUpdateAggregateTestState(dictStep)
+        else:
+            _fnRecordCategoryOutcome(
+                dictStep, dictCat, sVerifKey, bPassed, sOutput,
+            )
         workflowManager.fnStampFieldProducer(
             dictWorkflow, dictStep, "dictVerification",
         )
@@ -1088,6 +1312,8 @@ def _fnRegisterTestRun(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow, iStepIndex,
             iLevelBefore, request,
         )
+        if tExecResult is None:
+            return _fdictStandardsErrorResult(sOutput)
         return _fdictBuildRunCategoryResponse(bPassed, tExecResult)
 
 

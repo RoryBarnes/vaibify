@@ -59,7 +59,8 @@ from .rerunEvidence import (  # noqa: F401
 from .pipelineUtils import (  # noqa: F401
     fsExplainExitCode,
     fdictMapOutputTokenStems,
-    fsShellQuote, OutputAnalysisError,
+    fsShellQuote, OutputAnalysisError, UnreadableModelReplyError,
+    MissingStepOutputsError,
     fsBuildUniqueTemporaryPath,
     fbStepIsInteractive, fbStepHasUnseededRandomnessWarning,
     fsLabelFromStepIndex,

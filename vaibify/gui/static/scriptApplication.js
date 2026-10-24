@@ -101,6 +101,7 @@ const VaibifyApp = (function () {
             iL3BlockerCount: 0,
             iCachedProofLevel: null,
             iWorkflowEpoch: -1,
+            iLastNoticeId: -1,
             sWorkflowFingerprint: "",
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
@@ -822,7 +823,7 @@ const VaibifyApp = (function () {
         VaibifyPolling.fnStopDiscoveryPolling();
         _fnRecordViewerLeaseFromConnect(sId, data);
         _dictSessionState.sContainerId = sId;
-        VaibifyFigureViewer.fnBindViewersToProject(sId, data.sWorkflowPath);
+        _fnBindViewersAndGraphToProject(sId, data.sWorkflowPath);
         _dictWorkflowState.dictWorkflow = data.dictWorkflow;
         _dictWorkflowState.sWorkflowPath = data.sWorkflowPath;
         _dictWorkflowState.iWorkflowEpoch =
@@ -830,6 +831,7 @@ const VaibifyApp = (function () {
                 data.iWorkflowEpoch : -1;
         _dictWorkflowState.sWorkflowFingerprint =
             data.sWorkflowFingerprint || "";
+        _dictWorkflowState.iLastNoticeId = -1;
         /* The freshness acknowledgment: what this dashboard has
            APPLIED, advanced only at apply points and on this
            client's own save responses — never merely displayed. */
@@ -996,7 +998,7 @@ const VaibifyApp = (function () {
     }
 
     function _fnApplyOutOfBandWorkflowReload(
-        dictWorkflowNew, iWorkflowEpoch
+        dictWorkflowNew, iWorkflowEpoch, sReloadOrigin
     ) {
         var iPriorSelected = _dictUiState.iSelectedStepIndex;
         var dictPriorExpanded = _fdictSnapshotExpansionSets();
@@ -1017,8 +1019,27 @@ const VaibifyApp = (function () {
         _dictWorkflowState.sAcknowledgedSourceFingerprint =
             dictWorkflowNew._sSourceFingerprint ||
             _dictWorkflowState.sAcknowledgedSourceFingerprint;
-        fnShowToast(
-            "Project definition reloaded from disk", "info");
+        /* An agent's change arrives with its own notice naming what
+           it did; "reloaded from disk" is for edits made on disk. */
+        if (sReloadOrigin !== "agent") {
+            fnShowToast(
+                "Project definition reloaded from disk", "info");
+        }
+    }
+
+    function _fnShowResearcherNotices(dictStatus) {
+        /* The hub repeats a notice until this tab acknowledges its id
+           on the next poll, so each is shown once and none is lost to
+           a dropped response. */
+        (dictStatus.listResearcherNotices || []).forEach(
+            function (dictNotice) {
+                if (dictNotice.iNoticeId <=
+                        _dictWorkflowState.iLastNoticeId) return;
+                fnShowToast(dictNotice.sMessage, dictNotice.sLevel);
+            });
+        if (typeof dictStatus.iNewestNoticeId === "number") {
+            _dictWorkflowState.iLastNoticeId = dictStatus.iNewestNoticeId;
+        }
     }
 
     function _fdictSnapshotExpansionSets() {
@@ -1109,7 +1130,7 @@ const VaibifyApp = (function () {
             _fnRecordViewerLeaseFromConnect(sId, dictConnect);
             _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;
-            VaibifyFigureViewer.fnBindViewersToProject(sId, "");
+            _fnBindViewersAndGraphToProject(sId, "");
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
             _fnRenderActiveResource(dictConnect.sProjectMode);
             fnApplyProjectMode(dictConnect.sProjectMode);
@@ -6518,9 +6539,13 @@ const VaibifyApp = (function () {
 
     function fnRecolorVisibleDagEdges() {
         /* The diagram is an <img>, so its edges cannot be recolored in
-           place; the viewer repaints from the text it was given. */
-        if (!_sDagSvgText || !_elDagViewport ||
-                !document.body.contains(_elDagViewport)) return;
+           place; the viewer repaints from the text it was given -- but
+           only while the graph still holds that viewer. The viewports
+           are permanent elements whose contents the figure viewer
+           swaps, so "the viewport is in the page" was always true and
+           every step-list render painted the graph back over whatever
+           the researcher had opened there since. */
+        if (!_sDagSvgText || !_fbDagOwnsItsViewport()) return;
         _fnPaintDagInViewport(_elDagViewport, _sDagSvgText, _dDagScale);
     }
 
@@ -6808,14 +6833,28 @@ const VaibifyApp = (function () {
 
     async function fnShowDag() {
         if (!_dictSessionState.sContainerId) return;
+        /* The graph belongs to the project that asked for it. A reply
+           that lands after the researcher switched projects describes
+           another project's steps, so it is dropped, error or not. */
+        var sProjectKey = _fsDagProjectKey();
         fnShowToast("Generating dependency graph...", "success");
         try {
             var sSvgText = await VaibifyApi.fsGetText(
                 "/api/workflow/" + _dictSessionState.sContainerId + "/dag");
+            if (_fsDagProjectKey() !== sProjectKey) return;
+            _sDagProjectKey = sProjectKey;
             _fnRenderDagInViewer(sSvgText);
         } catch (error) {
+            if (_fsDagProjectKey() !== sProjectKey) return;
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
+    }
+
+    function _fsDagProjectKey() {
+        return JSON.stringify([
+            _dictSessionState.sContainerId || "",
+            _dictWorkflowState.sWorkflowPath || "",
+        ]);
     }
 
     function _fnRenderDagInViewer(sSvgText) {
@@ -6856,21 +6895,51 @@ const VaibifyApp = (function () {
     }
 
     var _elDagViewport = null;
+    var _elDagRoot = null;
     var _sDagSvgText = "";
     var _dDagScale = 1.0;
+    var _sDagProjectKey = "";
+
+    function _fbDagOwnsItsViewport() {
+        /* The painted graph's own element, still inside the viewer it
+           was painted into, is the only proof that viewer still shows
+           the graph. */
+        return !!(_elDagViewport && _elDagRoot &&
+            _elDagViewport.contains(_elDagRoot));
+    }
+
+    function _fnForgetDependencyGraph() {
+        _elDagViewport = null;
+        _elDagRoot = null;
+        _sDagSvgText = "";
+        _dDagScale = 1.0;
+        _sDagProjectKey = "";
+    }
+
+    function _fnBindViewersAndGraphToProject(sContainerId, sWorkflowPath) {
+        /* The viewers keep their contents when the researcher returns
+           to the same project, and so does the graph; another project
+           starts with neither. The figure viewer cannot reach the
+           graph's state, so the comparison is made here. */
+        var sProjectKey = JSON.stringify(
+            [sContainerId || "", sWorkflowPath || ""]);
+        if (_sDagProjectKey && _sDagProjectKey !== sProjectKey) {
+            _fnForgetDependencyGraph();
+        }
+        VaibifyFigureViewer.fnBindViewersToProject(
+            sContainerId, sWorkflowPath);
+    }
 
     function _fnRenderDagWithZoom(sSvgText, dScale) {
-        if (_elDagViewport &&
-                document.body.contains(_elDagViewport)) {
+        if (_fbDagOwnsItsViewport()) {
             _fnPaintDagInViewport(_elDagViewport, sSvgText, dScale);
             return;
         }
         VaibifyFigureViewer.fnClaimNextViewerForReplacement(
             "pipeline DAG", function (sViewerLetter) {
-                _elDagViewport = document.getElementById(
-                    "viewport" + sViewerLetter);
                 _fnPaintDagInViewport(
-                    _elDagViewport, sSvgText, dScale);
+                    document.getElementById("viewport" + sViewerLetter),
+                    sSvgText, dScale);
             });
     }
 
@@ -6905,6 +6974,8 @@ const VaibifyApp = (function () {
         var elDag = _felBuildDagImage(sSvgText, dScale);
         if (elDag) elContainer.appendChild(elDag);
         elViewport.appendChild(elContainer);
+        _elDagViewport = elViewport;
+        _elDagRoot = elContainer;
     }
 
     function _felBuildDagImage(sSvgText, dScale) {
@@ -7034,6 +7105,7 @@ const VaibifyApp = (function () {
             return;
         }
         _fnRenderOtherProjectRuns(dictStatus.dictOtherProjectRuns);
+        _fnShowResearcherNotices(dictStatus);
         if (dictStatus.sWorkflowReloadError) {
             fnShowToast(
                 "project.json error: " +
@@ -7043,7 +7115,8 @@ const VaibifyApp = (function () {
         }
         if (dictStatus.bWorkflowReloaded && dictStatus.dictWorkflow) {
             _fnApplyOutOfBandWorkflowReload(
-                dictStatus.dictWorkflow, dictStatus.iWorkflowEpoch);
+                dictStatus.dictWorkflow, dictStatus.iWorkflowEpoch,
+                dictStatus.sWorkflowReloadOrigin);
         } else if (!dictStatus.bWorkflowReloaded &&
             typeof dictStatus.iWorkflowEpoch === "number") {
             _dictWorkflowState.iWorkflowEpoch =
@@ -7853,6 +7926,21 @@ const VaibifyApp = (function () {
                     sFingerprint;
             }
         },
+        fnAdoptSavedWorkflowFingerprints: function (
+            sWorkflowFingerprint, sExactSourceFingerprint,
+        ) {
+            /* A route that saved the workflow and handed the page the
+               result: both baselines move to what the hub now holds. */
+            if (typeof sWorkflowFingerprint === "string" &&
+                    sWorkflowFingerprint) {
+                _dictWorkflowState.sWorkflowFingerprint =
+                    sWorkflowFingerprint;
+            }
+            if (sExactSourceFingerprint) {
+                _dictWorkflowState.sAcknowledgedSourceFingerprint =
+                    sExactSourceFingerprint;
+            }
+        },
         fsGetAcknowledgedSourceFingerprint: function () {
             return _dictWorkflowState
                 .sAcknowledgedSourceFingerprint || "";
@@ -7891,6 +7979,9 @@ const VaibifyApp = (function () {
         fnRefreshWorkflowData: fnRefreshWorkflowData,
         fiGetWorkflowEpoch: function () {
             return _dictWorkflowState.iWorkflowEpoch;
+        },
+        fiGetLastNoticeId: function () {
+            return _dictWorkflowState.iLastNoticeId;
         },
         fnEnterNoWorkflow: fnEnterNoWorkflow,
         fnSaveStepUpdate: fnSaveStepUpdate,
