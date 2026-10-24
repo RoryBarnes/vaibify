@@ -36012,4 +36012,34 @@ LIST_FALSIFICATIONS = [
         old='        if not matchBrace:\n            raise UnreadableModelReplyError(',
         new='        if not matchBrace:\n            return {"listStandards": []}\n            raise UnreadableModelReplyError(',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAMissingOutputRefusalOpensNoCarrier'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # the route leaves the refusal to the generator, inside the carrier
+        old='    if listMissing:\n        _fnRaiseMissingOutputsRefusal(\n            dictCtx, sContainerId, dictWorkflow, iStepIndex, listMissing,\n',
+        new='    if False:\n        _fnRaiseMissingOutputsRefusal(\n            dictCtx, sContainerId, dictWorkflow, iStepIndex, listMissing,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAnOutputTheAnalysisCannotFindIsRefused'
+        ),
+        source='vaibify/gui/testGenerator.py',
+        # a report that says the file is gone is written from anyway
+        old='        if dictReport.get("sError") == "file not found"\n',
+        new='        if False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAnOutputThatVanishesUnderTheRouteIsRefusedWithoutQuarantine'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # the generator's refusal escapes the worker and poisons the record
+        old='        except MissingStepOutputsError as error:\n',
+        new='        except ZeroDivisionError as error:\n',
+    ),
 ]

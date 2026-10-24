@@ -241,9 +241,57 @@ def testAResearchersRefusalQueuesNoNotice():
         client.app.state.dictRouteContext, S_CONTAINER_ID, 0) == []
 
 
+@pytest.mark.falsification
+def testAMissingOutputRefusalOpensNoCarrier(monkeypatch):
+    """Kills: leaving the refusal to the generator, inside the carrier.
+
+    The route answers from a typed read before any drain is taken, so a
+    step that has not run never holds the container while it is refused.
+    """
+    from vaibify.gui import commitCarrier
+    listCarrierCalls = []
+    fnReal = commitCarrier.fdictRunLockHeldMutation
+
+    async def fdictRecordTheCarrier(*args, **kwargs):
+        listCarrierCalls.append(args)
+        return await fnReal(*args, **kwargs)
+
+    client, _ = _tConnectGatedClient(
+        DockerDoubleForGeneration(bOutputExists=False))
+    monkeypatch.setattr(
+        commitCarrier, "fdictRunLockHeldMutation", fdictRecordTheCarrier)
+    response = _fresponseGenerate(client, bAgentRoute=False)
+    assert response.status_code == 409, response.text
+    assert listCarrierCalls == []
+
+
+@pytest.mark.falsification
+def testAnOutputTheAnalysisCannotFindIsRefused(listModelCalls):
+    """The probe saw the file; the analysis did not. Still a refusal.
+
+    Kills: writing standards from a report that says the file is gone.
+    """
+    client, connectionDocker = _tConnectGatedClient(DockerDoubleForGeneration(
+        dictReport={
+            "sFileName": S_ARRAY_OUTPUT, "bExists": False,
+            "bLoadable": False, "sError": "file not found",
+            "listColumnNames": [], "listJsonTopKeys": [],
+            "listBenchmarks": [],
+        }))
+    response = _fresponseGenerate(client, bAgentRoute=False)
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["listMissingFiles"] == [S_ARRAY_OUTPUT]
+    assert _flistWritesUnder(connectionDocker, S_TESTS + "/") == []
+    assert listModelCalls == []
+
+
+@pytest.mark.falsification
 def testAnOutputThatVanishesUnderTheRouteIsRefusedWithoutQuarantine(
         monkeypatch, listModelCalls):
     """The generator's own check, inside the carrier, carries its refusal.
+
+    Kills: letting the generator's refusal escape the worker, which
+    settles it through the failure path and quarantines the container.
 
     The route's probe is made to miss the race; the generator, already
     holding the drain, finds the output gone. Its refusal must settle
