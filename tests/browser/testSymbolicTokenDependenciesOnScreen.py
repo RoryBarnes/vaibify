@@ -19,14 +19,15 @@ from tests.browser.conftest import (
 
 pytestmark = pytest.mark.browser
 
+# The dependency memo is cleared through the page's own invalidator, in
+# one synchronous call. This used to clear it by nulling listSteps
+# across two animation frames, and a background poll answered inside
+# that window iterated the null list and threw: an intermittent page
+# error on webkit and firefox (two PRs, 2026-10-24) that said nothing
+# about tokens.
 _S_CLEAR_THE_MEMO = """
-    const dictWorkflow = VaibifyApp.fdictGetWorkflow();
-    const listSteps = dictWorkflow.listSteps;
-    dictWorkflow.listSteps = null;
-    VaibifyApp.fnRenderStepList();
-    await new Promise((fnResolve) => requestAnimationFrame(
-        () => requestAnimationFrame(fnResolve)));
-    dictWorkflow.listSteps = listSteps;
+    const listSteps = VaibifyApp.fdictGetWorkflow().listSteps;
+    VaibifyApp._fnInvalidateAllRenderCaches();
 """
 
 _S_DECLARE_AND_READ = """async (sToken) => {""" + _S_CLEAR_THE_MEMO + """
