@@ -74,6 +74,7 @@ __all__ = [
 ]
 
 from . import actionCatalog
+from . import agentClientFreshness
 from . import agentProjectScope
 from . import agentSessionBridge
 from . import browserSession
@@ -2126,7 +2127,9 @@ async def fnHandlePipelineWs(
     tells the client which workflow this socket serves and its current
     exact-source fingerprint, so a caller with no other channel — the
     in-container ``vaibify-do``, whose token names no workflow — can
-    echo an acknowledgment in its run frames.
+    echo an acknowledgment in its run frames. A stale in-container
+    client is warned INSIDE that event, because the client requires it
+    to be the first frame.
     """
     await websocket.accept()
     dictBinding = await _fdictBindSocketToItsProject(
@@ -2136,7 +2139,7 @@ async def fnHandlePipelineWs(
         return
     dictWorkflow = dictBinding["fdictGetWorkflow"]()
     sWorkflowPath = dictBinding["dictPaths"][sContainerId]
-    await websocket.send_json({
+    dictBoundEvent = {
         "sType": "workflowBound",
         "sWorkflowPath": sWorkflowPath,
         "sProjectDirectory": agentProjectScope.fsProjectDirectoryOfWorkflow(
@@ -2146,7 +2149,13 @@ async def fnHandlePipelineWs(
         "sExactSourceFingerprint": dictWorkflow.get(
             "_sSourceFingerprint", "",
         ),
-    })
+    }
+    sClientWarning = agentClientFreshness.fsStaleClientWarningForSocket(
+        websocket,
+    )
+    if sClientWarning:
+        dictBoundEvent["sClientWarning"] = sClientWarning
+    await websocket.send_json(dictBoundEvent)
     try:
         await fnPipelineMessageLoop(
             websocket, dictCtx["docker"], sContainerId,

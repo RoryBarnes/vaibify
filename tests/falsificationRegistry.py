@@ -35842,4 +35842,30 @@ LIST_FALSIFICATIONS = [
         old='    bOnly = bool(listMismatches) and len(listExplained) == len(listMismatches)\n',
         new='    bOnly = bool(listExplained)\n',
     ),
+    # --- 2026-10-23: vaibify-do loses a workflowBound frame that
+    # arrives in the same read as the 101 reply, and a container's
+    # stale vaibify-do is reported ---
+    Falsification(
+        nodeid=(
+            'tests/testVaibifyDoCli.py::'
+            'test_a_workflow_bound_frame_sent_with_the_101_is_not_lost'
+        ),
+        source='vaibify/containerImage/vaibifyDo.py',
+        # the handshake discards what followed the header terminator
+        old='    return baLeftover\n',
+        new='    return b""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVaibifyDoCli.py::'
+            'test_a_client_that_sends_no_digest_is_warned'
+        ),
+        source='vaibify/gui/agentClientFreshness.py',
+        # a client that sends no digest is treated as current
+        old='    return sPresentedDigest != sShippedDigest\n',
+        new=(
+            '    return bool(sPresentedDigest) and '
+            'sPresentedDigest != sShippedDigest\n'
+        ),
+    ),
 ]

@@ -262,7 +262,7 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # pipelineServer's bare `loop` became `loopRunning`.
 # 320 -> 319 (2026-10-04): the whole-second poll mtime coercion was replaced
 # by the snapshot's own stat key, and took its unprefixed parameter with it.
-I_LEGACY_VARIABLE_BUDGET = 319
+I_LEGACY_VARIABLE_BUDGET = 317
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,
@@ -318,6 +318,8 @@ cli-verb	vaibify/cli/main.py::setup
 cli-verb	vaibify/cli/main.py::stop
 cli-verb	vaibify/cli/main.py::verify
 interface-method	vaibify/cli/main.py::_DefaultContainerIdFilter.filter
+interface-method	vaibify/containerImage/vaibifyDo.py::HandshakeLeftoverSocket.recv
+interface-method	vaibify/containerImage/vaibifyDo.py::HandshakeLeftoverSocket.sendall
 interface-method	vaibify/docker/dockerConnection.py::_BytesGeneratorPipe.read
 interface-method	vaibify/gui/hostIncidents.py::HostIncidentHandler.emit
 interface-method	vaibify/gui/routeContext.py::RouteContext.get
@@ -872,8 +874,6 @@ legacy-variable	vaibify/containerImage/vaibifyDo.py::fiSendHttpRequest.dataBody
 legacy-variable	vaibify/containerImage/vaibifyDo.py::fiSendHttpRequest.errHttp
 legacy-variable	vaibify/containerImage/vaibifyDo.py::fiSendHttpRequest.resp
 legacy-variable	vaibify/containerImage/vaibifyDo.py::fnSendWsPong::dataPayload
-legacy-variable	vaibify/containerImage/vaibifyDo.py::fnWebsocketHandshake.dataChunk
-legacy-variable	vaibify/containerImage/vaibifyDo.py::fnWebsocketHandshake.dataResponse
 legacy-variable	vaibify/containerImage/vaibifyDo.py::ftRecvWsFrame.dataHeader
 legacy-variable	vaibify/containerImage/vaibifyDo.py::ftRecvWsFrame.dataPayload
 legacy-variable	vaibify/docker/dockerConnection.py::DockerConnection._fbufferBuildTar.tar
@@ -1318,6 +1318,8 @@ def testPrefixVocabularyIsClosed():
 DICT_FOREIGN_PROTOCOL_NAMES = {
     "dispatch": "starlette BaseHTTPMiddleware override",
     "read": "file-like protocol consumed by tarfile",
+    "recv": "socket protocol consumed by vaibify-do's frame readers",
+    "sendall": "socket protocol consumed by vaibify-do's frame writers",
     "emit": "logging.Handler override",
     "filter": "logging.Filter override",
     "redirect_request": "urllib HTTPRedirectHandler override",
