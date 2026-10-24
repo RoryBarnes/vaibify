@@ -7876,6 +7876,21 @@ const VaibifyApp = (function () {
                     sFingerprint;
             }
         },
+        fnAdoptSavedWorkflowFingerprints: function (
+            sWorkflowFingerprint, sExactSourceFingerprint,
+        ) {
+            /* A route that saved the workflow and handed the page the
+               result: both baselines move to what the hub now holds. */
+            if (typeof sWorkflowFingerprint === "string" &&
+                    sWorkflowFingerprint) {
+                _dictWorkflowState.sWorkflowFingerprint =
+                    sWorkflowFingerprint;
+            }
+            if (sExactSourceFingerprint) {
+                _dictWorkflowState.sAcknowledgedSourceFingerprint =
+                    sExactSourceFingerprint;
+            }
+        },
         fsGetAcknowledgedSourceFingerprint: function () {
             return _dictWorkflowState
                 .sAcknowledgedSourceFingerprint || "";

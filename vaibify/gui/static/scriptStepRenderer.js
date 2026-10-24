@@ -994,6 +994,8 @@ var VaibifyStepRenderer = (function () {
             sHtml += fsRenderSubTestRow(
                 sLabel, sCatState, sCategory, iIndex, dictContext);
             sHtml += _fsRenderGeneratorNote(dictTests[sCatKey]);
+            sHtml += _fsRenderNotApplicableNote(
+                dictTests[sCatKey], sCatState);
             var setExp = dictContext.fsetGetExpandedCategory(
                 sCategory);
             if (setExp.has(iIndex)) {
@@ -1070,6 +1072,16 @@ var VaibifyStepRenderer = (function () {
             (dictCategory || {}).sGenerator];
         return sNote ? '<div class="sub-test-note">' +
             fnEscapeHtml(sNote) + '</div>' : "";
+    }
+
+    function _fsRenderNotApplicableNote(dictCategory, sState) {
+        /* The generator's reason a tier has nothing to check, beside
+           the grey N/A it explains: without it, N/A could be read as a
+           tier nobody got round to. */
+        var sReason = (dictCategory || {}).sNotApplicableReason;
+        if (sState !== "unnecessary" || !sReason) return "";
+        return '<div class="sub-test-note test-not-applicable-note">' +
+            fnEscapeHtml(sReason) + '</div>';
     }
 
     function _fsRenderNeverRunNote(sState, sCategory, iIndex, dictContext) {

@@ -4,13 +4,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from vaibify.gui.deterministicTestWriter import (
+    fdictWriteAllDeterministicTests as _fdictWriteAllDeterministicTests,
+)
 from vaibify.gui.testGenerator import (
     _fbShouldAddNoNanTest,
     _fdictBuildIntegrityStandards,
     _fdictBuildQualitativeStandards,
-    _fdictWriteAllDeterministicTests,
-    _fdictWriteIntegrityFiles,
-    _fdictWriteQualitativeFiles,
     _fdictWriteQuantitativeFiles,
     _fnWarnIfAllUnloadable,
     _fsBuildScriptContents,
@@ -182,11 +182,9 @@ def test_writeQuantitativeFiles_requests_confirm_on_template_mismatch():
             bForceOverwrite=False,
         )
     assert dictResult.get("bNeedsOverwriteConfirm") is True
-    # The standards JSON is written before the confirmation check.
-    sPaths = [c.args[1] for c in mockDocker.fnWriteFile.call_args_list]
-    assert any(
-        "quantitative_standards_step.json" in p for p in sPaths
-    ), sPaths
+    # A pending confirmation touches nothing: the standards JSON used to
+    # be rewritten before the check, beside a test file left as it was.
+    mockDocker.fnWriteFile.assert_not_called()
 
 
 def test_writeQuantitativeFiles_force_overwrite_writes_file():
@@ -206,34 +204,6 @@ def test_writeQuantitativeFiles_force_overwrite_writes_file():
     assert mockDocker.fnWriteFile.call_count >= 2
 
 
-def test_writeIntegrityFiles_requests_confirm_on_mismatch():
-    mockDocker = MagicMock()
-    dictStandards = {"listStandards": []}
-    with patch(
-        "vaibify.gui.testGenerator._fbFileMatchesTemplate",
-        return_value=False,
-    ):
-        dictResult = _fdictWriteIntegrityFiles(
-            mockDocker, "cid", "/ws/step", dictStandards,
-            bForceOverwrite=False,
-        )
-    assert dictResult.get("bNeedsOverwriteConfirm") is True
-
-
-def test_writeQualitativeFiles_requests_confirm_on_mismatch():
-    mockDocker = MagicMock()
-    dictStandards = {"listStandards": []}
-    with patch(
-        "vaibify.gui.testGenerator._fbFileMatchesTemplate",
-        return_value=False,
-    ):
-        dictResult = _fdictWriteQualitativeFiles(
-            mockDocker, "cid", "/ws/step", dictStandards,
-            bForceOverwrite=False,
-        )
-    assert dictResult.get("bNeedsOverwriteConfirm") is True
-
-
 # ---------------------------------------------------------------
 # _fdictWriteAllDeterministicTests bubbles up overwrite confirmations
 # (lines 451, 457, 465, 469-470)
@@ -241,6 +211,12 @@ def test_writeQualitativeFiles_requests_confirm_on_mismatch():
 
 
 def test_writeAllDeterministic_aggregates_needs_confirm_flag():
+    """Every tier that would replace an edited file is named, none written.
+
+    The report is a loaded, analyzed output with columns and values, so
+    all three tiers apply; one nothing could read would make the
+    qualitative and quantitative tiers errors, which replace nothing.
+    """
     mockDocker = MagicMock()
     with patch(
         "vaibify.gui.testGenerator.fnWriteConftestMarker",
@@ -250,12 +226,17 @@ def test_writeAllDeterministic_aggregates_needs_confirm_flag():
     ):
         dictResult = _fdictWriteAllDeterministicTests(
             mockDocker, "cid", "/ws/step",
-            [{"sFileName": "a.npy", "bExists": True,
-              "sFormat": "npy", "tShape": [10]}],
+            [{"sFileName": "a.csv", "bExists": True, "bLoadable": True,
+              "sError": "", "sFormat": "csv", "tShape": [10, 1],
+              "listColumnNames": ["a"], "listBenchmarks": [{
+                  "sName": "fA", "sDataFile": "a.csv",
+                  "sAccessPath": "column:a,index:0", "fValue": 1.0}]}],
             fTolerance=1e-6, bForceOverwrite=False,
             sProjectRepoPath="/workspace/DemoRepo",
         )
     assert dictResult.get("bNeedsOverwriteConfirm") is True
+    # Every tier is checked before any is written, so none was.
+    mockDocker.fnWriteFile.assert_not_called()
     # All three categories should contribute to listModifiedFiles.
     listPaths = dictResult["listModifiedFiles"]
     assert any("integrity" in p.lower() for p in listPaths)

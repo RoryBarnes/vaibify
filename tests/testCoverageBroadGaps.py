@@ -1343,8 +1343,15 @@ class TestPipelineServerBuildGenerateResponse:
             "dictIntegrity": {"saCommands": ["cmd1"]},
             "dictQualitative": {},
         }
-        dictResponse = _fdictBuildGenerateResponse(dictResult)
+        dictWorkflow = {"listSteps": [{"sName": "Build"}]}
+        dictResponse = _fdictBuildGenerateResponse(
+            dictResult, dictWorkflow, 0,
+        )
         assert dictResponse["bGenerated"] is True
+        # The step as the hub saved it, so the page renders the hub's
+        # verdict on each tier instead of re-deriving it.
+        assert dictResponse["dictStep"]["sName"] == "Build"
+        assert dictResponse["sWorkflowFingerprint"]
         assert dictResponse["dictIntegrity"]["saCommands"] == ["cmd1"]
         assert dictResponse["dictQuantitative"] == {}
 
@@ -1373,7 +1380,10 @@ class TestPipelineServerBuildGenerateResponse:
         dictCtx = {"save": mockSave, "paths": {}}
         _fnApplyGeneratedTests(
             dictCtx, "ctn1", dictWorkflow, 0, dictResult,
-            SimpleNamespace(app=SimpleNamespace(state=None)),
+            SimpleNamespace(
+                app=SimpleNamespace(state=None), headers={},
+                url=SimpleNamespace(path=""), state=SimpleNamespace(),
+            ),
         )
         mockSave.assert_called_once()
         dictStep = dictWorkflow["listSteps"][0]

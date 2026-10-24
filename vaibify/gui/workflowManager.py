@@ -1268,7 +1268,9 @@ def _fbApplyUnnecessaryToStep(dictStep):
     dictTests = dictStep.get("dictTests", {}) or {}
     bChanged = False
     for sCategory, sVerifyKey in _T_VERIFICATION_CATEGORY_KEYS:
-        if dictTests.get(sCategory, {}).get("saCommands"):
+        dictCategory = dictTests.get(sCategory, {})
+        # An underived category (sError) is an error, never green N/A.
+        if dictCategory.get("saCommands") or dictCategory.get("sError"):
             continue
         if dictVerify.get(sVerifyKey) != "untested":
             continue

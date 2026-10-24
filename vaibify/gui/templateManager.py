@@ -33,6 +33,7 @@ __all__ = [
     "fsQuantitativeTemplateHash",
     "fsIntegrityTemplateHash",
     "fbIsVaibifyTemplateHash",
+    "fbStampedFileIsUnmodified",
     "SET_PRIOR_TEMPLATE_HASHES",
     "fsQualitativeTemplateHash",
     "fsBuildQuantitativeTestCode",
@@ -122,9 +123,32 @@ def _fbFileMatchesTemplate(
         sExisting, re.MULTILINE,
     )
     if matchHash:
-        return fbIsVaibifyTemplateHash(matchHash.group(1), sExpectedHash)
+        return fbStampedFileIsUnmodified(sExisting, sExpectedHash)
     sEmbedded = _fsEmbedTemplateHash(sTemplate)
     return sExisting.strip() == sEmbedded.strip()
+
+
+def fbStampedFileIsUnmodified(sFileText, sCurrentHash):
+    """Return True when a stamped file is vaibify's own, byte for byte.
+
+    The stamp alone only says which template the file STARTED as: a
+    researcher who appended a test kept the stamp, so trusting it let
+    regeneration overwrite their edit without asking. The file is
+    vaibify's unmodified output only when its stamp names a known
+    template AND its own text, with the stamp line stripped exactly as
+    stamping inserted it, still hashes to that stamp.
+    """
+    matchHash = re.search(
+        r"^# vaibify-template-hash: ([0-9a-f]+)",
+        sFileText, re.MULTILINE,
+    )
+    if not matchHash:
+        return False
+    sStampedHash = matchHash.group(1)
+    return (
+        fbIsVaibifyTemplateHash(sStampedHash, sCurrentHash)
+        and _fsComputeTemplateHash(sFileText) == sStampedHash
+    )
 
 
 def fsQuantitativeTemplateHash():

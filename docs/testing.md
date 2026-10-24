@@ -70,13 +70,35 @@ When tests are regenerated, the per-entry `fRtol`, `fAtol`, `sNote` and
 `sUnit` you edited by hand are kept for every entry whose `sName` still
 exists. A test file you have customized is never overwritten without
 asking: generation stops and names the edited files, and only an
-explicit confirmation replaces them.
+explicit confirmation replaces them. Every tier is checked before any
+is written, so a pending confirmation changes nothing at all.
+
+A generated test file counts as unedited only when its
+`# vaibify-template-hash:` stamp names a vaibify template **and** the
+file's own text still hashes to that stamp, so a test you appended to a
+generated file is yours. A standards file carries `sContentDigest`, a
+sha256 of its own content; a standards file whose digest is missing or
+no longer matches counts as edited.
+
+A standards file must be valid JSON. The dashboard's file editor and
+`save-and-run-test` refuse to save one that is not, naming the
+decoder's message, line and column, and write nothing; other `.json`
+files are saved as before. A malformed standards file written some
+other way (from a shell, say) is reported when its tier runs: the tier
+reads **Error** with "standards file `<name>` is not valid JSON:
+`<message>` (line L, column C)", never Passed.
 
 ### How tests are generated
 
 Test generation is **deterministic**. Unit tests should not be produced
 by prompting a model, whose output varies from run to run; they should
-be computed from the results. When you press **Generate**, a
+be computed from the results. Tests are derived from the outputs, so
+the outputs must exist first: generating tests for a step whose
+declared outputs do not exist yet is refused, naming the missing
+files, and nothing is written (not even the `tests/` directory) and no
+model is asked. Run the step first. An in-container agent meets the
+same refusal, and the dashboard shows it to you as well. When you press
+**Generate**, a
 self-contained Python introspection script runs inside the container,
 reads each of the step's declared output files, and records what it
 finds: shape, data type, NaN and infinity counts, column names, JSON
@@ -94,7 +116,20 @@ sampler:
 | `deterministic` | No random-number framework is used in the step's scripts, or no array is large enough to summarize | Single values and means, at the default tolerance |
 | `stochastic` | A random-number framework is used and an output array holds at least 64 samples | Means, standard deviations and percentiles, each with a tolerance derived from its sampling standard error at three sigma (following Oberkampf & Roy 2010 and Vehtari et al. 2021) |
 | `stochastic_unseeded` | As above, and the step's randomness is flagged as unseeded | Mean and median only, at a placeholder 10% tolerance with a note asking you to seed the source of randomness |
-| `unintrospectable` | Output files exist but yield no numeric benchmark | None from vaibify; the introspector's errors are recorded, and the fallback below may apply |
+| `unintrospectable` | Output files exist but none could be loaded | None from vaibify; the introspector's errors are recorded and the tier is an **Error** naming them, unless the fallback below applies |
+
+A tier with nothing to check is **N/A**: no test file is written for it
+and it reads a gray N/A with the reason beside it (for example, a
+numeric array has no column names or JSON keys for the qualitative tier
+to pin). N/A never blocks Level 1. It means *inapplicable*, never
+*unknown*: a tier is N/A only when every declared output was loaded and
+analyzed and none held anything of the tier's kind. If any output could
+not be read, the tier is an **Error** saying which, never N/A and never
+a placeholder test that passes. When regeneration makes a previously
+generated tier N/A, vaibify removes its own test and standards files if
+neither was edited; if either was, it asks first, as for any overwrite.
+Projects generated before this rule keep their old placeholder tests
+until you regenerate them.
 
 The generator is a foundation, not a complete answer. Generating
 meaningful tests for arbitrary data structures is hard, so you, or an
@@ -120,8 +155,9 @@ note on the step's test rows for a model-written tier.
   **Generate** asks a model you have already enabled: Claude Code
   installed in the container, or the provider API key you chose to
   use. It never asks for a key. Nothing else causes a fallback: a
-  refused or failed write, a pending overwrite confirmation and a
-  missing step are reported as they are. With no model available, the
+  refused or failed write, a pending overwrite confirmation, a missing
+  step and missing outputs are reported as they are. A model reply
+  holding no standards is an error, never empty standards. With no model available, the
   error names both what vaibify could not read and why no model was
   asked.
 - **On request (`llm`).** A caller can turn the deterministic mode off

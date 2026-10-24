@@ -5483,7 +5483,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1078 -> 1099 (2026-10-17): "Run tests" runs under the Stage A
     # decision a pipeline run gets (design I10), and refuses a profile
     # this vaibify lacks before the drain is taken.
-    "routes/testRoutes.py": 1099,
+    # 1099 -> 1325 (2026-10-24): test generation refuses, before any
+    # carrier, when a step's outputs are missing (and tells the
+    # researcher when an agent asked); removes the unedited files of a
+    # tier that became N/A under a helper commit; records each tier's
+    # N/A or error axis; returns the step as saved; and a run reads a
+    # tier's standards file first, reporting a malformed one by name.
+    # One concern -- what the test routes may do -- so not split.
+    "routes/testRoutes.py": 1325,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5859,7 +5866,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2947 -> 2952 (2026-10-15): T_STEP_REFERENCE_FIELDS, the one list of
     # fields a step token may sit in, read by the graph and the upstream
     # freshness check alike.
-    "workflowManager.py": 2952,
+    # 2952 -> 2953 (2026-10-24): a tier the generator could not derive
+    # is never derived to the green "unnecessary".
+    "workflowManager.py": 2953,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one

@@ -19,6 +19,8 @@ __all__ = [
     "fbStepIsInteractive",
     "fbStepHasUnseededRandomnessWarning",
     "OutputAnalysisError",
+    "UnreadableModelReplyError",
+    "MissingStepOutputsError",
     "fsLabelFromStepIndex",
     "fiStepIndexFromLabel",
     "flistStepsWithLabels",
@@ -479,6 +481,32 @@ class OutputAnalysisError(RuntimeError, ValueError):
     bases are kept so every earlier ``except RuntimeError`` or
     ``except ValueError`` around introspection still catches it.
     """
+
+
+class UnreadableModelReplyError(OutputAnalysisError):
+    """A language model's reply held no standards vaibify could parse.
+
+    Returning empty standards instead wrote a standards file that
+    judged nothing, which a test run then reported as a pass.
+    """
+
+
+class MissingStepOutputsError(Exception):
+    """A step's declared outputs do not exist, so tests cannot be derived.
+
+    Deliberately NOT an ``OutputAnalysisError``: a missing file is not
+    an unreadable one, and no language model can stand in for it, so
+    the consented-model fallback must never be reached. The step has to
+    run first.
+    """
+
+    def __init__(self, listMissingFiles):
+        self.listMissingFiles = list(listMissingFiles)
+        super().__init__(
+            "The step's declared outputs do not exist yet: "
+            + ", ".join(self.listMissingFiles)
+            + ". Run the step first, then generate its tests."
+        )
 
 
 def fbStepHasUnseededRandomnessWarning(dictStep):

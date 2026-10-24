@@ -31973,8 +31973,9 @@ LIST_FALSIFICATIONS = [
             'testAModelWrittenTierSaysSoOnItsRow'
         ),
         source='vaibify/gui/static/scriptTestManager.js',
-        old='            if (dictCatResult.sGenerator) {\n',
-        new='            if (false) {\n',
+        # the page keeps its own copy instead of the hub's saved step
+        old='        dictStep.dictTests = dictSaved.dictTests || dictStep.dictTests;\n',
+        new='        dictStep.dictTests = dictStep.dictTests;\n',
     ),
     # --- 2026-10-19: the unintrospectable toast is built from the
     # payload; it claimed an LLM fallback that never ran.
@@ -35938,5 +35939,77 @@ LIST_FALSIFICATIONS = [
         # an agent's change is announced as an edit made on disk
         old='        if (sReloadOrigin !== "agent") {\n',
         new='        if (true) {\n',
+    ),
+    # --- 2026-10-23: generated tests judged nothing when the outputs
+    # were missing, or a tier had nothing to check ---
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testGeneratingBeforeTheOutputsExistIsRefused'
+        ),
+        source='vaibify/gui/testGenerator.py',
+        # both checks ask this one probe; it reports nothing missing
+        old='    return [\n        sFile for sFile, bExists in zip(listDataFiles, listExists)\n        if not bExists\n    ]\n',
+        new='    return []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAnArrayOutputMakesOnlyTheQualitativeTierNotApplicable'
+        ),
+        source='vaibify/gui/deterministicTestWriter.py',
+        # a tier with nothing to check is written as a placeholder again
+        old='    return (\n        "The outputs have no column names or JSON keys to check."\n    )\n',
+        new='    return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAnUnreadableOutputIsUnknownNotInapplicable'
+        ),
+        source='vaibify/gui/deterministicTestWriter.py',
+        # an output nothing could read counts as analyzed
+        old='    return all(\n        dictReport.get("bLoadable") and not dictReport.get("sError")\n        for dictReport in listdictReports\n    )\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGuiTemplateManager.py::'
+            'testAStampedFileWithAnAppendedTestIsTheResearchers'
+        ),
+        source='vaibify/gui/templateManager.py',
+        # the stamp is trusted without hashing the file's own body
+        old='        and _fsComputeTemplateHash(sFileText) == sStampedHash\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAnEditedStandardsFileIsAskedAboutAndNothingIsTouched'
+        ),
+        source='vaibify/gui/deterministicTestWriter.py',
+        # a standards file is removed without checking its digest
+        old='        if isinstance(sStandardsText, str) and sStandardsText and not (\n',
+        new='        if False and (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGenerationIntegrity.py::'
+            'testAMalformedStandardsFileIsRefusedBeforeItIsWritten'
+        ),
+        source='vaibify/gui/standardsFiles.py',
+        # a standards file is written without being parsed first
+        old='    if sInvalid:\n        from fastapi import HTTPException\n',
+        new='    if False:\n        from fastapi import HTTPException\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestGeneratorPure.py::'
+            'test_an_unparseable_model_reply_is_a_named_error'
+        ),
+        source='vaibify/gui/testParser.py',
+        # a reply with no JSON in it is empty standards again
+        old='        if not matchBrace:\n            raise UnreadableModelReplyError(',
+        new='        if not matchBrace:\n            return {"listStandards": []}\n            raise UnreadableModelReplyError(',
     ),
 ]

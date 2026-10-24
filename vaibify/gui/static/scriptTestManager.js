@@ -84,11 +84,22 @@ var VaibifyTestManager = (function () {
         } catch (error) {
             setGeneratingInFlight.delete(iStep);
             VaibifyApp.fnRenderStepList();
+            if (fbIsMissingOutputsRefusal(error)) {
+                VaibifyApp.fnShowToast(error.message, "error");
+                return;
+            }
             VaibifyApp.fnShowErrorModal(
                 "Test generation failed:\n\n" +
                 (error.message || String(error))
             );
         }
+    }
+
+    function fbIsMissingOutputsRefusal(error) {
+        /* The hub refuses before writing anything and names the files;
+           its sentence is the toast. */
+        return ((error && error.dictDetail) || {}).sRefusal ===
+            "outputs-missing";
     }
 
     async function fnGenerateTestsForced(iStep) {
@@ -114,81 +125,69 @@ var VaibifyTestManager = (function () {
     }
 
     function fnHandleGeneratedTest(iStep, dictResult) {
+        /* The hub has already recorded the generated tests and saved the
+           step, so the page adopts that step as saved. It used to rebuild
+           each category here and save it back, which dropped the hub's
+           verdict: an N/A tier's reason, and the error a tier the
+           generator could not derive must show. */
         var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStep];
-        if (!dictStep.dictTests) {
-            dictStep.dictTests = VaibifyApp.fdictGetTests(dictStep);
-        }
-        if (!dictStep.dictVerification) {
-            dictStep.dictVerification = {
-                sUnitTest: "untested", sUser: "untested",
-            };
-        }
-        var listCategories = [
-            "qualitative", "quantitative", "integrity"];
-        var listAllCommands = [];
-        var listErrors = [];
-        for (var i = 0; i < listCategories.length; i++) {
-            var sCategory = listCategories[i];
-            var sCatKey = "dict" +
-                sCategory.charAt(0).toUpperCase() +
-                sCategory.slice(1);
-            var dictCatResult = dictResult[sCatKey];
-            if (!dictCatResult) continue;
-            if (dictCatResult.sError) {
-                listErrors.push(
-                    VaibifyUtilities.fsTestCategoryLabel(sCategory) +
-                    ": " + dictCatResult.sError);
-                var sVerifKey = "s" +
-                    sCategory.charAt(0).toUpperCase() +
-                    sCategory.slice(1);
-                dictStep.dictVerification[sVerifKey] = "error";
-                continue;
-            }
-            dictStep.dictTests[sCatKey] = {
-                saCommands: dictCatResult.saCommands || [],
-                sFilePath: dictCatResult.sFilePath || "",
-            };
-            if (dictCatResult.sStandardsPath) {
-                dictStep.dictTests[sCatKey].sStandardsPath =
-                    dictCatResult.sStandardsPath;
-            }
-            if (dictCatResult.sGenerator) {
-                dictStep.dictTests[sCatKey].sGenerator =
-                    dictCatResult.sGenerator;
-            }
-            listAllCommands = listAllCommands.concat(
-                dictCatResult.saCommands || []);
-        }
-        dictStep.saTestCommands = listAllCommands;
-        VaibifyApp.fnSaveStepUpdate(iStep, {
-            dictTests: dictStep.dictTests,
-            dictVerification: dictStep.dictVerification,
-            saTestCommands: listAllCommands,
-        });
+        var dictSaved = dictResult.dictStep || {};
+        dictStep.dictTests = dictSaved.dictTests || dictStep.dictTests;
+        dictStep.dictVerification = dictSaved.dictVerification ||
+            dictStep.dictVerification;
+        dictStep.saTestCommands = dictSaved.saTestCommands || [];
+        VaibifyApp.fnAdoptSavedWorkflowFingerprints(
+            dictResult.sWorkflowFingerprint,
+            dictResult.sExactSourceFingerprint);
+        var dictTally = _fdictTallyGeneratedCategories(dictResult);
         if (!setExpandedUnitTests.has(iStep)) {
             setExpandedUnitTests.add(iStep);
         }
         VaibifyApp.fnRenderStepList();
-        var iSuccessCount = listCategories.length - listErrors.length;
         var sStepLabel = VaibifyApp.fsComputeStepLabel(iStep);
-        if (listErrors.length > 0) {
+        if (dictTally.listErrors.length > 0) {
             /* Each tier's own reason, from the payload: a fallback
                that could not run names both what vaibify failed to
                read and why no model was asked. */
             VaibifyApp.fnShowErrorModal(
                 "These test categories failed to generate:\n\n" +
-                listErrors.join("\n") +
+                dictTally.listErrors.join("\n") +
                 "\n\nFix manually or ask a coding agent to fix.");
         }
         VaibifyApp.fnShowToast(
-            sStepLabel + ": " + iSuccessCount +
-            " of 3 test categories generated. Running\u2026",
-            iSuccessCount === 3 ? "success" : "error");
+            sStepLabel + ": " + dictTally.iGenerated +
+            " of 3 test categories generated" +
+            (dictTally.iNotApplicable > 0 ?
+                ", " + dictTally.iNotApplicable + " not applicable" : "") +
+            ((dictStep.saTestCommands || []).length > 0 ?
+                ". Running\u2026" : "."),
+            dictTally.listErrors.length === 0 ? "success" : "error");
         fnNotifyStochasticity(sStepLabel, dictResult);
-        if (listAllCommands.length > 0) {
+        if ((dictStep.saTestCommands || []).length > 0) {
             fnRunStepTests(iStep);
         }
+    }
+
+    function _fdictTallyGeneratedCategories(dictResult) {
+        var dictTally = {iGenerated: 0, iNotApplicable: 0, listErrors: []};
+        ["qualitative", "quantitative", "integrity"].forEach(
+            function (sCategory) {
+                var dictCatResult = dictResult["dict" +
+                    sCategory.charAt(0).toUpperCase() +
+                    sCategory.slice(1)];
+                if (!dictCatResult) return;
+                if (dictCatResult.sError) {
+                    dictTally.listErrors.push(
+                        VaibifyUtilities.fsTestCategoryLabel(sCategory) +
+                        ": " + dictCatResult.sError);
+                } else if (dictCatResult.sNotApplicableReason) {
+                    dictTally.iNotApplicable += 1;
+                } else {
+                    dictTally.iGenerated += 1;
+                }
+            });
+        return dictTally;
     }
 
     function fnNotifyStochasticity(sStepLabel, dictResult) {
