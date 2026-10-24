@@ -114,8 +114,10 @@ only the directory, the template, and the summary.
 | **Summary** | Review, then **Create**. |
 
 **Create** writes `vaibify.yml` and registers the environment; the
-image is built the first time you open its tile. A minimal image
-builds in minutes, and large feature sets can take an hour or more.
+image is built the first time you open its tile. That takes from
+several minutes to over an hour, depending mostly on your network and
+on whether LaTeX (on by default) is enabled; see
+[The first container build](install.md#the-first-container-build).
 Anything missed can be added later: install it from a terminal inside
 the container (lost on rebuild), or add it to `vaibify.yml` and
 rebuild (permanent). The full list of `vaibify.yml` keys is in

@@ -103,7 +103,7 @@ Before we begin this step, note the following:
   another browser or on another machine refuses the conversion instead,
   because the conversion renames the key that the project's lock,
   lease, and journal all hang from.
-- **Docker or Colima must be installed.** This step requires Docker containers, which are run as `colima` on macOS. See the [install guide](install.md#docker-on-macos) to install. *Note that this process can require over 60 minutes.*
+- **Docker or Colima must be installed.** This step requires Docker containers, which are run as `colima` on macOS. See the [install guide](install.md#docker-on-macos) to install. Installing Colima takes a minute or two, and its first start downloads a small Linux virtual machine.
 - **A failed build is left unfinished.** If the process fails for any reason, 
   a registered, but unusable, container remains partially built. Fix the cause
   and build again (try working with an AI agent or pressing **Run a diagnosis** in the build-failure window); you have not lost the host project's work, because there was never a copy to lose. Look for an orange warning glyph above the list of Environments.

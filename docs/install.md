@@ -152,6 +152,15 @@ sudo port install colima docker docker-buildx-plugin
 colima start --cpu 4 --memory 8
 ```
 
+Installing Colima takes a minute or two. The first `colima start`
+then downloads and boots the small Linux virtual machine that runs
+Docker; later starts reuse it. Give that machine the CPU and memory
+you mean to use: a bare `colima start` creates one with 2 CPUs and
+2 GB of memory, below the 4 GB a vaibify build needs. On Apple
+Silicon keep Colima's default `aarch64` architecture, on which vaibify
+builds natively; a machine created with `--arch x86_64` emulates every
+build step and runs several times slower.
+
 The command-line diagnosis in the [CLI Reference](cli.md) compares
 what a project will request against what the Colima virtual machine
 has. If macOS sleeps during a long build, the Colima virtual machine
@@ -164,6 +173,22 @@ caffeinate -s vaibify
 The `neverSleep` field in `vaibify.yml` does the same for as long as a
 container runs, and the hold is re-asserted when a running container is
 claimed again after vaibify restarts.
+
+### The first container build
+
+Docker does not yet hold an image for a new container project, so the
+first time you open one, vaibify builds it. Starting from Ubuntu, the
+build downloads and installs a compiler toolchain, Python, TeX Live
+(the `latex` feature, on by default), the project's packages and each
+agent you enabled. This takes from several minutes to over an hour,
+depending mostly on your network and on whether LaTeX is enabled;
+the build window shows the live output. The container's first start
+then clones the project's repositories; later opens reuse the image.
+
+Python is vaibify's default analysis language, so every image also
+carries `numpy`, `scipy`, `matplotlib` and `pytest`: the tests vaibify
+generates use them. List any other Python packages under
+`pythonPackages`.
 
 ## Shell helpers
 
@@ -291,7 +316,7 @@ List fields:
 |-----|------------|---------|
 | `repositories` | `name`, `url`, `branch`, `installMethod` (default `pip_editable`), optional `destination` | Repositories cloned into the workspace, in order. See [container.conf](#containerconf) for install methods |
 | `systemPackages` | string | APT packages. A list you supply **replaces** the defaults (`gcc`, `make`, `git`, `curl`, `ca-certificates`, `gnupg`, `gosu`, `time`), so include the ones you still need |
-| `pythonPackages` | string | pip packages |
+| `pythonPackages` | string | pip packages, installed beside the analysis stack every image carries (`numpy`, `scipy`, `matplotlib`, `pytest`). Naming a stack package here sets its version bound |
 | `condaPackages` | string | **Refused.** A non-empty list fails validation because the build has no conda install step; use `pythonPackages` |
 | `binaries` | `name`, `path` | Executables already in the container; each `name` becomes an environment variable holding `path`, and its directory joins PATH |
 | `ports` | `container`, optional `host` (defaults to `container`), optional `lanExpose` | Ports forwarded from the container, bound to `127.0.0.1` unless `lanExpose: true` |
