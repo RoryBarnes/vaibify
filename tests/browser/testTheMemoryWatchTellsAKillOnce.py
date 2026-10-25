@@ -193,6 +193,10 @@ def testAKillIsToastedOnceAcrossPollsAndAReload(pageDashboard, serverHub):
     _fnWaitForRequests(pageDashboard, listRequests, 2)
     assert _fiCountToasts(pageDashboard, "error", S_KILL_SENTENCE) == 1
     pageDashboard.reload(wait_until="load")
+    # WebKit reports the replaced page's in-flight requests, which the
+    # reload itself cancels, as "access control checks" page errors;
+    # they belong to the discarded document, not the reloaded one.
+    pageDashboard.listPageErrors.clear()
     iBeforeReentry = len(listRequests)
     _fnEnterTheBlankProject(pageDashboard)
     _fnWaitForRequests(pageDashboard, listRequests, iBeforeReentry + 1)
