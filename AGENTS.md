@@ -249,6 +249,13 @@ they run. Several PRs multiply that wait, and a fix every PR needs
 (a CI timeout, a shared test) has to be pushed through each of them.
 Separate the work into commits on the one branch, never into PRs.
 
+**A plan asks for every approval up front, and building waits for a
+go-ahead.** Gather every decision the work will need from the
+maintainer (design choices, ask-first edits, ledger rises, CI changes)
+into the plan itself, so the build then runs without interruption.
+Answering the plan's questions is not approval to build it; wait for
+an explicit go-ahead.
+
 **A CI timeout catches a hang, it is not a performance budget.** Set
 `timeout-minutes` well above what the step has ever taken, never just
 above the last measured run: a suite that grows a little then times
