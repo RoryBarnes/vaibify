@@ -251,12 +251,16 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/create",
      "bAgentSafe": True,
-     "sDescription": "Append a new step to the active workflow."},
+     "sDescription": "Append a new step to the active workflow. "
+                     "Args: the step's fields. bPlotOnly defaults to "
+                     "false; true skips the data commands on every "
+                     "run. bNoInputData=true declares no raw input."},
     {"sName": "insert-step", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/insert/{iPosition}",
      "bAgentSafe": True,
-     "sDescription": "Insert a new step at the given 0-based position."},
+     "sDescription": "Insert a new step at the given 0-based "
+                     "position. Args: as create-step."},
     {"sName": "align-step-directories", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/align-directories",
@@ -1242,6 +1246,10 @@ LIST_AGENT_ACTIONS = [
 
 
 SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
+    # Setting up Docker installs software on the researcher's machine,
+    # some of it as root, and starts a virtual machine there: never an
+    # agent's to do. The handler also rejects the agent token by name.
+    ("POST", "/api/runtime/setup/run"),
     # A pending containerization is the researcher's decision at every
     # step: try again after a failed download, finish the switch once
     # the project is closed, or give up and delete the partial. The

@@ -14,13 +14,16 @@ import json
 import logging
 import os
 from collections import namedtuple
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.carrierStandDown import fnStandCarrierDown
+from vaibify.cli.commandBuild import fnWritePythonPackages
 from vaibify.config import registryManager
+from vaibify.config.analysisStack import T_ANALYSIS_STACK_PACKAGES
 from vaibify.config.mutationAdmission import MutationNotAdmittedError
 from vaibify.docker import containerManager
 from vaibify.gui.containerOwnership import OwnerRecord
@@ -164,9 +167,10 @@ def testDeclaredPackagesAreReadByContainerNameNeverByProjectName(tmp_path):
         f"projectName: {S_PROJECT_NAME}\npythonPackages:\n  - packageAlpha\n",
     )
     fnWriteRegistry([fdictRegistryEntry(sConfigPath)])
+    # The image carries the analysis stack beside what the project names.
     assert reproducibilityRoutes._flistDeclaredPackagesForContainer(
         S_CONTAINER_NAME,
-    ) == ["packageAlpha"]
+    ) == ["packageAlpha", *T_ANALYSIS_STACK_PACKAGES]
     assert reproducibilityRoutes._flistDeclaredPackagesForContainer(
         S_PROJECT_NAME,
     ) == []
@@ -196,9 +200,10 @@ def testAnUnreadableMirrorIsNotCheckedRatherThanMatching(
         f"projectName: {S_PROJECT_NAME}\npythonPackages:\n  - packageAlpha\n",
     )
     fnWriteRegistry([fdictRegistryEntry(sConfigPath)])
+    # A real image's mirror lists the analysis stack it always carries.
     fsWriteRepoFile(
         sProjectRepo, reproducibilityRoutes.S_MIRROR_RELATIVE_PATH,
-        "packageBeta==1.0\n",
+        "packageBeta==1.0\n" + "\n".join(T_ANALYSIS_STACK_PACKAGES) + "\n",
     )
     dictAnswer = reproducibilityRoutes.fdictCheckImageMatchesDeclaration(
         S_CONTAINER_NAME, UnreadableRepoFiles(sProjectRepo),
@@ -212,6 +217,57 @@ def testAnUnreadableMirrorIsNotCheckedRatherThanMatching(
     assert dictReadable["listMissingFromImage"] == ["packagealpha"] or (
         dictReadable["listMissingFromImage"] == ["packageAlpha"]
     )
+
+
+def _fsImageListWrittenForConfig(tmp_path, listDeclared):
+    """Return the requirements text the build writes for a project."""
+    pathDockerContext = tmp_path / "dockerContext"
+    pathDockerContext.mkdir()
+    fnWritePythonPackages(
+        SimpleNamespace(listPythonPackages=listDeclared),
+        str(pathDockerContext),
+    )
+    return (pathDockerContext / "requirements.txt").read_text()
+
+
+@pytest.mark.falsification
+def testAnImageBuiltForAProjectThatNamesNothingMatchesIt(
+    tmp_path, sProjectRepo,
+):
+    """The stack is in the image AND in what the check expects.
+
+    Kills: comparing the image against ``pythonPackages`` alone, which
+    for a project that names nothing leaves the question unasked.
+    """
+    sConfigPath = fsWriteConfig(tmp_path, f"projectName: {S_PROJECT_NAME}\n")
+    fnWriteRegistry([fdictRegistryEntry(sConfigPath)])
+    fsWriteRepoFile(
+        sProjectRepo, reproducibilityRoutes.S_MIRROR_RELATIVE_PATH,
+        _fsImageListWrittenForConfig(tmp_path, []),
+    )
+    dictAnswer = reproducibilityRoutes.fdictCheckImageMatchesDeclaration(
+        S_CONTAINER_NAME, HostRepoFiles(sProjectRepo),
+    )
+    assert dictAnswer["bChecked"] is True
+    assert dictAnswer["bMatches"] is True
+
+
+def testAnImageBuiltBeforeTheStackSaysWhatItLacks(tmp_path, sProjectRepo):
+    """An older image's mirror names only the project's packages."""
+    sConfigPath = fsWriteConfig(
+        tmp_path,
+        f"projectName: {S_PROJECT_NAME}\npythonPackages:\n  - packageAlpha\n",
+    )
+    fnWriteRegistry([fdictRegistryEntry(sConfigPath)])
+    fsWriteRepoFile(
+        sProjectRepo, reproducibilityRoutes.S_MIRROR_RELATIVE_PATH,
+        "packageAlpha\n",
+    )
+    dictAnswer = reproducibilityRoutes.fdictCheckImageMatchesDeclaration(
+        S_CONTAINER_NAME, HostRepoFiles(sProjectRepo),
+    )
+    assert dictAnswer["bMatches"] is False
+    assert dictAnswer["listMissingFromImage"] == list(T_ANALYSIS_STACK_PACKAGES)
 
 
 # ---------------------------------------------------------------------

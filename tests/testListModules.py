@@ -54,6 +54,8 @@ def testExtractsDunderAll():
         "fbStepIsInteractive",
         "fbStepHasUnseededRandomnessWarning",
         "OutputAnalysisError",
+        "UnreadableModelReplyError",
+        "MissingStepOutputsError",
         "fsLabelFromStepIndex",
         "fiStepIndexFromLabel",
         "flistStepsWithLabels",

@@ -299,9 +299,10 @@
         </p>
         <p style="font-size: 12px; color: var(--text-secondary);
            text-align: center; margin-top: 8px; opacity: 0.8;">
-            A minimal image takes 5&ndash;15 minutes; large feature
-            sets (LaTeX, GPU) can take an hour or more. Live output
-            appears below.
+            A first build takes from several minutes to over an
+            hour, depending mostly on your network and on whether
+            LaTeX (on by default) is enabled. Live output appears
+            below.
         </p>
         <div class="build-spinner"></div>
         <pre id="buildProgressTail" style="height: 300px;
@@ -312,6 +313,18 @@
             border-radius: 4px; white-space: pre-wrap;
             word-break: break-word; margin-top: 8px;
             display: none;"></pre>
+    </div>
+</div>
+
+<!-- Set up Docker: the hub's plan for this machine, one step at a time.
+     Rendered by scriptRuntimeSetup.js from GET /api/runtime/setup. -->
+<div class="modal-overlay" id="modalRuntimeSetup" style="display: none;">
+    <div class="modal runtime-setup-modal">
+        <h2 style="color: var(--color-pale-blue);">Set up Docker</h2>
+        <p class="runtime-setup-message"></p>
+        <div class="runtime-setup-body"></div>
+        <pre class="runtime-setup-tail" style="display: none;"></pre>
+        <div class="runtime-setup-buttons"></div>
     </div>
 </div>
 
@@ -1475,6 +1488,7 @@
 <script src="/static/scriptFilePull.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptReproducePublished.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptAcquisitionWindow.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptRuntimeSetup.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptContainerManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptRemnants.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptDependencyScanner.js?v=__CACHE_VERSION__"></script>

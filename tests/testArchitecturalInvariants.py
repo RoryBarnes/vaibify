@@ -4431,7 +4431,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # carried save it guards, which must refuse before its carrier
     # opens a journal record.
     # 934 -> 936 (2026-10-02): the save-time refusal also grades the x11Forwarding conflict.
-    "routeContext.py": 936,
+    # 936 -> 940 (2026-10-24): a committed workflow save announces an
+    # in-container agent's change to the open tab (researcherNotices
+    # holds the logic).
+    "routeContext.py": 940,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -5374,7 +5377,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4339 -> 4343 (2026-10-20): the poll merges a finished run's own
     # output mtimes into its baseline before comparing, and the state
     # route does not ship that map (runOutputBaseline holds the logic).
-    "routes/pipelineRoutes.py": 4343,
+    # 4343 -> 4345 (2026-10-24): the pipeline-socket route asks whether
+    # an agent's vaibify-do predates this hub; a transport question,
+    # so it is answered where the real socket is (agentClientFreshness
+    # holds the logic).
+    # 4345 -> 4353 (2026-10-24): the file-status poll carries the
+    # researcher notices the tab has not acknowledged and what last
+    # advanced the workflow epoch (researcherNotices holds the logic).
+    "routes/pipelineRoutes.py": 4353,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5473,7 +5483,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1078 -> 1099 (2026-10-17): "Run tests" runs under the Stage A
     # decision a pipeline run gets (design I10), and refuses a profile
     # this vaibify lacks before the drain is taken.
-    "routes/testRoutes.py": 1099,
+    # 1099 -> 1325 (2026-10-24): test generation refuses, before any
+    # carrier, when a step's outputs are missing (and tells the
+    # researcher when an agent asked); removes the unedited files of a
+    # tier that became N/A under a helper commit; records each tier's
+    # N/A or error axis; returns the step as saved; and a run reads a
+    # tier's standards file first, reporting a malformed one by name.
+    # One concern -- what the test routes may do -- so not split.
+    "routes/testRoutes.py": 1325,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5696,7 +5713,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # digests the step recorded consuming; its state-machine docstring
     # says so (2648). -> 2654: a sign-off with recorded plot bytes is
     # left to the content check, not re-judged by timestamp each poll.
-    "fileStatusManager.py": 2654,
+    # 2654 -> 2658 (2026-10-24): the researcher-notice maps and the
+    # workflow-epoch origins join the container-keyed sweep list.
+    "fileStatusManager.py": 2658,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -5849,7 +5868,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2947 -> 2952 (2026-10-15): T_STEP_REFERENCE_FIELDS, the one list of
     # fields a step token may sit in, read by the graph and the upstream
     # freshness check alike.
-    "workflowManager.py": 2952,
+    # 2952 -> 2953 (2026-10-24): a tier the generator could not derive
+    # is never derived to the green "unnecessary".
+    # 2953 -> 2954 (2026-10-24, re-measured on the consolidated branch):
+    # the create-step builder also takes bNoInputData from the request.
+    "workflowManager.py": 2954,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -7428,7 +7451,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # human-only like its run and discard siblings.
     # 1525 -> 1540 (2026-10-19): the dependency rescan (agent-safe) and
     # the researcher-only dismissal of a scan-found dependency.
-    "actionCatalog.py": 1540,
+    # 1540 -> 1544 (2026-10-24): create-step and insert-step say that
+    # bPlotOnly defaults off and that bNoInputData is accepted.
+    # 1544 -> 1548 (2026-10-24): the setup wizard's step route is excluded from the agent catalog, with why.
+    "actionCatalog.py": 1548,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7588,7 +7614,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # declared plot, refuses (409) when one cannot be read, and carries
     # the stored baseline through every other update; the route's
     # mode-(b) drain is where the capture must run.
-    "routes/stepRoutes.py": 1035,
+    # 1035 -> 1044 (2026-10-24): rename and directory alignment save
+    # inside their own workers, so they announce an agent's change
+    # after the worker returns, as fdictCommitWorkflowSave does.
+    "routes/stepRoutes.py": 1044,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write
@@ -7843,7 +7872,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # PROOF tab labels them without deciding what counts as one.
     # 2390 -> 2394 (2026-10-17): the declare route records the one
     # answer beside the newest execution profile it names.
-    "routes/reproducibilityRoutes.py": 2394,
+    # 2394 -> 2400 (2026-10-24): the declared-vs-image check expects
+    # the analysis stack every image carries.
+    "routes/reproducibilityRoutes.py": 2400,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
@@ -7969,7 +8000,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # operations. Four rows in a map of rows.
     # +1 (2026-10-14): the reproduction retry's scope row, beside its
     # run and discard siblings.
-    "routeScope.py": 1193,
+    # 1193 -> 1198 (2026-10-24): the setup wizard's step route is declared browser-hub scoped, with why.
+    "routeScope.py": 1198,
 }
 
 

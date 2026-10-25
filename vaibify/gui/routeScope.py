@@ -266,6 +266,11 @@ DICT_CONTROL_PLANE_SCOPES = {
     # in-container agent must not repoint where the researcher's work
     # pushes to.
     ("POST", "/api/registry/{sName}/git-remote"): S_SCOPE_BROWSER_HUB,
+    # Setting up Docker acts on the researcher's machine, not a
+    # container: a browser-hub operation. The handler additionally
+    # refuses the agent lane, so an agent cannot install software on
+    # the host or start a virtual machine there.
+    ("POST", "/api/runtime/setup/run"): S_SCOPE_BROWSER_HUB,
     # The dependency scan writes NOTHING -- it is a POST because the
     # selection is a list, not because anything changes. It still
     # carries the browser-hub credential rather than being left

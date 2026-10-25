@@ -12,6 +12,8 @@ import ast
 import json
 import re
 
+from .pipelineUtils import UnreadableModelReplyError
+
 
 def fsParseGeneratedCode(sRawOutput):
     """Extract Python code from LLM output, stripping markdown fences."""
@@ -67,7 +69,11 @@ def fdictParseCombinedOutput(sRawOutput):
 
 
 def fdictParseQuantitativeJson(sRawOutput):
-    """Extract and parse JSON from LLM output for quantitative standards."""
+    """Extract and parse JSON from LLM output for quantitative standards.
+
+    Raises ``UnreadableModelReplyError`` when no JSON object can be read:
+    empty standards would judge nothing and run as a pass.
+    """
     sStripped = sRawOutput.strip()
     matchFenced = re.search(
         r"```(?:json)?\s*\n(.*?)```", sStripped, re.DOTALL,
@@ -76,8 +82,16 @@ def fdictParseQuantitativeJson(sRawOutput):
         sStripped = matchFenced.group(1).strip()
     try:
         return json.loads(sStripped)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as errorWhole:
         matchBrace = re.search(r"\{.*\}", sStripped, re.DOTALL)
-        if matchBrace:
+        if not matchBrace:
+            raise UnreadableModelReplyError(
+                f"The model's reply held no JSON standards: {errorWhole}"
+            ) from errorWhole
+        try:
             return json.loads(matchBrace.group(0))
-        return {"listStandards": []}
+        except json.JSONDecodeError as errorBrace:
+            raise UnreadableModelReplyError(
+                f"The model's reply held no valid JSON standards: "
+                f"{errorBrace}"
+            ) from errorBrace

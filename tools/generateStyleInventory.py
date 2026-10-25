@@ -277,6 +277,14 @@ DICT_REVIEWED_DISPOSITIONS = {
         S_CATEGORY_INTERFACE,
         "file-like protocol method consumed by requests' upload body",
     ),
+    "vaibify/containerImage/vaibifyDo.py::HandshakeLeftoverSocket.recv": (
+        S_CATEGORY_INTERFACE,
+        "socket protocol method consumed by the WebSocket frame readers",
+    ),
+    "vaibify/containerImage/vaibifyDo.py::HandshakeLeftoverSocket.sendall": (
+        S_CATEGORY_INTERFACE,
+        "socket protocol method consumed by the WebSocket frame writers",
+    ),
     "vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request": (
         S_CATEGORY_INTERFACE,
         "urllib HTTPRedirectHandler override; the name is the protocol",

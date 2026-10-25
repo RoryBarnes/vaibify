@@ -128,6 +128,7 @@ from .commandReproduce import fnReproduceCommand
 from .commandRevoke import fnRevokeCommand
 from .commandRun import fnRunCommand
 from .commandSessions import fnListSessionsCommand
+from .commandSetupDocker import fnSetupDockerCommand
 from .commandStart import fnStartCommand
 from .commandStatus import fnStatusCommand
 from .commandTest import fnTestCommand
@@ -346,6 +347,7 @@ main.add_command(fnOpenContainerCommand)
 main.add_command(fnRemoteCommand)
 main.add_command(fnRemoteHelperCommand)
 main.add_command(fnSecretCommand)
+main.add_command(fnSetupDockerCommand)
 
 
 @main.command("stop")

@@ -508,9 +508,11 @@ def fnValidateSystemPackageNames(listPackages):
 
 
 def fnWritePythonPackages(config, sDockerDir):
-    """Write listPythonPackages to requirements.txt."""
+    """Write the project's packages plus the analysis stack to requirements.txt."""
+    from vaibify.config.analysisStack import flistImagePythonPackages
     sPath = os.path.join(sDockerDir, "requirements.txt")
-    sContent = "\n".join(config.listPythonPackages) + "\n"
+    listPackages = flistImagePythonPackages(config.listPythonPackages)
+    sContent = "\n".join(listPackages) + "\n"
     _fnWriteFile(sPath, sContent)
 
 

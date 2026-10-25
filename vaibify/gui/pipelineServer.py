@@ -140,8 +140,9 @@ def fsSanitizeExceptionForClient(errorCaught):
 class StepCreateRequest(BaseModel):
     sName: str
     sDirectory: str
-    bPlotOnly: bool = True
+    bPlotOnly: bool = False
     bInteractive: bool = False
+    bNoInputData: Optional[bool] = None
     saDataCommands: List[str] = []
     saOutputDataFiles: List[str] = []
     saTestCommands: List[str] = []
@@ -477,6 +478,7 @@ def fdictStepFromRequest(request):
         ),
         bPlotOnly=request.bPlotOnly,
         bInteractive=request.bInteractive,
+        bNoInputData=bool(request.bNoInputData),
         saDataCommands=request.saDataCommands,
         saOutputDataFiles=request.saOutputDataFiles,
         saTestCommands=request.saTestCommands,
@@ -2116,6 +2118,7 @@ async def _fnDrainAndCloseTerminalSession(
 
 async def fnHandlePipelineWs(
     websocket, dictCtx, sContainerId, fbFrameCredentialStillActive=None,
+    sClientWarning="",
 ):
     """Accept and run the pipeline WebSocket session.
 
@@ -2126,7 +2129,9 @@ async def fnHandlePipelineWs(
     tells the client which workflow this socket serves and its current
     exact-source fingerprint, so a caller with no other channel — the
     in-container ``vaibify-do``, whose token names no workflow — can
-    echo an acknowledgment in its run frames.
+    echo an acknowledgment in its run frames. A stale in-container
+    client is warned INSIDE that event, because the client requires it
+    to be the first frame.
     """
     await websocket.accept()
     dictBinding = await _fdictBindSocketToItsProject(
@@ -2136,7 +2141,7 @@ async def fnHandlePipelineWs(
         return
     dictWorkflow = dictBinding["fdictGetWorkflow"]()
     sWorkflowPath = dictBinding["dictPaths"][sContainerId]
-    await websocket.send_json({
+    dictBoundEvent = {
         "sType": "workflowBound",
         "sWorkflowPath": sWorkflowPath,
         "sProjectDirectory": agentProjectScope.fsProjectDirectoryOfWorkflow(
@@ -2146,7 +2151,10 @@ async def fnHandlePipelineWs(
         "sExactSourceFingerprint": dictWorkflow.get(
             "_sSourceFingerprint", "",
         ),
-    })
+    }
+    if sClientWarning:
+        dictBoundEvent["sClientWarning"] = sClientWarning
+    await websocket.send_json(dictBoundEvent)
     try:
         await fnPipelineMessageLoop(
             websocket, dictCtx["docker"], sContainerId,

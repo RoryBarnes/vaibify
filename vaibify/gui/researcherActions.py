@@ -304,6 +304,9 @@ DICT_ROUTE_TO_HOST_COMMAND = {
     ("POST", "/api/transfer"): "open",
     # The dashboard's new-project form; `vaibify init` scaffolds one.
     ("POST", "/api/projects/create"): "init",
+    # The dashboard's "Set up Docker" wizard runs one step of the plan
+    # `vaibify setup-docker` runs in a terminal.
+    ("POST", "/api/runtime/setup/run"): "setup-docker",
 }
 
 SET_GUI_ONLY_ROUTES = {

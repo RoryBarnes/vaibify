@@ -37,7 +37,7 @@ call time, so a patch of a ``testGenerator`` name applies here too.
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 
 from . import testGenerator as moduleGenerator
-from .pipelineUtils import OutputAnalysisError
+from .pipelineUtils import OutputAnalysisError, UnreadableModelReplyError
 from .templateManager import (
     S_GENERATOR_DETERMINISTIC,
     S_GENERATOR_LLM,
@@ -297,6 +297,10 @@ def _fdictGenerateQuantitativeCategory(
             bUseApi, sApiKey, sUser=sUser,
         )
         dictStandards = moduleGenerator.fdictParseQuantitativeJson(sRaw)
+        if not isinstance(dictStandards, dict) or not dictStandards.get(
+                "listStandards"):
+            raise UnreadableModelReplyError(
+                "The model's reply held no quantitative standards.")
     except Exception as error:
         fnReRaiseControlPlaneRefusal(error)
         return moduleGenerator._fdictErrorResult(

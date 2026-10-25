@@ -1972,6 +1972,10 @@ _LIST_CONTAINER_KEYED_CACHES = (
     "dictLiveImageIdentities",
     "dictPinnedImagePresence",
     "dictProjectCreationRequests",
+    "dictWorkflowEpochOrigins",
+    "dictResearcherNotices",
+    "dictNewestResearcherNoticeId",
+    "dictResearcherNoticeOnceKeys",
 )
 
 

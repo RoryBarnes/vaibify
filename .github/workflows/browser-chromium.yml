@@ -128,7 +128,10 @@ jobs:
         # make it answer again -- and if it still cannot, fail here,
         # where the cause is legible, rather than as twenty confusing
         # test errors.
-        timeout-minutes: 8
+        # 30, not 8 (2026-10-24): a slow apt mirror took seven minutes
+        # to fetch the webkit lane's fonts, and it timed out untested.
+        # The bound catches a hang; it is not a performance budget.
+        timeout-minutes: 30
         run: |
           python -m playwright install chromium
           if python tools/checkBrowserLaunches.py chromium; then

@@ -457,7 +457,7 @@ def fdictCommitWorkflowSave(
     memory instead, and correctly — it still holds the pre-update dict
     at that point, and does not need the round-trip.
     """
-    from . import commitCarrier, workflowManager
+    from . import commitCarrier, researcherNotices, workflowManager
     dictLaneTuple = fdictRequireLaneTupleForCommit(
         requestHttp, sContainerId, sOperationName,
     )
@@ -465,7 +465,7 @@ def fdictCommitWorkflowSave(
     fnRefuseSaveIntoAnotherProject(
         dictCtx.get("paths"), sContainerId, dictWorkflow,
     )
-    return commitCarrier.fdictCommitSynchronousMutation(
+    dictCommitted = commitCarrier.fdictCommitSynchronousMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "file-write",
         sWorkflowPath or "project.json",
@@ -480,6 +480,10 @@ def fdictCommitWorkflowSave(
             ) if sWorkflowPath else "",
         },
     )
+    researcherNotices.fnAnnounceAgentWorkflowChange(
+        dictCtx, sContainerId, requestHttp, sOperationName,
+    )
+    return dictCommitted
 
 
 def ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow):

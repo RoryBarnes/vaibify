@@ -4,11 +4,12 @@ First step of the shipped example workflow. It exists to be *run*: a
 new project should produce a figure on the first click of Run, before
 the researcher has installed anything or edited any code.
 
-That is why this uses only the Python standard library. A vaibify
-container installs the packages named in ``vaibify.yml``, and a fresh
-project names none, so a template that imported numpy would fail on
-the first run of every new project. Real workflows declare their
-dependencies in ``vaibify.yml`` and import freely; a template cannot.
+That is why this uses only the Python standard library. A host
+project runs on the researcher's own Python, which may have no numpy,
+and an image built before vaibify carried its analysis stack has none
+either, so a template that imported numpy could fail on the first run
+of a new project. Real workflows declare their dependencies in
+``vaibify.yml`` and import freely; a template cannot.
 
 The seed is an explicit argument rather than an implicit default so
 that re-running the workflow reproduces the figure byte for byte,

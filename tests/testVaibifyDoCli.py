@@ -8,17 +8,28 @@ with a tmpdir fixture so the module's module-level constants can be
 overridden before invoking a helper.
 """
 
+import hashlib
 import importlib.util
 import io
 import json
 import os
 import socket
 import sys
+import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 import urllib.error
+
+from tests.testAgentLaneEnforcement import (  # noqa: F401 -- fixtures
+    S_AGENT_TOKEN,
+    S_CONTAINER_ID,
+    appViewer,
+    clientAgent,
+)
+from vaibify.gui import agentClientFreshness
 
 
 _S_VAIBIFY_DO_PATH = (
@@ -940,7 +951,7 @@ def test_recv_exact_returns_empty_on_short_read(modCli):
 
 def test_ws_handshake_happy_path(modCli):
     sock = _MockSocket([b"HTTP/1.1 101 Switching\r\n\r\n"])
-    modCli.fnWebsocketHandshake(sock, "h", 80, "/ws")
+    modCli.fbaPerformWebsocketHandshake(sock, "h", 80, "/ws")
     # A handshake request was sent.
     assert b"GET /ws" in sock.listSent[0]
     assert b"Upgrade: websocket" in sock.listSent[0]
@@ -949,7 +960,7 @@ def test_ws_handshake_happy_path(modCli):
 def test_ws_handshake_401_exits(modCli, capsys):
     sock = _MockSocket([b"HTTP/1.1 401 Unauthorized\r\n\r\n"])
     with pytest.raises(SystemExit) as excInfo:
-        modCli.fnWebsocketHandshake(sock, "h", 80, "/ws")
+        modCli.fbaPerformWebsocketHandshake(sock, "h", 80, "/ws")
     assert excInfo.value.code == 4
     assert "token rejected" in capsys.readouterr().err.lower()
 
@@ -957,14 +968,14 @@ def test_ws_handshake_401_exits(modCli, capsys):
 def test_ws_handshake_other_reject_exits(modCli, capsys):
     sock = _MockSocket([b"HTTP/1.1 403 Forbidden\r\n\r\n"])
     with pytest.raises(SystemExit) as excInfo:
-        modCli.fnWebsocketHandshake(sock, "h", 80, "/ws")
+        modCli.fbaPerformWebsocketHandshake(sock, "h", 80, "/ws")
     assert excInfo.value.code == 4
 
 
 def test_ws_handshake_empty_response_exits(modCli, capsys):
     sock = _MockSocket([b""])
     with pytest.raises(SystemExit) as excInfo:
-        modCli.fnWebsocketHandshake(sock, "h", 80, "/ws")
+        modCli.fbaPerformWebsocketHandshake(sock, "h", 80, "/ws")
     assert excInfo.value.code == 4
 
 
@@ -1620,3 +1631,252 @@ def test_a_hub_that_never_names_its_project_is_not_waited_on(
     with pytest.raises(SystemExit) as excInfo:
         modCli._fdictAwaitWorkflowBound(object())
     assert excInfo.value.code == 4
+
+
+# -----------------------------------------------------------------------
+# The handshake keeps the frames that arrive with the 101 reply
+# -----------------------------------------------------------------------
+#
+# The hub sends workflowBound the moment it accepts, so the frame can
+# reach the client in the same read as the 101 reply. A handshake that
+# discarded everything after the header terminator lost the event, and
+# every in-container run timed out waiting for it (alpha tester,
+# 2026-10-23). The mock-socket tests above feed the 101 alone, which
+# is why they never saw it; these drive a real loopback socket.
+
+_BA_SWITCHING_PROTOCOLS = (
+    b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
+    b"Connection: Upgrade\r\nSec-WebSocket-Accept: x\r\n\r\n"
+)
+_DICT_BOUND_EVENT = {
+    "sType": "workflowBound", "sProjectDirectory": "/workspace/p",
+}
+
+
+def _fsocketServeOnce(listWrites):
+    """Accept one client on loopback; send each byte string as one write."""
+    socketListen = socket.socket()
+    socketListen.bind(("127.0.0.1", 0))
+    socketListen.listen(1)
+
+    def fnServe():
+        socketClient, _ = socketListen.accept()
+        baRequest = b""
+        while b"\r\n\r\n" not in baRequest:
+            baRequest += socketClient.recv(4096)
+        for baWrite in listWrites:
+            socketClient.sendall(baWrite)
+            time.sleep(0.1)
+        time.sleep(1.0)
+        socketClient.close()
+        socketListen.close()
+
+    threading.Thread(target=fnServe, daemon=True).start()
+    socketConnection = socket.create_connection(
+        socketListen.getsockname(), timeout=5,
+    )
+    return socketConnection
+
+
+def _freaderHandshakeOver(modCli, socketConnection):
+    """Handshake as fiRunWebsocket does, returning the wrapped socket."""
+    return modCli.HandshakeLeftoverSocket(
+        socketConnection,
+        modCli.fbaPerformWebsocketHandshake(
+            socketConnection, "127.0.0.1", 0, "/ws",
+        ),
+    )
+
+
+@pytest.mark.falsification
+def test_a_workflow_bound_frame_sent_with_the_101_is_not_lost(modCli):
+    """Kills: discarding the bytes that followed the header terminator.
+
+    The 101, workflowBound and one further text frame arrive in ONE
+    write; the client must read both frames, in order.
+    """
+    modCli.F_WORKFLOW_BOUND_TIMEOUT = 2.0
+    socketConnection = _fsocketServeOnce([
+        _BA_SWITCHING_PROTOCOLS + _baTextFrame(_DICT_BOUND_EVENT)
+        + _baTextFrame({"sType": "started"}),
+    ])
+    reader = _freaderHandshakeOver(modCli, socketConnection)
+    try:
+        assert modCli._fdictAwaitWorkflowBound(reader) == _DICT_BOUND_EVENT
+        assert modCli.ftRecvWsFrame(reader) == (
+            "text", json.dumps({"sType": "started"}),
+        )
+    finally:
+        socketConnection.close()
+
+
+def test_a_frame_split_across_the_101_write_is_reassembled(modCli):
+    """Half the frame arrives with the 101 and the rest later."""
+    modCli.F_WORKFLOW_BOUND_TIMEOUT = 2.0
+    baFrame = _baTextFrame(_DICT_BOUND_EVENT)
+    socketConnection = _fsocketServeOnce([
+        _BA_SWITCHING_PROTOCOLS + baFrame[:5], baFrame[5:],
+    ])
+    reader = _freaderHandshakeOver(modCli, socketConnection)
+    try:
+        assert modCli._fdictAwaitWorkflowBound(reader) == _DICT_BOUND_EVENT
+    finally:
+        socketConnection.close()
+
+
+def test_the_handshake_returns_nothing_when_the_101_came_alone(modCli):
+    sock = _MockSocket([b"HTTP/1.1 101 Switching\r\n\r\n"])
+    assert modCli.fbaPerformWebsocketHandshake(sock, "h", 80, "/ws") == b""
+
+
+# -----------------------------------------------------------------------
+# A container's vaibify-do older than the hub says so
+# -----------------------------------------------------------------------
+#
+# vaibify-do is baked into the image, so a container keeps the client
+# it was built with until it is rebuilt. It sends its own sha256; the
+# hub compares it with the vaibify-do it ships and warns on a
+# difference or on no digest at all. Driven through the real middleware
+# and the real pipeline-socket route.
+
+
+def _fresponseAgentProbe(clientAgent, dictExtraHeaders):
+    return clientAgent.post(
+        f"/api/files/{S_CONTAINER_ID}/exist",
+        json={"saRelativePaths": []}, headers=dictExtraHeaders,
+    )
+
+
+def test_a_current_client_is_not_warned(clientAgent):
+    responseHttp = _fresponseAgentProbe(clientAgent, {
+        agentClientFreshness.S_CLIENT_DIGEST_HEADER:
+            agentClientFreshness.fsShippedClientDigest(),
+    })
+    assert responseHttp.status_code == 200
+    assert agentClientFreshness.S_CLIENT_WARNING_HEADER not in (
+        responseHttp.headers
+    )
+
+
+def test_a_client_with_another_digest_is_warned(clientAgent):
+    responseHttp = _fresponseAgentProbe(clientAgent, {
+        agentClientFreshness.S_CLIENT_DIGEST_HEADER: "0" * 64,
+    })
+    assert responseHttp.status_code == 200
+    assert responseHttp.headers[
+        agentClientFreshness.S_CLIENT_WARNING_HEADER
+    ] == agentClientFreshness.S_STALE_CLIENT_WARNING
+
+
+@pytest.mark.falsification
+def test_a_client_that_sends_no_digest_is_warned(clientAgent):
+    """Kills: treating a missing digest as current.
+
+    Only a client older than the digest itself omits it, and those are
+    exactly the containers that still carry the handshake defect.
+    """
+    responseHttp = _fresponseAgentProbe(clientAgent, {})
+    assert responseHttp.status_code == 200
+    assert responseHttp.headers[
+        agentClientFreshness.S_CLIENT_WARNING_HEADER
+    ] == agentClientFreshness.S_STALE_CLIENT_WARNING
+
+
+def test_the_presented_digest_is_never_echoed(clientAgent):
+    sPresented = "attacker-chosen-text"
+    responseHttp = _fresponseAgentProbe(clientAgent, {
+        agentClientFreshness.S_CLIENT_DIGEST_HEADER: sPresented,
+    })
+    assert sPresented not in json.dumps(dict(responseHttp.headers))
+    assert sPresented not in responseHttp.text
+
+
+def _dictFirstAgentSocketEvent(appViewer, clientAgent, sQuery):
+    from tests.testProjectScopedAgentActions import _fnOpenProjectInApp
+    _fnOpenProjectInApp(
+        appViewer, "/workspace/projectA/.vaibify/projects/a.json", "A",
+    )
+    with clientAgent.websocket_connect(
+        f"/ws/pipeline/{S_CONTAINER_ID}?sToken={S_AGENT_TOKEN}" + sQuery,
+    ) as websocketAgent:
+        return websocketAgent.receive_json()
+
+
+def test_a_stale_socket_client_is_warned_inside_workflow_bound(
+    appViewer, clientAgent,
+):
+    """The warning rides workflowBound, which stays the first frame."""
+    dictFirst = _dictFirstAgentSocketEvent(
+        appViewer, clientAgent,
+        "&" + agentClientFreshness.S_CLIENT_DIGEST_QUERY + "=" + "0" * 64,
+    )
+    assert dictFirst["sType"] == "workflowBound"
+    assert dictFirst["sClientWarning"] == (
+        agentClientFreshness.S_STALE_CLIENT_WARNING
+    )
+
+
+def test_a_current_socket_client_is_not_warned(appViewer, clientAgent):
+    dictFirst = _dictFirstAgentSocketEvent(
+        appViewer, clientAgent,
+        "&" + agentClientFreshness.S_CLIENT_DIGEST_QUERY + "="
+        + agentClientFreshness.fsShippedClientDigest(),
+    )
+    assert dictFirst["sType"] == "workflowBound"
+    assert "sClientWarning" not in dictFirst
+
+
+def test_the_client_sends_the_digest_the_hub_expects(modCli, dictValidEnv):
+    """The two sides hash the same bytes: the shipped file is the client."""
+    sDigest = agentClientFreshness.fsShippedClientDigest()
+    assert modCli.fsComputeOwnDigest() == sDigest
+    assert modCli.fdictBuildRequestHeaders("tok")[
+        modCli.S_CLIENT_DIGEST_HEADER
+    ] == sDigest
+    assert ("&" + modCli.S_CLIENT_DIGEST_QUERY + "=" + sDigest) in (
+        modCli.ftWsEndpoint(dictValidEnv)[2]
+    )
+
+
+def test_the_client_and_the_hub_agree_on_the_digest_wire_names(modCli):
+    for sName in (
+        "S_CLIENT_DIGEST_HEADER", "S_CLIENT_DIGEST_QUERY",
+        "S_CLIENT_WARNING_HEADER",
+    ):
+        assert getattr(modCli, sName) == getattr(agentClientFreshness, sName)
+
+
+def test_the_client_prints_the_warning_on_stderr_only(modCli, capsys):
+    modCli.fnWarnStaleClientFromHeaders({
+        modCli.S_CLIENT_WARNING_HEADER: "rebuild please",
+    })
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "rebuild please" in captured.err
+
+
+def test_version_prints_the_files_own_digest(modCli, tmp_path, capsys):
+    modCli.S_SESSION_ENV_PATH = str(tmp_path / "absent.env")
+    modCli.fnPrintVersion()
+    sOut = capsys.readouterr().out
+    sExpected = hashlib.sha256(_S_VAIBIFY_DO_PATH.read_bytes()).hexdigest()
+    assert "vaibify-do sha256 " + sExpected in sOut
+    assert "unknown (not connected)" in sOut
+
+
+def test_the_hub_digest_resolves_through_the_packaged_tree(
+    tmp_path, monkeypatch,
+):
+    """The digest follows resources.py, so a wheel hashes its own copy."""
+    (tmp_path / "vaibifyDo.py").write_bytes(b"a different client\n")
+    monkeypatch.setattr(
+        agentClientFreshness.resources, "fpathContainerImageRoot",
+        lambda: tmp_path,
+    )
+    agentClientFreshness.fsShippedClientDigest.cache_clear()
+    try:
+        assert agentClientFreshness.fsShippedClientDigest() == (
+            hashlib.sha256(b"a different client\n").hexdigest()
+        )
+    finally:
+        agentClientFreshness.fsShippedClientDigest.cache_clear()

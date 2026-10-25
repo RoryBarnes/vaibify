@@ -17,6 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
 
 from . import actionCatalog
+from . import agentClientFreshness
 from . import agentProjectScope
 from . import browserSession
 from . import containerOwnership
@@ -103,19 +104,41 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
         )
         if _fbAgentRequestAuthorized(request, dictContainerOwners):
             if not _fbAgentLanePermitsRequest(request):
-                return _fresponseJsonError(
+                response = _fresponseJsonError(
                     403,
                     "User-only action: ask the researcher to run it "
                     "from the dashboard",
                 )
-            return await _fresponseServeAgentRequestInItsProject(
-                request, dictContainerOwners, call_next,
-            )
+            else:
+                response = await _fresponseServeAgentRequestInItsProject(
+                    request, dictContainerOwners, call_next,
+                )
+            _fnStampStaleClientWarning(request, response)
+            return response
         if not _fbRequestHasAllowedHost(request):
             return _fresponseJsonError(400, "Invalid Host header")
         if _fbBrowserTokenRejected(request):
             return _fresponseUnauthorized(request)
         return await call_next(request)
+
+
+def _fnStampStaleClientWarning(request, response):
+    """Tell an agent whose ``vaibify-do`` predates this hub to ask for a rebuild.
+
+    The warning rides a header so the client can print it on stderr and
+    keep stdout one JSON document; see :mod:`agentClientFreshness`.
+    """
+    sWarning = agentClientFreshness.fsStaleClientWarning(
+        request.headers.get(agentClientFreshness.S_CLIENT_DIGEST_HEADER, ""),
+    )
+    if sWarning:
+        response.headers[agentClientFreshness.S_CLIENT_WARNING_HEADER] = (
+            sWarning
+        )
+        agentClientFreshness.fnNoticeStaleClientOnce(
+            getattr(request.app.state, "dictRouteContext", None),
+            _fsContainerIdFromPath(request.url.path),
+        )
 
 
 async def _fresponseServeAgentRequestInItsProject(

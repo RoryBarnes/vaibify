@@ -192,7 +192,9 @@ var VaibifyPolling = (function () {
             var dictStatus = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sContainerId + "/file-status" +
                 "?iWorkflowEpoch=" + encodeURIComponent(
-                    VaibifyApp.fiGetWorkflowEpoch())
+                    VaibifyApp.fiGetWorkflowEpoch()) +
+                "&iLastNoticeId=" + encodeURIComponent(
+                    VaibifyApp.fiGetLastNoticeId())
             );
             _fnReportPollSuccess("file-status");
             if (_fbProjectSwitchedSince(sRequestedPath)) return;

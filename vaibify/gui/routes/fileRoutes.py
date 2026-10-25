@@ -30,6 +30,7 @@ from ..routeScope import (
     S_CARRIER_TYPED_READ,
     ffnDeclareCarrierMode,
 )
+from .. import standardsFiles
 from .. import projectRoots
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
@@ -827,6 +828,9 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         sNormalized = fsValidatePathWithinRoot(
             sAbsPath, sProjectRepoPath)
         fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
+        standardsFiles.fnRefuseInvalidStandardsWrite(
+            sNormalized, request.sContent,
+        )
         _fnRaiseConflictIfBaseHashMismatch(
             dictCtx, sContainerId, sNormalized, request.sBaseHash,
         )

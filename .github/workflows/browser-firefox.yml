@@ -68,7 +68,10 @@ jobs:
         # step that can hang a lane into silence -- browser.yml records
         # the run that sat for one hour forty-four minutes doing it.
         # The runner image carries most of Firefox's libraries already.
-        timeout-minutes: 8
+        # 30, not 8 (2026-10-24): a slow apt mirror took seven minutes
+        # to fetch the webkit lane's fonts, and it timed out untested.
+        # The bound catches a hang; it is not a performance budget.
+        timeout-minutes: 30
         run: |
           python -m playwright install firefox
           if python tools/checkBrowserLaunches.py firefox; then

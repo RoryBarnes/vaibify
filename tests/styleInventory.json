@@ -67,6 +67,8 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/projectConfig.py::k", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/projectConfig.py::v", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/reconciliation.py::_fdictRecordForProbe.valueField", "sReason": ""},
+    {"sDebtClass": "interface-method", "sIdentity": "vaibify/containerImage/vaibifyDo.py::HandshakeLeftoverSocket.recv", "sReason": "socket protocol method consumed by the WebSocket frame readers"},
+    {"sDebtClass": "interface-method", "sIdentity": "vaibify/containerImage/vaibifyDo.py::HandshakeLeftoverSocket.sendall", "sReason": "socket protocol method consumed by the WebSocket frame writers"},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::_fbaRecvExact.dataBuffer", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::_fbaRecvExact.dataChunk", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::_fiHandleHttpError.dataBody", "sReason": ""},
@@ -83,8 +85,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::fiSendHttpRequest.errHttp", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::fiSendHttpRequest.resp", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::fnSendWsPong::dataPayload", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::fnWebsocketHandshake.dataChunk", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::fnWebsocketHandshake.dataResponse", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::ftRecvWsFrame.dataHeader", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::ftRecvWsFrame.dataPayload", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection._ftRunTypedRead::objPaths", "sReason": ""},
@@ -340,7 +340,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 319,
+    "legacy-variable": 317,
     "legacy-yield": 0
   }
 }

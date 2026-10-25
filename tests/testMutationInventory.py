@@ -167,7 +167,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 272 -> 271 (2026-10-12): the test generator's unclassified conftest
 # write and the new marker-plugin writes share one classified confined
 # write site, _fnWriteTextConfined.
-I_UNCLASSIFIED_ROW_BUDGET = 271
+I_UNCLASSIFIED_ROW_BUDGET = 267
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -433,7 +433,15 @@ I_UNCLASSIFIED_ROW_BUDGET = 271
 # only inside a reproduction container, with a fixed argv; it counts as
 # mutation-capable because its program is sys.executable, which the scan
 # cannot read. Classified at birth, lane reproduction-container.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 230
+# 231 (2026-10-24), a NEW reach on the researcher's own machine, named
+# so it cannot be missed: the Docker setup wizard. Its probe launcher
+# only reads, but takes its argv as a parameter, so it counts; its step
+# runner installs and starts a container runtime, some steps as root
+# through an OS-owned prompt. Neither touches a container. Both rows
+# are excluded with their authority recorded (plan-built argv, first-
+# step action names only, agent lane rejected, machine-wide lock), and
+# the guards behind it are kill-confirmed.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 231
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -734,7 +742,13 @@ DICT_UNRESOLVED_BUDGET = {
     # tests the NumPy the probe imported. Its argv is fixed source text
     # and it runs only inside a reproduction container; the scan cannot
     # read a launch whose program is not a literal.
-    "opaque-subprocess-command": 22,
+    # 22 -> 24 (2026-10-24), NEW host reach, named: the Docker setup
+    # wizard's two launch sites, runtimeSetupFacts._ftRunProbe (fixed
+    # read-only probes) and runtimeSetupRunner._fnRunInvocation (the
+    # plan's steps, root only through an OS-owned prompt). Each takes
+    # its argv as a parameter, built from constants in one module, so
+    # the scan cannot read it; both rows carry reviewed dispositions.
+    "opaque-subprocess-command": 24,
     # 52 since fsImageState (2026-09-18): a gateway image lookup, read
     # through the same SDK root as flistGetRunningContainers beside it.
     # 53 since fdictSweepSurvivorsOfVanishedResources (2026-09-21): the

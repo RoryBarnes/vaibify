@@ -18,7 +18,7 @@
 # this file sees it, so container paths containing those characters do
 # not complete.
 
-_sVaibifySubcommands="build cat config connect credential destroy do doctor generate-standards gui init ls open pull push reconcile register remote remote-helper repair reproduce revoke run secret sessions setup start status stop test verify verify-step workflow"
+_sVaibifySubcommands="build cat config connect credential destroy do doctor generate-standards gui init ls open pull push reconcile register remote remote-helper repair reproduce revoke run secret sessions setup setup-docker start status stop test verify verify-step workflow"
 
 # ---------------------------------------------------------------------------
 # _fnScanTypedArguments: Read the project and count the typed paths

@@ -74,6 +74,28 @@ def fnCheckContainerContextIsUsable():
     print(f"  container context: {pathContext}")
 
 
+def fnCheckClientDigestResolves():
+    """The hub must hash the vaibify-do this distribution ships.
+
+    A stale in-container client is detected by comparing its digest
+    with this one, so an empty or foreign digest would either warn
+    every agent or none.
+    """
+    import hashlib
+    from vaibify.gui import agentClientFreshness
+    from vaibify.resources import fpathContainerImageRoot
+    sDigest = agentClientFreshness.fsShippedClientDigest()
+    sExpected = hashlib.sha256(
+        (fpathContainerImageRoot() / "vaibifyDo.py").read_bytes(),
+    ).hexdigest()
+    if sDigest != sExpected:
+        fnFailWith(
+            f"the hub's vaibify-do digest '{sDigest}' is not the sha256 "
+            f"of the packaged vaibifyDo.py ('{sExpected}')"
+        )
+    print(f"  vaibify-do digest: {sDigest}")
+
+
 def fnCheckPreparedContextIsComplete(pathScratch):
     """Assemble a real build context and check nothing staged is absent.
 
@@ -362,6 +384,7 @@ def main():
     fnCheckPackageIsNotTheCheckout()
     fnCheckTemplatesAreUsable()
     fnCheckContainerContextIsUsable()
+    fnCheckClientDigestResolves()
     fnCheckDashboardAssetsArePresent()
     fnCheckShellCompletionsResolve()
     fnCheckConsoleScriptRuns()

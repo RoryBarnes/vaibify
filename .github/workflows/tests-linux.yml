@@ -219,12 +219,13 @@ jobs:
           exit 1
 
       - name: Run live-daemon smoke tests
-        # The live tests themselves take about five minutes (296-303 s
-        # measured), so a five-minute cap killed passing runs. RAISED
-        # from 10 (2026-10-05): the reader-journey test adds about 21 s
-        # and the job then ran out at the finish line twice with every
-        # test green.
-        timeout-minutes: 15
+        # This cap catches a hang; it is not a performance budget. Three
+        # caps set just above the last run's time (5, 10, 15 minutes)
+        # each killed passing runs as the live tests grew, the last at
+        # ~87% of the suite with every test green (2026-10-24). Sixty
+        # minutes leaves room for growth and a slow runner; never set
+        # it from one measured run.
+        timeout-minutes: 60
         env:
           # Turns the tests' own convenience skip into a failure, so a
           # green result here cannot mean "skipped everything".

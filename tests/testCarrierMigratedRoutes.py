@@ -5639,15 +5639,45 @@ S_GENERATED_TESTS_DIRECTORY = posixpath.join(
 )
 
 
-class DockerDoubleForTestGeneration(DockerDoubleThatCallsTheRealGates):
-    """The gate-faithful double, with the introspection program answered.
+S_GENERATION_OUTPUT = "values.npy"
+S_GENERATION_REPORT = json.dumps([{
+    "sFileName": S_GENERATION_OUTPUT, "sFormat": "npy", "bExists": True,
+    "iByteSize": 160, "bLoadable": True, "sError": "", "tShape": [4],
+    "sDtype": "float64", "iNanCount": 0, "iInfCount": 0,
+    "listColumnNames": [], "listJsonTopKeys": [],
+    "listBenchmarks": [{
+        "sName": "fFirst", "sDataFile": S_GENERATION_OUTPUT,
+        "sAccessPath": "index:0", "fValue": 0.5,
+    }],
+}])
 
-    Only the introspection run is special-cased. The parent answers
-    every command with ``(0, "")``, which the generator rejects as
-    unparseable and turns into a 500 -- a real outcome, and the one
-    this route now QUARANTINES on, but not the one that lets the save
-    downstream be reached and asserted.
+
+class DockerDoubleForTestGeneration(DockerDoubleThatCallsTheRealGates):
+    """The gate-faithful double, with a step whose output exists.
+
+    The step declares one numeric output that exists, and the
+    introspection program reports it in the real program's shape. A
+    step with no outputs has nothing to generate tests from -- every
+    tier is N/A and nothing is written -- and a step whose outputs are
+    missing is refused, so neither reaches the writes and the save
+    these tests assert about. The parent answers every other command
+    with ``(0, "")``.
     """
+
+    def __init__(self):
+        super().__init__()
+        self.setExistingPaths.add(
+            S_PROJECT_REPO + "/stepA/" + S_GENERATION_OUTPUT,
+        )
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
+            dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
+            dictWorkflow["listSteps"][0]["saOutputDataFiles"] = [
+                S_GENERATION_OUTPUT,
+            ]
+            self._dictFiles[sPath] = json.dumps(dictWorkflow).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
 
     def ftResultExecuteCommand(
         self, sContainerId, sCommand, sWorkdir=None,
@@ -5659,7 +5689,7 @@ class DockerDoubleForTestGeneration(DockerDoubleThatCallsTheRealGates):
             S_INTROSPECT_COMMAND_MARKER in sCommand
             and sCommand.startswith("python3 ")
         ):
-            return (0, "[]")
+            return (0, S_GENERATION_REPORT)
         return tExec
 
 

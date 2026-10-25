@@ -122,6 +122,40 @@ def _fdictAuthority(listLanes, sRationale):
 # unauthorised, and a line here the scan no longer finds is a review
 # aimed at code that moved.
 DICT_NAMED_AUTHORITIES = {
+    # -- the Docker setup wizard ----------------------------------------
+    "install/runtimeSetupFacts.py|<module>|process-launch|"
+    "subprocess|import|0":
+        _fdictAuthority(
+            ["http", "host-cli"],
+            "The Docker setup wizard's read-only probes of the "
+            "researcher's own machine (`vaibify setup-docker` and the "
+            "hub's GET /api/runtime/setup). One launch site, "
+            "_ftRunProbe, with a fixed argv per probe written in this "
+            "module (colima list, docker info / buildx version / ps / "
+            "context, sudo -n true, systemctl list-unit-files and "
+            "is-active, brew --prefix, sw_vers, sysctl); none takes a "
+            "value from a request. stdin is /dev/null and each probe "
+            "is bounded at ten seconds. It touches no container. The "
+            "route rejects the agent lane by name.",
+        ),
+    "install/runtimeSetupRunner.py|<module>|process-launch|"
+    "subprocess|import|0":
+        _fdictAuthority(
+            ["http", "host-cli"],
+            "The Docker setup wizard's step runner, which installs and "
+            "starts a container runtime on the researcher's own "
+            "machine, some steps as root. One launch site, "
+            "_fnRunInvocation. The argv comes only from "
+            "runtimeSetupPlan (constants plus the machine's own facts "
+            "and two integers bounded to the host); the caller names "
+            "an action of the plan's FIRST step and never a command "
+            "(fdictFindRunnableAction); root runs only through an "
+            "OS-owned prompt (osascript's administrator dialog, "
+            "pkexec, sudo -n, or sudo in the researcher's terminal). "
+            "The POST /api/runtime/setup/run route rejects the agent "
+            "lane, is browser-hub scoped and catalog-excluded, so an "
+            "in-container agent cannot reach it.",
+        ),
     # -- the environment archive -----------------------------------------
     "reproducibility/imageDeposit.py|<module>|process-launch|"
     "subprocess|import|0":

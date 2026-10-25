@@ -680,7 +680,11 @@ ENV PATH="${PACKAGE_MANAGER:+/opt/conda/bin:}${PATH}"
 # like vplanet install to /usr/local/bin and are already covered.)
 ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"
 
-# Project-specific Python packages from vaibify.yml pythonPackages.
+# Project-specific Python packages from vaibify.yml pythonPackages, plus
+# the analysis stack every image carries (numpy, scipy, matplotlib,
+# pytest; vaibify/config/analysisStack.py). The build writes both into
+# this one list, so the stack is recorded and locked like a declared
+# package rather than installed beside the list.
 #
 # THE LIST IS KEPT IN THE IMAGE, at /etc/vaibify/requirements.txt, and
 # that is load-bearing rather than housekeeping. vaibify.yml is the one

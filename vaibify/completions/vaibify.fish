@@ -14,7 +14,7 @@
 # whatever the shell needs when it inserts a candidate, so a file named
 # `a b; touch x` arrives on the command line as ONE word and runs nothing.
 
-set -g __vaibify_subcommands build cat config connect credential destroy do doctor generate-standards gui init ls open pull push reconcile register remote remote-helper repair reproduce revoke run secret sessions setup start status stop test verify verify-step workflow
+set -g __vaibify_subcommands build cat config connect credential destroy do doctor generate-standards gui init ls open pull push reconcile register remote remote-helper repair reproduce revoke run secret sessions setup setup-docker start status stop test verify verify-step workflow
 
 # Print, one per line: the direction ("push" or "pull"), how many paths
 # have been typed before the cursor, and the project named with -p.

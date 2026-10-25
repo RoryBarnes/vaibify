@@ -87,6 +87,7 @@
     {"sCommandExpression": "sCommand", "sEnclosingFunction": "_ftWriteGitIdentity", "sFingerprint": "e3044e21450a0366dc82ce4d10abffbc569ac2902f9b7d2a4c9f2427f4c02e07", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/syncRoutes.py"},
     {"sCommandExpression": "sCommand", "sEnclosingFunction": "_ftReadReadinessMarker", "sFingerprint": "1870d526ebb3dcfc2e5d2d35cec423826c61f3ecd1c15e65cc29b737dfdb5ad2", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/systemRoutes.py"},
     {"sCommandExpression": "sCatCmd", "sEnclosingFunction": "_fdictRunOneTestCategory", "sFingerprint": "b7e5b86c4465a75e1ebd278c13deb87c41e0f90c6ebc05c559431bb7db7c005c", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/testRoutes.py"},
+    {"sCommandExpression": "sCommand", "sEnclosingFunction": "_fnRemoveFilesOfInapplicableCategories", "sFingerprint": "da8cba3ff720be8ff0da0025a0852c2a93526830a2180a4504de4daf72076f04", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/testRoutes.py"},
     {"sCommandExpression": "sFullCmd", "sEnclosingFunction": "_ftRunCategoryCommands", "sFingerprint": "aadb4e2deac2dc3689abca26ea614a186ee11716c98374d5ca75376e1cc5d37b", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/testRoutes.py"},
     {"sCommandExpression": "sTestCmd", "sEnclosingFunction": "_ftRunSaveAndRunTest", "sFingerprint": "89a9a3fc02aa149ebf40dccec9ece61e87366c5db37967ffe003466577e4a9e3", "sMethod": "ftRunInContainerStreamed", "sModule": "vaibify/gui/routes/testRoutes.py"},
     {"sCommandExpression": "f'test -e {fsShellQuote(sFullPath)}'", "sEnclosingFunction": "_fnAssertWorkflowAbsent", "sFingerprint": "2f9108cf2719ab4d5ef488ad7ca23dbeecf06571af79c5f977922d892a66cce1", "sMethod": "ftResultExecuteCommand", "sModule": "vaibify/gui/routes/workflowRoutes.py"},
@@ -197,5 +198,5 @@
     "e5346aa7e915e068901a836017647f38933a6b12b9b4d2692d390b951604feb2": {"sDisposition": "host-variant", "sRationale": "Conftest marker read / flat-marker migration; the python3 -c bodies run in-process on the host per the plan.", "sSupportingSymbols": "fbWriteConftestMarkersBatch, sCommand"},
     "ff86645ad0f11e50a470acaa688a9d956bf82d1285041ac8872ee34c28948c97": {"sDisposition": "host-variant", "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.", "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"}
   },
-  "iUndisposedSiteBudget": 75
+  "iUndisposedSiteBudget": 76
 }

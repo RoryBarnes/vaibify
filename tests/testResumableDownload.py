@@ -656,9 +656,21 @@ def test_the_slow_rate_notice_is_given_once_without_stopping(serverFault, monkey
     monkeypatch.setattr(resumableDownload, "_F_SLOW_RATE_NOTICE_SECONDS", 0.2)
     monkeypatch.setattr(resumableDownload, "_I_STATUS_EVERY_BYTES", 64 * I_KIBIBYTE)
     serverFault.dictBehavior["tStallAfterBytes"] = (300 * I_KIBIBYTE, 30.0)
-    threading.Timer(0.4, serverFault.eventRelease.set).start()
+    dictControl = resumableDownload.fdictCreateDownloadControl()
+
+    def fnReleaseOnceTheStallOutlastsTheNotice():
+        # Timed from the stall, not from the test's start: a loaded
+        # runner can spend the whole notice window connecting.
+        try:
+            fnWaitUntil(lambda: resumableDownload.fdictReadDownloadProgress(
+                dictControl)["iBytes"] >= 300 * I_KIBIBYTE)
+            time.sleep(0.4)
+        finally:
+            serverFault.eventRelease.set()
+
+    threading.Thread(target=fnReleaseOnceTheStallOutlastsTheNotice, daemon=True).start()
     listEvents = []
-    assert fsDownload(serverFault, fdictOpenFor(), listEvents=listEvents) == S_SHA
+    assert fsDownload(serverFault, fdictOpenFor(), dictControl, listEvents) == S_SHA
     listSlow = [d for d in listEvents if d.get("sPhase") == "downloadSlow"]
     assert len(listSlow) == 1
     assert "continues" in listSlow[0]["sSentence"]
