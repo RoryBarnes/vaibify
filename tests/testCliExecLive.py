@@ -12,6 +12,7 @@ empty, and the record is gone from the host.
 import os
 import pty
 import signal
+import subprocess
 import sys
 import textwrap
 import time
@@ -107,16 +108,30 @@ def _fnDrainPtyQuietly(iMasterFd):
         pass
 
 
-def _fiAwaitChildExit(iPid, fTimeoutSeconds=20.0):
+def _fiAwaitChildExit(iPid, iMasterFd, fTimeoutSeconds=20.0):
+    """Wait for the CLI to exit, reading its terminal as a real window does.
+
+    On macOS a killed session leader cannot finish exiting while its
+    terminal holds output that another process (here ``docker exec``)
+    wrote and nobody has read: the kernel waits for that output to
+    drain. A window always reads, so this wait does too, rather than
+    depending on ``docker exec`` to clear the queue. A timeout reports
+    the process's kernel state, so a recurrence names its cause.
+    """
     fDeadline = time.monotonic() + fTimeoutSeconds
     while time.monotonic() < fDeadline:
+        _fnDrainPtyQuietly(iMasterFd)
         iWaited, iStatus = os.waitpid(iPid, os.WNOHANG)
         if iWaited == iPid:
             return iStatus
         time.sleep(0.1)
+    sProcessState = subprocess.run(
+        ["ps", "-o", "stat=,wchan=", "-p", str(iPid)],
+        capture_output=True, text=True).stdout.strip()
     os.kill(iPid, signal.SIGKILL)
     os.waitpid(iPid, 0)
-    pytest.fail("the CLI did not exit")
+    pytest.fail(f"the CLI did not exit (ps state and wait channel: "
+                f"{sProcessState or 'gone'})")
 
 
 def _ftOpenShellWithAJob(tLiveContainer, tmp_path):
@@ -157,7 +172,7 @@ def test_a_hangup_ends_the_cli_shell_and_everything_in_it(tLiveContainer, tmp_pa
     iPid, iMasterFd, iSessionId, sRecordDirectory = _ftOpenShellWithAJob(
         tLiveContainer, tmp_path)
     os.kill(iPid, signal.SIGHUP)
-    iStatus = _fiAwaitChildExit(iPid)
+    iStatus = _fiAwaitChildExit(iPid, iMasterFd)
     _fnDrainPtyQuietly(iMasterFd)
     os.close(iMasterFd)
     _fnAssertSessionGone(connectionDocker, sContainerId, iSessionId)
@@ -171,7 +186,7 @@ def test_a_killed_cli_is_cleaned_up_by_the_reaper_on_proof(
     iPid, iMasterFd, iSessionId, sRecordDirectory = _ftOpenShellWithAJob(
         tLiveContainer, tmp_path)
     os.kill(iPid, signal.SIGKILL)
-    _fiAwaitChildExit(iPid)
+    _fiAwaitChildExit(iPid, iMasterFd)
     dictProbe = connectionDocker.fdictProbeProcessGroupMembers(sContainerId, iSessionId)
     assert dictProbe["bConclusive"] and dictProbe["iMemberCount"] >= 1, (
         "a SIGKILLed CLI should have left its session running: that is the leak")
