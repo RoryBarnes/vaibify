@@ -38,6 +38,11 @@ S_SERVED_PROJECT_HEADER = "X-Vaibify-Project"
 S_SERVED_PROJECT_NAME_HEADER = "X-Vaibify-Project-Name"
 S_AGENT_PROJECT_FIELD = "sAgentProjectDirectory"
 S_AGENT_PROJECT_QUERY = "sAgentProject"
+# This file's own sha256 rides every call so the hub can say when the
+# image's copy is older than the vaibify serving it.
+S_CLIENT_DIGEST_HEADER = "X-Vaibify-Client-Digest"
+S_CLIENT_DIGEST_QUERY = "sClientDigest"
+S_CLIENT_WARNING_HEADER = "X-Vaibify-Client-Warning"
 T_PROJECT_DIRECTORY_MARKERS = (
     os.path.join(".vaibify", "projects"),
     os.path.join(".vaibify", "workflows"),
@@ -156,7 +161,34 @@ def fdictBuildRequestHeaders(sToken):
     sProjectDirectory = fsAgentProjectDirectory()
     if sProjectDirectory:
         dictHeaders[S_AGENT_PROJECT_HEADER] = sProjectDirectory
+    sClientDigest = fsComputeOwnDigest()
+    if sClientDigest:
+        dictHeaders[S_CLIENT_DIGEST_HEADER] = sClientDigest
     return dictHeaders
+
+
+def fsComputeOwnDigest():
+    """Return the sha256 of this file, or "" when it cannot be read."""
+    try:
+        with open(os.path.abspath(__file__), "rb") as fileHandle:
+            return hashlib.sha256(fileHandle.read()).hexdigest()
+    except OSError:
+        return ""
+
+
+def fnWarnStaleClient(sWarning):
+    """Print the hub's stale-client warning on stderr, if it sent one."""
+    if not sWarning:
+        return
+    sys.stderr.write("vaibify-do: warning: " + sWarning + "\n")
+    sys.stderr.flush()
+
+
+def fnWarnStaleClientFromHeaders(dictHeaders):
+    """Print the stale-client warning a response's headers carry."""
+    if dictHeaders is None:
+        return
+    fnWarnStaleClient(dictHeaders.get(S_CLIENT_WARNING_HEADER) or "")
 
 
 def fnAnnounceServedProject(sProjectDirectory, sProjectName):
@@ -533,10 +565,12 @@ def fiSendHttpRequest(dictTarget, sToken, sMethod, bJsonMode):
     try:
         with urllib.request.urlopen(request, timeout=F_READ_TIMEOUT) as resp:
             fnAnnounceServedProjectFromHeaders(getattr(resp, "headers", None))
+            fnWarnStaleClientFromHeaders(getattr(resp, "headers", None))
             _fnPrintHttpBody(resp.read(), bJsonMode)
             return 0
     except urllib.error.HTTPError as errHttp:
         fnAnnounceServedProjectFromHeaders(getattr(errHttp, "headers", None))
+        fnWarnStaleClientFromHeaders(getattr(errHttp, "headers", None))
         return _fiHandleHttpError(errHttp, bJsonMode)
     except socket.timeout:
         # urllib wraps a failed CONNECT in URLError; a bare timeout
@@ -590,11 +624,21 @@ def ftWsEndpoint(dictEnv):
     if sProjectDirectory:
         sPath += "&" + S_AGENT_PROJECT_QUERY + "=" + urllib.parse.quote(
             sProjectDirectory, safe="")
+    sClientDigest = fsComputeOwnDigest()
+    if sClientDigest:
+        sPath += "&" + S_CLIENT_DIGEST_QUERY + "=" + sClientDigest
     return tParsed.hostname, iPort, sPath, bTls
 
 
-def fnWebsocketHandshake(socketConnection, sHost, iPort, sPath):
-    """Perform an RFC 6455 client handshake over an open socket."""
+def fbaPerformWebsocketHandshake(socketConnection, sHost, iPort, sPath):
+    """Perform an RFC 6455 client handshake; return the bytes after it.
+
+    The hub sends ``workflowBound`` the moment it accepts, so that
+    frame can arrive in the same read as the 101 reply. Whatever
+    followed the header terminator is the start of the frame stream
+    and is returned, never discarded: dropping it lost the
+    ``workflowBound`` event and every run timed out waiting for it.
+    """
     sKey = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
     sRequest = (
         "GET " + sPath + " HTTP/1.1\r\n"
@@ -603,19 +647,45 @@ def fnWebsocketHandshake(socketConnection, sHost, iPort, sPath):
         "Sec-WebSocket-Key: " + sKey + "\r\n"
         "Sec-WebSocket-Version: 13\r\n\r\n")
     socketConnection.sendall(sRequest.encode("ascii"))
-    dataResponse = b""
-    while b"\r\n\r\n" not in dataResponse:
-        dataChunk = socketConnection.recv(4096)
-        if not dataChunk:
+    baResponse = b""
+    while b"\r\n\r\n" not in baResponse:
+        baChunk = socketConnection.recv(4096)
+        if not baChunk:
             fnFail("websocket handshake failed (empty response)", iCode=4)
-        dataResponse += dataChunk
-    if b" 101 " not in dataResponse.split(b"\r\n")[0]:
-        if b" 401 " in dataResponse.split(b"\r\n")[0]:
+        baResponse += baChunk
+    baHeader, baLeftover = baResponse.split(b"\r\n\r\n", 1)
+    baStatusLine = baHeader.split(b"\r\n")[0]
+    if b" 101 " not in baStatusLine:
+        if b" 401 " in baStatusLine:
             fnFail("vaibify session token rejected; reconnect "
                    "the container from the dashboard", iCode=4)
         fnFail("websocket handshake rejected: "
-               + dataResponse.split(b"\r\n")[0].decode(
-                   "ascii", errors="replace"), iCode=4)
+               + baStatusLine.decode("ascii", errors="replace"), iCode=4)
+    return baLeftover
+
+
+class HandshakeLeftoverSocket:
+    """A socket whose first reads return the bytes the handshake read ahead.
+
+    Every frame reader calls ``recv`` on what it is given, so wrapping
+    the socket once after the handshake lets them all see the frames
+    that arrived with the 101 reply; the frame writers' ``sendall``
+    passes straight through. Nothing else is called after the handshake.
+    """
+
+    def __init__(self, socketConnection, baLeftover):
+        self._socketConnection = socketConnection
+        self._baLeftover = baLeftover
+
+    def recv(self, iMaximumBytes):
+        if not self._baLeftover:
+            return self._socketConnection.recv(iMaximumBytes)
+        baServed = self._baLeftover[:iMaximumBytes]
+        self._baLeftover = self._baLeftover[iMaximumBytes:]
+        return baServed
+
+    def sendall(self, baData):
+        self._socketConnection.sendall(baData)
 
 
 def fnSendWsText(socketConnection, sPayload):
@@ -703,9 +773,13 @@ def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
         fnFailHostUnreachable(dictEnv["VAIBIFY_HOST_URL"], error)
     socketConnection.settimeout(F_READ_TIMEOUT)
     fnEnableTcpKeepalive(socketConnection)
-    fnWebsocketHandshake(socketConnection, sHost, iPort, sPath)
+    socketConnection = HandshakeLeftoverSocket(
+        socketConnection,
+        fbaPerformWebsocketHandshake(socketConnection, sHost, iPort, sPath),
+    )
     dictBound = _fdictAwaitWorkflowBound(socketConnection)
     if dictBound is not None:
+        fnWarnStaleClient(dictBound.get("sClientWarning", ""))
         fnAnnounceServedProject(
             dictBound.get("sProjectDirectory", ""),
             dictBound.get("sProjectName", ""),
@@ -925,6 +999,9 @@ def fnamespaceParseArguments():
                         help="Emit line-delimited JSON on stdout.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print the call that would be made; do not send.")
+    parser.add_argument("--version", action="store_true",
+                        help="Print this file's sha256 and the hub's "
+                             "vaibify version, then exit.")
     parser.add_argument("sAction", nargs="?",
                         help="Catalog action name.")
     parser.add_argument("listArgs", nargs=argparse.REMAINDER,
@@ -933,8 +1010,22 @@ def fnamespaceParseArguments():
 
 
 TUPLE_GLOBAL_FLAGS_REJECTED_AFTER_ACTION = (
-    "--dry-run", "--json", "--list", "--describe",
+    "--dry-run", "--json", "--list", "--describe", "--version",
 )
+
+
+def fnPrintVersion():
+    """Print this file's digest and the vaibify version the hub reported.
+
+    The digest is what the hub compares against the ``vaibify-do`` it
+    ships; the version comes from the session file the hub wrote on
+    connect, so it names the hub's vaibify, not the image's.
+    """
+    print("vaibify-do sha256 " + (fsComputeOwnDigest() or "unreadable"))
+    sHubVersion = "unknown (not connected)"
+    if os.path.exists(S_SESSION_ENV_PATH):
+        sHubVersion = fdictReadSession().get("VAIBIFY_VERSION", "unknown")
+    print("vaibify (hub) " + sHubVersion)
 
 
 def fnRejectGlobalFlagsInRemainder(listArgs):
@@ -957,6 +1048,9 @@ def fnRejectGlobalFlagsInRemainder(listArgs):
 def main():
     args = fnamespaceParseArguments()
     fnRejectGlobalFlagsInRemainder(args.listArgs)
+    if args.version:
+        fnPrintVersion()
+        return
     dictCatalog = fdictReadCatalog()
     if args.list:
         fnPrintList(dictCatalog)

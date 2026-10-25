@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced Installation &mdash; Vaibify 0.1.4.dev64 documentation</title>
+  <title>Advanced Installation &mdash; Vaibify 0.1.4.dev95 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=61c5391b"></script>
+      <script src="_static/documentation_options.js?v=b03f043d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -57,6 +57,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#docker">Docker</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#docker-on-linux">Docker on Linux</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#docker-on-macos">Docker on macOS</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-first-container-build">The first container build</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#shell-helpers">Shell helpers</a></li>
@@ -235,8 +236,16 @@ run it, including the browser tests, is in <a class="reference internal" href="d
 </section>
 <section id="docker">
 <h2>Docker<a class="headerlink" href="#docker" title="Link to this heading"></a></h2>
-<p>Vaibify does not install a container runtime for you. Whichever
-platform you use, confirm the result before building anything:</p>
+<p>Vaibify can set Docker up for you: run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">setup-docker</span></code>, or
+press <strong>Set up Docker</strong> on the dashboard’s Docker banner, which appears
+when Docker does not answer and also when it answers but is not ready
+(no buildx, or a Colima machine too small to build in). Both read your machine, show each step before it runs, and
+stop at anything only you can do. A step that needs an administrator
+uses your computer’s own password prompt; vaibify never sees the
+password. The <a class="reference internal" href="cli.html#vaibify-setup-docker"><span class="std std-ref">CLI Reference</span></a> lists what
+each platform gets. The sections below are the same steps by hand.</p>
+<p>Whichever way you install it, confirm the result before building
+anything:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>info<span class="w">          </span><span class="c1"># must succeed WITHOUT sudo</span>
 docker<span class="w"> </span>buildx<span class="w"> </span>version
 </pre></div>
@@ -286,6 +295,14 @@ sudo<span class="w"> </span>port<span class="w"> </span>install<span class="w"> 
 colima<span class="w"> </span>start<span class="w"> </span>--cpu<span class="w"> </span><span class="m">4</span><span class="w"> </span>--memory<span class="w"> </span><span class="m">8</span>
 </pre></div>
 </div>
+<p>Installing Colima takes a minute or two. The first <code class="docutils literal notranslate"><span class="pre">colima</span> <span class="pre">start</span></code>
+then downloads and boots the small Linux virtual machine that runs
+Docker; later starts reuse it. Give that machine the CPU and memory
+you mean to use: a bare <code class="docutils literal notranslate"><span class="pre">colima</span> <span class="pre">start</span></code> creates one with 2 CPUs and
+2 GB of memory, below the 4 GB a vaibify build needs. On Apple
+Silicon keep Colima’s default <code class="docutils literal notranslate"><span class="pre">aarch64</span></code> architecture, on which vaibify
+builds natively; a machine created with <code class="docutils literal notranslate"><span class="pre">--arch</span> <span class="pre">x86_64</span></code> emulates every
+build step and runs several times slower.</p>
 <p>The command-line diagnosis in the <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a> compares
 what a project will request against what the Colima virtual machine
 has. If macOS sleeps during a long build, the Colima virtual machine
@@ -296,6 +313,24 @@ can corrupt it; prefix long commands with <code class="docutils literal notransl
 <p>The <code class="docutils literal notranslate"><span class="pre">neverSleep</span></code> field in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> does the same for as long as a
 container runs, and the hold is re-asserted when a running container is
 claimed again after vaibify restarts.</p>
+</section>
+<section id="the-first-container-build">
+<h3>The first container build<a class="headerlink" href="#the-first-container-build" title="Link to this heading"></a></h3>
+<p>Docker does not yet hold an image for a new container project, so the
+first time you open one, vaibify builds it. Starting from Ubuntu, the
+build downloads and installs a compiler toolchain, Python, TeX Live
+(the <code class="docutils literal notranslate"><span class="pre">latex</span></code> feature, on by default), the project’s packages and each
+agent you enabled. This takes from several minutes to over an hour,
+depending mostly on your network and on whether LaTeX is enabled;
+the build window shows the live output. The container’s first start
+then clones the project’s repositories; later opens reuse the image.
+On macOS the image is built and run inside Colima’s virtual machine,
+not as a second machine: the machine is created once, by the first
+<code class="docutils literal notranslate"><span class="pre">colima</span> <span class="pre">start</span></code>, and every project’s image lives inside it.</p>
+<p>Python is vaibify’s default analysis language, so every image also
+carries <code class="docutils literal notranslate"><span class="pre">numpy</span></code>, <code class="docutils literal notranslate"><span class="pre">scipy</span></code>, <code class="docutils literal notranslate"><span class="pre">matplotlib</span></code> and <code class="docutils literal notranslate"><span class="pre">pytest</span></code>: the tests vaibify
+generates use them. List any other Python packages under
+<code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code>.</p>
 </section>
 </section>
 <section id="shell-helpers">
@@ -526,7 +561,7 @@ comment <code class="docutils literal notranslate"><span class="pre">#</span> <s
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code></p></td>
 <td><p>string</p></td>
-<td><p>pip packages</p></td>
+<td><p>pip packages, installed beside the analysis stack every image carries (<code class="docutils literal notranslate"><span class="pre">numpy</span></code>, <code class="docutils literal notranslate"><span class="pre">scipy</span></code>, <code class="docutils literal notranslate"><span class="pre">matplotlib</span></code>, <code class="docutils literal notranslate"><span class="pre">pytest</span></code>). Naming a stack package here sets its version bound</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">condaPackages</span></code></p></td>
 <td><p>string</p></td>

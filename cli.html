@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.1.4.dev64 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.1.4.dev95 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=61c5391b"></script>
+      <script src="_static/documentation_options.js?v=b03f043d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -71,6 +71,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#environment-lifecycle">Environment lifecycle</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-setup-docker">vaibify setup-docker</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-build">vaibify build</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-start">vaibify start</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-status">vaibify status</a></li>
@@ -197,85 +198,88 @@ directory.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">config</span> <span class="pre">edit</span> <span class="pre">|</span> <span class="pre">export</span> <span class="pre">FILE</span> <span class="pre">|</span> <span class="pre">import</span> <span class="pre">FILE</span></code></p></td>
 <td><p>Edit <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> in <code class="docutils literal notranslate"><span class="pre">$EDITOR</span></code>, write it to a file, or replace it from one</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">doctor</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">setup-docker</span></code></p></td>
+<td><p>Install and start the Docker runtime vaibify’s containers need</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">doctor</span></code></p></td>
 <td><p>Diagnose this machine, the container, and the project; changes nothing</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">repair</span> <span class="pre">dns</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">repair</span> <span class="pre">dns</span></code></p></td>
 <td><p>Clear a container’s stale name-resolution state</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">build</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">build</span></code></p></td>
 <td><p>Build the image from <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">start</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">start</span></code></p></td>
 <td><p>Start the container</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">stop</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">stop</span></code></p></td>
 <td><p>Stop the container; the workspace volume remains</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">status</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">status</span></code></p></td>
 <td><p>Show container, image, and volume state, and optionally the PROOF level</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">destroy</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">destroy</span></code></p></td>
 <td><p>Delete the workspace volume, then offer to delete the images</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">connect</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">connect</span></code></p></td>
 <td><p>Open a shell in the running container</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">push</span> <span class="pre">SOURCE</span> <span class="pre">DESTINATION</span></code> / <code class="docutils literal notranslate"><span class="pre">pull</span> <span class="pre">SOURCE</span> <span class="pre">DESTINATION</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">push</span> <span class="pre">SOURCE</span> <span class="pre">DESTINATION</span></code> / <code class="docutils literal notranslate"><span class="pre">pull</span> <span class="pre">SOURCE</span> <span class="pre">DESTINATION</span></code></p></td>
 <td><p>Copy files between the host and the workspace</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ls</span> <span class="pre">[PATH]</span></code> / <code class="docutils literal notranslate"><span class="pre">cat</span> <span class="pre">PATH</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ls</span> <span class="pre">[PATH]</span></code> / <code class="docutils literal notranslate"><span class="pre">cat</span> <span class="pre">PATH</span></code></p></td>
 <td><p>List a container directory or print a container file</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">verify</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">verify</span></code></p></td>
 <td><p>Run the container isolation check</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">run</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">run</span></code></p></td>
 <td><p>Run every step, one step, or from a step onward</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">workflow</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">workflow</span></code></p></td>
 <td><p>Summarize the workflow or one step</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">test</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">test</span></code></p></td>
 <td><p>Run the tests of every step or one step</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">verify-step</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">verify-step</span></code></p></td>
 <td><p>Record your sign-off on a step, as the dashboard’s sign-off does</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">generate-standards</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">generate-standards</span></code></p></td>
 <td><p>Create or refresh a step’s <code class="docutils literal notranslate"><span class="pre">tests/quantitative_standards_&lt;step&gt;.json</span></code> from its data</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reproduce</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reproduce</span></code></p></td>
 <td><p>Verify the Level 3 reproducibility envelope, or reproduce a published project</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gui</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gui</span></code></p></td>
 <td><p>Open the hub, or a single-project viewer</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">open</span> <span class="pre">CONTAINER</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">open</span> <span class="pre">CONTAINER</span></code></p></td>
 <td><p>Move a container’s live session into a fresh browser tab</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sessions</span></code> / <code class="docutils literal notranslate"><span class="pre">sessions</span> <span class="pre">stop</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sessions</span></code> / <code class="docutils literal notranslate"><span class="pre">sessions</span> <span class="pre">stop</span></code></p></td>
 <td><p>List or stop live hubs and viewers</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">do</span> <span class="pre">&lt;action&gt;</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">do</span> <span class="pre">&lt;action&gt;</span></code></p></td>
 <td><p>Run any dashboard action from the host, as the researcher</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reconcile</span> <span class="pre">CONTAINER</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reconcile</span> <span class="pre">CONTAINER</span></code></p></td>
 <td><p>Prove a quarantined container’s interrupted operations settled</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">secret</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">secret</span></code></p></td>
 <td><p>Store, check, or delete an agent provider’s API key</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">credential</span> <span class="pre">set|status|delete</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">credential</span> <span class="pre">set|status|delete</span></code></p></td>
 <td><p>Store, inspect, or delete the GitHub, Overleaf, and Zenodo credentials a project publishes with</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">revoke</span> <span class="pre">github|overleaf|zenodo</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">revoke</span> <span class="pre">github|overleaf|zenodo</span></code></p></td>
 <td><p>Remove a stored credential and revoke it upstream where possible</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remote</span> <span class="pre">DESTINATION</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">remote</span> <span class="pre">DESTINATION</span></code></p></td>
 <td><p>Open a dashboard for another machine over SSH</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">remote-helper</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remote-helper</span></code></p></td>
 <td><p>The far end of <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code>; not run by hand</p></td>
 </tr>
 </tbody>
@@ -402,6 +406,37 @@ container from outside vaibify. <code class="docutils literal notranslate"><span
 </section>
 <section id="environment-lifecycle">
 <h2>Environment lifecycle<a class="headerlink" href="#environment-lifecycle" title="Link to this heading"></a></h2>
+<section id="vaibify-setup-docker">
+<h3>vaibify setup-docker<a class="headerlink" href="#vaibify-setup-docker" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>setup-docker<span class="w"> </span><span class="o">[</span>--yes<span class="o">]</span><span class="w"> </span><span class="o">[</span>--no-start<span class="o">]</span><span class="w"> </span><span class="o">[</span>--cpus<span class="w"> </span>N<span class="o">]</span><span class="w"> </span><span class="o">[</span>--memory<span class="w"> </span>GB<span class="o">]</span>
+</pre></div>
+</div>
+<p>Gives this machine a Docker that vaibify can use, the same plan the
+dashboard’s <strong>Set up Docker</strong> button follows. It reads the machine,
+shows the next step, runs it when you agree, and reads the machine
+again, so it resumes from wherever the machine is:</p>
+<ul class="simple">
+<li><p><strong>macOS:</strong> installs Colima, Docker and buildx with Homebrew or
+MacPorts, then starts Colima with all CPUs but one and half the RAM
+(at least 4 GB). With neither package manager it tells you how to
+install one. A stopped Colima machine, Docker Desktop, OrbStack or
+Rancher Desktop is started rather than replaced.</p></li>
+<li><p><strong>Ubuntu, Debian, Fedora, RHEL, CentOS</strong> (and distributions that
+declare one of them as their parent): installs Docker Engine from
+Docker’s own repository and starts it, then offers the <code class="docutils literal notranslate"><span class="pre">docker</span></code>
+group or rootless Docker. Docker publishes no repository for other
+distributions, so for those it points to their own instructions.</p></li>
+</ul>
+<p>A step that needs an administrator asks through <code class="docutils literal notranslate"><span class="pre">sudo</span></code> in your
+terminal. A step only you can do (installing a package manager,
+logging out and back in) is printed with its commands; in a terminal
+the command waits for you, otherwise it exits with status 2. <code class="docutils literal notranslate"><span class="pre">--yes</span></code>
+runs every step without asking and never restarts a running Colima
+machine. <code class="docutils literal notranslate"><span class="pre">--no-start</span></code> installs what is missing but starts nothing.
+<code class="docutils literal notranslate"><span class="pre">--cpus</span></code> and <code class="docutils literal notranslate"><span class="pre">--memory</span></code> set a new Colima machine’s size. A step that
+runs without changing the machine stops the command rather than
+repeating.</p>
+</section>
 <section id="vaibify-build">
 <h3>vaibify build<a class="headerlink" href="#vaibify-build" title="Link to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build<span class="w"> </span><span class="o">[</span>--no-cache<span class="o">]</span><span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span>

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.1.4.dev64 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.1.4.dev95 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=61c5391b"></script>
+      <script src="_static/documentation_options.js?v=b03f043d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -193,7 +193,7 @@ tab you are clicking from, <code class="docutils literal notranslate"><span clas
 another browser or on another machine refuses the conversion instead,
 because the conversion renames the key that the project’s lock,
 lease, and journal all hang from.</p></li>
-<li><p><strong>Docker or Colima must be installed.</strong> This step requires Docker containers, which are run as <code class="docutils literal notranslate"><span class="pre">colima</span></code> on macOS. See the <a class="reference internal" href="install.html#docker-on-macos"><span class="std std-ref">install guide</span></a> to install. <em>Note that this process can require over 60 minutes.</em></p></li>
+<li><p><strong>Docker must be running.</strong> This step runs the project inside a Docker container. If Docker is not installed or not running, the Environments Hub shows a “Docker is unavailable” banner with a <strong>Set up Docker</strong> button that launches a wizard that guides you through installing and running Docker. On a Mac it installs Colima <em>and</em> Docker via Homebrew or MacPorts; on Linux it installs Docker Engine. Note you can install Docker by hand with the <a class="reference internal" href="install.html#docker"><span class="std std-ref">install guide</span></a>.</p></li>
 <li><p><strong>A failed build is left unfinished.</strong> If the process fails for any reason,
 a registered, but unusable, container remains partially built. Fix the cause
 and build again (try working with an AI agent or pressing <strong>Run a diagnosis</strong> in the build-failure window); you have not lost the host project’s work, because there was never a copy to lose. Look for an orange warning glyph above the list of Environments.</p></li>
@@ -218,7 +218,7 @@ and build again (try working with an AI agent or pressing <strong>Run a diagnosi
 </tr>
 <tr class="row-even"><td><p>3</p></td>
 <td><p><strong>Features &amp; Authentication</strong></p></td>
-<td><p>Select one of the available coding agents. LaTeX and the other base features are grayed out because the author’s image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under <em>Resource limits</em>, leave <em>CPU cores</em> at <strong>all cores -1</strong>, which leaves 1 reserved for the host (you can still use all of them outside the container); and <em>Memory (GB)</em> at <strong>5</strong>. (You can adjust this later if you choose to keep the container.) Click “Next”.</p></td>
+<td><p>Select one of the available coding agents. LaTeX and the other base features are grayed out because the author’s image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under <em>Resource limits</em>, leave <em>CPU cores</em> at <strong>all cores -1</strong>, which leaves 1 reserved for the host (you can still use all of them outside the container); and <em>Memory (GB)</em> at <strong>5</strong>, or less if Colima has less: the <strong>Set up Docker</strong> wizard gives Colima half of your computer’s memory, but never more than your memory minus 4 GB, so on an 8 GB Mac Colima has 4 GB (<code class="docutils literal notranslate"><span class="pre">colima</span> <span class="pre">list</span></code> shows it). (You can adjust this later if you choose to keep the container.) Click “Next”.</p></td>
 </tr>
 <tr class="row-odd"><td><p>4</p></td>
 <td><p><strong>Files to Copy</strong></p></td>

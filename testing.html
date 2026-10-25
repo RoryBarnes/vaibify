@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing Model &mdash; Vaibify 0.1.4.dev64 documentation</title>
+  <title>Testing Model &mdash; Vaibify 0.1.4.dev95 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=61c5391b"></script>
+      <script src="_static/documentation_options.js?v=b03f043d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -198,13 +198,33 @@ tolerance setting, <code class="docutils literal notranslate"><span class="pre">
 <code class="docutils literal notranslate"><span class="pre">sUnit</span></code> you edited by hand are kept for every entry whose <code class="docutils literal notranslate"><span class="pre">sName</span></code> still
 exists. A test file you have customized is never overwritten without
 asking: generation stops and names the edited files, and only an
-explicit confirmation replaces them.</p>
+explicit confirmation replaces them. Every tier is checked before any
+is written, so a pending confirmation changes nothing at all.</p>
+<p>A generated test file counts as unedited only when its
+<code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">vaibify-template-hash:</span></code> stamp names a vaibify template <strong>and</strong> the
+file’s own text still hashes to that stamp, so a test you appended to a
+generated file is yours. A standards file carries <code class="docutils literal notranslate"><span class="pre">sContentDigest</span></code>, a
+sha256 of its own content; a standards file whose digest is missing or
+no longer matches counts as edited.</p>
+<p>A standards file must be valid JSON. The dashboard’s file editor and
+<code class="docutils literal notranslate"><span class="pre">save-and-run-test</span></code> refuse to save one that is not, naming the
+decoder’s message, line and column, and write nothing; other <code class="docutils literal notranslate"><span class="pre">.json</span></code>
+files are saved as before. A malformed standards file written some
+other way (from a shell, say) is reported when its tier runs: the tier
+reads <strong>Error</strong> with “standards file <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;</span></code> is not valid JSON:
+<code class="docutils literal notranslate"><span class="pre">&lt;message&gt;</span></code> (line L, column C)”, never Passed.</p>
 </section>
 <section id="how-tests-are-generated">
 <h3>How tests are generated<a class="headerlink" href="#how-tests-are-generated" title="Link to this heading"></a></h3>
 <p>Test generation is <strong>deterministic</strong>. Unit tests should not be produced
 by prompting a model, whose output varies from run to run; they should
-be computed from the results. When you press <strong>Generate</strong>, a
+be computed from the results. Tests are derived from the outputs, so
+the outputs must exist first: generating tests for a step whose
+declared outputs do not exist yet is refused, naming the missing
+files, and nothing is written (not even the <code class="docutils literal notranslate"><span class="pre">tests/</span></code> directory) and no
+model is asked. Run the step first. An in-container agent meets the
+same refusal, and the dashboard shows it to you as well. When you press
+<strong>Generate</strong>, a
 self-contained Python introspection script runs inside the container,
 reads each of the step’s declared output files, and records what it
 finds: shape, data type, NaN and infinity counts, column names, JSON
@@ -236,11 +256,23 @@ sampler:</p>
 <td><p>Mean and median only, at a placeholder 10% tolerance with a note asking you to seed the source of randomness</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unintrospectable</span></code></p></td>
-<td><p>Output files exist but yield no numeric benchmark</p></td>
-<td><p>None from vaibify; the introspector’s errors are recorded, and the fallback below may apply</p></td>
+<td><p>Output files exist but none could be loaded</p></td>
+<td><p>None from vaibify; the introspector’s errors are recorded and the tier is an <strong>Error</strong> naming them, unless the fallback below applies</p></td>
 </tr>
 </tbody>
 </table>
+<p>A tier with nothing to check is <strong>N/A</strong>: no test file is written for it
+and it reads a gray N/A with the reason beside it (for example, a
+numeric array has no column names or JSON keys for the qualitative tier
+to pin). N/A never blocks Level 1. It means <em>inapplicable</em>, never
+<em>unknown</em>: a tier is N/A only when every declared output was loaded and
+analyzed and none held anything of the tier’s kind. If any output could
+not be read, the tier is an <strong>Error</strong> saying which, never N/A and never
+a placeholder test that passes. When regeneration makes a previously
+generated tier N/A, vaibify removes its own test and standards files if
+neither was edited; if either was, it asks first, as for any overwrite.
+Projects generated before this rule keep their old placeholder tests
+until you regenerate them.</p>
 <p>The generator is a foundation, not a complete answer. Generating
 meaningful tests for arbitrary data structures is hard, so you, or an
 agent you direct, are expected to extend the standards for what matters
@@ -263,8 +295,9 @@ quantitative standards can be derived (the quantitative tier) –
 <strong>Generate</strong> asks a model you have already enabled: Claude Code
 installed in the container, or the provider API key you chose to
 use. It never asks for a key. Nothing else causes a fallback: a
-refused or failed write, a pending overwrite confirmation and a
-missing step are reported as they are. With no model available, the
+refused or failed write, a pending overwrite confirmation, a missing
+step and missing outputs are reported as they are. A model reply
+holding no standards is an error, never empty standards. With no model available, the
 error names both what vaibify could not read and why no model was
 asked.</p></li>
 <li><p><strong>On request (<code class="docutils literal notranslate"><span class="pre">llm</span></code>).</strong> A caller can turn the deterministic mode off
@@ -1041,6 +1074,10 @@ report on a pull request.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">toolchainEpoch.yml</span></code></p></td>
 <td><p>asks whether Ubuntu has moved past the pinned toolchain snapshot and opens or updates a standing issue describing the change</p></td>
 <td><p>one Linux cell; monthly and manual</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">runtimeSetup.yml</span></code></p></td>
+<td><p>runs <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">setup-docker</span></code> for real: on Ubuntu with the runner’s Docker removed, then requires a buildx build and a container run as the user; on macOS the Homebrew install, stopping before Colima, which GitHub’s Apple Silicon runners cannot start</p></td>
+<td><p>one Ubuntu and one macOS cell; weekly, manual, and on pull requests that touch the setup code</p></td>
 </tr>
 </tbody>
 </table>
