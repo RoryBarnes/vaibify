@@ -73,8 +73,14 @@ var VaibifyContainerManager = (function () {
             if (dictStatus.bAvailable) {
                 elBanner.style.display = "none";
                 elBanner.innerHTML = "";
+                elBanner.classList.remove("docker-status-banner-advice");
+                /* Docker answering is not Docker being ready: buildx
+                   can be missing, or the Colima machine too small to
+                   build in, and the wizard is how those are fixed. */
+                VaibifyRuntimeSetup.fnShowAdviceInBanner(elBanner);
                 return;
             }
+            elBanner.classList.remove("docker-status-banner-advice");
             _fnRenderDockerStatusBanner(elBanner, dictStatus);
         } catch (error) {
             /* Hiding the banner here used to read as "Docker is fine"

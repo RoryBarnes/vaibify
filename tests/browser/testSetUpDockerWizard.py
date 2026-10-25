@@ -177,3 +177,55 @@ def testClosingTheWizardAsksAboutDockerAgain(pageDashboard, serverHub):
         "=== 'none'", timeout=5000)
     pageDashboard.wait_for_timeout(300)
     assert len(listRetries) == 1
+
+
+DICT_READY_WITH_A_SMALL_MACHINE = {"bReady": True, "listSteps": [{
+    "sStepName": "resize-colima", "sTitle": "Give Colima more memory",
+    "sKind": "run", "bOptional": True,
+    "sExplanation": "Your Colima machine 'default' has 2.0 GB of memory.",
+    "listActions": [{"sActionName": "resize-colima",
+                     "sLabel": "Restart with more memory"}],
+    "listCommandsToShow": [],
+}]}
+
+
+def _fnOpenTheHubWithDockerAnswering(page, serverHub, dictPlan, listUrls):
+    page.route("**/api/system/docker-status", lambda r: _fnFulfillJson(r, {
+        "bAvailable": True, "sError": "", "sHint": "", "sCommand": "",
+        "sEndpoint": ""}))
+
+    def fnAnswerPlan(routeIntercepted):
+        listUrls.append(routeIntercepted.request.url)
+        _fnFulfillJson(routeIntercepted, dictPlan)
+
+    page.route("**/api/runtime/setup*", fnAnswerPlan)
+    page.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+
+
+@pytest.mark.falsification
+def testAnUndersizedMachineIsReachableWhileDockerAnswers(
+        pageDashboard, serverHub):
+    """Kills: a wizard reachable only while Docker does not answer."""
+    listUrls = []
+    _fnOpenTheHubWithDockerAnswering(
+        pageDashboard, serverHub, DICT_READY_WITH_A_SMALL_MACHINE, listUrls)
+    pageDashboard.wait_for_selector(
+        "#dockerStatusBanner.docker-status-banner-advice #btnSetupDocker",
+        timeout=15000)
+    assert "Give Colima more memory" in pageDashboard.locator(
+        "#dockerStatusBanner").text_content()
+    assert any("bAdvisory=true" in sUrl for sUrl in listUrls), listUrls
+    pageDashboard.click("#btnSetupDocker")
+    pageDashboard.wait_for_selector(
+        '#modalRuntimeSetup .runtime-setup-step[data-step-name="resize-colima"]',
+        timeout=10000)
+    assert pageDashboard.listPageErrors == []
+
+
+def testAReadyMachineShowsNoBanner(pageDashboard, serverHub):
+    listUrls = []
+    _fnOpenTheHubWithDockerAnswering(
+        pageDashboard, serverHub, DICT_READY, listUrls)
+    pageDashboard.wait_for_timeout(1500)
+    assert listUrls, "the hub never asked for the plan"
+    assert not pageDashboard.locator("#dockerStatusBanner").is_visible()

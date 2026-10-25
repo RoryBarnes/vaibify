@@ -7,6 +7,7 @@ system's own prompt, an SSH session never does, because the dialog
 would open on a screen nobody is looking at.
 """
 
+import os
 import sys
 
 import pytest
@@ -117,15 +118,82 @@ def testAProbeWhoseCommandIsMissingAnswersAbsent():
 
 @pytest.mark.skipif(sys.platform != "darwin" and not sys.platform.startswith(
     "linux"), reason="the facts are read only on macOS and Linux")
-def testTheFactsOfThisMachineCarryEveryKeyThePlannerReads():
+def testTheFactsOfThisMachineCarryEveryKeyThePlannerReads(monkeypatch):
     """Read the real machine running the suite: no key may be missing."""
+    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
     dictFacts = factsModule.fdictReadHostFacts()
     for sKey in ("sPlatform", "sArchitecture", "listCommands",
                  "bDaemonAnswers", "bBuildxWorks", "listColimaMachines",
                  "sPrivilegeChannel", "sUserName", "iHostCpuCount",
                  "iHostMemoryBytes", "bUserListedInDockerGroup",
                  "bProcessHasDockerGroup", "sDockerHost",
-                 "bBuildxInstalledUnlinked", "listRunningVaibifyContainers"):
+                 "bBuildxInstalledUnlinked", "listRunningVaibifyContainers",
+                 "sActiveDockerContext", "sActiveColimaProfile"):
         assert sKey in dictFacts, sKey
     assert dictFacts["iHostMemoryBytes"] > 0
     assert dictFacts["iHostCpuCount"] >= 1
+
+
+@pytest.mark.falsification
+def testAnUnreadableRegistryCountsEveryRunningContainer(
+        tmp_path, monkeypatch):
+    """A registry nobody can read must never read as "nothing registered".
+
+    Kills: a restart guard that sees no protected containers because
+    the registry loader answered an empty registry for a broken file.
+    """
+    from vaibify.config import registryManager
+    pathRegistry = tmp_path / "registry.json"
+    pathRegistry.write_text("{ this is not json")
+    monkeypatch.setattr(registryManager, "_S_REGISTRY_PATH", str(pathRegistry))
+    monkeypatch.setattr(
+        factsModule, "_ftRunProbe",
+        lambda listCommand: (0, "projectAlphaBox\nunrelatedService\n", ""))
+    assert factsModule._flistReadRunningVaibifyContainers(True) == [
+        "projectAlphaBox", "unrelatedService"]
+
+
+def testAReadableRegistryProtectsOnlyItsOwnContainers(tmp_path, monkeypatch):
+    import json
+    from vaibify.config import registryManager
+    pathRegistry = tmp_path / "registry.json"
+    pathRegistry.write_text(json.dumps({"listProjects": [
+        {"sName": "alpha", "sContainerName": "projectAlphaBox"}]}))
+    monkeypatch.setattr(registryManager, "_S_REGISTRY_PATH", str(pathRegistry))
+    monkeypatch.setattr(
+        factsModule, "_ftRunProbe",
+        lambda listCommand: (0, "projectAlphaBox\nunrelatedService\n", ""))
+    assert factsModule._flistReadRunningVaibifyContainers(True) == [
+        "projectAlphaBox"]
+
+
+@pytest.mark.falsification
+def testAPackageManagerInstalledOutsideTheHubsPathIsFound(
+        tmp_path, monkeypatch):
+    """Continue after installing MacPorts in another terminal finds it.
+
+    Kills: looking only at the PATH the hub started with.
+    """
+    import shutil
+    pathPorts = tmp_path / "opt-local-bin"
+    pathPorts.mkdir()
+    pathPort = pathPorts / "port"
+    pathPort.write_text("#!/bin/sh\n")
+    pathPort.chmod(0o755)
+    monkeypatch.setattr(factsModule.sys, "platform", "darwin")
+    monkeypatch.setattr(factsModule, "T_MACOS_PACKAGE_MANAGER_DIRECTORIES",
+                        ("/nonexistent/homebrew/bin", str(pathPorts)))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    assert shutil.which("port") is None or shutil.which("port") != str(pathPort)
+    factsModule.fnAddPackageManagerDirectoriesToPath()
+    assert shutil.which("port") == str(pathPort)
+    assert os.environ["PATH"].split(os.pathsep)[:2] == ["/usr/bin", "/bin"]
+    factsModule.fnAddPackageManagerDirectoriesToPath()
+    assert os.environ["PATH"].count(str(pathPorts)) == 1
+
+
+def testADesktopContextNamesItsApplication():
+    assert factsModule.fsDesktopApplicationForContext("orbstack") == "OrbStack"
+    assert factsModule.fsDesktopApplicationForContext("desktop-linux") == (
+        "Docker")
+    assert factsModule.fsDesktopApplicationForContext("colima") == ""

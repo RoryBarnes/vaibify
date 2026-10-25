@@ -36138,8 +36138,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/install/runtimeSetupPlan.py',
         # a stopped machine is started as a new one, resize flags and all
-        old='        listSteps.append(_fdictStartExistingColimaStep(dictMachine))\n',
-        new='        listSteps.append(_fdictStartNewColimaStep(dictFacts, dictSettings))\n',
+        old='        return _fdictStartExistingColimaStep(dictMachine)\n',
+        new='        return _fdictStartNewColimaStep(dictFacts, dictSettings)\n',
     ),
     Falsification(
         nodeid=(
@@ -36188,8 +36188,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/install/runtimeSetupRunner.py',
         # the progress record is reset before the lock is held
-        old='    with fcontextHoldSetupLock():\n        if fnLockHeld is not None:\n            fnLockHeld()\n',
-        new='    if fnLockHeld is not None:\n        fnLockHeld()\n    with fcontextHoldSetupLock():\n',
+        old='    with fcontextHoldSetupLock() as fileLock:\n        if fnLockHeld is not None:\n            fnLockHeld()\n',
+        new='    if fnLockHeld is not None:\n        fnLockHeld()\n    with fcontextHoldSetupLock() as fileLock:\n',
     ),
     Falsification(
         nodeid=(
@@ -36230,5 +36230,75 @@ LIST_FALSIFICATIONS = [
         # Continue closes the wizard instead of reading the machine again
         old='                "btnRuntimeSetupContinue", _fnContinue, true));\n',
         new='                "btnRuntimeSetupContinue", fnClose, true));\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupPlan.py::'
+            'testOnlyTheMachineDockerPointsAtIsOfferedARestart'
+        ),
+        source='vaibify/install/runtimeSetupPlan.py',
+        # the first running machine is chosen, whatever Docker points at
+        old='        if sActiveProfile and dictMachine["sProfile"] == sActiveProfile:\n            return dictMachine\n',
+        new='        if dictMachine["sStatus"].lower() == "running":\n            return dictMachine\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupPlan.py::'
+            'testTheDesktopApplicationDockerPointsAtBeatsAnOldColimaMachine'
+        ),
+        source='vaibify/install/runtimeSetupPlan.py',
+        # the active context's desktop application is ignored
+        old='    if sContextApplication in listApplications:\n        return [_fdictStartDesktopApplicationStep(sContextApplication)]\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupRunner.py::'
+            'testASilentStepPastItsDeadlineIsStoppedWithItsChildren'
+        ),
+        source='vaibify/install/runtimeSetupRunner.py',
+        # output read before the timed wait, which blocks until the step ends
+        old='    threadPump.start()\n',
+        new='    _fnPumpOutput(processChild.stdout, fnEmitLine, listTail)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupRunner.py::'
+            'testTheLockOutlivesAHubKilledMidStep'
+        ),
+        source='vaibify/install/runtimeSetupRunner.py',
+        # the step's process does not inherit the setup lock
+        old='            pass_fds=() if iLockDescriptor is None else (iLockDescriptor,),\n',
+        new='            pass_fds=(),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupFacts.py::'
+            'testAnUnreadableRegistryCountsEveryRunningContainer'
+        ),
+        source='vaibify/install/runtimeSetupFacts.py',
+        # the forgiving registry reader answers an empty registry for a broken file
+        old='    from vaibify.config.registryManager import fdictLoadRegistryOrRaise\n',
+        new='    from vaibify.config.registryManager import (\n        fdictLoadRegistry as fdictLoadRegistryOrRaise)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupFacts.py::'
+            'testAPackageManagerInstalledOutsideTheHubsPathIsFound'
+        ),
+        source='vaibify/install/runtimeSetupFacts.py',
+        # only the PATH the hub started with is searched
+        old='    if listAdded:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSetUpDockerWizard.py::'
+            'testAnUndersizedMachineIsReachableWhileDockerAnswers'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # the wizard is hidden again once Docker answers
+        old='                VaibifyRuntimeSetup.fnShowAdviceInBanner(elBanner);\n',
+        new='',
     ),
 ]

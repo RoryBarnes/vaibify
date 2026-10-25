@@ -37,8 +37,13 @@ class _DockerAbsent:
 def dictHub(monkeypatch):
     """Return the hub's two clients and what its runner was asked to run."""
     dictRecorded = {"listRuns": [], "dictFacts": fdictMacFacts()}
+    def fdictReadFacts(bProbePrivilege=True):
+        dictRecorded.setdefault("listPrivilegeProbes", []).append(
+            bProbePrivilege)
+        return dict(dictRecorded["dictFacts"])
+
     monkeypatch.setattr(runtimeSetupFacts, "fdictReadHostFacts",
-                        lambda: dict(dictRecorded["dictFacts"]))
+                        fdictReadFacts)
 
     def fnRecordRun(dictPlan, sActionName, sChannel, fnEmitLine,
                     bInteractive=False, fnLockHeld=None):
@@ -186,3 +191,13 @@ def testTheEditedSettingsAreTheOnesTheRunnerIsGiven(dictHub):
     listArgv = dictPlan["listSteps"][0]["listActions"][0][
         "listInvocations"][0]["listArgv"]
     assert listArgv[-4:] == ["--cpus", "3", "--memory", "6"]
+
+
+def testTheHubLoadCheckNeverProbesSudo(dictHub):
+    """A failed ``sudo -n`` is logged; the per-page check must not ask it."""
+    responseHttp = dictHub["clientBrowser"].get(
+        "/api/runtime/setup", params={"bAdvisory": "true"})
+    assert responseHttp.status_code == 200, responseHttp.text
+    assert dictHub["listPrivilegeProbes"] == [False]
+    dictHub["clientBrowser"].get("/api/runtime/setup")
+    assert dictHub["listPrivilegeProbes"] == [False, True]

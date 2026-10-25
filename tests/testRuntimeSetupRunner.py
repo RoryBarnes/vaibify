@@ -203,3 +203,89 @@ def testTheKeyDockerPublishesIsImported(tmp_path):
         tmp_path, planModule._S_DOCKER_RPM_KEY_FINGERPRINT)
     assert iCode == 0
     assert sLog.startswith("rpm --import ")
+
+
+# ---------------------------------------------------------------------------
+# The deadline, and the lock after the hub dies
+# ---------------------------------------------------------------------------
+
+def _fbProcessIsAlive(iPid):
+    try:
+        os.kill(iPid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _fiWaitForPid(pathPid, fTimeout=10.0):
+    import time
+    fDeadline = time.monotonic() + fTimeout
+    while time.monotonic() < fDeadline:
+        if pathPid.exists() and pathPid.read_text().strip():
+            return int(pathPid.read_text().strip())
+        time.sleep(0.05)
+    raise AssertionError(f"{pathPid} was never written")
+
+
+@pytest.mark.falsification
+def testASilentStepPastItsDeadlineIsStoppedWithItsChildren(
+        tmp_path, monkeypatch):
+    """A step that prints nothing cannot outwait the deadline.
+
+    Kills: reading the step's output before the timed wait, which
+    blocks until the step ends however long that takes.
+    """
+    import time
+    monkeypatch.setattr(runnerModule, "_F_INVOCATION_TIMEOUT_SECONDS", 0.5)
+    monkeypatch.setattr(runnerModule, "_F_TERMINATE_GRACE_SECONDS", 2.0)
+    pathPid = tmp_path / "sleeper.pid"
+    dictPlan = fdictPlanOf(fdictRunStep("silent", [fdictActionRunning(
+        "silent", ["sh", "-c", f'sleep 6 & echo $! > "{pathPid}"; wait'])]))
+    fStart = time.monotonic()
+    with pytest.raises(RuntimeSetupError, match="was stopped"):
+        fnRunAction(dictPlan, "silent", "none", lambda sLine: None)
+    assert time.monotonic() - fStart < 4.0
+    assert not _fbProcessIsAlive(_fiWaitForPid(pathPid))
+
+
+S_HUB_PROGRAM = """
+import sys
+from vaibify.install import runtimeSetupRunner as runnerModule
+runnerModule._S_LOCK_DIRECTORY = sys.argv[1]
+dictPlan = {"bReady": False, "listSteps": [{
+    "sStepName": "long", "sTitle": "Long", "sKind": "run",
+    "sExplanation": "", "listCommandsToShow": [],
+    "listActions": [{"sActionName": "long", "sLabel": "long",
+                     "listInvocations": [{"sRunAs": "user", "listArgv": [
+                         "sh", "-c", 'echo $$ > "' + sys.argv[2] + '"; sleep 20']}]}],
+}]}
+runnerModule.fnRunAction(dictPlan, "long", "none", print)
+"""
+
+
+@pytest.mark.falsification
+def testTheLockOutlivesAHubKilledMidStep(tmp_path):
+    """A restarted hub must not start a second setup beside a running one.
+
+    Kills: a step process that does not carry the setup lock.
+    """
+    import signal
+    import sys
+    pathPid = tmp_path / "step.pid"
+    processHub = subprocess.Popen(
+        [sys.executable, "-c", S_HUB_PROGRAM, runnerModule._S_LOCK_DIRECTORY,
+         str(pathPid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    iStepPid = _fiWaitForPid(pathPid)
+    processHub.kill()
+    processHub.wait(timeout=10)
+    try:
+        assert _fbProcessIsAlive(iStepPid)
+        with pytest.raises(RuntimeSetupError, match="already running"):
+            with fcontextHoldSetupLock():
+                pass
+    finally:
+        os.killpg(iStepPid, signal.SIGKILL)
+    import time
+    time.sleep(0.3)
+    with fcontextHoldSetupLock():
+        pass

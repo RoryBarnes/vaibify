@@ -14,8 +14,10 @@ from the agent catalog. An agent can never install software on the
 host or start a virtual machine.
 
 The progress record is in-process, like the build's: a hub restart
-forgets it, which is honest, since the step it described died with the
-process.
+forgets it. The step it described does NOT die with the hub -- a child
+outlives a killed parent -- and its own process carries the setup lock
+(see ``runtimeSetupRunner``), so a restarted hub answers "another setup
+is running" until the step ends rather than starting a second one.
 """
 
 __all__ = ["fnRegisterAll"]
@@ -78,21 +80,25 @@ def _fdictPlanForClient(dictPlan):
             "listSteps": [_fdictStepForClient(d) for d in dictPlan["listSteps"]]}
 
 
-def _ftReadFactsAndPlan(dictRequested=None):
+def _ftReadFactsAndPlan(dictRequested=None, bProbePrivilege=True):
     from vaibify.install.runtimeSetupFacts import fdictReadHostFacts
     from vaibify.install.runtimeSetupPlan import (
         fdictPlanRuntimeSetup, fdictValidateColimaSettings,
     )
-    dictFacts = fdictReadHostFacts()
+    dictFacts = fdictReadHostFacts(bProbePrivilege=bProbePrivilege)
     dictSettings = fdictValidateColimaSettings(dictRequested or {}, dictFacts)
     return dictFacts, fdictPlanRuntimeSetup(dictFacts, dictSettings)
 
 
 def _fnRegisterReadPlan(app):
     @app.get("/api/runtime/setup")
-    async def fdictReadRuntimeSetupPlan(requestHttp: Request):
+    async def fdictReadRuntimeSetupPlan(
+        requestHttp: Request, bAdvisory: bool = False,
+    ):
+        """Return the plan; ``bAdvisory`` is the hub-load check, titles only."""
         fnRejectAgentTokenLane(requestHttp)
-        _, dictPlan = await asyncio.to_thread(_ftReadFactsAndPlan)
+        _, dictPlan = await asyncio.to_thread(
+            _ftReadFactsAndPlan, None, not bAdvisory)
         return _fdictPlanForClient(dictPlan)
 
 

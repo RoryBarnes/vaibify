@@ -53,6 +53,20 @@ def fdictLoadRegistry():
         return {"listProjects": []}
 
 
+def fdictLoadRegistryOrRaise():
+    """Return the registry, raising ValueError or OSError if it is unreadable.
+
+    For a reader whose safe answer to "unreadable" is not "no projects":
+    :func:`fdictLoadRegistry` answers an empty registry for a file it
+    cannot parse, which reads as "nothing is registered" to a caller
+    that must then assume the worst. A missing file is a registry with
+    nothing in it, as there.
+    """
+    if not os.path.isfile(_S_REGISTRY_PATH):
+        return {"listProjects": []}
+    return _fdictParseRegistryFile()
+
+
 def _fdictLoadRegistryForUpdate():
     """Return the registry a writer will modify, refusing an unreadable file.
 

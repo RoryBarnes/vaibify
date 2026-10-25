@@ -260,6 +260,38 @@ var VaibifyRuntimeSetup = (function () {
         }
     }
 
+    /* With Docker answering, the banner is otherwise hidden; this shows
+       it again when the hub's plan still has a step (buildx missing, a
+       Colima machine too small to build in), so the wizard stays
+       reachable. The check reads the plan without asking sudo, which
+       logs a failure on every page load otherwise. A failed check
+       claims nothing: Docker itself has just answered. */
+    async function fnShowAdviceInBanner(elBanner) {
+        var dictPlan;
+        try {
+            dictPlan = await VaibifyApi.fdictGet(
+                "/api/runtime/setup?bAdvisory=true");
+        } catch (error) {
+            return;
+        }
+        var listSteps = dictPlan.listSteps || [];
+        if (!listSteps.length || elBanner.style.display === "flex") return;
+        elBanner.innerHTML = "";
+        var elMessage = _elMake("div", "docker-status-banner-message");
+        elMessage.appendChild(_elMake("strong", "", dictPlan.bReady
+            ? "Docker works, and one setup step is still open."
+            : "Docker answers, but is not ready for vaibify."));
+        elMessage.appendChild(document.createTextNode(
+            " " + listSteps[0].sTitle + ": " + listSteps[0].sExplanation));
+        var elActions = _elMake("div", "docker-status-banner-actions");
+        elActions.appendChild(_elButton("Set up Docker", "btnSetupDocker",
+            fnOpen, false));
+        elBanner.appendChild(elMessage);
+        elBanner.appendChild(elActions);
+        elBanner.classList.add("docker-status-banner-advice");
+        elBanner.style.display = "flex";
+    }
+
     async function fnOpen() {
         _dictLastStepShown = null;
         var elTail = _elPart("runtime-setup-tail");
@@ -281,5 +313,6 @@ var VaibifyRuntimeSetup = (function () {
     return {
         fnOpen: fnOpen,
         fnClose: fnClose,
+        fnShowAdviceInBanner: fnShowAdviceInBanner,
     };
 })();

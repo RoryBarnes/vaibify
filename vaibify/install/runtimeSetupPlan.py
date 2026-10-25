@@ -31,6 +31,7 @@ import shlex
 from vaibify.install.runtimeSetupFacts import (
     S_PRIVILEGE_NONE,
     T_MACOS_DESKTOP_APPLICATIONS,
+    fsDesktopApplicationForContext,
 )
 
 
@@ -404,10 +405,10 @@ def _fdictResizeColimaStep(dictFacts, dictMachine, dictSettings):
         dictSettings=dict(dictSettings), bOptional=True)
 
 
-def _fdictSelectColimaMachine(listMachines):
-    """Return the running machine, else the default profile, else the first."""
+def _fdictSelectColimaMachine(listMachines, sActiveProfile):
+    """Return the machine Docker points at, else the default, else the first."""
     for dictMachine in listMachines:
-        if dictMachine["sStatus"].lower() == "running":
+        if sActiveProfile and dictMachine["sProfile"] == sActiveProfile:
             return dictMachine
     for dictMachine in listMachines:
         if dictMachine["sProfile"] == "default":
@@ -415,23 +416,94 @@ def _fdictSelectColimaMachine(listMachines):
     return listMachines[0] if listMachines else None
 
 
+def _fsSlugForApplication(sApplication):
+    return sApplication.lower().replace(" ", "-")
+
+
+def _fdictStartDesktopApplicationAction(sApplication):
+    return _fdictAction(
+        "start-" + _fsSlugForApplication(sApplication), f"Start {sApplication}",
+        [_fdictInvocation(["open", "-a", sApplication])])
+
+
 def _fdictStartDesktopApplicationStep(sApplication):
     return _fdictStep(
         "start-desktop-application", f"Start {sApplication}", S_KIND_RUN,
         f"{sApplication} is installed but not running. vaibify uses it as "
         "your Docker and will not install a second one beside it.",
-        [_fdictAction("start-desktop-application", f"Start {sApplication}", [
-            _fdictInvocation(["open", "-a", sApplication])])])
+        [_fdictStartDesktopApplicationAction(sApplication)])
 
 
-def _flistPlanMacSteps(dictFacts, dictSettings):
-    listMachines = dictFacts.get("listColimaMachines", [])
+def _fdictChooseMacRuntimeStep(listApplications, dictMachine):
+    """Ask which Docker to start when nothing on the machine says.
+
+    Docker's active context names neither the desktop applications nor
+    the Colima machine, so either could be the researcher's choice;
+    starting one silently could switch them away from the other.
+    """
+    listActions = [_fdictStartDesktopApplicationAction(s)
+                   for s in listApplications]
+    listActions.append(_fdictAction(
+        "start-existing-colima", f"Start Colima '{dictMachine['sProfile']}'",
+        [_fdictInvocation(["colima", "start"]
+                          + _flistColimaProfileArguments(dictMachine))]))
+    return _fdictStep(
+        "choose-runtime", "Choose which Docker to start", S_KIND_RUN,
+        "This Mac has " + ", ".join(listApplications) + " and a Colima "
+        f"machine '{dictMachine['sProfile']}', none of them running, and "
+        "Docker's active context does not say which one you use. Start "
+        "the one you want vaibify to use.", listActions)
+
+
+def _flistPlanStoppedMacRuntime(dictFacts):
+    """Return the step that starts the researcher's chosen runtime, or None.
+
+    None means the Colima path decides: the active context names a
+    Colima machine, or no desktop application is installed.
+    """
     listApplications = [
         s for s in dictFacts.get("listDesktopApplications", [])
         if s in T_MACOS_DESKTOP_APPLICATIONS]
-    if not dictFacts.get("bDaemonAnswers") and not listMachines and (
-            listApplications):
+    sContextApplication = fsDesktopApplicationForContext(
+        dictFacts.get("sActiveDockerContext", ""))
+    if sContextApplication in listApplications:
+        return [_fdictStartDesktopApplicationStep(sContextApplication)]
+    if dictFacts.get("sActiveColimaProfile") or not listApplications:
+        return None
+    dictMachine = _fdictSelectColimaMachine(
+        dictFacts.get("listColimaMachines", []), "")
+    if dictMachine is None:
         return [_fdictStartDesktopApplicationStep(listApplications[0])]
+    return [_fdictChooseMacRuntimeStep(listApplications, dictMachine)]
+
+
+def _fdictPlanColimaMachineStep(dictFacts, dictSettings):
+    """Return the step the Colima machine needs, or None.
+
+    A restart for more memory is offered only for the machine Docker's
+    active context names: the running containers were read from that
+    machine's daemon, so it is the only one whose restart was checked.
+    """
+    sActiveProfile = dictFacts.get("sActiveColimaProfile", "")
+    dictMachine = _fdictSelectColimaMachine(
+        dictFacts.get("listColimaMachines", []), sActiveProfile)
+    if dictMachine is None:
+        return _fdictStartNewColimaStep(dictFacts, dictSettings)
+    if dictMachine["sStatus"].lower() != "running":
+        return _fdictStartExistingColimaStep(dictMachine)
+    if dictMachine["sProfile"] != sActiveProfile:
+        return None
+    if dictMachine["iMemoryBytes"] < (
+            I_MINIMUM_DOCKER_MEMORY_GIGABYTES * _I_GIGABYTE):
+        return _fdictResizeColimaStep(dictFacts, dictMachine, dictSettings)
+    return None
+
+
+def _flistPlanMacSteps(dictFacts, dictSettings):
+    if not dictFacts.get("bDaemonAnswers"):
+        listStopped = _flistPlanStoppedMacRuntime(dictFacts)
+        if listStopped is not None:
+            return listStopped
     listSteps = []
     listMissing = _flistMissingMacPieces(dictFacts)
     if listMissing:
@@ -441,15 +513,9 @@ def _flistPlanMacSteps(dictFacts, dictSettings):
     if dictFacts.get("bDaemonAnswers") and dictFacts.get(
             "sRuntime") != "colima":
         return listSteps
-    dictMachine = _fdictSelectColimaMachine(listMachines)
-    if dictMachine is None:
-        listSteps.append(_fdictStartNewColimaStep(dictFacts, dictSettings))
-    elif dictMachine["sStatus"].lower() != "running":
-        listSteps.append(_fdictStartExistingColimaStep(dictMachine))
-    elif dictMachine["iMemoryBytes"] < (
-            I_MINIMUM_DOCKER_MEMORY_GIGABYTES * _I_GIGABYTE):
-        listSteps.append(
-            _fdictResizeColimaStep(dictFacts, dictMachine, dictSettings))
+    dictMachineStep = _fdictPlanColimaMachineStep(dictFacts, dictSettings)
+    if dictMachineStep is not None:
+        listSteps.append(dictMachineStep)
     return listSteps
 
 

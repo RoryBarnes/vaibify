@@ -90,6 +90,7 @@ def testAStepOnlyTheResearcherCanDoExitsTwoAndRunsNothing(dictSession):
 def testYesNeverRestartsAMachineForTheOptionalStep(dictSession):
     dictSession["dictFacts"] = fdictMacFacts(**dict(
         DICT_INSTALLED, bDaemonAnswers=True, sRuntime="colima",
+        sActiveColimaProfile="default",
         listColimaMachines=[{
             "sProfile": "default", "sStatus": "Running", "iCpus": 2,
             "iMemoryBytes": 2 * I_GIGABYTE, "sArchitecture": "aarch64"}]))

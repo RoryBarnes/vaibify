@@ -93,8 +93,9 @@ The data formats vaibify's tests can read are listed in
 ## Docker
 
 Vaibify can set Docker up for you: run `vaibify setup-docker`, or
-press **Set up Docker** on the dashboard's "Docker is unavailable"
-banner. Both read your machine, show each step before it runs, and
+press **Set up Docker** on the dashboard's Docker banner, which appears
+when Docker does not answer and also when it answers but is not ready
+(no buildx, or a Colima machine too small to build in). Both read your machine, show each step before it runs, and
 stop at anything only you can do. A step that needs an administrator
 uses your computer's own password prompt; vaibify never sees the
 password. The [CLI Reference](cli.md#vaibify-setup-docker) lists what

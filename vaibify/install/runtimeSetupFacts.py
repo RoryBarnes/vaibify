@@ -31,6 +31,9 @@ __all__ = [
     "S_PRIVILEGE_PASSWORDLESS_SUDO",
     "S_PRIVILEGE_NONE",
     "T_MACOS_DESKTOP_APPLICATIONS",
+    "T_MACOS_PACKAGE_MANAGER_DIRECTORIES",
+    "fnAddPackageManagerDirectoriesToPath",
+    "fsDesktopApplicationForContext",
     "fdictParseOsRelease",
     "flistParseColimaMachines",
     "fdictReadHostFacts",
@@ -49,6 +52,21 @@ S_PRIVILEGE_NONE = "none"
 
 T_MACOS_DESKTOP_APPLICATIONS = ("Docker", "OrbStack", "Rancher Desktop")
 
+# Where Homebrew (Apple Silicon, then Intel) and MacPorts put their
+# commands. A package manager installed while vaibify runs is on the
+# PATH of a NEW terminal only; the hub's own PATH was fixed when it
+# started, so Continue would never find what the researcher just
+# installed without looking here too.
+T_MACOS_PACKAGE_MANAGER_DIRECTORIES = (
+    "/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin", "/opt/local/sbin",
+)
+
+_DICT_DESKTOP_APPLICATION_BY_CONTEXT = {
+    "desktop-linux": "Docker",
+    "orbstack": "OrbStack",
+    "rancher-desktop": "Rancher Desktop",
+}
+
 _F_PROBE_TIMEOUT_SECONDS = 10.0
 _S_OS_RELEASE_PATH = "/etc/os-release"
 _RE_OS_RELEASE_LINE = re.compile(r"^([A-Z0-9_]+)=(.*)$")
@@ -66,6 +84,33 @@ def _ftRunProbe(listCommand):
         return (-1, "", "")
     return (processResult.returncode, processResult.stdout or "",
             processResult.stderr or "")
+
+
+def fnAddPackageManagerDirectoriesToPath():
+    """Append the macOS package managers' directories to this process's PATH.
+
+    Appended, never prepended, and only directories that exist and are
+    not already there: nothing the researcher's PATH already chose is
+    shadowed. It changes this process, deliberately -- after a
+    Homebrew install in another terminal, the hub's own later docker
+    and colima calls must find the same commands the wizard just did,
+    without the researcher restarting vaibify.
+    """
+    if sys.platform != "darwin":
+        return
+    listPath = os.environ.get("PATH", "").split(os.pathsep)
+    listAdded = [
+        sDirectory for sDirectory in T_MACOS_PACKAGE_MANAGER_DIRECTORIES
+        if sDirectory not in listPath and os.path.isdir(sDirectory)
+    ]
+    if listAdded:
+        os.environ["PATH"] = os.pathsep.join(
+            [s for s in listPath if s] + listAdded)
+
+
+def fsDesktopApplicationForContext(sContext):
+    """Name the desktop application a Docker context belongs to, or ''."""
+    return _DICT_DESKTOP_APPLICATION_BY_CONTEXT.get((sContext or "").lower(), "")
 
 
 def fdictParseOsRelease(sText):
@@ -203,7 +248,7 @@ def _flistReadRunningVaibifyContainers(bDaemonAnswers):
     """
     if not bDaemonAnswers:
         return []
-    from vaibify.config.registryManager import fdictLoadRegistry
+    from vaibify.config.registryManager import fdictLoadRegistryOrRaise
     iCode, sOut, _ = _ftRunProbe(["docker", "ps", "--format", "{{.Names}}"])
     listRunning = [sName for sName in sOut.split() if sName]
     if iCode != 0:
@@ -211,7 +256,8 @@ def _flistReadRunningVaibifyContainers(bDaemonAnswers):
     try:
         setRegistered = {
             dictProject.get("sContainerName")
-            for dictProject in fdictLoadRegistry().get("listProjects", [])
+            for dictProject in fdictLoadRegistryOrRaise().get(
+                "listProjects", [])
         }
     except (OSError, ValueError):
         return sorted(listRunning)
@@ -272,6 +318,21 @@ def _fsReadMacVersion():
     return sOut.strip() if iCode == 0 else ""
 
 
+def _ftReadActiveDockerContext(setCommands):
+    """Return ``(sContext, sColimaProfile)`` Docker is pointed at now.
+
+    The profile is the machine whose daemon every other daemon fact was
+    read from, so it is the only Colima machine the wizard may restart:
+    its running containers are the ones it checked.
+    """
+    if "docker" not in setCommands:
+        return ("", "")
+    from vaibify.docker.dockerContext import (
+        fsActiveDockerContext, fsColimaProfileName,
+    )
+    return (fsActiveDockerContext(), fsColimaProfileName())
+
+
 def _fsReadRuntime():
     from vaibify.docker.dockerContext import fdictClassifyDockerRuntime
     try:
@@ -280,10 +341,18 @@ def _fsReadRuntime():
         return "unknown"
 
 
-def fdictReadHostFacts():
-    """Return every fact the planner reads, gathered from this machine."""
+def fdictReadHostFacts(bProbePrivilege=True):
+    """Return every fact the planner reads, gathered from this machine.
+
+    ``bProbePrivilege`` False skips asking ``sudo -n`` and answers no
+    privilege channel: the dashboard's advisory check on each hub load
+    needs only step titles, and a failed ``sudo -n`` is written to the
+    system's auth log, which should not fill with one per page load.
+    """
     from vaibify.cli.commandBuild import fsHostArch
+    fnAddPackageManagerDirectoriesToPath()
     setCommands = {s for s in T_PROBED_COMMANDS if shutil.which(s)}
+    sContext, sColimaProfile = _ftReadActiveDockerContext(setCommands)
     bAnswers, bPermissionDenied, bBuildxWorks = _ftReadDaemonAnswer(setCommands)
     dictFacts = {
         "sPlatform": sys.platform,
@@ -297,11 +366,15 @@ def fdictReadHostFacts():
         "bDaemonPermissionDenied": bPermissionDenied,
         "bBuildxWorks": bBuildxWorks,
         "sRuntime": _fsReadRuntime() if bAnswers else "",
+        "sActiveDockerContext": sContext,
+        "sActiveColimaProfile": sColimaProfile,
         "listColimaMachines": _flistReadColimaMachines(setCommands),
         "listRunningVaibifyContainers": (
             _flistReadRunningVaibifyContainers(bAnswers)),
         "listDesktopApplications": _flistInstalledDesktopApplications(),
-        "sPrivilegeChannel": _fsDetectPrivilegeChannel(setCommands),
+        "sPrivilegeChannel": (
+            _fsDetectPrivilegeChannel(setCommands) if bProbePrivilege
+            else S_PRIVILEGE_NONE),
         "sUserName": pwd.getpwuid(os.getuid()).pw_name,
         "iHostCpuCount": os.cpu_count() or 1,
         "iHostMemoryBytes": _fiReadHostMemoryBytes(),

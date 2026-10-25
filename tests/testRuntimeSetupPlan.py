@@ -196,6 +196,7 @@ def _fdictUndersizedMacFacts(listRunning):
     return fdictMacFacts(
         listCommands=["brew", "colima", "docker"], bBuildxWorks=True,
         bDaemonAnswers=True, sRuntime="colima",
+        sActiveDockerContext="colima", sActiveColimaProfile="default",
         listRunningVaibifyContainers=listRunning,
         listColimaMachines=[{
             "sProfile": "default", "sStatus": "Running", "iCpus": 2,
@@ -219,6 +220,83 @@ def testAnUndersizedMachineWithRunningContainersIsNotRestarted():
     assert dictStep["sKind"] == S_KIND_NEEDS_YOU
     assert dictStep["listActions"] == []
     assert "projectAlphaContainer" in dictStep["sExplanation"]
+
+
+def _fdictMachine(sProfile, sStatus, iGigabytes):
+    return {"sProfile": sProfile, "sStatus": sStatus, "iCpus": 2,
+            "iMemoryBytes": iGigabytes * I_GIGABYTE,
+            "sArchitecture": "aarch64"}
+
+
+@pytest.mark.falsification
+def testOnlyTheMachineDockerPointsAtIsOfferedARestart():
+    """Two running machines; the containers were read from beta's daemon.
+
+    Kills: restarting the first running machine, whose containers
+    nobody checked.
+    """
+    dictStep = fdictPlanRuntimeSetup(fdictMacFacts(
+        listCommands=["brew", "colima", "docker"], bBuildxWorks=True,
+        bDaemonAnswers=True, sRuntime="colima",
+        sActiveDockerContext="colima-beta", sActiveColimaProfile="beta",
+        listColimaMachines=[_fdictMachine("alpha", "Running", 2),
+                            _fdictMachine("beta", "Running", 2)],
+    ))["listSteps"][0]
+    listInvocations = dictStep["listActions"][0]["listInvocations"]
+    assert listInvocations[0]["listArgv"] == [
+        "colima", "stop", "--profile", "beta"]
+    assert "'beta'" in dictStep["sExplanation"]
+
+
+def testNoRestartIsOfferedWhenDockerNamesNoColimaMachine():
+    dictPlan = fdictPlanRuntimeSetup(fdictMacFacts(
+        listCommands=["brew", "colima", "docker"], bBuildxWorks=True,
+        bDaemonAnswers=True, sRuntime="colima", sActiveColimaProfile="",
+        listColimaMachines=[_fdictMachine("alpha", "Running", 2)]))
+    assert dictPlan == {"bReady": True, "listSteps": []}
+
+
+def testAStoppedMachineDockerPointsAtIsTheOneStarted():
+    dictStep = fdictFirstStep(fdictMacFacts(
+        listCommands=["brew", "colima", "docker"], bBuildxWorks=True,
+        sActiveDockerContext="colima-beta", sActiveColimaProfile="beta",
+        listColimaMachines=[_fdictMachine("default", "Stopped", 8),
+                            _fdictMachine("beta", "Stopped", 8)]))
+    assert flistFirstArgv(dictStep) == ["colima", "start", "--profile", "beta"]
+
+
+@pytest.mark.falsification
+def testTheDesktopApplicationDockerPointsAtBeatsAnOldColimaMachine():
+    """Kills: an old Colima profile winning over the researcher's choice."""
+    dictPlan = fdictPlanRuntimeSetup(fdictMacFacts(
+        listCommands=["colima", "docker"], sActiveDockerContext="orbstack",
+        listDesktopApplications=["OrbStack"],
+        listColimaMachines=[_fdictMachine("default", "Stopped", 2)]))
+    assert [d["sStepName"] for d in dictPlan["listSteps"]] == [
+        "start-desktop-application"]
+    assert flistFirstArgv(dictPlan["listSteps"][0]) == [
+        "open", "-a", "OrbStack"]
+
+
+def testWithNoContextToGoOnTheResearcherChoosesTheRuntime():
+    dictStep = fdictFirstStep(fdictMacFacts(
+        listCommands=["colima", "docker"], sActiveDockerContext="default",
+        listDesktopApplications=["OrbStack", "Docker"],
+        listColimaMachines=[_fdictMachine("old", "Stopped", 2)]))
+    assert dictStep["sStepName"] == "choose-runtime"
+    assert [d["sLabel"] for d in dictStep["listActions"]] == [
+        "Start OrbStack", "Start Docker", "Start Colima 'old'"]
+    assert dictStep["listActions"][2]["listInvocations"][0]["listArgv"] == [
+        "colima", "start", "--profile", "old"]
+
+
+def testAColimaContextKeepsTheColimaPathBesideADesktopApplication():
+    dictStep = fdictFirstStep(fdictMacFacts(
+        listCommands=["brew", "colima", "docker"], bBuildxWorks=True,
+        sActiveDockerContext="colima", sActiveColimaProfile="default",
+        listDesktopApplications=["OrbStack"],
+        listColimaMachines=[_fdictMachine("default", "Stopped", 8)]))
+    assert flistFirstArgv(dictStep) == ["colima", "start"]
 
 
 def testAStoppedDesktopApplicationIsStartedNotReplaced():

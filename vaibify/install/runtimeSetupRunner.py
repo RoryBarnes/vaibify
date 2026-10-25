@@ -14,14 +14,28 @@ prompt the operating system owns:
 * the CLI in a terminal -- ``sudo``, which asks in that terminal.
 
 One setup runs at a time on a machine, CLI and dashboard alike, held
-by an exclusive ``flock`` the kernel releases if the process dies.
+by an exclusive ``flock``. A step's own process inherits the lock's
+descriptor, so the lock outlives a hub that dies mid-step: the step
+keeps running (nothing stops a child when its parent is killed), and a
+restarted hub refuses a second setup until the step itself ends. The
+one gap is an administrator step: ``sudo`` and ``pkexec`` close the
+descriptors they inherit, so a root step whose hub died no longer
+holds it. apt and dnf take their own locks, so a second install waits
+or fails rather than interleaving with the first.
+
+Each invocation has a deadline enforced while its output is read on a
+thread, so a step that prints nothing cannot outwait it. A step that
+misses it is stopped as a process group, terminate then kill; a root
+process in that group is not ours to signal, and the error says so.
 """
 
 import contextlib
 import fcntl
 import os
 import shlex
+import signal
 import subprocess
+import threading
 
 from vaibify.install.runtimeSetupFacts import (
     S_PRIVILEGE_MACOS_DIALOG,
@@ -44,6 +58,8 @@ __all__ = [
 S_PRIVILEGE_TERMINAL_SUDO = "terminal-sudo"
 
 _F_INVOCATION_TIMEOUT_SECONDS = 3600.0
+_F_TERMINATE_GRACE_SECONDS = 10.0
+_F_OUTPUT_DRAIN_SECONDS = 5.0
 _S_LOCK_DIRECTORY = os.path.expanduser("~/.vaibify/locks")
 _S_LOCK_NAME = "runtimeSetup.lock"
 _I_PKEXEC_DISMISSED = 126
@@ -144,28 +160,73 @@ def _fsExplainFailure(listArgv, iExitCode, listTail):
             "Its last output is above.")
 
 
-def _fnRunInvocation(listArgv, fnEmitLine, bInteractive):
-    """Run one argv to completion, streaming each output line."""
+def _fnPumpOutput(fileOutput, fnEmitLine, listTail):
+    """Emit each line the child prints, keeping the last twenty."""
+    for sLine in fileOutput:
+        sLine = sLine.rstrip("\n")
+        fnEmitLine(sLine)
+        listTail.append(sLine)
+        del listTail[:-20]
+
+
+def _fbStopProcessGroup(processChild, bOwnGroup):
+    """Terminate, then kill, the child's process group; False if we could not."""
+    def fnSignal(iSignal):
+        if bOwnGroup:
+            os.killpg(processChild.pid, iSignal)
+        else:
+            processChild.send_signal(iSignal)
     try:
-        processChild = subprocess.Popen(
+        fnSignal(signal.SIGTERM)
+        try:
+            processChild.wait(timeout=_F_TERMINATE_GRACE_SECONDS)
+            return True
+        except subprocess.TimeoutExpired:
+            fnSignal(signal.SIGKILL)
+            processChild.wait(timeout=_F_TERMINATE_GRACE_SECONDS)
+            return True
+    except (ProcessLookupError, PermissionError, subprocess.TimeoutExpired):
+        return processChild.poll() is not None
+
+
+def _fprocessStartInvocation(listArgv, bInteractive, iLockDescriptor):
+    """Start one argv in its own process group, holding the setup lock.
+
+    An interactive run stays in the terminal's session, because a
+    ``sudo`` that has left it has no terminal to ask for a password on.
+    """
+    try:
+        return subprocess.Popen(
             listArgv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             stdin=None if bInteractive else subprocess.DEVNULL,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
+            start_new_session=not bInteractive,
+            pass_fds=() if iLockDescriptor is None else (iLockDescriptor,),
         )
     except OSError as error:
         raise RuntimeSetupError(
             f"Could not run '{listArgv[0]}': {error.strerror}.") from None
+
+
+def _fnRunInvocation(listArgv, fnEmitLine, bInteractive, iLockDescriptor=None):
+    """Run one argv to completion or its deadline, streaming each line."""
+    processChild = _fprocessStartInvocation(
+        listArgv, bInteractive, iLockDescriptor)
     listTail = []
-    for sLine in processChild.stdout:
-        fnEmitLine(sLine.rstrip("\n"))
-        listTail = (listTail + [sLine.rstrip("\n")])[-20:]
+    threadPump = threading.Thread(
+        target=_fnPumpOutput, args=(processChild.stdout, fnEmitLine, listTail),
+        daemon=True)
+    threadPump.start()
     try:
         iExitCode = processChild.wait(timeout=_F_INVOCATION_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
-        processChild.kill()
+        bStopped = _fbStopProcessGroup(processChild, not bInteractive)
         raise RuntimeSetupError(
-            f"'{listArgv[0]}' ran for an hour without finishing and was "
-            "stopped.") from None
+            f"'{listArgv[0]}' ran past its {_F_INVOCATION_TIMEOUT_SECONDS:g}-"
+            "second limit and " + ("was stopped." if bStopped else
+            "could not be stopped, because it runs as administrator; it "
+            "may still be running.")) from None
+    threadPump.join(timeout=_F_OUTPUT_DRAIN_SECONDS)
     if iExitCode != 0:
         raise RuntimeSetupError(_fsExplainFailure(listArgv, iExitCode, listTail))
 
@@ -179,13 +240,14 @@ def fnRunAction(dictPlan, sActionName, sPrivilegeChannel, fnEmitLine,
     second setup refused by the lock cannot wipe the first one's log.
     """
     dictAction = fdictFindRunnableAction(dictPlan, sActionName)
-    with fcontextHoldSetupLock():
+    with fcontextHoldSetupLock() as fileLock:
         if fnLockHeld is not None:
             fnLockHeld()
         for dictInvocation in dictAction["listInvocations"]:
             listArgv = flistBuildArgv(dictInvocation, sPrivilegeChannel)
             _fnEmitWhatRuns(dictInvocation, listArgv, fnEmitLine)
-            _fnRunInvocation(listArgv, fnEmitLine, bInteractive)
+            _fnRunInvocation(listArgv, fnEmitLine, bInteractive,
+                             fileLock.fileno())
 
 
 def _fnEmitWhatRuns(dictInvocation, listArgv, fnEmitLine):
