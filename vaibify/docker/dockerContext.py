@@ -217,6 +217,17 @@ def fsColimaProfileName(sEndpoint=""):
     return matchEvidence.group("profile") or S_COLIMA_DEFAULT_PROFILE
 
 
+def fsColimaProfileOfEndpoint(sEndpoint):
+    """Return the Colima profile whose socket ``sEndpoint`` is, or ''.
+
+    The endpoint alone, never the context name: a caller that has
+    already resolved which daemon it is asking needs the machine behind
+    THAT daemon, even when the context has since moved elsewhere.
+    """
+    matchEndpoint = _RE_COLIMA_ENDPOINT.search(sEndpoint or "")
+    return matchEndpoint.group("profile") if matchEndpoint else ""
+
+
 S_RUNTIME_DOCKER_DESKTOP = "docker-desktop"
 S_RUNTIME_COLIMA = "colima"
 S_RUNTIME_LINUX_ROOTFUL = "linux-rootful"

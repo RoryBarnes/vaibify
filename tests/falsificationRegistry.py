@@ -36301,4 +36301,34 @@ LIST_FALSIFICATIONS = [
         old='                VaibifyRuntimeSetup.fnShowAdviceInBanner(elBanner);\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupFacts.py::'
+            'testEveryDockerProbeAsksTheDaemonTheProfileWasReadFrom'
+        ),
+        source='vaibify/install/runtimeSetupFacts.py',
+        # a docker probe inherits the hub's stale exported DOCKER_HOST
+        old='        dictEnvironment["DOCKER_HOST"] = sEndpoint\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupRunner.py::'
+            'testADescendantThatIgnoresTerminateIsStillStopped'
+        ),
+        source='vaibify/install/runtimeSetupRunner.py',
+        # the group's leader exiting is taken as everything stopped
+        old='        if _fbWaitForGroupToEnd(\n                processChild, iGroup, _F_TERMINATE_GRACE_SECONDS):\n            return True\n',
+        new='        try:\n            processChild.wait(timeout=_F_TERMINATE_GRACE_SECONDS)\n            return True\n        except subprocess.TimeoutExpired:\n            pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupRunner.py::'
+            'testAStepThatClosesItsDescriptorsStillHoldsTheLock'
+        ),
+        source='vaibify/install/runtimeSetupRunner.py',
+        # the step itself carries the lock, which sudo and pkexec close
+        old='        if bInteractive:\n',
+        new='        if True:\n',
+    ),
 ]

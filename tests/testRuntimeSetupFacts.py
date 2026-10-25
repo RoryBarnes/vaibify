@@ -148,7 +148,8 @@ def testAnUnreadableRegistryCountsEveryRunningContainer(
     monkeypatch.setattr(registryManager, "_S_REGISTRY_PATH", str(pathRegistry))
     monkeypatch.setattr(
         factsModule, "_ftRunProbe",
-        lambda listCommand: (0, "projectAlphaBox\nunrelatedService\n", ""))
+        lambda listCommand, dictEnvironment=None: (
+            0, "projectAlphaBox\nunrelatedService\n", ""))
     assert factsModule._flistReadRunningVaibifyContainers(True) == [
         "projectAlphaBox", "unrelatedService"]
 
@@ -162,7 +163,8 @@ def testAReadableRegistryProtectsOnlyItsOwnContainers(tmp_path, monkeypatch):
     monkeypatch.setattr(registryManager, "_S_REGISTRY_PATH", str(pathRegistry))
     monkeypatch.setattr(
         factsModule, "_ftRunProbe",
-        lambda listCommand: (0, "projectAlphaBox\nunrelatedService\n", ""))
+        lambda listCommand, dictEnvironment=None: (
+            0, "projectAlphaBox\nunrelatedService\n", ""))
     assert factsModule._flistReadRunningVaibifyContainers(True) == [
         "projectAlphaBox"]
 
@@ -197,3 +199,51 @@ def testADesktopContextNamesItsApplication():
     assert factsModule.fsDesktopApplicationForContext("desktop-linux") == (
         "Docker")
     assert factsModule.fsDesktopApplicationForContext("colima") == ""
+
+
+@pytest.mark.falsification
+def testEveryDockerProbeAsksTheDaemonTheProfileWasReadFrom(monkeypatch):
+    """The context moved after the hub exported DOCKER_HOST at startup.
+
+    The profile comes from the context's endpoint NOW; a docker probe
+    that inherited the stale export would ask another machine's daemon,
+    and the restart guard would check the wrong containers.
+
+    Kills: a docker probe that inherits the hub's exported DOCKER_HOST.
+    """
+    from vaibify.docker import dockerContext
+    sStale = "unix:///Users/researcher/.colima/alpha/docker.sock"
+    sNow = "unix:///Users/researcher/.colima/beta/docker.sock"
+    monkeypatch.setenv("DOCKER_HOST", sStale)
+    monkeypatch.setattr(dockerContext, "fbDockerHostIsExportedByVaibify",
+                        lambda: True)
+    monkeypatch.setattr(dockerContext, "fsReadActiveContextEndpoint",
+                        lambda: sNow)
+    monkeypatch.setattr(dockerContext, "fsActiveDockerContext",
+                        lambda: "colima-beta")
+    listDockerHosts = []
+
+    def ftRecordProbe(listCommand, dictEnvironment=None):
+        if listCommand[0] == "docker":
+            listDockerHosts.append((dictEnvironment or {}).get("DOCKER_HOST"))
+        return (0, "", "")
+
+    monkeypatch.setattr(factsModule, "_ftRunProbe", ftRecordProbe)
+    monkeypatch.setattr(factsModule.shutil, "which",
+                        lambda sName, path=None: "/usr/bin/" + sName)
+    dictFacts = factsModule.fdictReadHostFacts(bProbePrivilege=False)
+    assert dictFacts["sActiveColimaProfile"] == "beta"
+    assert dictFacts["sDockerEndpoint"] == sNow
+    assert listDockerHosts and set(listDockerHosts) == {sNow}
+
+
+def testTheResearchersOwnDockerHostIsTheEndpoint(monkeypatch):
+    from vaibify.docker import dockerContext
+    sTheirs = "unix:///Users/researcher/.colima/work/docker.sock"
+    monkeypatch.setenv("DOCKER_HOST", sTheirs)
+    monkeypatch.setattr(dockerContext, "fbDockerHostIsExportedByVaibify",
+                        lambda: False)
+    assert factsModule._fsResolveProbedEndpoint({"docker"}) == sTheirs
+    assert dockerContext.fsColimaProfileOfEndpoint(sTheirs) == "work"
+    assert dockerContext.fsColimaProfileOfEndpoint(
+        "unix:///var/run/docker.sock") == ""

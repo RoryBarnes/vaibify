@@ -239,13 +239,35 @@ def testASilentStepPastItsDeadlineIsStoppedWithItsChildren(
     monkeypatch.setattr(runnerModule, "_F_INVOCATION_TIMEOUT_SECONDS", 0.5)
     monkeypatch.setattr(runnerModule, "_F_TERMINATE_GRACE_SECONDS", 2.0)
     pathPid = tmp_path / "sleeper.pid"
-    dictPlan = fdictPlanOf(fdictRunStep("silent", [fdictActionRunning(
-        "silent", ["sh", "-c", f'sleep 6 & echo $! > "{pathPid}"; wait'])]))
     fStart = time.monotonic()
     with pytest.raises(RuntimeSetupError, match="was stopped"):
-        fnRunAction(dictPlan, "silent", "none", lambda sLine: None)
+        runnerModule._fnRunInvocation(
+            ["sh", "-c", f'sleep 6 & echo $! > "{pathPid}"; wait'],
+            lambda sLine: None, False)
     assert time.monotonic() - fStart < 4.0
     assert not _fbProcessIsAlive(_fiWaitForPid(pathPid))
+
+
+@pytest.mark.falsification
+def testADescendantThatIgnoresTerminateIsStillStopped(tmp_path, monkeypatch):
+    """The leader exits on SIGTERM; its child ignores it and works on.
+
+    Kills: reporting "was stopped" once the group's leader has exited,
+    while a descendant goes on to finish the work.
+    """
+    import time
+    monkeypatch.setattr(runnerModule, "_F_INVOCATION_TIMEOUT_SECONDS", 0.3)
+    monkeypatch.setattr(runnerModule, "_F_TERMINATE_GRACE_SECONDS", 0.5)
+    pathPid = tmp_path / "stubborn.pid"
+    pathWork = tmp_path / "workDone"
+    with pytest.raises(RuntimeSetupError, match="was stopped"):
+        runnerModule._fnRunInvocation(
+            ["sh", "-c", f'( trap "" TERM; sleep 2; touch "{pathWork}" ) & '
+                         f'echo $! > "{pathPid}"; wait'],
+            lambda sLine: None, False)
+    assert not _fbProcessIsAlive(_fiWaitForPid(pathPid))
+    time.sleep(2.5)
+    assert not pathWork.exists()
 
 
 S_HUB_PROGRAM = """
@@ -263,6 +285,65 @@ runnerModule.fnRunAction(dictPlan, "long", "none", print)
 """
 
 
+def _fnWaitForTheLockToBeFree(fTimeout=10.0):
+    import time
+    fDeadline = time.monotonic() + fTimeout
+    while True:
+        try:
+            with fcontextHoldSetupLock():
+                return
+        except RuntimeSetupError:
+            if time.monotonic() > fDeadline:
+                raise
+            time.sleep(0.1)
+
+
+S_HUB_RUNNING_A_DESCRIPTOR_CLOSER = """
+import sys
+from vaibify.install import runtimeSetupRunner as runnerModule
+runnerModule._S_LOCK_DIRECTORY = sys.argv[1]
+sStep = (
+    "import os, sys, time; os.closerange(3, 4096); "
+    "open(sys.argv[1], 'w').write(str(os.getpid())); time.sleep(20)")
+dictPlan = {"bReady": False, "listSteps": [{
+    "sStepName": "root-like", "sTitle": "Root-like", "sKind": "run",
+    "sExplanation": "", "listCommandsToShow": [],
+    "listActions": [{"sActionName": "root-like", "sLabel": "root-like",
+                     "listInvocations": [{"sRunAs": "user", "listArgv": [
+                         sys.executable, "-c", sStep, sys.argv[2]]}]}],
+}]}
+runnerModule.fnRunAction(dictPlan, "root-like", "none", print)
+"""
+
+
+@pytest.mark.falsification
+def testAStepThatClosesItsDescriptorsStillHoldsTheLock(tmp_path):
+    """sudo and pkexec close what they inherit; the lock must not go with it.
+
+    The step here closes every inherited descriptor, as sudo does, then
+    keeps running after its hub is killed. Kills: carrying the lock in
+    the step's own process rather than a supervisor that waits for it.
+    """
+    import signal
+    import sys
+    pathPid = tmp_path / "rootLike.pid"
+    processHub = subprocess.Popen(
+        [sys.executable, "-c", S_HUB_RUNNING_A_DESCRIPTOR_CLOSER,
+         runnerModule._S_LOCK_DIRECTORY, str(pathPid)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    iStepPid = _fiWaitForPid(pathPid, fTimeout=20.0)
+    processHub.kill()
+    processHub.wait(timeout=10)
+    try:
+        assert _fbProcessIsAlive(iStepPid)
+        with pytest.raises(RuntimeSetupError, match="already running"):
+            with fcontextHoldSetupLock():
+                pass
+    finally:
+        os.kill(iStepPid, signal.SIGKILL)
+    _fnWaitForTheLockToBeFree()
+
+
 @pytest.mark.falsification
 def testTheLockOutlivesAHubKilledMidStep(tmp_path):
     """A restarted hub must not start a second setup beside a running one.
@@ -275,7 +356,7 @@ def testTheLockOutlivesAHubKilledMidStep(tmp_path):
     processHub = subprocess.Popen(
         [sys.executable, "-c", S_HUB_PROGRAM, runnerModule._S_LOCK_DIRECTORY,
          str(pathPid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    iStepPid = _fiWaitForPid(pathPid)
+    iStepPid = _fiWaitForPid(pathPid, fTimeout=20.0)
     processHub.kill()
     processHub.wait(timeout=10)
     try:
@@ -285,7 +366,4 @@ def testTheLockOutlivesAHubKilledMidStep(tmp_path):
                 pass
     finally:
         os.killpg(iStepPid, signal.SIGKILL)
-    import time
-    time.sleep(0.3)
-    with fcontextHoldSetupLock():
-        pass
+    _fnWaitForTheLockToBeFree()

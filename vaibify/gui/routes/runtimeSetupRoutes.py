@@ -14,10 +14,10 @@ from the agent catalog. An agent can never install software on the
 host or start a virtual machine.
 
 The progress record is in-process, like the build's: a hub restart
-forgets it. The step it described does NOT die with the hub -- a child
-outlives a killed parent -- and its own process carries the setup lock
-(see ``runtimeSetupRunner``), so a restarted hub answers "another setup
-is running" until the step ends rather than starting a second one.
+forgets it. The step it described does NOT die with the hub: it runs
+under a supervisor in its own session that holds the setup lock until
+the step ends (see ``runtimeSetupRunner``), so a restarted hub answers
+"another setup is running" rather than starting a second one.
 """
 
 __all__ = ["fnRegisterAll"]

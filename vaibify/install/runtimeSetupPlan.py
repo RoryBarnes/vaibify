@@ -510,8 +510,8 @@ def _flistPlanMacSteps(dictFacts, dictSettings):
         listSteps.append(_fdictMacInstallStep(dictFacts, listMissing))
     elif not dictFacts.get("bBuildxWorks"):
         listSteps.append(_fdictLinkBuildxStep(dictFacts))
-    if dictFacts.get("bDaemonAnswers") and dictFacts.get(
-            "sRuntime") != "colima":
+    if dictFacts.get("bDaemonAnswers") and not dictFacts.get(
+            "sActiveColimaProfile"):
         return listSteps
     dictMachineStep = _fdictPlanColimaMachineStep(dictFacts, dictSettings)
     if dictMachineStep is not None:

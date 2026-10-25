@@ -72,13 +72,13 @@ _S_OS_RELEASE_PATH = "/etc/os-release"
 _RE_OS_RELEASE_LINE = re.compile(r"^([A-Z0-9_]+)=(.*)$")
 
 
-def _ftRunProbe(listCommand):
+def _ftRunProbe(listCommand, dictEnvironment=None):
     """Return ``(iExitCode, sStdout, sStderr)``; exit -1 if it could not run."""
     try:
         processResult = subprocess.run(
             listCommand, capture_output=True, text=True,
             timeout=_F_PROBE_TIMEOUT_SECONDS, encoding="utf-8",
-            errors="replace", stdin=subprocess.DEVNULL,
+            errors="replace", stdin=subprocess.DEVNULL, env=dictEnvironment,
         )
     except (OSError, subprocess.TimeoutExpired):
         return (-1, "", "")
@@ -168,15 +168,47 @@ def _flistReadColimaMachines(setCommands):
     return flistParseColimaMachines(sStdout)
 
 
-def _ftReadDaemonAnswer(setCommands):
+def _fsResolveProbedEndpoint(setCommands):
+    """Return the ONE daemon endpoint every Docker probe here asks.
+
+    The researcher's own ``DOCKER_HOST`` if they set one, else the
+    active context's endpoint, read now. A ``DOCKER_HOST`` the hub
+    exported at startup is skipped: it names the context as it was
+    then, and a probe that inherited it would ask a different daemon
+    than the one the profile was read from.
+    """
+    from vaibify.docker.dockerContext import (
+        fbDockerHostIsExportedByVaibify, fsReadActiveContextEndpoint,
+    )
+    sDockerHost = os.environ.get("DOCKER_HOST", "")
+    if sDockerHost and not fbDockerHostIsExportedByVaibify():
+        return sDockerHost
+    if "docker" not in setCommands:
+        return ""
+    return fsReadActiveContextEndpoint()
+
+
+def _fdictProbeEnvironment(sEndpoint):
+    """Return the environment that points a docker probe at ``sEndpoint``."""
+    from vaibify.docker.dockerContext import fbDockerHostIsExportedByVaibify
+    dictEnvironment = dict(os.environ)
+    if sEndpoint:
+        dictEnvironment["DOCKER_HOST"] = sEndpoint
+    elif fbDockerHostIsExportedByVaibify():
+        dictEnvironment.pop("DOCKER_HOST", None)
+    return dictEnvironment
+
+
+def _ftReadDaemonAnswer(setCommands, dictEnvironment):
     """Return ``(bAnswers, bPermissionDenied, bBuildxWorks)``."""
     if "docker" not in setCommands:
         return (False, False, False)
     iExitCode, _, sStderr = _ftRunProbe(
-        ["docker", "info", "--format", "{{.ServerVersion}}"])
+        ["docker", "info", "--format", "{{.ServerVersion}}"], dictEnvironment)
     bAnswers = iExitCode == 0
     bPermissionDenied = "permission denied" in sStderr.lower()
-    iBuildxCode, _, _ = _ftRunProbe(["docker", "buildx", "version"])
+    iBuildxCode, _, _ = _ftRunProbe(
+        ["docker", "buildx", "version"], dictEnvironment)
     return (bAnswers, bPermissionDenied, iBuildxCode == 0)
 
 
@@ -238,7 +270,7 @@ def _fdictReadLinuxServices(setCommands):
     return dictServices
 
 
-def _flistReadRunningVaibifyContainers(bDaemonAnswers):
+def _flistReadRunningVaibifyContainers(bDaemonAnswers, dictEnvironment=None):
     """Return the registered vaibify containers the daemon reports running.
 
     Restarting a Colima machine stops every container in it, so the
@@ -249,7 +281,8 @@ def _flistReadRunningVaibifyContainers(bDaemonAnswers):
     if not bDaemonAnswers:
         return []
     from vaibify.config.registryManager import fdictLoadRegistryOrRaise
-    iCode, sOut, _ = _ftRunProbe(["docker", "ps", "--format", "{{.Names}}"])
+    iCode, sOut, _ = _ftRunProbe(
+        ["docker", "ps", "--format", "{{.Names}}"], dictEnvironment)
     listRunning = [sName for sName in sOut.split() if sName]
     if iCode != 0:
         return ["(the daemon did not list its containers)"]
@@ -318,27 +351,12 @@ def _fsReadMacVersion():
     return sOut.strip() if iCode == 0 else ""
 
 
-def _ftReadActiveDockerContext(setCommands):
-    """Return ``(sContext, sColimaProfile)`` Docker is pointed at now.
-
-    The profile is the machine whose daemon every other daemon fact was
-    read from, so it is the only Colima machine the wizard may restart:
-    its running containers are the ones it checked.
-    """
+def _fsReadActiveDockerContext(setCommands):
+    """Return the active Docker context's name, which names a desktop app."""
     if "docker" not in setCommands:
-        return ("", "")
-    from vaibify.docker.dockerContext import (
-        fsActiveDockerContext, fsColimaProfileName,
-    )
-    return (fsActiveDockerContext(), fsColimaProfileName())
-
-
-def _fsReadRuntime():
-    from vaibify.docker.dockerContext import fdictClassifyDockerRuntime
-    try:
-        return str(fdictClassifyDockerRuntime().get("sRuntime") or "")
-    except Exception:  # noqa: BLE001 -- an unclassifiable runtime is "unknown"
-        return "unknown"
+        return ""
+    from vaibify.docker.dockerContext import fsActiveDockerContext
+    return fsActiveDockerContext()
 
 
 def fdictReadHostFacts(bProbePrivilege=True):
@@ -351,9 +369,12 @@ def fdictReadHostFacts(bProbePrivilege=True):
     """
     from vaibify.cli.commandBuild import fsHostArch
     fnAddPackageManagerDirectoriesToPath()
+    from vaibify.docker.dockerContext import fsColimaProfileOfEndpoint
     setCommands = {s for s in T_PROBED_COMMANDS if shutil.which(s)}
-    sContext, sColimaProfile = _ftReadActiveDockerContext(setCommands)
-    bAnswers, bPermissionDenied, bBuildxWorks = _ftReadDaemonAnswer(setCommands)
+    sEndpoint = _fsResolveProbedEndpoint(setCommands)
+    dictEnvironment = _fdictProbeEnvironment(sEndpoint)
+    bAnswers, bPermissionDenied, bBuildxWorks = _ftReadDaemonAnswer(
+        setCommands, dictEnvironment)
     dictFacts = {
         "sPlatform": sys.platform,
         "sArchitecture": fsHostArch(),
@@ -365,12 +386,12 @@ def fdictReadHostFacts(bProbePrivilege=True):
         "bDaemonAnswers": bAnswers,
         "bDaemonPermissionDenied": bPermissionDenied,
         "bBuildxWorks": bBuildxWorks,
-        "sRuntime": _fsReadRuntime() if bAnswers else "",
-        "sActiveDockerContext": sContext,
-        "sActiveColimaProfile": sColimaProfile,
+        "sDockerEndpoint": sEndpoint,
+        "sActiveDockerContext": _fsReadActiveDockerContext(setCommands),
+        "sActiveColimaProfile": fsColimaProfileOfEndpoint(sEndpoint),
         "listColimaMachines": _flistReadColimaMachines(setCommands),
         "listRunningVaibifyContainers": (
-            _flistReadRunningVaibifyContainers(bAnswers)),
+            _flistReadRunningVaibifyContainers(bAnswers, dictEnvironment)),
         "listDesktopApplications": _flistInstalledDesktopApplications(),
         "sPrivilegeChannel": (
             _fsDetectPrivilegeChannel(setCommands) if bProbePrivilege

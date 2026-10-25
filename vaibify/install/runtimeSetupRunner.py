@@ -14,28 +14,36 @@ prompt the operating system owns:
 * the CLI in a terminal -- ``sudo``, which asks in that terminal.
 
 One setup runs at a time on a machine, CLI and dashboard alike, held
-by an exclusive ``flock``. A step's own process inherits the lock's
-descriptor, so the lock outlives a hub that dies mid-step: the step
-keeps running (nothing stops a child when its parent is killed), and a
-restarted hub refuses a second setup until the step itself ends. The
-one gap is an administrator step: ``sudo`` and ``pkexec`` close the
-descriptors they inherit, so a root step whose hub died no longer
-holds it. apt and dnf take their own locks, so a second install waits
-or fails rather than interleaving with the first.
+by an exclusive ``flock``. Outside an interactive terminal the action
+runs under a small supervisor (``runtimeSetupSupervisor``) started in
+its own session: it inherits the lock's descriptor and waits for every
+command of the step, so the lock lasts exactly as long as the step,
+whether or not the hub that asked for it survives. That matters most
+for an administrator step: ``sudo`` and ``pkexec`` close the
+descriptors they inherit, so the command itself could never carry the
+lock, but the supervisor that waits for it does. In a terminal the
+command line is the supervisor: ``sudo`` needs that terminal to ask
+for a password, and stopping it there is the researcher's own choice.
 
 Each invocation has a deadline enforced while its output is read on a
 thread, so a step that prints nothing cannot outwait it. A step that
-misses it is stopped as a process group, terminate then kill; a root
-process in that group is not ours to signal, and the error says so.
+misses it is stopped as a process group, and is reported stopped only
+once the GROUP is empty: a descendant that ignores the terminate
+signal keeps the group alive after its leader exits, and gets the kill
+signal. A root process in that group is not ours to signal, and the
+error says it may still be running.
 """
 
 import contextlib
 import fcntl
+import json
 import os
 import shlex
 import signal
 import subprocess
+import sys
 import threading
+import time
 
 from vaibify.install.runtimeSetupFacts import (
     S_PRIVILEGE_MACOS_DIALOG,
@@ -51,6 +59,8 @@ __all__ = [
     "flistBuildArgv",
     "fdictFindRunnableAction",
     "fcontextHoldSetupLock",
+    "S_SUPERVISOR_RESULT_PREFIX",
+    "fnRunInvocations",
     "fnRunAction",
 ]
 
@@ -60,6 +70,9 @@ S_PRIVILEGE_TERMINAL_SUDO = "terminal-sudo"
 _F_INVOCATION_TIMEOUT_SECONDS = 3600.0
 _F_TERMINATE_GRACE_SECONDS = 10.0
 _F_OUTPUT_DRAIN_SECONDS = 5.0
+_F_SUPERVISOR_SLACK_SECONDS = 120.0
+_S_SUPERVISOR_MODULE = "vaibify.install.runtimeSetupSupervisor"
+S_SUPERVISOR_RESULT_PREFIX = "\x1evaibify-setup-result "
 _S_LOCK_DIRECTORY = os.path.expanduser("~/.vaibify/locks")
 _S_LOCK_NAME = "runtimeSetup.lock"
 _I_PKEXEC_DISMISSED = 126
@@ -169,28 +182,59 @@ def _fnPumpOutput(fileOutput, fnEmitLine, listTail):
         del listTail[:-20]
 
 
-def _fbStopProcessGroup(processChild, bOwnGroup):
-    """Terminate, then kill, the child's process group; False if we could not."""
-    def fnSignal(iSignal):
-        if bOwnGroup:
-            os.killpg(processChild.pid, iSignal)
-        else:
-            processChild.send_signal(iSignal)
+def _fbProcessGroupIsGone(iGroup):
+    """Return True once no process of the group is left to signal."""
     try:
-        fnSignal(signal.SIGTERM)
+        os.killpg(iGroup, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    return False
+
+
+def _fbWaitForGroupToEnd(processChild, iGroup, fSeconds):
+    """Wait up to ``fSeconds`` for the whole group to end; reap the leader."""
+    fDeadline = time.monotonic() + fSeconds
+    while True:
+        processChild.poll()
+        if _fbProcessGroupIsGone(iGroup):
+            return True
+        if time.monotonic() >= fDeadline:
+            return False
+        time.sleep(0.05)
+
+
+def _fbStopProcessGroup(processChild, bOwnGroup):
+    """Stop the child and all it started; True only once all of it is gone.
+
+    The leader exiting proves nothing about its descendants, so the
+    group itself is watched until it is empty, and whatever is left
+    after the terminate grace gets the kill signal.
+    """
+    if not bOwnGroup:
+        processChild.kill()
         try:
             processChild.wait(timeout=_F_TERMINATE_GRACE_SECONDS)
-            return True
         except subprocess.TimeoutExpired:
-            fnSignal(signal.SIGKILL)
-            processChild.wait(timeout=_F_TERMINATE_GRACE_SECONDS)
+            return False
+        return True
+    iGroup = processChild.pid
+    for iSignal in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(iGroup, iSignal)
+        except ProcessLookupError:
             return True
-    except (ProcessLookupError, PermissionError, subprocess.TimeoutExpired):
-        return processChild.poll() is not None
+        except PermissionError:
+            return False
+        if _fbWaitForGroupToEnd(
+                processChild, iGroup, _F_TERMINATE_GRACE_SECONDS):
+            return True
+    return False
 
 
 def _fprocessStartInvocation(listArgv, bInteractive, iLockDescriptor):
-    """Start one argv in its own process group, holding the setup lock.
+    """Start one argv in its own process group, passing it the lock if given.
 
     An interactive run stays in the terminal's session, because a
     ``sudo`` that has left it has no terminal to ask for a password on.
@@ -208,10 +252,9 @@ def _fprocessStartInvocation(listArgv, bInteractive, iLockDescriptor):
             f"Could not run '{listArgv[0]}': {error.strerror}.") from None
 
 
-def _fnRunInvocation(listArgv, fnEmitLine, bInteractive, iLockDescriptor=None):
+def _fnRunInvocation(listArgv, fnEmitLine, bInteractive):
     """Run one argv to completion or its deadline, streaming each line."""
-    processChild = _fprocessStartInvocation(
-        listArgv, bInteractive, iLockDescriptor)
+    processChild = _fprocessStartInvocation(listArgv, bInteractive, None)
     listTail = []
     threadPump = threading.Thread(
         target=_fnPumpOutput, args=(processChild.stdout, fnEmitLine, listTail),
@@ -231,6 +274,51 @@ def _fnRunInvocation(listArgv, fnEmitLine, bInteractive, iLockDescriptor=None):
         raise RuntimeSetupError(_fsExplainFailure(listArgv, iExitCode, listTail))
 
 
+def fnRunInvocations(listInvocations, sPrivilegeChannel, fnEmitLine,
+                     bInteractive):
+    """Run an action's invocations in order, here, in this process."""
+    for dictInvocation in listInvocations:
+        listArgv = flistBuildArgv(dictInvocation, sPrivilegeChannel)
+        _fnEmitWhatRuns(dictInvocation, listArgv, fnEmitLine)
+        _fnRunInvocation(listArgv, fnEmitLine, bInteractive)
+
+
+def _fnRunUnderSupervisor(listInvocations, sPrivilegeChannel, fnEmitLine,
+                          iLockDescriptor):
+    """Run the invocations in a supervisor that holds the lock until done."""
+    processSupervisor = _fprocessStartInvocation(
+        [sys.executable, "-m", _S_SUPERVISOR_MODULE, sPrivilegeChannel,
+         json.dumps(listInvocations)], False, iLockDescriptor)
+    dictResult = {}
+
+    def fnRelayLine(sLine):
+        if sLine.startswith(S_SUPERVISOR_RESULT_PREFIX):
+            dictResult.update(json.loads(
+                sLine[len(S_SUPERVISOR_RESULT_PREFIX):]))
+        else:
+            fnEmitLine(sLine)
+
+    threadRelay = threading.Thread(
+        target=_fnPumpOutput, args=(processSupervisor.stdout, fnRelayLine, []),
+        daemon=True)
+    threadRelay.start()
+    try:
+        iExitCode = processSupervisor.wait(timeout=(
+            _F_INVOCATION_TIMEOUT_SECONDS * len(listInvocations)
+            + _F_SUPERVISOR_SLACK_SECONDS))
+    except subprocess.TimeoutExpired:
+        raise RuntimeSetupError(
+            "The setup step did not finish in time and may still be "
+            "running; vaibify will not start another until it ends.") from None
+    threadRelay.join(timeout=_F_OUTPUT_DRAIN_SECONDS)
+    if not dictResult:
+        raise RuntimeSetupError(
+            "The setup step ended without saying how it went (supervisor "
+            f"exit code {iExitCode}).")
+    if not dictResult.get("bSucceeded"):
+        raise RuntimeSetupError(dictResult.get("sMessage") or "It failed.")
+
+
 def fnRunAction(dictPlan, sActionName, sPrivilegeChannel, fnEmitLine,
                 bInteractive=False, fnLockHeld=None):
     """Run one action of the plan's first step under the machine-wide lock.
@@ -243,11 +331,12 @@ def fnRunAction(dictPlan, sActionName, sPrivilegeChannel, fnEmitLine,
     with fcontextHoldSetupLock() as fileLock:
         if fnLockHeld is not None:
             fnLockHeld()
-        for dictInvocation in dictAction["listInvocations"]:
-            listArgv = flistBuildArgv(dictInvocation, sPrivilegeChannel)
-            _fnEmitWhatRuns(dictInvocation, listArgv, fnEmitLine)
-            _fnRunInvocation(listArgv, fnEmitLine, bInteractive,
-                             fileLock.fileno())
+        if bInteractive:
+            fnRunInvocations(dictAction["listInvocations"], sPrivilegeChannel,
+                             fnEmitLine, True)
+            return
+        _fnRunUnderSupervisor(dictAction["listInvocations"],
+                              sPrivilegeChannel, fnEmitLine, fileLock.fileno())
 
 
 def _fnEmitWhatRuns(dictInvocation, listArgv, fnEmitLine):
