@@ -410,6 +410,10 @@ def testTheSpeedProfileFollowsTheVisibleCores(dictProfileImage, tmp_path):
 def testANumpyOlderThanTheFeatureGroupsSaysItIgnoredOne(dictOlderNumpyImage):
     """A real NumPy 2.1.3, asked for ``across-v1``, is recorded as ignoring X86_V4.
 
+    Both names are x86 features, so a NumPy built for any other
+    architecture knows neither and ignores both; on such a daemon (an
+    Apple Silicon Mac) that is the expected record, not a skip.
+
     Kills: judging a name outside NumPy's dispatch list by whether it
     is active, which an unknown name never is.
     """
@@ -429,8 +433,11 @@ def testANumpyOlderThanTheFeatureGroupsSaysItIgnoredOne(dictOlderNumpyImage):
     assert len(listRecords) == 1, baOutput
     dictProbe = listRecords[0]
     assert dictProbe["sNumpyVersion"] == S_OLDER_NUMPY_VERSION
-    assert dictProbe["dictNumpyDisabledFeatures"] == {
-        "AVX512_ICL": {"sStatus": "applied", "sReason": ""},
-        "X86_V4": {"sStatus": "not applied",
-                   "sReason": "this NumPy does not know that feature name"},
-    }
+    dictUnknownName = {"sStatus": "not applied",
+                       "sReason": "this NumPy does not know that feature name"}
+    dictExpected = {"AVX512_ICL": {"sStatus": "applied", "sReason": ""},
+                    "X86_V4": dictUnknownName}
+    if dictOlderNumpyImage["sArchitecture"] != "amd64":
+        dictExpected["AVX512_ICL"] = dictUnknownName
+    assert dictProbe["dictNumpyDisabledFeatures"] == dictExpected, (
+        dictOlderNumpyImage["sArchitecture"])
