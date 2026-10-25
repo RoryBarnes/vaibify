@@ -193,6 +193,9 @@ agent you enabled. This takes from several minutes to over an hour,
 depending mostly on your network and on whether LaTeX is enabled;
 the build window shows the live output. The container's first start
 then clones the project's repositories; later opens reuse the image.
+On macOS the image is built and run inside Colima's virtual machine,
+not as a second machine: the machine is created once, by the first
+`colima start`, and every project's image lives inside it.
 
 Python is vaibify's default analysis language, so every image also
 carries `numpy`, `scipy`, `matplotlib` and `pytest`: the tests vaibify
