@@ -1,6 +1,7 @@
 """Build Docker images with deterministic overlay ordering."""
 
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -45,12 +46,24 @@ def _flistBuildPrefix():
     fnEmitBuildLine(
         "[vaib] docker buildx is not installed on this machine, so "
         "this build uses Docker's legacy builder -- that is where the "
-        "DEPRECATED warning below comes from. Vaibify prefers buildx "
-        "whenever it is present. To install it: brew install "
-        "docker-buildx (then link it into ~/.docker/cli-plugins/), or "
-        "install Docker Desktop, which bundles it.\n"
+        "DEPRECATED warning below comes from. The build does not need "
+        "buildx; vaibify prefers it whenever it is present. To install "
+        f"it: {_fsDescribeBuildxInstallHere()}, or run "
+        "`vaibify setup-docker`, which checks this machine first.\n"
     )
     return ["docker", "build"]
+
+
+def _fsDescribeBuildxInstallHere():
+    """Name the buildx install for the package manager this machine has."""
+    from vaibify.install.runtimeSetupFacts import T_PROBED_COMMANDS
+    from vaibify.install.runtimeSetupPlan import fsDescribeBuildxInstall
+    return fsDescribeBuildxInstall({
+        "sPlatform": sys.platform,
+        "listCommands": [
+            sCommand for sCommand in T_PROBED_COMMANDS
+            if shutil.which(sCommand)],
+    })
 
 
 _LIST_OVERLAY_ORDER = [

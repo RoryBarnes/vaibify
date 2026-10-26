@@ -36323,6 +36323,26 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testRuntimeSetupFacts.py::'
+            'testAMacPortsThatNeedsMigratingIsReadAsNotRunning'
+        ),
+        source='vaibify/install/runtimeSetupFacts.py',
+        # a port on PATH is read as a MacPorts that runs
+        old='    if iCode == 0:\n        return {"bMacPortsWorks": True,',
+        new='    if True:\n        return {"bMacPortsWorks": True,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupPlan.py::'
+            'testAMacPortsThatNeedsMigratingIsNeverOfferedAnInstall'
+        ),
+        source='vaibify/install/runtimeSetupPlan.py',
+        # MacPorts is offered an install whether or not it runs
+        old='    if "port" in setCommands and not dictFacts.get("bMacPortsWorks"):\n        return _fdictRepairMacPortsStep(dictFacts, listMissing)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testRuntimeSetupPlan.py::'
             'testOnlyAnUndersizedMachineIsAnnouncedOnTheHub'
         ),

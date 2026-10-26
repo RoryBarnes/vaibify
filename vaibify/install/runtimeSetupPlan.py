@@ -45,6 +45,7 @@ __all__ = [
     "fsDescribeAdministratorCommand",
     "fdictPlanRuntimeSetup",
     "fdictStepAnnouncedOnHub",
+    "fsDescribeBuildxInstall",
 ]
 
 
@@ -65,6 +66,7 @@ S_HOMEBREW_INSTALL_COMMAND = (
     'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
 )
 S_MACPORTS_INSTALL_PAGE = "https://www.macports.org/install.php"
+S_MACPORTS_MIGRATION_PAGE = "https://trac.macports.org/wiki/Migration"
 S_DOCKER_INSTALL_PAGE = "https://docs.docker.com/engine/install/"
 
 _DICT_HOMEBREW_FORMULA = {
@@ -73,6 +75,13 @@ _DICT_HOMEBREW_FORMULA = {
 _DICT_MACPORTS_PORT = {
     "colima": "colima", "docker": "docker", "buildx": "docker-buildx-plugin",
 }
+_DICT_PIECE_NAMES = {
+    "colima": "Colima", "docker": "Docker", "buildx": "docker buildx",
+}
+_S_BUILDX_MISSING_EXPLANATION = (
+    "Docker works, but its buildx plugin is missing. Until it is "
+    "installed, vaibify builds with Docker's deprecated legacy builder, "
+    "which cannot build a Dockerfile that needs BuildKit.")
 
 # Docker publishes this fingerprint for the key that signs its rpm
 # repositories (Fedora, RHEL and CentOS pages alike). Its apt pages
@@ -298,15 +307,53 @@ def _flistMissingMacPieces(dictFacts):
     return listMissing
 
 
+def _fsNameThePieces(listMissing):
+    """Return "Colima, Docker and docker buildx" for what is missing."""
+    listNames = [_DICT_PIECE_NAMES[s] for s in listMissing]
+    if len(listNames) == 1:
+        return listNames[0]
+    return ", ".join(listNames[:-1]) + " and " + listNames[-1]
+
+
+def _fdictRepairMacPortsStep(dictFacts, listMissing):
+    """MacPorts is on PATH but refuses to run; say so in its own words.
+
+    An Install button here could only fail. After a macOS upgrade the
+    remedy is MacPorts' own migration, which only the researcher should
+    start: it reinstalls every port they have.
+    """
+    sPieces = _fsNameThePieces(listMissing)
+    sQuoted = '"' + dictFacts.get("sMacPortsProblem", "") + '"'
+    if dictFacts.get("bMacPortsNeedsMigration"):
+        return _fdictStep(
+            "migrate-macports", "Migrate MacPorts to this macOS",
+            S_KIND_NEEDS_YOU,
+            f"vaibify installs {sPieces} with MacPorts, but MacPorts stopped "
+            f"running after this Mac's last macOS upgrade: {sQuoted}. "
+            "Migrating reinstalls every port you have, which can take "
+            "hours; if MacPorts installed your Colima and Docker, stop your "
+            "containers first. Run the command below in a terminal "
+            f"(MacPorts' guide: {S_MACPORTS_MIGRATION_PAGE}), then press "
+            "Continue.", listCommandsToShow=["sudo port migrate"])
+    return _fdictStep(
+        "repair-macports", "Get MacPorts running again", S_KIND_NEEDS_YOU,
+        f"vaibify installs {sPieces} with MacPorts, but the port command "
+        f"does not run here: {sQuoted}. Get it running, then press "
+        "Continue.", listCommandsToShow=["port version"])
+
+
 def _fdictMacInstallStep(dictFacts, listMissing):
     setCommands = set(dictFacts.get("listCommands", []))
+    sTitle = "Install " + _fsNameThePieces(listMissing)
     if "brew" in setCommands:
         listFormulae = [_DICT_HOMEBREW_FORMULA[s] for s in listMissing]
         return _fdictStep(
-            "install-runtime", "Install Colima and Docker", S_KIND_RUN,
+            "install-runtime", sTitle, S_KIND_RUN,
             "Homebrew will install " + ", ".join(listFormulae) + ".",
             [_fdictAction("install-with-homebrew", "Install", [
                 _fdictInvocation(["brew", "install"] + listFormulae)])])
+    if "port" in setCommands and not dictFacts.get("bMacPortsWorks"):
+        return _fdictRepairMacPortsStep(dictFacts, listMissing)
     if "port" in setCommands:
         listPorts = [_DICT_MACPORTS_PORT[s] for s in listMissing]
         # By full path: macOS runs an administrator script with a PATH
@@ -315,16 +362,17 @@ def _fdictMacInstallStep(dictFacts, listMissing):
         sScript = shlex.quote(sPort) + " -N install " + " ".join(
             listPorts) + "\n"
         return _fdictAdministratorStep(
-            dictFacts, "install-runtime", "Install Colima and Docker",
+            dictFacts, "install-runtime", sTitle,
             "MacPorts will install " + ", ".join(listPorts) + ".",
             [_fdictAction("install-with-macports", "Install", [
                 _fdictInvocation(sScript=sScript)])])
     return _fdictStep(
         "install-package-manager", "Install a package manager",
         S_KIND_NEEDS_YOU,
-        "vaibify installs Colima and Docker with Homebrew or MacPorts, and "
-        "this Mac has neither. Install one of them, then press Continue: "
-        "vaibify will find it and carry on. Homebrew installs with the "
+        f"vaibify installs {_fsNameThePieces(listMissing)} with Homebrew "
+        "or MacPorts, and this Mac has neither. Install one of them, then "
+        "press Continue: vaibify will find it and carry on. Homebrew "
+        "installs with the "
         "command below. MacPorts has an installer for each macOS version "
         "at " + S_MACPORTS_INSTALL_PAGE + ".",
         listCommandsToShow=[S_HOMEBREW_INSTALL_COMMAND])
@@ -640,13 +688,11 @@ def _fdictInstallBuildxStep(dictFacts, tFamily):
     if tFamily is None:
         return _fdictStep(
             "install-buildx", "Install docker buildx", S_KIND_NEEDS_YOU,
-            "Docker works, but its buildx plugin is missing, and vaibify "
-            "builds with it. Install your distribution's buildx package, "
-            "then press Continue.")
+            _S_BUILDX_MISSING_EXPLANATION + " Install your distribution's "
+            "buildx package, then press Continue.")
     return _fdictAdministratorStep(
         dictFacts, "install-buildx", "Install docker buildx",
-        "Docker works, but its buildx plugin is missing, and vaibify builds "
-        "with it.",
+        _S_BUILDX_MISSING_EXPLANATION,
         [_fdictAction("install-buildx", "Install buildx", [
             _fdictInvocation(sScript=_DICT_BUILDX_SCRIPT[tFamily[0]])])])
 
@@ -765,3 +811,21 @@ def fdictStepAnnouncedOnHub(dictPlan):
         if dictStep.get(S_ANNOUNCE_ON_HUB_KEY):
             return dictStep
     return None
+
+
+def fsDescribeBuildxInstall(dictFacts):
+    """Return how to install buildx on this machine, as one phrase.
+
+    For the note a build prints when it falls back to the legacy
+    builder: the package manager this machine actually has, never a
+    Homebrew command on a MacPorts Mac.
+    """
+    setCommands = set(dictFacts.get("listCommands", []))
+    if "brew" in setCommands:
+        return ("brew install " + _DICT_HOMEBREW_FORMULA["buildx"]
+                + " (then link it into ~/.docker/cli-plugins/)")
+    if "port" in setCommands:
+        return "sudo port install " + _DICT_MACPORTS_PORT["buildx"]
+    if str(dictFacts.get("sPlatform", "")).startswith("linux"):
+        return "install your distribution's docker-buildx-plugin package"
+    return "install Docker Desktop, which bundles it"

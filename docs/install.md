@@ -13,7 +13,7 @@ own page, the [CLI Reference](cli.md).
 | macOS or Linux | any current release | everything                           |
 | Python        | 3.9 – 3.14, built with `dir_fd` support (see below) | everything |
 | Git           | any current release | cloning repositories, the PROOF Ladder |
-| Docker Engine with Buildx, or Colima on macOS | current release | container projects only |
+| Docker Engine or Colima on macOS, with Buildx recommended | current release | container projects only |
 
 A **host project** runs on your own machine with no container, so
 Docker is not needed to start; the [QuickStart](quickStart.md) begins
@@ -94,9 +94,9 @@ The data formats vaibify's tests can read are listed in
 
 Vaibify can set Docker up for you: run `vaibify setup-docker`, or
 press **Set up Docker** on the dashboard's Docker banner, which appears
-when Docker does not answer and also when it answers but is not ready
-(no buildx, or a Colima machine too small to build in). Both read your machine, show each step before it runs, and
-stop at anything only you can do. A step that needs an administrator
+when Docker does not answer and also when its Colima machine is too
+small to build in. Both read your machine, show each step before it
+runs, and stop at anything only you can do. A step that needs an administrator
 uses your computer's own password prompt; vaibify never sees the
 password. The [CLI Reference](cli.md#vaibify-setup-docker) lists what
 each platform gets. The sections below are the same steps by hand.
@@ -106,7 +106,7 @@ anything:
 
 ```bash
 docker info          # must succeed WITHOUT sudo
-docker buildx version
+docker buildx version   # recommended; see below
 ```
 
 `docker info` catches most problems, and it must work as your own
@@ -123,7 +123,14 @@ current instructions for your distribution
 [Fedora](https://docs.docker.com/engine/install/fedora/),
 [RHEL](https://docs.docker.com/engine/install/rhel/)). Distribution
 packages are often too old. Install the `docker-buildx-plugin` package
-with the engine: vaibify builds with BuildKit.
+with the engine.
+
+Vaibify builds with buildx (BuildKit) whenever it is installed. Without
+it, a build falls back to Docker's legacy builder, which Docker has
+deprecated and prints a warning about. The legacy builder handles every
+ordinary vaibify image. It cannot build a Dockerfile that needs
+BuildKit: today, the Claude Code overlay that vaibify adds to an
+author's Intel image on an ARM Mac.
 
 Then let your user reach the daemon and start it with the machine:
 

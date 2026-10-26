@@ -128,7 +128,9 @@ def testTheFactsOfThisMachineCarryEveryKeyThePlannerReads(monkeypatch):
                  "iHostMemoryBytes", "bUserListedInDockerGroup",
                  "bProcessHasDockerGroup", "sDockerHost",
                  "bBuildxInstalledUnlinked", "listRunningVaibifyContainers",
-                 "sActiveDockerContext", "sActiveColimaProfile"):
+                 "sActiveDockerContext", "sActiveColimaProfile",
+                 "bMacPortsWorks", "bMacPortsNeedsMigration",
+                 "sMacPortsProblem"):
         assert sKey in dictFacts, sKey
     assert dictFacts["iHostMemoryBytes"] > 0
     assert dictFacts["iHostCpuCount"] >= 1
@@ -247,3 +249,78 @@ def testTheResearchersOwnDockerHostIsTheEndpoint(monkeypatch):
     assert dockerContext.fsColimaProfileOfEndpoint(sTheirs) == "work"
     assert dockerContext.fsColimaProfileOfEndpoint(
         "unix:///var/run/docker.sock") == ""
+
+
+# MacPorts' own output on a Mac upgraded to macOS 26 before migration,
+# captured stream by stream from a real machine on 2026-10-26.
+S_MACPORTS_MISMATCH_STDOUT = (
+    'OS platform mismatch\n'
+    '    while executing\n'
+    '"mportinit ui_options global_options global_variations"\n'
+)
+S_MACPORTS_MISMATCH_STDERR = (
+    'Error: Current platform "darwin 25" does not match expected '
+    'platform "darwin 24"\n'
+    "Error: Please run 'sudo port migrate' or follow the migration "
+    "instructions: https://trac.macports.org/wiki/Migration\n"
+    'Error: /opt/local/bin/port: Failed to initialize MacPorts, OS '
+    'platform mismatch\n'
+)
+
+
+def _fnInstallFakePort(tmp_path, monkeypatch, sStdout, sStderr, iExit):
+    """Put a real executable named port first on PATH; it replays output."""
+    pathDirectory = tmp_path / "fakeMacPorts"
+    pathDirectory.mkdir()
+    (pathDirectory / "stdout.txt").write_text(sStdout)
+    (pathDirectory / "stderr.txt").write_text(sStderr)
+    pathPort = pathDirectory / "port"
+    pathPort.write_text(
+        "#!/bin/sh\n"
+        f'cat "{pathDirectory}/stdout.txt"\n'
+        f'cat "{pathDirectory}/stderr.txt" >&2\n'
+        f"exit {iExit}\n")
+    pathPort.chmod(0o755)
+    monkeypatch.setenv(
+        "PATH", str(pathDirectory) + os.pathsep + os.environ.get("PATH", ""))
+
+
+@pytest.mark.falsification
+def testAMacPortsThatNeedsMigratingIsReadAsNotRunning(tmp_path, monkeypatch):
+    """Kills: reading ``port`` on PATH as a MacPorts that can install.
+
+    The oracle is MacPorts' own output from an upgraded Mac, replayed by
+    a real executable through the real probe.
+    """
+    _fnInstallFakePort(tmp_path, monkeypatch, S_MACPORTS_MISMATCH_STDOUT,
+                       S_MACPORTS_MISMATCH_STDERR, 1)
+    dictHealth = factsModule._fdictReadMacPortsHealth({"port"})
+    assert dictHealth == {
+        "bMacPortsWorks": False, "bMacPortsNeedsMigration": True,
+        "sMacPortsProblem": (
+            'Current platform "darwin 25" does not match expected '
+            'platform "darwin 24"'),
+    }
+
+
+def testAMacPortsThatRunsIsReadAsWorking(tmp_path, monkeypatch):
+    _fnInstallFakePort(tmp_path, monkeypatch, "Version: 2.11.5\n", "", 0)
+    assert factsModule._fdictReadMacPortsHealth({"port"})[
+        "bMacPortsWorks"] is True
+
+
+def testAMacPortsBrokenAnotherWayKeepsItsOwnWords(tmp_path, monkeypatch):
+    _fnInstallFakePort(tmp_path, monkeypatch, "",
+                       "Error: Port registry is locked\n", 1)
+    assert factsModule._fdictReadMacPortsHealth({"port"}) == {
+        "bMacPortsWorks": False, "bMacPortsNeedsMigration": False,
+        "sMacPortsProblem": "Port registry is locked"}
+
+
+def testAMacWithoutMacPortsNeverRunsIt(monkeypatch):
+    listProbes = []
+    monkeypatch.setattr(factsModule, "_ftRunProbe", lambda listCommand: (
+        listProbes.append(listCommand) or (0, "", "")))
+    assert factsModule._fdictReadMacPortsHealth({"brew"})[
+        "bMacPortsWorks"] is False
+    assert listProbes == []

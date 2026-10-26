@@ -68,6 +68,9 @@ _DICT_DESKTOP_APPLICATION_BY_CONTEXT = {
 }
 
 _F_PROBE_TIMEOUT_SECONDS = 10.0
+# MacPorts' words when it refuses to start after a major macOS upgrade.
+_S_MACPORTS_PLATFORM_MISMATCH = "OS platform mismatch"
+_I_PROBLEM_MAXIMUM_CHARACTERS = 300
 _S_OS_RELEASE_PATH = "/etc/os-release"
 _RE_OS_RELEASE_LINE = re.compile(r"^([A-Z0-9_]+)=(.*)$")
 
@@ -311,6 +314,41 @@ def _fdictReadHomebrewBuildx(setCommands):
     }
 
 
+def _fsFirstErrorLine(sOutput):
+    """Return a tool's first error line in its own words, bounded."""
+    listLines = [
+        sLine.strip() for sLine in sOutput.splitlines() if sLine.strip()]
+    for sLine in listLines:
+        if sLine.startswith("Error:"):
+            return sLine[len("Error:"):].strip()[:_I_PROBLEM_MAXIMUM_CHARACTERS]
+    return (listLines[0] if listLines else "the command did not run")[
+        :_I_PROBLEM_MAXIMUM_CHARACTERS]
+
+
+def _fdictReadMacPortsHealth(setCommands):
+    """Return whether MacPorts runs, with its own words when it does not.
+
+    After a major macOS upgrade MacPorts refuses every command until it
+    is migrated ("OS platform mismatch"), while the programs it already
+    installed keep running, so a ``port`` on PATH is not a ``port`` that
+    can install anything (measured on macOS 26, 2026-10-26).
+    """
+    if "port" not in setCommands:
+        return {"bMacPortsWorks": False, "bMacPortsNeedsMigration": False,
+                "sMacPortsProblem": ""}
+    sPort = shutil.which("port") or "port"
+    iCode, sOut, sErr = _ftRunProbe([sPort, "version"])
+    if iCode == 0:
+        return {"bMacPortsWorks": True, "bMacPortsNeedsMigration": False,
+                "sMacPortsProblem": ""}
+    return {
+        "bMacPortsWorks": False,
+        "bMacPortsNeedsMigration": (
+            _S_MACPORTS_PLATFORM_MISMATCH in sErr + sOut),
+        "sMacPortsProblem": _fsFirstErrorLine(sErr + "\n" + sOut),
+    }
+
+
 def _fdictReadDockerGroupMembership(sUserName):
     """Return whether the user is in the docker group, and whether this process is.
 
@@ -402,6 +440,7 @@ def fdictReadHostFacts(bProbePrivilege=True):
     }
     dictFacts.update(_fdictReadLinuxServices(setCommands))
     dictFacts.update(_fdictReadHomebrewBuildx(setCommands))
+    dictFacts.update(_fdictReadMacPortsHealth(setCommands))
     dictFacts["bBuildxInstalledUnlinked"] = bool(
         dictFacts["bHomebrewBuildxPresent"] and not bBuildxWorks)
     dictFacts.update(_fdictReadDockerGroupMembership(dictFacts["sUserName"]))
