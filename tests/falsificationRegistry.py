@@ -36404,6 +36404,16 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/browser/testDockerBannerNamesWhatFailed.py::'
+            'testAServerThatDoesNotAnswerIsNeverReportedAsDockerUnavailable'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # a check that never reached the server is drawn as Docker's state
+        old='        if (error && error.sKind === "network") {\n            return {\n                sHeadline: "vaibify\'s server is not answering.",\n',
+        new='        if (false) {\n            return {\n                sHeadline: "vaibify\'s server is not answering.",\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testRuntimeSetupPlan.py::'
             'testOnlyAnUndersizedMachineIsAnnouncedOnTheHub'
         ),
