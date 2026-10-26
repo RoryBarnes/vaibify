@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Known technical debt &mdash; Vaibify 0.1.4.dev95 documentation</title>
+  <title>Known technical debt &mdash; Vaibify 0.1.4.dev102 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b03f043d"></script>
+      <script src="_static/documentation_options.js?v=a4affc64"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -290,6 +290,24 @@ built: the VM freezes while the host sleeps, so an in-container
 watcher would kill live sessions on wake, exactly when the researcher
 returns. The reaper logs how many it ends per pass; revisit if that is
 non-zero at more than one hub start in a month.</p></li>
+<li><p>Source comments, docstrings and test oracles still cite design
+documents that are no longer in the tree: a path under <code class="docutils literal notranslate"><span class="pre">design/</span></code>, or
+a label such as “design fact 28”, “D5”, “F7” or “I8”. The directory
+was removed on 2026-10-26 (planning documents, not reference
+documentation), and the citations were left in place, because one of
+them is in the frozen <code class="docutils literal notranslate"><span class="pre">comparisonPolicyV1.py</span></code>, which cannot change,
+and several falsification tests name these documents as the
+independent source of their expected values. Each file is in git
+history at <code class="docutils literal notranslate"><span class="pre">4a15f03b</span></code>; read one with
+<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">show</span> <span class="pre">4a15f03b:design/&lt;name&gt;.md</span></code>. The files were
+<code class="docutils literal notranslate"><span class="pre">agentCouncil.md</span></code>, <code class="docutils literal notranslate"><span class="pre">agentCouncilContinuationPlan.md</span></code>,
+<code class="docutils literal notranslate"><span class="pre">agentCouncilMultiProviderImplementationPlan.md</span></code>,
+<code class="docutils literal notranslate"><span class="pre">agentCouncilPhase0Findings.md</span></code>, <code class="docutils literal notranslate"><span class="pre">agentCouncilRemediation.md</span></code>,
+<code class="docutils literal notranslate"><span class="pre">agentCouncilReviewCouncil.md</span></code>, <code class="docutils literal notranslate"><span class="pre">agentCouncilVerificationLanes.md</span></code>,
+<code class="docutils literal notranslate"><span class="pre">copiesLevel3MergeAndOrderedEndgame.md</span></code>, <code class="docutils literal notranslate"><span class="pre">cpuClassReproducibility.md</span></code>,
+<code class="docutils literal notranslate"><span class="pre">cpuClassReproducibilityImplementation.md</span></code>, <code class="docutils literal notranslate"><span class="pre">externalServices.md</span></code>,
+<code class="docutils literal notranslate"><span class="pre">level3AttainmentSequence.md</span></code>, <code class="docutils literal notranslate"><span class="pre">permanentArchivePromotion.md</span></code> and
+<code class="docutils literal notranslate"><span class="pre">permanentArchivePromotionImplementation.md</span></code>.</p></li>
 </ul>
 </section>
 

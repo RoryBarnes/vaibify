@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Environments and Projects &mdash; Vaibify 0.1.4.dev95 documentation</title>
+  <title>Environments and Projects &mdash; Vaibify 0.1.4.dev102 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b03f043d"></script>
+      <script src="_static/documentation_options.js?v=a4affc64"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -184,14 +184,21 @@ under <strong>This machine</strong>, with four buttons beside the heading:</p>
 <td><p>Open a new vaibify window (a separate browser session).</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>?</strong></p></td>
-<td><p>Help: creating an environment, a legend of tile marks, troubleshooting, and the leftover-processes glyph.</p></td>
+<td><p>Help: creating an environment, a legend of tile marks, troubleshooting, and the needs-your-attention glyph.</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>⚠</strong></p></td>
-<td><p>Shown only when vaibify found something left over on this computer. Orange with a count while anything is listed; red when an automatic cleanup could not run.</p></td>
+<td><p>Shown only when something on this computer needs your attention. Orange with a count while anything is listed; red when something is blocked or an automatic cleanup could not run.</p></td>
 </tr>
 </tbody>
 </table>
-<p>Clicking <strong>⚠</strong> opens <strong>Leftover processes and files</strong>. vaibify cleans
+<p>Clicking <strong>⚠</strong> opens <strong>Needs your attention</strong>. Its first section,
+<strong>Docker setup</strong>, appears only when Docker work on this computer is
+blocked: today, a containerization that stopped because only docker
+buildx can build what it needs, while buildx is still missing. Its
+<strong>Set up Docker</strong> button opens the setup wizard at the step that fixes
+it. vaibify reads this when the page loads and again when the wizard
+closes.</p>
+<p>The rest of the panel is <strong>Leftover processes and files</strong>. vaibify cleans
 up by itself what it can prove is garbage: a lock file no process
 holds, a credential file no container mounts, a shadow-rerun lock
 nothing holds, a terminal left by a vaibify window that died, a

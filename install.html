@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced Installation &mdash; Vaibify 0.1.4.dev95 documentation</title>
+  <title>Advanced Installation &mdash; Vaibify 0.1.4.dev102 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b03f043d"></script>
+      <script src="_static/documentation_options.js?v=a4affc64"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -146,7 +146,7 @@ own page, the <a class="reference internal" href="cli.html"><span class="std std
 <td><p>any current release</p></td>
 <td><p>cloning repositories, the PROOF Ladder</p></td>
 </tr>
-<tr class="row-odd"><td><p>Docker Engine with Buildx, or Colima on macOS</p></td>
+<tr class="row-odd"><td><p>Docker Engine or Colima on macOS, with Buildx recommended</p></td>
 <td><p>current release</p></td>
 <td><p>container projects only</p></td>
 </tr>
@@ -238,16 +238,16 @@ run it, including the browser tests, is in <a class="reference internal" href="d
 <h2>Docker<a class="headerlink" href="#docker" title="Link to this heading"></a></h2>
 <p>Vaibify can set Docker up for you: run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">setup-docker</span></code>, or
 press <strong>Set up Docker</strong> on the dashboard’s Docker banner, which appears
-when Docker does not answer and also when it answers but is not ready
-(no buildx, or a Colima machine too small to build in). Both read your machine, show each step before it runs, and
-stop at anything only you can do. A step that needs an administrator
+when Docker does not answer and also when its Colima machine is too
+small to build in. Both read your machine, show each step before it
+runs, and stop at anything only you can do. A step that needs an administrator
 uses your computer’s own password prompt; vaibify never sees the
 password. The <a class="reference internal" href="cli.html#vaibify-setup-docker"><span class="std std-ref">CLI Reference</span></a> lists what
 each platform gets. The sections below are the same steps by hand.</p>
 <p>Whichever way you install it, confirm the result before building
 anything:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>info<span class="w">          </span><span class="c1"># must succeed WITHOUT sudo</span>
-docker<span class="w"> </span>buildx<span class="w"> </span>version
+docker<span class="w"> </span>buildx<span class="w"> </span>version<span class="w">   </span><span class="c1"># recommended; see below</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">info</span></code> catches most problems, and it must work as your own
@@ -263,7 +263,15 @@ current instructions for your distribution
 <a class="reference external" href="https://docs.docker.com/engine/install/fedora/">Fedora</a>,
 <a class="reference external" href="https://docs.docker.com/engine/install/rhel/">RHEL</a>). Distribution
 packages are often too old. Install the <code class="docutils literal notranslate"><span class="pre">docker-buildx-plugin</span></code> package
-with the engine: vaibify builds with BuildKit.</p>
+with the engine.</p>
+<p>Vaibify builds with buildx (BuildKit) whenever it is installed. Without
+it, a build falls back to Docker’s legacy builder, which Docker has
+deprecated and prints a warning about. The legacy builder handles every
+ordinary vaibify image. It cannot build a Dockerfile that needs
+BuildKit: today, the Claude Code overlay that vaibify adds to an
+author’s Intel image on an ARM Mac. Vaibify refuses that build before it
+starts, and before the author’s image is downloaded, with the command
+that installs buildx on your machine.</p>
 <p>Then let your user reach the daemon and start it with the machine:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>docker<span class="w"> </span><span class="s2">"</span><span class="nv">$USER</span><span class="s2">"</span>
 newgrp<span class="w"> </span>docker<span class="w">                      </span><span class="c1"># or log out and back in</span>
