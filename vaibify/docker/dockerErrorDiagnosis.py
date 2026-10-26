@@ -426,6 +426,7 @@ _T_BUILD_DECISIVE_MARKERS = (
     "no matching distribution", "could not find a version",
     "did not complete successfully", "returned a non-zero code",
     "permission denied", "connection refused", "timed out",
+    "requires buildkit", "failed to parse platform",
 )
 
 
@@ -479,6 +480,18 @@ def _fsExplainMissingDistribution(sStderrTail):
     )
 
 
+def _fbLegacyBuilderMetBuildKitSyntax(sLower):
+    """Return True for the legacy builder's two refusals of BuildKit syntax.
+
+    Its words, measured on Docker 28.4: "the --mount option requires
+    BuildKit", and an empty ``$BUILDPLATFORM`` read as "failed to parse
+    platform : \"\"". vaibify refuses such a build before Docker runs
+    (``buildKitRequirement``); this names the cause if one gets past.
+    """
+    return "requires buildkit" in sLower or (
+        'failed to parse platform : ""' in sLower)
+
+
 def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
     """Return ``{sHint, sCommand}`` for a failed image build, or None."""
     sLower = "\n".join(flistDecisiveBuildLines(sStderrTail, 200)).lower()
@@ -492,6 +505,15 @@ def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
             "The Docker daemon's disk is full, so the failing step could "
             "not write; whatever else that step printed follows from that."
         ))
+    if _fbLegacyBuilderMetBuildKitSyntax(sLower):
+        return {
+            "sHint": (
+                "This Dockerfile needs docker buildx (BuildKit), and the "
+                "build ran on Docker's legacy builder, which cannot build "
+                "it. Install buildx, then build again."
+            ),
+            "sCommand": "vaibify setup-docker",
+        }
     if "this build stopped on purpose" in sLower or "toolchain" in sLower:
         return {
             "sHint": (

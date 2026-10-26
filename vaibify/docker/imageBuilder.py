@@ -11,6 +11,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from vaibify.config.projectConfig import fbBaseImageUsesDockerfilePin
+from vaibify.docker.buildKitRequirement import (
+    BuildKitRequiredError,
+    flistDescribeBuildKitSyntaxInFile,
+)
 
 from . import fnRunDockerCommand
 
@@ -31,7 +35,23 @@ def fbBuildxAvailable():
         return False
 
 
-def _flistBuildPrefix():
+def _fnRaiseBuildKitRequired(sDockerfile, listSyntax):
+    raise BuildKitRequiredError(
+        sDockerfile, listSyntax, _fsDescribeBuildxInstallHere())
+
+
+def fnRefuseWhenBuildKitIsNeeded(sDockerfile):
+    """Raise ``BuildKitRequiredError`` when only buildx can build this file.
+
+    The Dockerfile is read first, so a machine that needs no buildx
+    pays for no ``docker buildx version`` probe.
+    """
+    listSyntax = flistDescribeBuildKitSyntaxInFile(sDockerfile)
+    if listSyntax and not fbBuildxAvailable():
+        _fnRaiseBuildKitRequired(sDockerfile, listSyntax)
+
+
+def _flistBuildPrefix(sDockerfile=""):
     """Return the docker build command prefix, preferring buildx.
 
     When buildx is absent the fallback is the legacy builder, and
@@ -39,10 +59,15 @@ def _flistBuildPrefix():
     indication of whose decision it was or what to do. A researcher
     reasonably reads that as vaibify shipping something deprecated
     (live report, 2026-08-21), so the fallback announces itself and
-    names the fix.
+    names the fix. A Dockerfile the legacy builder cannot build is
+    refused here, before Docker runs, rather than failing in Docker's
+    words or building something else.
     """
     if fbBuildxAvailable():
         return ["docker", "buildx", "build"]
+    listSyntax = flistDescribeBuildKitSyntaxInFile(sDockerfile)
+    if listSyntax:
+        _fnRaiseBuildKitRequired(sDockerfile, listSyntax)
     fnEmitBuildLine(
         "[vaib] docker buildx is not installed on this machine, so "
         "this build uses Docker's legacy builder -- that is where the "
@@ -554,7 +579,8 @@ def _flistBuildBaseCommand(config, sDockerDir, sBaseImage, bNoCache):
     sProjectName = config.sProjectName
     sDockerfile = str(Path(sDockerDir) / "Dockerfile")
     sTag = f"{sProjectName}:base"
-    saCommand = _flistBuildPrefix() + ["-f", sDockerfile, "-t", sTag]
+    saCommand = _flistBuildPrefix(sDockerfile) + [
+        "-f", sDockerfile, "-t", sTag]
     if bNoCache:
         saCommand.append("--no-cache")
     saCommand += _flistBuildArgPairs(config, sBaseImage)
@@ -658,9 +684,20 @@ def _fsResolveStackedOverlayDockerfile(
     return _fsResolveOverlayDockerfile(sOverlayName, sDockerDir)
 
 
+def flistStackedOverlayDockerfiles(
+    listChain, sDockerDir, sPlatform, sDaemonArchitecture,
+):
+    """Return the Dockerfile each stage of a stacked chain builds from."""
+    return [
+        _fsResolveStackedOverlayDockerfile(
+            sOverlayName, sDockerDir, sPlatform, sDaemonArchitecture)
+        for sOverlayName in listChain
+    ]
+
+
 def _flistOverlayCommand(sDockerfile, sNewTag, sFromImage, sDockerDir):
     """Assemble docker build command for an overlay."""
-    return _flistBuildPrefix() + [
+    return _flistBuildPrefix(sDockerfile) + [
         "-f", sDockerfile,
         "-t", sNewTag,
         "--build-arg", f"BASE_IMAGE={sFromImage}",

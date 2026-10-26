@@ -130,7 +130,9 @@ it, a build falls back to Docker's legacy builder, which Docker has
 deprecated and prints a warning about. The legacy builder handles every
 ordinary vaibify image. It cannot build a Dockerfile that needs
 BuildKit: today, the Claude Code overlay that vaibify adds to an
-author's Intel image on an ARM Mac.
+author's Intel image on an ARM Mac. Vaibify refuses that build before it
+starts, and before the author's image is downloaded, with the command
+that installs buildx on your machine.
 
 Then let your user reach the daemon and start it with the machine:
 

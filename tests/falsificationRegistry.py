@@ -36323,6 +36323,36 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testBuildKitRequirement.py::'
+            'testTheArmOnIntelOverlayIsTheOnlyShippedDockerfileThatNeedsBuildKit'
+        ),
+        source='vaibify/docker/buildKitRequirement.py',
+        # the scanner misses an empty $BUILDPLATFORM
+        old='    r"\\$\\{?((?:BUILD|TARGET)(?:PLATFORM|OS|ARCH|VARIANT))\\b")\n',
+        new='    r"\\$\\{?((?:TARGET)(?:PLATFORM|OS|ARCH|VARIANT))\\b")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildKitRequirement.py::'
+            'testABuildOnlyBuildxCanDoIsRefusedBeforeDockerRuns'
+        ),
+        source='vaibify/docker/imageBuilder.py',
+        # the legacy builder is handed a Dockerfile it cannot build
+        old='    if listSyntax:\n        _fnRaiseBuildKitRequired(sDockerfile, listSyntax)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildKitRequirement.py::'
+            'testAnArmMacWithoutBuildxIsRefusedBeforeTheDownload'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # the refusal waits for the stack, after the download
+        old='    _fnRefuseBeforeDownloadWhenTheStackNeedsBuildx(\n        dictProject, dictSource, dictPinned, sDockerDir, dockerDisposable,\n    )\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testRuntimeSetupFacts.py::'
             'testAMacPortsThatNeedsMigratingIsReadAsNotRunning'
         ),

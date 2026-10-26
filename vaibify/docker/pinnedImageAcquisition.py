@@ -163,6 +163,9 @@ def fdictObtainAndStage(
          "listResolvedOverlays", "dictAcquired", "dictPinned"}
     """
     dictPinned = _fdictRecheckTheClone(dictProject, dictSource, fnReport)
+    _fnRefuseBeforeDownloadWhenTheStackNeedsBuildx(
+        dictProject, dictSource, dictPinned, sDockerDir, dockerDisposable,
+    )
     dictAcquired = _fdictObtain(
         dictProject, dictPinned, bEmulationConsented, fnReport,
         dockerDisposable, dictDownloadControl,
@@ -210,6 +213,36 @@ def fdictObtainAndStage(
         "dictAcquired": dictAcquired,
         "dictPinned": dictPinned,
     }
+
+
+def _fnRefuseBeforeDownloadWhenTheStackNeedsBuildx(
+    dictProject, dictSource, dictPinned, sDockerDir, dockerDisposable,
+):
+    """Step 1b: refuse a stack only buildx can build, before the download.
+
+    Adding Claude Code to an Intel image on an ARM daemon uses a
+    Dockerfile Docker's legacy builder cannot build, and the image the
+    stack sits on can be gigabytes. The chain is resolved here against
+    the CANDIDATE baseline recorded at conversion; the image's own
+    labels decide the chain actually stacked, and the build refuses
+    again there. The residual: a baseline that later fails its proof
+    stacks nothing, so this refusal can ask for buildx a run that
+    ended up not stacking would not have needed.
+    """
+    from vaibify.cli.configLoader import fsDockerDir
+    listChain = flistResolveDifferentialChain(
+        dictProject["sConfigPath"],
+        list(dictSource.get("listAuthorOverlays") or []),
+        list(dictSource.get("listAdditionalAgents") or []),
+    )
+    if not listChain:
+        return
+    for sDockerfile in imageBuilder.flistStackedOverlayDockerfiles(
+        listChain, sDockerDir or fsDockerDir(),
+        dictPinned["sRequiredPlatform"],
+        disposableContainer.fsReadDaemonArchitecture(dockerDisposable),
+    ):
+        imageBuilder.fnRefuseWhenBuildKitIsNeeded(sDockerfile)
 
 
 def _fdictRecheckTheClone(dictProject, dictSource, fnReport):
