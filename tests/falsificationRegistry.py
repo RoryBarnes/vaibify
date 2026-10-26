@@ -36367,9 +36367,20 @@ LIST_FALSIFICATIONS = [
             'testAnArmMacWithoutBuildxIsRefusedBeforeTheDownload'
         ),
         source='vaibify/docker/pinnedImageAcquisition.py',
-        # the refusal waits for the stack, after the download
-        old='    _fnRefuseBeforeDownloadWhenTheStackNeedsBuildx(\n        dictProject, dictSource, dictPinned, sDockerDir, dockerDisposable,\n    )\n',
-        new='',
+        # the pre-download check checks nothing; the refusal waits for
+        # the stack, after the download
+        old='        imageBuilder.fnRefuseWhenBuildKitIsNeeded(sDockerfile)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildKitRequirement.py::'
+            'testTheBuildKitCheckRefusesTheArmOnIntelOverlayWithoutBuildx'
+        ),
+        source='vaibify/docker/imageBuilder.py',
+        # the check reads the Dockerfile and refuses nothing
+        old='    if listSyntax and not fbBuildxAvailable():\n        _fnRaiseBuildKitRequired(sDockerfile, listSyntax)\n',
+        new='    if False:\n        _fnRaiseBuildKitRequired(sDockerfile, listSyntax)\n',
     ),
     Falsification(
         nodeid=(

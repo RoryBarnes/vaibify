@@ -130,6 +130,22 @@ def testAnOrdinaryDockerfileStillFallsBackWithoutBuildx(monkeypatch):
         "docker", "build"]
 
 
+@pytest.mark.falsification
+def testTheBuildKitCheckRefusesTheArmOnIntelOverlayWithoutBuildx(monkeypatch):
+    """Kills: a pre-download check that reads the file and refuses nothing.
+
+    The acquisition asks this check before obtaining the author's image;
+    the oracle is the legacy builder's measured failure on this file.
+    """
+    monkeypatch.setattr(imageBuilder, "fbBuildxAvailable", lambda: False)
+    with pytest.raises(BuildKitRequiredError) as excinfo:
+        imageBuilder.fnRefuseWhenBuildKitIsNeeded(S_ARM_ON_INTEL)
+    assert excinfo.value.dictFailure["sFailureClass"] == (
+        S_FAILURE_BUILDX_MISSING)
+    monkeypatch.setattr(imageBuilder, "fbBuildxAvailable", lambda: True)
+    imageBuilder.fnRefuseWhenBuildKitIsNeeded(S_ARM_ON_INTEL)
+
+
 def testAnOrdinaryDockerfileNeverProbesForBuildx(monkeypatch):
     listProbes = []
     monkeypatch.setattr(imageBuilder, "fbBuildxAvailable",
