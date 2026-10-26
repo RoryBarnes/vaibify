@@ -80,6 +80,20 @@ def _fdictPlanForClient(dictPlan):
             "listSteps": [_fdictStepForClient(d) for d in dictPlan["listSteps"]]}
 
 
+def _fdictAdvisoryPlanForClient(dictPlan):
+    """The hub-load answer: the plan, and the one step its banner names.
+
+    The page renders ``dictHubBannerStep`` or nothing; which steps earn
+    a banner is decided here, never by the page.
+    """
+    from vaibify.install.runtimeSetupPlan import fdictStepAnnouncedOnHub
+    dictClient = _fdictPlanForClient(dictPlan)
+    dictStep = fdictStepAnnouncedOnHub(dictPlan)
+    dictClient["dictHubBannerStep"] = (
+        _fdictStepForClient(dictStep) if dictStep else None)
+    return dictClient
+
+
 def _ftReadFactsAndPlan(dictRequested=None, bProbePrivilege=True):
     from vaibify.install.runtimeSetupFacts import fdictReadHostFacts
     from vaibify.install.runtimeSetupPlan import (
@@ -99,6 +113,8 @@ def _fnRegisterReadPlan(app):
         fnRejectAgentTokenLane(requestHttp)
         _, dictPlan = await asyncio.to_thread(
             _ftReadFactsAndPlan, None, not bAdvisory)
+        if bAdvisory:
+            return _fdictAdvisoryPlanForClient(dictPlan)
         return _fdictPlanForClient(dictPlan)
 
 

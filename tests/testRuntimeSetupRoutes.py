@@ -201,3 +201,33 @@ def testTheHubLoadCheckNeverProbesSudo(dictHub):
     assert dictHub["listPrivilegeProbes"] == [False]
     dictHub["clientBrowser"].get("/api/runtime/setup")
     assert dictHub["listPrivilegeProbes"] == [False, True]
+
+
+def _fdictAdvisoryAnswer(dictHub, dictFacts):
+    dictHub["dictFacts"] = dictFacts
+    responseHttp = dictHub["clientBrowser"].get(
+        "/api/runtime/setup", params={"bAdvisory": "true"})
+    assert responseHttp.status_code == 200, responseHttp.text
+    return responseHttp.json()
+
+
+def testTheHubLoadCheckNamesTheStepItsBannerShowsWithoutItsCommands(
+        dictHub):
+    """The banner's step comes from the hub, stripped like every step."""
+    dictAnswer = _fdictAdvisoryAnswer(dictHub, fdictMacFacts(
+        listCommands=["brew", "colima", "docker"], bDaemonAnswers=True,
+        bBuildxWorks=True, sActiveColimaProfile="default",
+        listColimaMachines=[{
+            "sProfile": "default", "sStatus": "Running", "iCpus": 2,
+            "iMemoryBytes": 2 * 2 ** 30, "sArchitecture": "aarch64"}]))
+    dictStep = dictAnswer["dictHubBannerStep"]
+    assert dictStep["sStepName"] == "resize-colima"
+    assert "listInvocations" not in dictStep["listActions"][0]
+
+
+def testTheHubLoadCheckNamesNoBannerStepForAMissingBuildx(dictHub):
+    dictAnswer = _fdictAdvisoryAnswer(dictHub, fdictMacFacts(
+        listCommands=["brew", "colima", "docker"], bDaemonAnswers=True,
+        sRuntime="docker-desktop"))
+    assert dictAnswer["listSteps"], dictAnswer
+    assert dictAnswer["dictHubBannerStep"] is None

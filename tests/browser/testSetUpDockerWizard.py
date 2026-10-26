@@ -179,20 +179,37 @@ def testClosingTheWizardAsksAboutDockerAgain(pageDashboard, serverHub):
     assert len(listRetries) == 1
 
 
-DICT_READY_WITH_A_SMALL_MACHINE = {"bReady": True, "listSteps": [{
+DICT_RESIZE_STEP = {
     "sStepName": "resize-colima", "sTitle": "Give Colima more memory",
-    "sKind": "run", "bOptional": True,
+    "sKind": "run", "bOptional": True, "bAnnounceOnHub": True,
     "sExplanation": "Your Colima machine 'default' has 2.0 GB of memory.",
     "listActions": [{"sActionName": "resize-colima",
                      "sLabel": "Restart with more memory"}],
     "listCommandsToShow": [],
-}]}
+}
+DICT_READY_WITH_A_SMALL_MACHINE = {
+    "bReady": True, "listSteps": [DICT_RESIZE_STEP],
+    "dictHubBannerStep": DICT_RESIZE_STEP,
+}
+DICT_ONLY_BUILDX_MISSING = {"bReady": False, "listSteps": [{
+    "sStepName": "install-runtime", "sTitle": "Install docker buildx",
+    "sKind": "run", "sExplanation": "Homebrew will install docker-buildx.",
+    "listActions": [{"sActionName": "install-with-homebrew",
+                     "sLabel": "Install"}],
+    "listCommandsToShow": [],
+}], "dictHubBannerStep": None}
 
 
-def _fnOpenTheHubWithDockerAnswering(page, serverHub, dictPlan, listUrls):
-    page.route("**/api/system/docker-status", lambda r: _fnFulfillJson(r, {
-        "bAvailable": True, "sError": "", "sHint": "", "sCommand": "",
-        "sEndpoint": ""}))
+def _fnOpenTheHubWithDockerAnswering(page, serverHub, dictPlan, listUrls,
+                                     listStatusReads=None):
+    def fnAnswerStatus(routeIntercepted):
+        if listStatusReads is not None:
+            listStatusReads.append(routeIntercepted.request.url)
+        _fnFulfillJson(routeIntercepted, {
+            "bAvailable": True, "sError": "", "sHint": "", "sCommand": "",
+            "sEndpoint": ""})
+
+    page.route("**/api/system/docker-status", fnAnswerStatus)
 
     def fnAnswerPlan(routeIntercepted):
         listUrls.append(routeIntercepted.request.url)
@@ -229,3 +246,51 @@ def testAReadyMachineShowsNoBanner(pageDashboard, serverHub):
     pageDashboard.wait_for_timeout(1500)
     assert listUrls, "the hub never asked for the plan"
     assert not pageDashboard.locator("#dockerStatusBanner").is_visible()
+
+
+S_RECORD_BANNER_HIDES = """() => {
+    const elBanner = document.getElementById('dockerStatusBanner');
+    window.listBannerHides = [];
+    new MutationObserver(() => {
+        if (elBanner.style.display !== 'flex' || !elBanner.textContent) {
+            window.listBannerHides.push(Date.now());
+        }
+    }).observe(elBanner, {attributes: true, childList: true,
+                          subtree: true, characterData: true});
+}"""
+
+
+@pytest.mark.falsification
+def testTheBannerStaysOnScreenWhileTheHubPolls(pageDashboard, serverHub):
+    """Kills: every poll blanking the banner while it asks the hub again.
+
+    A MutationObserver records every hide, however brief, so the check
+    does not depend on catching the gap with a screenshot. The control
+    is that the hub really polled Docker's status several times.
+    """
+    listUrls, listStatusReads = [], []
+    _fnOpenTheHubWithDockerAnswering(
+        pageDashboard, serverHub, DICT_READY_WITH_A_SMALL_MACHINE, listUrls,
+        listStatusReads)
+    pageDashboard.wait_for_selector(
+        "#dockerStatusBanner.docker-status-banner-advice #btnSetupDocker",
+        timeout=15000)
+    iReadsBefore = len(listStatusReads)
+    pageDashboard.evaluate(S_RECORD_BANNER_HIDES)
+    pageDashboard.wait_for_timeout(10000)
+    assert len(listStatusReads) - iReadsBefore >= 3, listStatusReads
+    assert pageDashboard.evaluate("window.listBannerHides") == []
+    assert len([s for s in listUrls if "bAdvisory=true" in s]) == 1, listUrls
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testAMissingBuildxAloneRaisesNoBanner(pageDashboard, serverHub):
+    """Kills: a banner for a step the hub did not choose to announce."""
+    listUrls = []
+    _fnOpenTheHubWithDockerAnswering(
+        pageDashboard, serverHub, DICT_ONLY_BUILDX_MISSING, listUrls)
+    pageDashboard.wait_for_timeout(4000)
+    assert any("bAdvisory=true" in sUrl for sUrl in listUrls), listUrls
+    assert not pageDashboard.locator("#dockerStatusBanner").is_visible()
+    assert pageDashboard.listPageErrors == []

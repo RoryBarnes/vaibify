@@ -44,6 +44,7 @@ __all__ = [
     "fdictValidateColimaSettings",
     "fsDescribeAdministratorCommand",
     "fdictPlanRuntimeSetup",
+    "fdictStepAnnouncedOnHub",
 ]
 
 
@@ -52,6 +53,11 @@ S_KIND_ADMINISTRATOR = "administrator"
 S_KIND_NEEDS_YOU = "needs-you"
 
 I_MINIMUM_DOCKER_MEMORY_GIGABYTES = 4
+# A step the hub's banner names while Docker answers. Only a machine too
+# small to build in qualifies (ruled 2026-10-26): a missing buildx
+# blocks nothing an ordinary build needs, and a banner shown on a
+# working machine teaches people to ignore the one that matters.
+S_ANNOUNCE_ON_HUB_KEY = "bAnnounceOnHub"
 _I_GIGABYTE = 2 ** 30
 
 S_HOMEBREW_INSTALL_COMMAND = (
@@ -389,7 +395,7 @@ def _fdictResizeColimaStep(dictFacts, dictMachine, dictSettings):
             "resize-colima", "Give Colima more memory", S_KIND_NEEDS_YOU,
             sExplanation + " Restarting it would stop these running "
             "containers: " + ", ".join(listRunning) + ". Stop them, then "
-            "press Continue.", bOptional=True)
+            "press Continue.", bOptional=True, bAnnounceOnHub=True)
     listProfile = _flistColimaProfileArguments(dictMachine)
     return _fdictStep(
         "resize-colima", "Give Colima more memory", S_KIND_RUN,
@@ -402,7 +408,7 @@ def _fdictResizeColimaStep(dictFacts, dictMachine, dictSettings):
                     "--cpus", str(dictSettings["iCpus"]),
                     "--memory", str(dictSettings["iMemoryGigabytes"])]),
         ])],
-        dictSettings=dict(dictSettings), bOptional=True)
+        dictSettings=dict(dictSettings), bOptional=True, bAnnounceOnHub=True)
 
 
 def _fdictSelectColimaMachine(listMachines, sActiveProfile):
@@ -728,9 +734,11 @@ def _fdictStillUnansweredStep(dictFacts):
 def fdictPlanRuntimeSetup(dictFacts, dictSettings=None):
     """Return ``{bReady, listSteps}`` for this machine's facts.
 
-    ``bReady`` means the daemon answers and buildx works, which is what
-    a vaibify build needs. A ready machine can still carry an optional
-    step (more memory for an undersized Colima machine).
+    ``bReady`` means setup is complete: the daemon answers and buildx
+    works. A build without buildx still runs, on Docker's deprecated
+    legacy builder, unless its Dockerfile needs BuildKit. A ready
+    machine can still carry an optional step (more memory for an
+    undersized Colima machine).
     """
     dictSettings = dictSettings or fdictDefaultColimaSettings(dictFacts)
     sPlatform = dictFacts.get("sPlatform", "")
@@ -749,3 +757,11 @@ def fdictPlanRuntimeSetup(dictFacts, dictSettings=None):
     elif not listSteps:
         listSteps = [_fdictStillUnansweredStep(dictFacts)]
     return {"bReady": bReady, "listSteps": listSteps}
+
+
+def fdictStepAnnouncedOnHub(dictPlan):
+    """Return the first step the hub's banner names, or None."""
+    for dictStep in dictPlan.get("listSteps", []):
+        if dictStep.get(S_ANNOUNCE_ON_HUB_KEY):
+            return dictStep
+    return None

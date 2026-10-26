@@ -214,6 +214,32 @@ def testAnUndersizedRunningMachineIsOfferedMoreMemoryAsAnOption():
         "--cpus", "9", "--memory", "8"]
 
 
+@pytest.mark.falsification
+@pytest.mark.parametrize("listRunning", [[], ["projectAlphaContainer"]])
+def testOnlyAnUndersizedMachineIsAnnouncedOnTheHub(listRunning):
+    """Kills: a missing buildx raising the hub banner on a working machine.
+
+    The oracle is the 2026-10-26 ruling: builds without buildx still
+    run, so only a machine too small to build in earns a banner.
+    """
+    dictFacts = dict(_fdictUndersizedMacFacts(listRunning), bBuildxWorks=False)
+    dictPlan = fdictPlanRuntimeSetup(dictFacts)
+    assert [d["sStepName"] for d in dictPlan["listSteps"]] == [
+        "install-runtime", "resize-colima"]
+    assert planModule.fdictStepAnnouncedOnHub(dictPlan)["sStepName"] == (
+        "resize-colima")
+
+
+def testAWorkingMachineWithoutBuildxIsNotAnnouncedOnTheHub():
+    for dictFacts in (
+            fdictMacFacts(listCommands=["brew", "colima", "docker"],
+                          bDaemonAnswers=True, sRuntime="docker-desktop"),
+            fdictLinuxFacts("ubuntu", bDaemonAnswers=True)):
+        dictPlan = fdictPlanRuntimeSetup(dictFacts)
+        assert dictPlan["listSteps"], dictPlan
+        assert planModule.fdictStepAnnouncedOnHub(dictPlan) is None
+
+
 def testAnUndersizedMachineWithRunningContainersIsNotRestarted():
     dictStep = fdictPlanRuntimeSetup(
         _fdictUndersizedMacFacts(["projectAlphaContainer"]))["listSteps"][0]

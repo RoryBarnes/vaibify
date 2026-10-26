@@ -36298,8 +36298,38 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/static/scriptContainerManager.js',
         # the wizard is hidden again once Docker answers
-        old='                VaibifyRuntimeSetup.fnShowAdviceInBanner(elBanner);\n',
+        old='                VaibifyRuntimeSetup.fnRenderAdviceInBanner(elBanner, dictAdvice);\n',
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSetUpDockerWizard.py::'
+            'testTheBannerStaysOnScreenWhileTheHubPolls'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # every poll blanks the banner before the advice is drawn again
+        old='        if (!elBanner.classList.contains("docker-status-banner-advice")) {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSetUpDockerWizard.py::'
+            'testAMissingBuildxAloneRaisesNoBanner'
+        ),
+        source='vaibify/gui/static/scriptRuntimeSetup.js',
+        # the page raises the banner for the plan's first step itself
+        old='        var dictStep = dictAdvice ? dictAdvice.dictHubBannerStep : null;\n',
+        new='        var dictStep = dictAdvice ? dictAdvice.listSteps[0] : null;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRuntimeSetupPlan.py::'
+            'testOnlyAnUndersizedMachineIsAnnouncedOnTheHub'
+        ),
+        source='vaibify/install/runtimeSetupPlan.py',
+        # every remaining step is announced, buildx included
+        old='        if dictStep.get(S_ANNOUNCE_ON_HUB_KEY):\n',
+        new='        if True:\n',
     ),
     Falsification(
         nodeid=(
