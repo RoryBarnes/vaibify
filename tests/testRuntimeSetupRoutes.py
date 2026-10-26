@@ -231,3 +231,20 @@ def testTheHubLoadCheckNamesNoBannerStepForAMissingBuildx(dictHub):
         sRuntime="docker-desktop"))
     assert dictAnswer["listSteps"], dictAnswer
     assert dictAnswer["dictHubBannerStep"] is None
+
+
+def testTheHubLoadCheckCarriesWhatTheSignCallsBlocked(dictHub):
+    """A recorded buildx refusal reaches the page while buildx is missing."""
+    from tests.testMachineAttention import (
+        S_HOST_NAME, _ferrorBuildxRefusal, _fnRecordTheLanesFailure,
+        _fnWritePendingConversion,
+    )
+    _fnWritePendingConversion(S_HOST_NAME)
+    _fnRecordTheLanesFailure(S_HOST_NAME, _ferrorBuildxRefusal())
+    dictAnswer = _fdictAdvisoryAnswer(dictHub, fdictMacFacts(
+        listCommands=["port", "colima", "docker"], bDaemonAnswers=True,
+        sRuntime="colima"))
+    assert [dictItem["sItemId"] for dictItem in dictAnswer[
+        "listAttentionItems"]] == ["buildx-missing:" + S_HOST_NAME]
+    assert "listAttentionItems" not in dictHub["clientBrowser"].get(
+        "/api/runtime/setup").json()

@@ -80,7 +80,7 @@ def testTheHubHelpExplainsTheFourBlocks(pageDashboard, serverHub):
     assert pageDashboard.locator("#modalInfo details[open]").count() == 0
     sOutline = pageDashboard.locator("#modalInfo").inner_text()
     for sHeading in ("Creating an environment", "Legend", "Troubleshooting",
-                     "Leftover processes and files"):
+                     "Needs your attention"):
         assert sHeading in sOutline
     assert "One environment per browser tab" not in sOutline
     for elSummary in pageDashboard.locator("#modalInfo summary").all():

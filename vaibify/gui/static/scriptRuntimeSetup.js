@@ -273,6 +273,10 @@ var VaibifyRuntimeSetup = (function () {
             _promiseHubAdvice = VaibifyApi.fdictGet(
                 "/api/runtime/setup?bAdvisory=true").catch(function () {
                     return null;
+                }).then(function (dictAdvice) {
+                    VaibifyRemnants.fnSetAttentionItems(
+                        (dictAdvice && dictAdvice.listAttentionItems) || []);
+                    return dictAdvice;
                 });
         }
         return _promiseHubAdvice;

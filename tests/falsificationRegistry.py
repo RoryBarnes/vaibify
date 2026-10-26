@@ -36323,6 +36323,26 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testMachineAttention.py::'
+            'testAConversionStoppedForBuildxIsBlockedOnlyWhileBuildxIsMissing'
+        ),
+        source='vaibify/gui/machineAttention.py',
+        # the red sign outlives the buildx the researcher installed
+        old='    if dictFacts.get("bBuildxWorks"):\n        return []\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSetUpDockerWizard.py::'
+            'testABlockedDockerStepTurnsTheSignRedAndLeadsToTheWizard'
+        ),
+        source='vaibify/gui/static/scriptRemnants.js',
+        # a verified block is drawn in the orange of "worth a look"
+        old='            bFailed || bScanError || _fbAnyAttentionBlocked());\n',
+        new='            bFailed || bScanError);\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testBuildKitRequirement.py::'
             'testTheArmOnIntelOverlayIsTheOnlyShippedDockerfileThatNeedsBuildKit'
         ),

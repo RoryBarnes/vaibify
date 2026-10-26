@@ -80,17 +80,20 @@ def _fdictPlanForClient(dictPlan):
             "listSteps": [_fdictStepForClient(d) for d in dictPlan["listSteps"]]}
 
 
-def _fdictAdvisoryPlanForClient(dictPlan):
-    """The hub-load answer: the plan, and the one step its banner names.
+def _fdictAdvisoryPlanForClient(dictFacts, dictPlan):
+    """The hub-load answer: the plan, its banner step, and what is blocked.
 
-    The page renders ``dictHubBannerStep`` or nothing; which steps earn
-    a banner is decided here, never by the page.
+    The page renders ``dictHubBannerStep`` or nothing, and the warning
+    sign's ``listAttentionItems``; which steps earn a banner and what
+    counts as blocked are decided here, never by the page.
     """
+    from vaibify.gui.machineAttention import flistDescribeMachineAttention
     from vaibify.install.runtimeSetupPlan import fdictStepAnnouncedOnHub
     dictClient = _fdictPlanForClient(dictPlan)
     dictStep = fdictStepAnnouncedOnHub(dictPlan)
     dictClient["dictHubBannerStep"] = (
         _fdictStepForClient(dictStep) if dictStep else None)
+    dictClient["listAttentionItems"] = flistDescribeMachineAttention(dictFacts)
     return dictClient
 
 
@@ -104,6 +107,12 @@ def _ftReadFactsAndPlan(dictRequested=None, bProbePrivilege=True):
     return dictFacts, fdictPlanRuntimeSetup(dictFacts, dictSettings)
 
 
+def _fdictReadAdvisoryAnswer():
+    """Read the machine without asking sudo, and answer the hub-load check."""
+    dictFacts, dictPlan = _ftReadFactsAndPlan(None, False)
+    return _fdictAdvisoryPlanForClient(dictFacts, dictPlan)
+
+
 def _fnRegisterReadPlan(app):
     @app.get("/api/runtime/setup")
     async def fdictReadRuntimeSetupPlan(
@@ -111,10 +120,9 @@ def _fnRegisterReadPlan(app):
     ):
         """Return the plan; ``bAdvisory`` is the hub-load check, titles only."""
         fnRejectAgentTokenLane(requestHttp)
-        _, dictPlan = await asyncio.to_thread(
-            _ftReadFactsAndPlan, None, not bAdvisory)
         if bAdvisory:
-            return _fdictAdvisoryPlanForClient(dictPlan)
+            return await asyncio.to_thread(_fdictReadAdvisoryAnswer)
+        _, dictPlan = await asyncio.to_thread(_ftReadFactsAndPlan, None, True)
         return _fdictPlanForClient(dictPlan)
 
 

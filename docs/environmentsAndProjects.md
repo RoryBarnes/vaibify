@@ -42,10 +42,18 @@ under **This machine**, with four buttons beside the heading:
 | **+** | Add an environment. |
 | **↻** | Refresh the list. |
 | **⧉** | Open a new vaibify window (a separate browser session). |
-| **?** | Help: creating an environment, a legend of tile marks, troubleshooting, and the leftover-processes glyph. |
-| **⚠** | Shown only when vaibify found something left over on this computer. Orange with a count while anything is listed; red when an automatic cleanup could not run. |
+| **?** | Help: creating an environment, a legend of tile marks, troubleshooting, and the needs-your-attention glyph. |
+| **⚠** | Shown only when something on this computer needs your attention. Orange with a count while anything is listed; red when something is blocked or an automatic cleanup could not run. |
 
-Clicking **⚠** opens **Leftover processes and files**. vaibify cleans
+Clicking **⚠** opens **Needs your attention**. Its first section,
+**Docker setup**, appears only when Docker work on this computer is
+blocked: today, a containerization that stopped because only docker
+buildx can build what it needs, while buildx is still missing. Its
+**Set up Docker** button opens the setup wizard at the step that fixes
+it. vaibify reads this when the page loads and again when the wizard
+closes.
+
+The rest of the panel is **Leftover processes and files**. vaibify cleans
 up by itself what it can prove is garbage: a lock file no process
 holds, a credential file no container mounts, a shadow-rerun lock
 nothing holds, a terminal left by a vaibify window that died, a

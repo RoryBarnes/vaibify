@@ -3246,7 +3246,7 @@ var VaibifyContainerManager = (function () {
         '<code>vaibify doctor</code> on this machine and shows each ' +
         'finding with its remedy.</p>' +
         '</details><details class="hub-help-section">' +
-        '<summary>Leftover processes and files</summary>' +
+        '<summary>Needs your attention</summary>' +
         '<p>An orange <strong>\u26A0</strong> in this header means vaibify ' +
         'found something left over on this machine that it could not ' +
         'clean up by itself: a shell in a container that no window ' +
@@ -3255,8 +3255,11 @@ var VaibifyContainerManager = (function () {
         'Click it to read the evidence for each item. <em>Proven</em> ' +
         'items are ones vaibify itself launched; <em>possibly</em> ' +
         'items may be yours, so read before removing. A red ' +
-        '<strong>\u26A0</strong> means one of the automatic cleanups ' +
-        'could not run; the panel says which and what to do.</p>' +
+        '<strong>\u26A0</strong> means something is blocked: Docker ' +
+        'work this machine cannot do until its setup changes (its ' +
+        '<em>Set up Docker</em> button shows the step), or one of the ' +
+        'automatic cleanups could not run; the panel says which and ' +
+        'what to do.</p>' +
         '</details>';
 
     var _S_ADD_CHOICE_HELP =
