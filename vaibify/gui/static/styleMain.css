@@ -1245,8 +1245,9 @@ body.proof-level-3 .toolbar-label {
     cursor: default;
 }
 
-/* The hub's leftover-processes glyph: orange while anything is listed,
-   red when an automatic cleanup could not run. */
+/* The hub's needs-your-attention glyph: orange while anything is
+   listed, red when something is verified to be blocked or an automatic
+   cleanup could not run. */
 .btn-icon--remnants {
     color: var(--color-orange);
 }
@@ -1255,6 +1256,8 @@ body.proof-level-3 .toolbar-label {
     color: var(--color-red);
 }
 
+.attention-section h3,
+.remnants-section-title,
 .remnants-category h3,
 .remnants-health h3 {
     margin: 12px 0 4px;
@@ -1292,6 +1295,19 @@ body.proof-level-3 .toolbar-label {
 }
 
 .remnants-scan-error {
+    color: var(--color-red-text);
+}
+
+.attention-items {
+    list-style: none;
+    padding-left: 0;
+}
+
+.attention-item {
+    margin: 4px 0;
+}
+
+.attention-item--blocked {
     color: var(--color-red-text);
 }
 

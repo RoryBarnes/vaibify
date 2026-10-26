@@ -178,3 +178,21 @@ without discussion:
   watcher would kill live sessions on wake, exactly when the researcher
   returns. The reaper logs how many it ends per pass; revisit if that is
   non-zero at more than one hub start in a month.
+- Source comments, docstrings and test oracles still cite design
+  documents that are no longer in the tree: a path under `design/`, or
+  a label such as "design fact 28", "D5", "F7" or "I8". The directory
+  was removed on 2026-10-26 (planning documents, not reference
+  documentation), and the citations were left in place, because one of
+  them is in the frozen `comparisonPolicyV1.py`, which cannot change,
+  and several falsification tests name these documents as the
+  independent source of their expected values. Each file is in git
+  history at `4a15f03b`; read one with
+  `git show 4a15f03b:design/<name>.md`. The files were
+  `agentCouncil.md`, `agentCouncilContinuationPlan.md`,
+  `agentCouncilMultiProviderImplementationPlan.md`,
+  `agentCouncilPhase0Findings.md`, `agentCouncilRemediation.md`,
+  `agentCouncilReviewCouncil.md`, `agentCouncilVerificationLanes.md`,
+  `copiesLevel3MergeAndOrderedEndgame.md`, `cpuClassReproducibility.md`,
+  `cpuClassReproducibilityImplementation.md`, `externalServices.md`,
+  `level3AttainmentSequence.md`, `permanentArchivePromotion.md` and
+  `permanentArchivePromotionImplementation.md`.

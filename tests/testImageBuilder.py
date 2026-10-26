@@ -172,6 +172,24 @@ def test_flistBuildPrefix_falls_back_to_legacy():
         assert _flistBuildPrefix() == ["docker", "build"]
 
 
+def testTheLegacyFallbackNamesTheMacPortsInstallOnAMacPortsMac(
+        monkeypatch, capsys):
+    """A MacPorts-only Mac is never told to use Homebrew."""
+    from vaibify.docker import imageBuilder
+    monkeypatch.setattr(imageBuilder.sys, "platform", "darwin")
+    monkeypatch.setattr(imageBuilder.shutil, "which", lambda sCommand: (
+        "/opt/local/bin/port" if sCommand == "port" else None))
+    with patch(
+        "vaibify.docker.imageBuilder.fbBuildxAvailable",
+        return_value=False,
+    ):
+        assert _flistBuildPrefix() == ["docker", "build"]
+    sNote = capsys.readouterr().err
+    assert "sudo port install docker-buildx-plugin" in sNote
+    assert "brew" not in sNote
+    assert "does not need buildx" in sNote
+
+
 def test_fbImageExists_returns_true_when_subprocess_succeeds():
     with patch(
         "vaibify.docker.imageBuilder.subprocess.run"

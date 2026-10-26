@@ -708,3 +708,28 @@ def test_a_full_daemon_disk_is_named_before_any_other_cause():
     assert "disk is full" in sHint
     assert "docker builder prune" in sSentence
     assert "network" not in sHint
+
+
+# The legacy builder's own words, captured from Docker 28.4 with
+# DOCKER_BUILDKIT=0 on 2026-10-26.
+S_LEGACY_EMPTY_PLATFORM = (
+    "Step 1/4 : FROM --platform=$BUILDPLATFORM alpine:3.20 AS probe\n"
+    'failed to parse platform : "" is an invalid OS component of "": '
+    "OSAndVersion specifier component must match "
+    '"^([A-Za-z0-9_-]+)(?:\\(([A-Za-z0-9_.-]*)\\))?$": invalid argument\n'
+)
+S_LEGACY_MOUNT_REFUSAL = (
+    "Step 2/2 : RUN --mount=type=cache,target=/c true\n"
+    "the --mount option requires BuildKit. Refer to "
+    "https://docs.docker.com/go/buildkit/ to learn how to build images "
+    "with BuildKit enabled\n"
+)
+
+
+@pytest.mark.parametrize("sStderrTail", [
+    S_LEGACY_EMPTY_PLATFORM, S_LEGACY_MOUNT_REFUSAL])
+def testTheLegacyBuildersRefusalOfBuildKitSyntaxNamesBuildx(sStderrTail):
+    from vaibify.docker.dockerErrorDiagnosis import fsExplainBuildFailure
+    sSentence = fsExplainBuildFailure("projectAlpha", "", sStderrTail)
+    assert "needs docker buildx" in sSentence
+    assert "vaibify setup-docker" in sSentence

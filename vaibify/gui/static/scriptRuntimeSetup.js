@@ -14,6 +14,7 @@ var VaibifyRuntimeSetup = (function () {
     var I_PROGRESS_POLL_MILLISECONDS = 1500;
     var _iProgressTimer = null;
     var _dictLastStepShown = null;
+    var _promiseHubAdvice = null;
 
     function _elOverlay() {
         return document.getElementById("modalRuntimeSetup");
@@ -260,34 +261,58 @@ var VaibifyRuntimeSetup = (function () {
         }
     }
 
-    /* With Docker answering, the banner is otherwise hidden; this shows
-       it again when the hub's plan still has a step (buildx missing, a
-       Colima machine too small to build in), so the wizard stays
-       reachable. The check reads the plan without asking sudo, which
-       logs a failure on every page load otherwise. A failed check
-       claims nothing: Docker itself has just answered. */
-    async function fnShowAdviceInBanner(elBanner) {
-        var dictPlan;
-        try {
-            dictPlan = await VaibifyApi.fdictGet(
-                "/api/runtime/setup?bAdvisory=true");
-        } catch (error) {
+    /* The hub-load check, asked once per page load (ruled 2026-10-26)
+       and again only after the wizard closes, because the wizard is
+       where the researcher changes the machine. Every poll renders the
+       answer already held, so the banner is never blanked while the
+       hub is asked. It reads the plan without asking sudo, which logs
+       a failure on every page load otherwise. A failed check claims
+       nothing: Docker itself has just answered. */
+    function fpromiseReadHubAdvice() {
+        if (_promiseHubAdvice === null) {
+            _promiseHubAdvice = VaibifyApi.fdictGet(
+                "/api/runtime/setup?bAdvisory=true").catch(function () {
+                    return null;
+                }).then(function (dictAdvice) {
+                    VaibifyRemnants.fnSetAttentionItems(
+                        (dictAdvice && dictAdvice.listAttentionItems) || []);
+                    return dictAdvice;
+                });
+        }
+        return _promiseHubAdvice;
+    }
+
+    function _fnHideAdvice(elBanner) {
+        elBanner.style.display = "none";
+        elBanner.innerHTML = "";
+        elBanner.classList.remove("docker-status-banner-advice");
+        delete elBanner.dataset.adviceKey;
+    }
+
+    /* The banner names only the step the hub chose for it (a Colima
+       machine too small to build in); the hub decides which steps
+       earn a banner, never this page. Rendering the same step again
+       changes nothing, so a poll cannot replace a button mid-click. */
+    function fnRenderAdviceInBanner(elBanner, dictAdvice) {
+        var dictStep = dictAdvice ? dictAdvice.dictHubBannerStep : null;
+        if (!dictStep) {
+            _fnHideAdvice(elBanner);
             return;
         }
-        var listSteps = dictPlan.listSteps || [];
-        if (!listSteps.length || elBanner.style.display === "flex") return;
+        var sKey = JSON.stringify(
+            [dictStep.sStepName, dictStep.sTitle, dictStep.sExplanation]);
+        if (elBanner.dataset.adviceKey === sKey) return;
         elBanner.innerHTML = "";
         var elMessage = _elMake("div", "docker-status-banner-message");
-        elMessage.appendChild(_elMake("strong", "", dictPlan.bReady
-            ? "Docker works, and one setup step is still open."
-            : "Docker answers, but is not ready for vaibify."));
+        elMessage.appendChild(_elMake("strong", "", dictStep.sTitle + "."));
         elMessage.appendChild(document.createTextNode(
-            " " + listSteps[0].sTitle + ": " + listSteps[0].sExplanation));
+            " " + dictStep.sExplanation));
         var elActions = _elMake("div", "docker-status-banner-actions");
         elActions.appendChild(_elButton("Set up Docker", "btnSetupDocker",
             fnOpen, false));
         elBanner.appendChild(elMessage);
         elBanner.appendChild(elActions);
+        elBanner.dataset.adviceKey = sKey;
         elBanner.classList.add("docker-status-banner-advice");
         elBanner.style.display = "flex";
     }
@@ -304,6 +329,7 @@ var VaibifyRuntimeSetup = (function () {
     function fnClose() {
         _fnStopProgressPoll();
         _elOverlay().style.display = "none";
+        _promiseHubAdvice = null;
         if (typeof VaibifyContainerManager !== "undefined" &&
                 VaibifyContainerManager.fnRetryDockerStatus) {
             VaibifyContainerManager.fnRetryDockerStatus();
@@ -313,6 +339,7 @@ var VaibifyRuntimeSetup = (function () {
     return {
         fnOpen: fnOpen,
         fnClose: fnClose,
-        fnShowAdviceInBanner: fnShowAdviceInBanner,
+        fpromiseReadHubAdvice: fpromiseReadHubAdvice,
+        fnRenderAdviceInBanner: fnRenderAdviceInBanner,
     };
 })();

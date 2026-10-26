@@ -25,6 +25,9 @@ var VaibifyContainerManager = (function () {
        project -- or the same project after its container was removed,
        which leaves no container to describe -- must clear them. */
     var _sReadinessBannersContainerId = "";
+    /* The last Docker status this tab read; the hub-load advice is
+       drawn only while it says Docker answers. */
+    var _bDockerAnswered = false;
 
     async function fnLoadContainers() {
         try {
@@ -70,19 +73,14 @@ var VaibifyContainerManager = (function () {
             var dictStatus = await VaibifyApi.fdictGet(
                 "/api/system/docker-status"
             );
+            _bDockerAnswered = !!dictStatus.bAvailable;
             if (dictStatus.bAvailable) {
-                elBanner.style.display = "none";
-                elBanner.innerHTML = "";
-                elBanner.classList.remove("docker-status-banner-advice");
-                /* Docker answering is not Docker being ready: buildx
-                   can be missing, or the Colima machine too small to
-                   build in, and the wizard is how those are fixed. */
-                VaibifyRuntimeSetup.fnShowAdviceInBanner(elBanner);
+                _fnShowSetupAdviceWhileDockerAnswers(elBanner);
                 return;
             }
-            elBanner.classList.remove("docker-status-banner-advice");
             _fnRenderDockerStatusBanner(elBanner, dictStatus);
         } catch (error) {
+            _bDockerAnswered = false;
             /* Hiding the banner here used to read as "Docker is fine"
                whenever the PROBE failed, which is the one moment the
                researcher most needs to hear that vaibify cannot tell. */
@@ -95,7 +93,25 @@ var VaibifyContainerManager = (function () {
         }
     }
 
+    /* Docker answering is not Docker being ready: the Colima machine
+       can be too small to build in, and the wizard is how that is
+       fixed. The "unavailable" text goes at once; the advice is the
+       hub's answer from this page load, rendered in place. */
+    function _fnShowSetupAdviceWhileDockerAnswers(elBanner) {
+        if (!elBanner.classList.contains("docker-status-banner-advice")) {
+            elBanner.style.display = "none";
+            elBanner.innerHTML = "";
+        }
+        VaibifyRuntimeSetup.fpromiseReadHubAdvice().then(function (dictAdvice) {
+            if (_bDockerAnswered) {
+                VaibifyRuntimeSetup.fnRenderAdviceInBanner(elBanner, dictAdvice);
+            }
+        });
+    }
+
     function _fnRenderDockerStatusBanner(elBanner, dictStatus) {
+        elBanner.classList.remove("docker-status-banner-advice");
+        delete elBanner.dataset.adviceKey;
         var sHint = VaibifyUtilities.fnEscapeHtml(dictStatus.sHint || "");
         var sCommand = VaibifyUtilities.fnEscapeHtml(
             dictStatus.sCommand || ""
@@ -3230,7 +3246,7 @@ var VaibifyContainerManager = (function () {
         '<code>vaibify doctor</code> on this machine and shows each ' +
         'finding with its remedy.</p>' +
         '</details><details class="hub-help-section">' +
-        '<summary>Leftover processes and files</summary>' +
+        '<summary>Needs your attention</summary>' +
         '<p>An orange <strong>\u26A0</strong> in this header means vaibify ' +
         'found something left over on this machine that it could not ' +
         'clean up by itself: a shell in a container that no window ' +
@@ -3239,8 +3255,11 @@ var VaibifyContainerManager = (function () {
         'Click it to read the evidence for each item. <em>Proven</em> ' +
         'items are ones vaibify itself launched; <em>possibly</em> ' +
         'items may be yours, so read before removing. A red ' +
-        '<strong>\u26A0</strong> means one of the automatic cleanups ' +
-        'could not run; the panel says which and what to do.</p>' +
+        '<strong>\u26A0</strong> means something is blocked: Docker ' +
+        'work this machine cannot do until its setup changes (its ' +
+        '<em>Set up Docker</em> button shows the step), or one of the ' +
+        'automatic cleanups could not run; the panel says which and ' +
+        'what to do.</p>' +
         '</details>';
 
     var _S_ADD_CHOICE_HELP =

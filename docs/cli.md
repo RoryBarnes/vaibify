@@ -183,7 +183,9 @@ again, so it resumes from wherever the machine is:
 - **macOS:** installs Colima, Docker and buildx with Homebrew or
   MacPorts, then starts Colima with all CPUs but one and half the RAM
   (at least 4 GB). With neither package manager it tells you how to
-  install one. A stopped Colima machine, Docker Desktop, OrbStack or
+  install one. A MacPorts that stopped running after a macOS upgrade
+  is named in MacPorts' own words, with `sudo port migrate` to run
+  yourself. A stopped Colima machine, Docker Desktop, OrbStack or
   Rancher Desktop is started rather than replaced.
 - **Ubuntu, Debian, Fedora, RHEL, CentOS** (and distributions that
   declare one of them as their parent): installs Docker Engine from

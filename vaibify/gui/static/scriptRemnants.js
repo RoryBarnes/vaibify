@@ -1,6 +1,10 @@
-/* Vaibify — Leftover processes and files: the hub glyph and its panel.
-   Every sentence shown here is the server's, rendered verbatim and
-   escaped; this module words nothing about the host's state itself. */
+/* Vaibify — Needs your attention: the hub glyph and its panel.
+   The panel holds what blocks Docker work on this machine (the hub's
+   hub-load answer) above the leftover processes and files. Every
+   sentence shown here is the server's, rendered verbatim and escaped;
+   this module words nothing about the host's state itself. Red means
+   something is verified to be blocked or a cleanup could not run;
+   orange means something is worth a look. */
 
 var VaibifyRemnants = (function () {
     "use strict";
@@ -8,7 +12,12 @@ var VaibifyRemnants = (function () {
     var _S_READ_URL = "/api/system/remnants";
     var _S_RESCAN_URL = "/api/system/remnants/rescan";
     var _S_REMOVE_URL = "/api/system/remnants/remove";
-    var _S_PANEL_TITLE = "Leftover processes and files";
+    var _S_PANEL_TITLE = "Needs your attention";
+    var _S_REMNANTS_SECTION_TITLE = "Leftover processes and files";
+    var _S_SEVERITY_BLOCKED = "blocked";
+    /* The hub's blocked items from this page load; mutate, never reassign. */
+    var _listAttentionItems = [];
+    var _dictLastSummary = null;
     var _S_CATEGORY_UNKNOWN = "unknown";
     var _I_RESCAN_POLL_MILLISECONDS = 1000;
     var _I_RESCAN_POLL_LIMIT = 20;
@@ -26,19 +35,65 @@ var VaibifyRemnants = (function () {
     /* The picker poll hands the registry's summary here on every tick;
        the glyph is hidden at zero and carries the server's title. */
     function fnRenderSummary(dictSummary) {
+        _dictLastSummary = dictSummary;
         var elGlyph = document.getElementById("btnRemnants");
         if (!elGlyph) return;
-        var iCount = dictSummary ? (dictSummary.iCount || 0) : 0;
+        var iCount = (dictSummary ? (dictSummary.iCount || 0) : 0) +
+            _listAttentionItems.length;
         var bFailed = !!(dictSummary && dictSummary.bReaperFailed);
         var bScanError = !!(dictSummary && dictSummary.bScanError);
-        if (!dictSummary || (iCount === 0 && !bFailed && !bScanError)) {
+        if (iCount === 0 && !bFailed && !bScanError) {
             elGlyph.style.display = "none";
             return;
         }
         elGlyph.style.display = "";
         elGlyph.textContent = iCount ? "⚠ " + iCount : "⚠";
-        elGlyph.title = dictSummary.sGlyphTitle || _S_PANEL_TITLE;
-        elGlyph.classList.toggle("btn-icon--remnants-failed", bFailed || bScanError);
+        elGlyph.title = _fsGlyphTitle(dictSummary);
+        elGlyph.classList.toggle("btn-icon--remnants-failed",
+            bFailed || bScanError || _fbAnyAttentionBlocked());
+    }
+
+    function _fbAnyAttentionBlocked() {
+        return _listAttentionItems.some(function (dictItem) {
+            return dictItem.sSeverity === _S_SEVERITY_BLOCKED;
+        });
+    }
+
+    function _fsGlyphTitle(dictSummary) {
+        var listLines = _listAttentionItems.map(
+            function (dictItem) { return dictItem.sSentence; });
+        if (dictSummary && (dictSummary.iCount || dictSummary.bReaperFailed ||
+                dictSummary.bScanError)) {
+            listLines.push(dictSummary.sGlyphTitle || _S_REMNANTS_SECTION_TITLE);
+        }
+        return listLines.join("\n") || _S_PANEL_TITLE;
+    }
+
+    /* The hub's hub-load answer hands its blocked items here once per
+       page load; the glyph is drawn again with the last summary. */
+    function fnSetAttentionItems(listItems) {
+        _listAttentionItems.length = 0;
+        (listItems || []).forEach(function (dictItem) {
+            _listAttentionItems.push(dictItem);
+        });
+        fnRenderSummary(_dictLastSummary);
+    }
+
+    function _fsRenderAttentionSection() {
+        if (!_listAttentionItems.length) return "";
+        var sHtml = '<div class="attention-section"><h3>Docker setup</h3>' +
+            '<ul class="attention-items">';
+        _listAttentionItems.forEach(function (dictItem) {
+            sHtml += '<li class="attention-item attention-item--' +
+                VaibifyUtilities.fnEscapeHtml(dictItem.sSeverity || "") +
+                '" data-item-id="' +
+                VaibifyUtilities.fnEscapeHtml(dictItem.sItemId || "") + '">' +
+                VaibifyUtilities.fnEscapeHtml(dictItem.sSentence || "") +
+                "</li>";
+        });
+        return sHtml + '</ul><button class="btn btn-primary ' +
+            'attention-set-up-docker" type="button">Set up Docker</button>' +
+            "</div>";
     }
 
     function fnBindRemnantsGlyph() {
@@ -64,7 +119,9 @@ var VaibifyRemnants = (function () {
 
     function _fsRenderPanel(dictRemnants) {
         var listItems = dictRemnants.listItems || [];
-        var sHtml = "";
+        var sHtml = _fsRenderAttentionSection() +
+            '<h3 class="remnants-section-title">' +
+            _S_REMNANTS_SECTION_TITLE + "</h3>";
         if (dictRemnants.sScanError) {
             sHtml += '<p class="remnants-scan-error">' +
                 VaibifyUtilities.fnEscapeHtml(dictRemnants.sScanError) + "</p>";
@@ -220,6 +277,13 @@ var VaibifyRemnants = (function () {
         if (elRescan) {
             elRescan.addEventListener("click", function () { _fnRescan(); });
         }
+        var elSetUpDocker = elModal.querySelector(".attention-set-up-docker");
+        if (elSetUpDocker) {
+            elSetUpDocker.addEventListener("click", function () {
+                elModal.remove();
+                VaibifyRuntimeSetup.fnOpen();
+            });
+        }
         elModal.querySelectorAll(".remnants-resume").forEach(function (elResume) {
             elResume.addEventListener("click", function () {
                 elModal.remove();
@@ -328,6 +392,7 @@ var VaibifyRemnants = (function () {
 
     return {
         fnRenderSummary: fnRenderSummary,
+        fnSetAttentionItems: fnSetAttentionItems,
         fnBindRemnantsGlyph: fnBindRemnantsGlyph,
         fnOpenPanel: fnOpenPanel
     };

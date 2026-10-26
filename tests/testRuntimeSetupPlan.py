@@ -51,7 +51,8 @@ def fdictMacFacts(**dictOverrides):
         "listRunningVaibifyContainers": [], "listDesktopApplications": [],
         "sPrivilegeChannel": "macos-dialog", "sUserName": "researcherAlpha",
         "iHostCpuCount": 10, "iHostMemoryBytes": 16 * I_GIGABYTE,
-        "sDockerHost": "",
+        "sDockerHost": "", "bMacPortsWorks": True,
+        "bMacPortsNeedsMigration": False, "sMacPortsProblem": "",
     }
     dictFacts.update(dictOverrides)
     return dictFacts
@@ -153,6 +154,71 @@ def testAMacWithMacPortsInstallsAsAdministratorByFullPath():
         "/opt/local/bin/port -N install colima docker docker-buildx-plugin")
 
 
+def _fdictMacPortsOnlyFacts(**dictOverrides):
+    return fdictMacFacts(
+        listCommands=["port", "osascript", "colima", "docker"],
+        sHomebrewPrefix="", sMacPortsPath="/opt/local/bin/port",
+        bDaemonAnswers=True, sRuntime="colima", **dictOverrides)
+
+
+@pytest.mark.falsification
+def testAMacPortsThatNeedsMigratingIsNeverOfferedAnInstall():
+    """Kills: an Install button that runs a ``port`` MacPorts refuses.
+
+    The oracle is MacPorts' own refusal, measured on an upgraded Mac:
+    every ``port`` command fails until ``sudo port migrate``.
+    """
+    sProblem = ('Current platform "darwin 25" does not match expected '
+                'platform "darwin 24"')
+    dictStep = fdictFirstStep(_fdictMacPortsOnlyFacts(
+        bMacPortsWorks=False, bMacPortsNeedsMigration=True,
+        sMacPortsProblem=sProblem))
+    assert dictStep["sStepName"] == "migrate-macports"
+    assert dictStep["sKind"] == S_KIND_NEEDS_YOU
+    assert dictStep["listActions"] == []
+    assert dictStep["listCommandsToShow"] == ["sudo port migrate"]
+    assert sProblem in dictStep["sExplanation"]
+    assert "docker buildx" in dictStep["sExplanation"]
+
+
+def testAMacPortsBrokenAnotherWayIsNamedInItsOwnWords():
+    dictStep = fdictFirstStep(_fdictMacPortsOnlyFacts(
+        bMacPortsWorks=False, sMacPortsProblem="Port registry is locked"))
+    assert dictStep["sStepName"] == "repair-macports"
+    assert dictStep["listActions"] == []
+    assert "Port registry is locked" in dictStep["sExplanation"]
+
+
+def testAWorkingMacPortsInstallsOnlyBuildxUnderItsOwnName():
+    dictStep = fdictFirstStep(_fdictMacPortsOnlyFacts())
+    assert dictStep["sTitle"] == "Install docker buildx"
+    assert fsFirstScript(dictStep) == (
+        "/opt/local/bin/port -N install docker-buildx-plugin\n")
+
+
+@pytest.mark.parametrize("dictOverrides, sExpectedTitle", [
+    ({}, "Install Colima, Docker and docker buildx"),
+    ({"listCommands": ["brew", "colima", "docker"], "bDaemonAnswers": True,
+      "sRuntime": "docker-desktop"}, "Install docker buildx"),
+])
+def testAnInstallStepIsNamedForWhatItInstalls(dictOverrides, sExpectedTitle):
+    assert fdictFirstStep(fdictMacFacts(**dictOverrides))["sTitle"] == (
+        sExpectedTitle)
+
+
+@pytest.mark.parametrize("dictFacts, sExpected", [
+    ({"listCommands": ["brew", "port"], "sPlatform": "darwin"},
+     "brew install docker-buildx"),
+    ({"listCommands": ["port"], "sPlatform": "darwin"},
+     "sudo port install docker-buildx-plugin"),
+    ({"listCommands": ["apt-get"], "sPlatform": "linux"},
+     "docker-buildx-plugin package"),
+    ({"listCommands": [], "sPlatform": "darwin"}, "Docker Desktop"),
+])
+def testTheBuildxInstallNamesThisMachinesPackageManager(dictFacts, sExpected):
+    assert sExpected in planModule.fsDescribeBuildxInstall(dictFacts)
+
+
 def testAMacWithNeitherPackageManagerIsToldToInstallOne():
     dictStep = fdictFirstStep(fdictMacFacts(
         listCommands=["osascript"], sHomebrewPrefix=""))
@@ -212,6 +278,32 @@ def testAnUndersizedRunningMachineIsOfferedMoreMemoryAsAnOption():
     assert listInvocations[0]["listArgv"] == ["colima", "stop"]
     assert listInvocations[1]["listArgv"][-4:] == [
         "--cpus", "9", "--memory", "8"]
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("listRunning", [[], ["projectAlphaContainer"]])
+def testOnlyAnUndersizedMachineIsAnnouncedOnTheHub(listRunning):
+    """Kills: a missing buildx raising the hub banner on a working machine.
+
+    The oracle is the 2026-10-26 ruling: builds without buildx still
+    run, so only a machine too small to build in earns a banner.
+    """
+    dictFacts = dict(_fdictUndersizedMacFacts(listRunning), bBuildxWorks=False)
+    dictPlan = fdictPlanRuntimeSetup(dictFacts)
+    assert [d["sStepName"] for d in dictPlan["listSteps"]] == [
+        "install-runtime", "resize-colima"]
+    assert planModule.fdictStepAnnouncedOnHub(dictPlan)["sStepName"] == (
+        "resize-colima")
+
+
+def testAWorkingMachineWithoutBuildxIsNotAnnouncedOnTheHub():
+    for dictFacts in (
+            fdictMacFacts(listCommands=["brew", "colima", "docker"],
+                          bDaemonAnswers=True, sRuntime="docker-desktop"),
+            fdictLinuxFacts("ubuntu", bDaemonAnswers=True)):
+        dictPlan = fdictPlanRuntimeSetup(dictFacts)
+        assert dictPlan["listSteps"], dictPlan
+        assert planModule.fdictStepAnnouncedOnHub(dictPlan) is None
 
 
 def testAnUndersizedMachineWithRunningContainersIsNotRestarted():
