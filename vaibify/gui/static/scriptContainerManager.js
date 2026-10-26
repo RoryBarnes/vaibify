@@ -325,6 +325,9 @@ var VaibifyContainerManager = (function () {
             ? ' data-locked="true" data-locked-message="' +
               sLockedMessage + '"'
             : "";
+        var sStatusTitle = (bDeleting || bUnavailable || bQuarantined)
+            ? "" : ' title="' + VaibifyUtilities.fnEscapeHtml(
+                _fsTileStatusTooltip(dictContainer, bHost)) + '"';
         return (
             '<div class="container-tile' + sStateClass +
             '" data-name="' +
@@ -344,7 +347,7 @@ var VaibifyContainerManager = (function () {
                 ? "true" : "false") +
             '"' + _fsRenderHostTileData(dictContainer, bHost) +
             sLockedAttr + sLockedTitle + '>' +
-            '<div class="container-tile-main">' +
+            '<div class="container-tile-main"' + sStatusTitle + '>' +
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
@@ -855,6 +858,35 @@ var VaibifyContainerManager = (function () {
         return (
             "<p>Unsettled operations still holding this container:</p>" +
             "<ul class=\"quarantine-records\">" + sRows + "</ul>");
+    }
+
+    /* What the tile is and what a click on it does, in words: a dot
+       alone never said that clicking a stopped tile starts it
+       (researcher-reported, 2026-10-26). Each sentence states what
+       fnHandleContainerClick does for that state; locked, quarantined
+       and deleting tiles keep their own explanation. */
+    function _fsTileStatusTooltip(dictContainer, bHost) {
+        var sStatus = dictContainer.sStatus;
+        if (bHost && sStatus === "missing") {
+            return "Its folder is gone: " +
+                (dictContainer.sDirectory || "directory unknown") +
+                ". Move it back, or remove the tile with \u22ee \u2192 " +
+                "Remove from list.";
+        }
+        if (bHost) {
+            return "Ready on this machine, with no container. Click to " +
+                "open it.";
+        }
+        if (sStatus === "running") return "Running. Click to open it.";
+        if (sStatus === "stopped") {
+            return "Stopped. Click to start it and open it, or use " +
+                "\u22ee \u2192 Start to start it without opening.";
+        }
+        if (_fbImageObtained(dictContainer)) {
+            return "Not built yet. Click to obtain the author's image " +
+                "and start it.";
+        }
+        return "Not built yet. Click to build its image and start it.";
     }
 
     function _fsStatusDotClass(sStatus) {
@@ -3249,7 +3281,8 @@ var VaibifyContainerManager = (function () {
         '&nbsp; <span class="status-dot status-not-built"></span> not built ' +
         '&nbsp; <span class="status-dot status-host-ready"></span> ready ' +
         '(this machine) &nbsp; <span class="status-dot status-missing">' +
-        '</span> directory missing</p>' +
+        '</span> directory missing. Hover a tile to see what clicking ' +
+        'it does.</p>' +
         '<p><span class="containment-chip containment-chip--contained">' +
         'contained</span> runs in a container &nbsp; ' +
         '<span class="containment-chip containment-chip--direct">' +

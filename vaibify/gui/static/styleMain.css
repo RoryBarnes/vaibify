@@ -354,9 +354,12 @@ html, body {
     background-position: center;
 }
 
+/* Stopped is a resting state, not a failure. Red is kept for what needs
+   fixing (a missing folder), so stopped is a filled grey, darker than a
+   host project's "ready" grey so the two never read alike (ruled
+   2026-10-26). */
 .status-dot.status-stopped {
-    background: #8a0c0c;
-    box-shadow: 0 0 6px rgba(201, 17, 17, 0.4);
+    background: var(--text-muted);
 }
 
 .status-dot.status-not-built {

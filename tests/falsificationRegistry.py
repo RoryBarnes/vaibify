@@ -36404,6 +36404,26 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/browser/testTileTooltipsSayWhatAClickDoes.py::'
+            'testEveryTileSaysWhatItIsAndWhatAClickDoes'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # the dot is again the only word about a tile's state
+        old="            '<div class=\"container-tile-main\"' + sStatusTitle + '>' +\n",
+        new="            '<div class=\"container-tile-main\">' +\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTileTooltipsSayWhatAClickDoes.py::'
+            'testAStoppedContainerIsGreyNotRed'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        # a resting container is drawn in the red kept for failures
+        old='.status-dot.status-stopped {\n    background: var(--text-muted);\n}\n',
+        new='.status-dot.status-stopped {\n    background: #8a0c0c;\n}\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/browser/testDockerBannerNamesWhatFailed.py::'
             'testAServerThatDoesNotAnswerIsNeverReportedAsDockerUnavailable'
         ),
