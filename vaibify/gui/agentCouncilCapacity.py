@@ -40,6 +40,13 @@ hold; a participant cannot read a gigabyte of one file usefully. That
 judgement is the researcher's to override for a specific file — by
 excluding it, not by raising the bound — which is why the ceiling is a
 constant here and an exclusion is a choice at convene time.
+
+**A full-sandbox council keeps half the working tree free.** Its
+members edit and run their own copies (design section 8.6), and a copy
+that fills ``/council`` leaves no room for the first file they write.
+So in that kind the largest snapshot is half the working tree, less the
+page rounding its files can cost. A read-only council writes nothing
+and keeps the whole working tree as its ceiling.
 """
 
 __all__ = [
@@ -48,6 +55,11 @@ __all__ = [
     "I_FLOOR_SNAPSHOT_TOTAL_BYTES",
     "I_CEILING_SNAPSHOT_MEMBER_BYTES",
     "I_ASSUMED_CONCURRENT_RUNNERS",
+    "I_TMPFS_PAGE_BYTES",
+    "S_WORKING_SPACE_REMEDY",
+    "fdictDescribeWorkingSpace",
+    "fdictReserveWorkingSpace",
+    "fiEstimateTmpfsRoundingBytes",
     "fdictResolveCouncilCapacity",
     "fdictResolveCouncilCapacityFromClient",
     "fdictFloorCouncilCapacity",
@@ -96,6 +108,28 @@ I_ASSUMED_CONCURRENT_RUNNERS = 8
 # agentCouncilRunner._fnValidateRunnerLimits refuses to let anyone break.
 _F_RUNNER_MEMORY_FOR_WORKING_TREE = 0.5
 _F_RUNNER_MEMORY_FOR_SCRATCH = 0.0625
+
+# The share of the working tree a full-sandbox council keeps free for
+# its members' own writes (researcher ruling D5, 2026-10-26).
+_F_WORKING_TREE_RESERVED_FOR_WRITES = 0.5
+
+# Measured on a council runner's tmpfs (colima on arm64, 2026-10-26):
+# a file is charged its size rounded up to whole 4096-byte pages and a
+# directory is charged nothing. 2000 files of 100 bytes used exactly
+# 8,192,000 bytes, 2000 files of 5000 bytes used 16,384,000, and one
+# 10 MiB file used exactly its size. So a file wastes less than one
+# page, and one page per file bounds the rounding. A daemon whose
+# kernel uses larger pages would need this raised.
+I_TMPFS_PAGE_BYTES = 4096
+
+# The ways out of a refusal the reserve caused, named wherever one is
+# reported so a researcher is never left with only a number.
+S_WORKING_SPACE_REMEDY = (
+    "A full-sandbox council keeps half of each runner's working tree "
+    "free for its members' own edits and runs. Narrow the snapshot to "
+    "the files git tracks, or exclude files when you convene, or "
+    "convene a read-only council, whose snapshot may fill the working "
+    "tree.")
 
 
 def fiReadHostMemoryBytes():
@@ -187,22 +221,80 @@ def fdictFloorCouncilCapacity():
         "iHostMemoryBytes": 0,
         "iDaemonMemoryBytes": 0,
         "bMeasured": False,
+        "bReservesWorkingSpace": False,
     }
 
 
-def fdictResolveCouncilCapacity(connectionDocker=None):
+def fdictResolveCouncilCapacity(connectionDocker=None,
+                                bReserveWorkingSpace=True):
     """Return the snapshot bounds and runner limits this machine allows.
 
     ``connectionDocker`` is optional: without it the daemon half falls
     back to its floors and only the host-bound per-member cap scales.
     That is the honest answer for a caller that has no daemon to ask,
     and it is never worse than the previous fixed constants.
+
+    ``bReserveWorkingSpace`` is True for a full-sandbox council, the
+    default kind, and False for a read-only one, which keeps the whole
+    working tree as its snapshot ceiling.
     """
     iDaemonMemoryBytes = 0
     if connectionDocker is not None:
         iDaemonMemoryBytes = connectionDocker.fdictReadDaemonCapacity()[
             "iMemoryBytes"]
-    return _fdictResolveCapacityForDaemonMemory(iDaemonMemoryBytes)
+    dictCapacity = _fdictResolveCapacityForDaemonMemory(iDaemonMemoryBytes)
+    if bReserveWorkingSpace:
+        return fdictReserveWorkingSpace(dictCapacity)
+    return dictCapacity
+
+
+def fiEstimateTmpfsRoundingBytes(iFileCount):
+    """Return an upper bound on the page rounding a tree of files costs."""
+    return max(0, int(iFileCount)) * I_TMPFS_PAGE_BYTES
+
+
+def fdictReserveWorkingSpace(dictCapacity):
+    """Return the capacity with half the working tree kept for writes.
+
+    A copy, so a caller holding the read-only answer can also state the
+    full-sandbox one. The rounding bound uses the largest file count a
+    snapshot may have, because the ceiling is fixed before any file is
+    counted.
+    """
+    dictReserved = dict(dictCapacity)
+    iWorkingTreeBytes = dictReserved["iRunnerWorkingTreeBytes"]
+    iReserveBytes = int(iWorkingTreeBytes * _F_WORKING_TREE_RESERVED_FOR_WRITES)
+    dictReserved["iMaxSnapshotTotalBytes"] = (
+        iWorkingTreeBytes - iReserveBytes
+        - fiEstimateTmpfsRoundingBytes(dictReserved["iMaxSnapshotFileCount"]))
+    dictReserved["iMaxSnapshotMemberBytes"] = min(
+        dictReserved["iMaxSnapshotMemberBytes"],
+        dictReserved["iMaxSnapshotTotalBytes"])
+    dictReserved["bReservesWorkingSpace"] = True
+    return dictReserved
+
+
+def fdictDescribeWorkingSpace(iWorkingTreeBytes, iScratchBytes,
+                              iSnapshotBytes, iFileCount):
+    """Return the room a member has once its snapshot is copied in.
+
+    ``iFreeAfterCopyBytes`` is the working tree less the snapshot and
+    its page rounding. ``bFullBaselineFits`` says whether a git baseline
+    of the whole copy (another copy of every file, one object file each)
+    would still leave half the reserve free; when it would not, a member
+    is told to stage only the files it touches.
+    """
+    iRoundingBytes = fiEstimateTmpfsRoundingBytes(iFileCount)
+    iFreeAfterCopyBytes = max(
+        0, iWorkingTreeBytes - iSnapshotBytes - iRoundingBytes)
+    iReserveBytes = int(iWorkingTreeBytes * _F_WORKING_TREE_RESERVED_FOR_WRITES)
+    return {
+        "iFreeAfterCopyBytes": iFreeAfterCopyBytes,
+        "iScratchBytes": iScratchBytes,
+        "bFullBaselineFits": (
+            iFreeAfterCopyBytes - iSnapshotBytes - iRoundingBytes
+            >= iReserveBytes // 2),
+    }
 
 
 def fdictResolveCouncilCapacityFromClient(dockerClient):
@@ -254,8 +346,11 @@ def _fnScaleRunnerBoundsToDaemon(dictCapacity, iDaemonMemoryBytes):
 
     The chain runs one way and is stated here because reading it out of
     three modules is how it gets broken: daemon memory bounds a
-    runner's memory limit, which bounds its working tree, which IS the
-    largest snapshot that can be copied into it.
+    runner's memory limit, which bounds its working tree, which bounds
+    the largest snapshot that can be copied into it. The total set here
+    is the whole working tree, a read-only council's ceiling; a
+    full-sandbox council then keeps half of it free
+    (:func:`fdictReserveWorkingSpace`).
     """
     iRunnerMemoryBytes = max(
         I_FLOOR_RUNNER_MEMORY_BYTES,

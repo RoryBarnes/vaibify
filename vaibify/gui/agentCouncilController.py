@@ -1226,6 +1226,8 @@ async def fdictLaunchCampaignDeliberation(
             agentCouncilCharter.fsDescribeSnapshotScope(
                 dictManifest.get("listResearcherExcludedPaths") or [],
                 dictManifest))
+        dictCampaign["dictProjectIdentity"]["sExecutionPermissionNote"] = (
+            _fsComposeExecutionPermissionNote(dictCampaign, dictManifest))
         baSnapshotTar = _fbaReadSealedSnapshot(dictStore, sCampaignId)
         # Pinned before the first turn, checkpointed with the snapshot
         # identity: the image the runners execute in and the sealed
@@ -1293,6 +1295,32 @@ async def fdictLaunchCampaignDeliberation(
                 dictStore, sCampaignId, dictCampaign)
         raise
     return {"sTurnId": sTurnId}
+
+
+def _fsComposeExecutionPermissionNote(dictCampaign, dictManifest):
+    """Compose the note naming what this council's kind permits.
+
+    The room a member has comes from the runner sizes the capture was
+    bounded by and the snapshot it sealed. Whether git is there to
+    record a baseline needs no probe of its own: the capture ran git in
+    a container of this same image, as the same user, and refuses the
+    snapshot when that fails, so a sealed manifest is that check.
+    """
+    from . import agentCouncilCapacity
+    dictFloor = agentCouncilCapacity.fdictFloorCouncilCapacity()
+    dictSpace = dictManifest.get("dictRunnerSpaceAtCapture") or {}
+    dictWorkingSpace = agentCouncilCapacity.fdictDescribeWorkingSpace(
+        dictSpace.get("iRunnerWorkingTreeBytes")
+        or dictFloor["iRunnerWorkingTreeBytes"],
+        dictSpace.get("iRunnerScratchBytes")
+        or dictFloor["iRunnerScratchBytes"],
+        int(dictManifest.get("iTotalContentBytes") or 0),
+        int(dictManifest.get("iIncludedMemberCount") or 0))
+    return agentCouncilCharter.fsDescribeExecutionPermission(
+        dictCampaign["dictSettings"]["sExecutionPermission"]
+        == agentCouncilCampaign.S_EXECUTION_READ_ONLY,
+        dictWorkingSpace,
+        bGitAvailable=bool(dictManifest.get("sPreObservationDigest")))
 
 
 async def _fnAwaitBuildWorkerCompletion(taskBuild):

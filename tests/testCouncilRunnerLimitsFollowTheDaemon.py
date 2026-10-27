@@ -66,7 +66,7 @@ def testTheClientAndTheConnectionResolveTheSameCapacity():
                     "iCpuCount": 8}
 
     assert agentCouncilCapacity.fdictResolveCouncilCapacity(
-        FakeConnection()) == (
+        FakeConnection(), bReserveWorkingSpace=False) == (
         agentCouncilCapacity.fdictResolveCouncilCapacityFromClient(
             FakeDaemonClient(I_LARGE_DAEMON_MEMORY_BYTES)))
 

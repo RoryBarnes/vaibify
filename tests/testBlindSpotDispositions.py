@@ -105,7 +105,14 @@ _S_COUNCIL_RUNNER_RATIONALE = (
     "the startup classifier and the egress sweep) asks the identical "
     "question. Behaviour is unchanged and the direction is unchanged — "
     "two more callers that DECLINE to act. Neither twin touches the "
-    "SDK; both read a host lock file."
+    "SDK; both read a host lock file. "
+    "Re-reviewed 2026-10-27 when the create fingerprints moved: the "
+    "create may ask for its two tmpfs mounts to be executable (a "
+    "full-sandbox turn and its replay sandbox), and states noexec "
+    "otherwise. That is a mount option on a council-created container's "
+    "own tmpfs, with nosuid, nodev, the council user, dropped "
+    "capabilities and the read-only rootfs unchanged; it widens neither "
+    "which containers the SDK reaches nor what it may destroy."
 )
 _LIST_COUNCIL_RUNNER_SYMBOLS = [
     "gui/agentCouncilRunner.py::S_COUNCIL_LABEL",
@@ -363,14 +370,15 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     # thing either could see.
     "gui/agentCouncilRunner.py::S_COUNCIL_RESOURCE_LABEL":
         "eba896746fc73000",
+    # Re-read 2026-10-27: the executable-mounts option, see the rationale.
     "gui/agentCouncilRunner.py::fdictComposeRunnerCreateSpecification":
-        "5e83fd78e4730736",
+        "00fae7d5d6c2e1be",
     "gui/agentCouncilRegistry.py::_fbSurvivorBelongsToALivePeerHub":
         "9a5b8eee881fa9c5",
     "gui/agentCouncilRegistry.py::_fbResourceHeldByALivePeerHub":
         "c0f215615af1f24c",
     "gui/agentCouncilDockerGateway.py::fdictReserveAndCreateRunner":
-        "a24871a501bf8d6b",
+        "4ddd12cd27278523",
     "gui/agentCouncilDockerGateway.py::fdictDestroyAndSettle":
         "51560bacb4682048",
     "gui/agentCouncilDockerGateway.py::flistDiscoverLabeledRunners":

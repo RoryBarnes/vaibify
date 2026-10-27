@@ -36,11 +36,16 @@ class _FakeDaemon:
 
 
 def _fdictResolve(monkeypatch, iHostBytes, iDaemonBytes):
-    """Resolve a capacity from an explicit host/daemon pair."""
+    """Resolve a capacity from an explicit host/daemon pair.
+
+    For a read-only council, whose snapshot total is the whole working
+    tree: that is the bound the scaling sets, before a full-sandbox
+    council keeps half of it free (testCouncilWorkingSpaceReserve.py).
+    """
     monkeypatch.setattr(
         agentCouncilCapacity, "fiReadHostMemoryBytes", lambda: iHostBytes)
     return agentCouncilCapacity.fdictResolveCouncilCapacity(
-        _FakeDaemon(iDaemonBytes))
+        _FakeDaemon(iDaemonBytes), bReserveWorkingSpace=False)
 
 
 def testASmallMachineGetsExactlyTheDeclaredFloors(monkeypatch):

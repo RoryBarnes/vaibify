@@ -48,3 +48,22 @@ def testTheConveneFormSendsTheMaximumRounds(pageDashboard, serverHub):
     assert dictCampaign["dictSettings"]["iMaximumRounds"] == 5
     assert pageDashboard.listPageErrors == []
     assert pageDashboard.listConsoleErrors == []
+
+
+@pytest.mark.falsification
+def testTheExecutionMenuSaysMembersMayEditAndRunTheirCopies(
+        pageDashboard, serverHub):
+    """The hint under the Execution permission menu is on the page.
+
+    Kills: the convene form rendered without the hint.
+    """
+    _fdictClaimAndActivate(pageDashboard, serverHub)
+    pageDashboard.click("#btnAgentCouncil")
+    pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    pageDashboard.click("#btnCouncilPlanChange")
+    pageDashboard.wait_for_selector("#councilExecutionHint", timeout=8000)
+    assert pageDashboard.inner_text("#councilExecutionHint") == (
+        "members may edit and run their own copies")
+    assert pageDashboard.is_visible("#councilExecutionHint")
+    assert pageDashboard.listPageErrors == []
+    assert pageDashboard.listConsoleErrors == []

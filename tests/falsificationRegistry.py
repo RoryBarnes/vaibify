@@ -16217,7 +16217,8 @@ LIST_FALSIFICATIONS = [
         # The chat clause replaces the whole charter instead of joining
         # it, so the chairbot loses its standing instructions.
         old=(
-            '    listSections = _flistComposeStandingSections(dictCampaign, dictParticipant)\n'
+            '    listSections = _flistComposeStandingSections(\n'
+            '        dictCampaign, dictParticipant, S_CHAT_EXECUTION_NOTE)\n'
             '    listSections.append(S_CHAT_INSTRUCTION)'
         ),
         new='    listSections = [S_CHAT_INSTRUCTION]',
@@ -36744,5 +36745,292 @@ LIST_FALSIFICATIONS = [
         # a missing prompt is judged inconclusive before the alternate screen
         old='    if fbEnteredTheAlternateScreen(baSwitched):\n        return S_VERDICT_ENTERED_ALTERNATE_SCREEN\n    if S_BRACKETED_PASTE_MODE not in fsetModesSet(baSwitched):\n        return S_VERDICT_NEVER_REACHED_PROMPT\n',
         new='    if S_BRACKETED_PASTE_MODE not in fsetModesSet(baSwitched):\n        return S_VERDICT_NEVER_REACHED_PROMPT\n    if fbEnteredTheAlternateScreen(baSwitched):\n        return S_VERDICT_ENTERED_ALTERNATE_SCREEN\n',
+    ),
+    # --- 2026-10-26: members write and run in a full-sandbox council;
+    # a read-only council and the chairbot chat run nothing.
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testAClaudeParticipantInAFullSandboxMayEditAndRun'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # full-sandbox Claude keeps plan mode
+        old='    "--permission-mode", "bypassPermissions",\n',
+        new='    "--permission-mode", "plan",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testAClaudeParticipantInAReadOnlyCouncilHasNoShell'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # read-only Claude keeps Bash
+        old='    "--disallowedTools", "Bash,WebFetch",\n',
+        new='    "--disallowedTools", "WebFetch",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testTheClaudeConnectionPassesTheCouncilKindToItsArgv'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # the Claude turn ignores the council kind
+        old='            self.saCliProgram, bReadOnlyCouncil=dictTurnRequest.get(\n                "bReadOnlyCouncil", False))\n',
+        new='            self.saCliProgram)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testACodexParticipantInAFullSandboxWritesItsWorkspace'
+        ),
+        source='vaibify/gui/agentCouncilCodexProvider.py',
+        # full-sandbox Codex kept in the read-only sandbox
+        old='    sSandboxMode = "read-only" if bReadOnlyCouncil else "workspace-write"\n',
+        new='    sSandboxMode = "read-only"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testEveryCodexTurnSearchesTheWebLive'
+        ),
+        source='vaibify/gui/agentCouncilCodexProvider.py',
+        # Codex search left disabled
+        old='        "-c", \'web_search="live"\',\n',
+        new='        "-c", \'web_search="disabled"\',\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testTheChairbotChatOverClaudeHasNoShell'
+        ),
+        source='vaibify/gui/agentCouncilProviderRegistry.py',
+        # chat Claude composed with the full-sandbox flags
+        old='            sModelId, sInstructionChannel, bReadOnlyCouncil=True)\n',
+        new='            sModelId, sInstructionChannel)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testTheChairbotChatOverCodexHasNoCommandTool'
+        ),
+        source='vaibify/gui/agentCouncilProviderRegistry.py',
+        # chat Codex keeps its shell tools
+        old='            sModelId, sInstructionChannel, bStructured=False,\n            bReadOnlyCouncil=True)\n',
+        new='            sModelId, sInstructionChannel, bStructured=False)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testTheChairbotChatOverAntigravityPlansOnly'
+        ),
+        source='vaibify/gui/agentCouncilProviderRegistry.py',
+        # chat Antigravity runs without plan mode
+        old='        sModelId, bStructured=False, bReadOnlyCouncil=True)\n',
+        new='        sModelId, bStructured=False)\n',
+    ),
+    # --- 2026-10-26: one evidence contract; a participant reports no
+    # provenance, and a web source is never confirmed.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilEvidenceContract.py::'
+            'testTheSchemaAndTheValidatorGiveEveryRowTheSameVerdict'
+        ),
+        source='vaibify/gui/agentCouncilEvidenceContract.py',
+        # the validator tolerates fields the strict schema forbids
+        old='    listUnexpected = sorted(\n        set(jsonEntry) - set(DICT_EVIDENCE_FIELDS_BY_FORM[sStateForm]))\n',
+        new='    listUnexpected = []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilEvidenceContract.py::'
+            'testTheLedgerRefusesAnEntryWithoutObservedProvenance'
+        ),
+        source='vaibify/gui/agentCouncilStore.py',
+        # the ledger accepts an entry with no observed provenance
+        old='        for sFieldName in LIST_LEDGER_REQUIRED_FIELDS:\n',
+        new='        for sFieldName in []:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilLedger.py::'
+            'testAWebSourceKeepsItsLinksAndLosesAnyCredential'
+        ),
+        source='vaibify/gui/agentCouncilEvidence.py',
+        # a web source is kept without a credential scan
+        old='        if not any(agentCouncilStore.fbDetectCredentialText(sText)\n                   for sText in listTexts):\n            return\n',
+        new='        return\n',
+    ),
+    # --- 2026-10-26: vaibify replays a modified-state claim under
+    # filesystem-aware confinement before the ledger records it.
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilLedger.py::'
+            'testAModifiedStateClaimRecordsWhatTheReplaySandboxObserved'
+        ),
+        source='vaibify/gui/agentCouncilEvidence.py',
+        # the ledger's exit code taken from the claim, not the sandbox
+        old='            "iExitCode": dictExecution.get("iExitCode"),\n',
+        new='            "iExitCode": dictClaim.get("iExitCode", 0),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilLedger.py::'
+            'testAManifestTheReplayCannotApplyLeavesTheClaimAsserted'
+        ),
+        source='vaibify/gui/agentCouncilEvidence.py',
+        # a failed replay recorded as though it had run
+        old='            self._fnRevertClaim(\n                dictClaim, f"modifiedStateReplayFailed: {error}")\n            return\n',
+        new='            dictExecution = {"sSnapshotHash": "h", "sExecutionImageIdentity": "i",\n                             "iExitCode": 0, "sOutputDigest": "d"}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilManifestConfinement.py::'
+            'testEveryEscapeProbeIsRefusedAndTouchesNothingOutside'
+        ),
+        source='vaibify/gui/agentCouncilManifest.py',
+        # the manifest walk follows a symlinked directory
+        old='I_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='I_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageCouncilGatewayLifecycle.py::'
+            'testAManifestThatCannotBeAppliedRunsNoCommandAndDestroysTheSandbox'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # the replay runs the command without applying the manifest
+        old='            if dictManifest is not None:\n',
+        new='            if False:\n',
+    ),
+    # --- 2026-10-26: a full-sandbox council keeps half the working
+    # tree free for its members' writes.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilWorkingSpaceReserve.py::'
+            'testAFullSandboxCeilingKeepsHalfTheWorkingTreeFree'
+        ),
+        source='vaibify/gui/agentCouncilCapacity.py',
+        # a full-sandbox ceiling equal to the whole working tree
+        old='    if bReserveWorkingSpace:\n        return fdictReserveWorkingSpace(dictCapacity)\n',
+        new='    if False:\n        return fdictReserveWorkingSpace(dictCapacity)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilWorkingSpaceReserve.py::'
+            'testAWholeCopyBaselineIsOfferedOnlyWhenHalfTheReserveSurvivesIt'
+        ),
+        source='vaibify/gui/agentCouncilCapacity.py',
+        # a whole-copy git baseline offered whatever its size
+        old='            iFreeAfterCopyBytes - iSnapshotBytes - iRoundingBytes\n            >= iReserveBytes // 2),\n',
+        new='            True),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilWorkingSpaceReserve.py::'
+            'testTheSnapshotCaptureIsBoundedByItsCouncilKind'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        # the capture resolves the default ceiling whatever the kind
+        old='        dictCtx.get("docker"), bReserveWorkingSpace=bReserveWorkingSpace)\n',
+        new='        dictCtx.get("docker"))\n',
+    ),
+    # --- 2026-10-26: charter 1.9.0 tells each member what its council's
+    # kind permits; the chat always gets its own read-only note.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilExecutionPermissionNote.py::'
+            'testAReadOnlyCouncilIsToldItCannotEditOrRun'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # a read-only council handed the full-sandbox note
+        old='    if bReadOnlyCouncil:\n        return S_READ_ONLY_EXECUTION_NOTE\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilExecutionPermissionNote.py::'
+            'testEveryProtocolTurnCarriesItsCampaignsNote'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # the standing sections drop the execution note
+        old='    if sExecutionNote:\n        listSections.append(sExecutionNote)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilExecutionPermissionNote.py::'
+            'testTheChatNeverInheritsTheFullSandboxNote'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # the chat inherits the full-sandbox note
+        old='        dictCampaign, dictParticipant, S_CHAT_EXECUTION_NOTE)\n',
+        new='        dictCampaign, dictParticipant,\n        (dictCampaign.get("dictProjectIdentity") or {}).get(\n            "sExecutionPermissionNote", ""))\n',
+    ),
+    # --- 2026-10-26: the convene form says full-sandbox members may
+    # edit and run their own copies.
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilMaximumRoundsReachesTheRecord.py::'
+            'testTheExecutionMenuSaysMembersMayEditAndRunTheirCopies'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # the convene form rendered without the hint
+        old=('            "<p class=\\"council-hint\\" id=\\"councilExecutionHint\\">" +\n'
+             '            "members may edit and run their own copies</p>" +\n'),
+        new='',
+    ),
+    # --- 2026-10-27: a malformed evidence value is a problem the repair
+    # path names, never an exception, and both validators agree on it.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilEvidenceContract.py::'
+            'testEveryMalformedValueGetsOneVerdictAndNoException'
+        ),
+        source='vaibify/gui/agentCouncilEvidenceContract.py',
+        # an unhashable 'sStateForm' raises in the form lookup
+        old='    if not isinstance(sStateForm, str) or (\n            sStateForm not in DICT_EVIDENCE_FIELDS_BY_FORM):\n',
+        new='    if sStateForm not in DICT_EVIDENCE_FIELDS_BY_FORM:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilEvidenceContract.py::'
+            'testAMalformedEvidenceFormIsRepairedNotRaised'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # an unhashable verdict raises in the required-list lookup
+        old='    sRequiredKey = None if bRequireSummary or not isinstance(\n        sVerdict, str) else DICT_VERDICT_REQUIRES_NONEMPTY.get(sVerdict)\n',
+        new='    sRequiredKey = None if bRequireSummary else (\n        DICT_VERDICT_REQUIRES_NONEMPTY.get(sVerdict))\n',
+    ),
+    # --- 2026-10-27: a full-sandbox runner and its replay sandbox may
+    # execute files on their writable mounts; nothing else may.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRunnerExecutableMounts.py::'
+            'testAFullSandboxTurnAsksForAnExecutableRunner'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # a full-sandbox runner left noexec
+        old='            dictEnvironment or None, listDnsServers, listDnsOptions,\n            dictTurnRequest.get("bReadOnlyCouncil") is False)\n',
+        new='            dictEnvironment or None, listDnsServers, listDnsOptions,\n            False)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRunnerExecutableMounts.py::'
+            'testAReadOnlyTurnAndAnUnstatedOneStayNoexec'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # a request that does not say it is a full sandbox may execute
+        old='            dictTurnRequest.get("bReadOnlyCouncil") is False)\n',
+        new='            dictTurnRequest.get("bReadOnlyCouncil") is not True)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRunnerExecutableMounts.py::'
+            'testTheReplaySandboxCanExecuteWhatTheMemberBuilt'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # the evidence sandbox cannot replay a built program
+        old='            dictLimits=dictLimits, bSandbox=True,\n            bWritableMountsExecutable=True)\n',
+        new='            dictLimits=dictLimits, bSandbox=True)\n',
     ),
 ]

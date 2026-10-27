@@ -213,15 +213,21 @@ def fbaBuildProviderConfigTarball(sProvider, sCredentialPath,
 
 def flistComposeProviderChatArgv(sProvider, sModelId,
                                  sInstructionChannel):
-    """Compose one provider's unstructured chairbot command."""
+    """Compose one provider's unstructured chairbot command.
+
+    The chat is read-only with search in every council: the chairbot
+    reads the copy and may search the web, but never edits or runs
+    anything, whatever the campaign's own execution permission.
+    """
     if sProvider == "claude":
         return agentCouncilProviders.flistComposeClaudeArgv(
-            sModelId, sInstructionChannel)
+            sModelId, sInstructionChannel, bReadOnlyCouncil=True)
     if sProvider == "codex":
         return agentCouncilCodexProvider.flistComposeCodexArgv(
-            sModelId, sInstructionChannel, bStructured=False)
+            sModelId, sInstructionChannel, bStructured=False,
+            bReadOnlyCouncil=True)
     return agentCouncilAntigravityProvider.flistComposeAntigravityArgv(
-        sModelId, bStructured=False)
+        sModelId, bStructured=False, bReadOnlyCouncil=True)
 
 
 def fbaComposeProviderChatStdin(sProvider, listQuotedMaterial):

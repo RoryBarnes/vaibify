@@ -143,8 +143,10 @@ def testRunnerLimitsAdmitTmpfsJustBelowTheMemoryLimit():
     dictKeywords = dictSpecification["dictCreateKeywords"]
     assert dictKeywords["mem_limit"] == 1000
     assert dictKeywords["memswap_limit"] == 1000
-    assert dictKeywords["tmpfs"]["/council"].startswith("size=600,")
-    assert dictKeywords["tmpfs"]["/tmp"] == "size=399,mode=1777"
+    assert dictKeywords["tmpfs"]["/council"].startswith(
+        "noexec,nosuid,nodev,size=600,")
+    assert dictKeywords["tmpfs"]["/tmp"] == (
+        "noexec,nosuid,nodev,size=399,mode=1777")
 
 
 def testSandboxRefusesAnyNetwork():

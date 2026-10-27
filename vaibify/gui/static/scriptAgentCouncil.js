@@ -1293,6 +1293,8 @@ var VaibifyAgentCouncil = (function () {
             "(default)</option>" +
             "<option value=\"readOnly\">Read-only council</option>" +
             "</select></label>" +
+            "<p class=\"council-hint\" id=\"councilExecutionHint\">" +
+            "members may edit and run their own copies</p>" +
             "<label>Minimum rounds " +
             "<input type=\"number\" id=\"councilMinimumRounds\" min=\"1\" " +
             "value=\"" + dict.iMinimumRounds + "\"></label>" +

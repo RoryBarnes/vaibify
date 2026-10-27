@@ -1137,7 +1137,7 @@ def testEvidenceIsTypedAsObjectsNotStrings():
     # The template shows the claim OBJECT, with the fields the engine
     # actually reads.
     for sClaimField in ("sStatus", "sStateForm", "sCommandText",
-                        "sSnapshotHash", "dictChangeManifest"):
+                        "dictChangeManifest", "listSourceLinks"):
         assert sClaimField in sSchema, sClaimField
     assert "confirmed" in sSchema and "baseline" in sSchema
     # And validation refuses a string where a claim object belongs.
@@ -1226,8 +1226,8 @@ def testEveryUnusableEvidenceClaimIsRefusedNotSilentlyDropped():
     assert _fbIsValid([{
         "sStatus": "confirmed", "sStateForm": "modifiedState",
         "sCommandText": "pytest -q"}]) is False, (
-        "a modifiedState confirmation with no provenance was accepted; "
-        "the ledger would record empty provenance fields")
+        "a modifiedState confirmation with no change manifest was "
+        "accepted; vaibify could not rebuild the state it ran against")
     assert _fbIsValid([""], sArrayKey="listPlanItems") is False, (
         "empty-string padding was accepted")
 
@@ -1238,28 +1238,35 @@ def testEveryUnusableEvidenceClaimIsRefusedNotSilentlyDropped():
         "sCommandText": "pytest -q"}]) is True
     assert _fbIsValid([{
         "sStatus": "confirmed", "sStateForm": "modifiedState",
-        "sCommandText": "pytest -q", "sSnapshotHash": "abc",
-        "sExecutionImageIdentity": "sha256:x", "iExitCode": 0,
-        "sOutputDigest": "d", "dictChangeManifest": {"a.py": "modified"}}]
-    ) is True
+        "sCommandText": "pytest -q", "dictChangeManifest": {
+            "listModifiedFiles": [{"sPath": "a.py", "sContent": "x"}],
+            "listDeletedPaths": [], "listChangedFileModes": [],
+            "listSymlinkTargets": []}}]) is True
 
 
 def testTheEvidenceVocabularyMatchesTheEngine():
     """The schema's statuses and state forms are the engine's own."""
-    from vaibify.gui import agentCouncilCampaign, agentCouncilCharter
-    assert set(agentCouncilCharter.TUPLE_EVIDENCE_CLAIM_STATUSES) == {
+    from vaibify.gui import (
+        agentCouncilCampaign, agentCouncilEvidenceContract, agentCouncilStore,
+    )
+    assert set(agentCouncilEvidenceContract.TUPLE_EVIDENCE_CLAIM_STATUSES) == {
         agentCouncilCampaign.S_CLAIM_CONFIRMED,
         agentCouncilCampaign.S_CLAIM_SOURCE_SUPPORTED,
         agentCouncilCampaign.S_CLAIM_ASSERTED,
         agentCouncilCampaign.S_CLAIM_BLOCKED,
     }
-    assert agentCouncilCharter.S_EVIDENCE_STATUS_CONFIRMED == (
+    assert agentCouncilEvidenceContract.S_EVIDENCE_STATUS_CONFIRMED == (
         agentCouncilCampaign.S_CLAIM_CONFIRMED)
-    # Every field the modified-state ledger entry copies is required.
+    assert agentCouncilEvidenceContract.S_EVIDENCE_STATE_MODIFIED == (
+        agentCouncilStore.S_STATE_FORM_MODIFIED)
+    # Provenance is what vaibify observes, so no participant form may
+    # carry it: the ledger requires it and replay supplies it.
     for sField in ("sSnapshotHash", "sExecutionImageIdentity",
-                   "iExitCode", "sOutputDigest", "dictChangeManifest"):
-        assert sField in (
-            agentCouncilCharter.TUPLE_EVIDENCE_MODIFIED_STATE_FIELDS), sField
+                   "iExitCode", "sOutputDigest"):
+        assert sField in agentCouncilStore.LIST_LEDGER_REQUIRED_FIELDS
+        for tFields in (
+                agentCouncilEvidenceContract.DICT_EVIDENCE_FIELDS_BY_FORM.values()):
+            assert sField not in tFields, sField
 
 
 def testEveryRequiredEvidenceFieldIsOneTheEngineReads():
@@ -1270,11 +1277,13 @@ def testEveryRequiredEvidenceFieldIsOneTheEngineReads():
     would have failed real turns over a field going nowhere.
     """
     import pathlib
-    from vaibify.gui import agentCouncilCharter
+    from vaibify.gui import agentCouncilEvidenceContract
     sEvidenceSource = pathlib.Path(
         "vaibify/gui/agentCouncilEvidence.py").read_text()
-    for sField in (agentCouncilCharter.TUPLE_EVIDENCE_BASE_FIELDS
-                   + agentCouncilCharter.TUPLE_EVIDENCE_MODIFIED_STATE_FIELDS
+    for sField in (agentCouncilEvidenceContract.TUPLE_EVIDENCE_BASE_FIELDS
+                   + agentCouncilEvidenceContract.
+                   TUPLE_EVIDENCE_MODIFIED_STATE_FIELDS
+                   + agentCouncilEvidenceContract.TUPLE_EVIDENCE_WEB_SOURCE_FIELDS
                    + ("sStateForm", "sCommandText")):
         assert sField in sEvidenceSource, (
             f"the schema requires {sField}, which the evidence engine "

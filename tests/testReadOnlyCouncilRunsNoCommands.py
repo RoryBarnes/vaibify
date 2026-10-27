@@ -8,7 +8,14 @@ confirmed claim before the baseline executor runs
 not: every provider ran with the same flags in both modes, and Codex's
 ``--sandbox read-only`` and Antigravity's ``--sandbox`` restrict writes
 and the terminal, not commands, so a participant could still run the
-project's scripts. Claude runs in plan mode in both modes and cannot.
+project's scripts. Claude's plan mode does not stop commands either: it
+still runs shell commands the model judges read-only, so a read-only
+Claude turn removes the Bash tool itself.
+
+The other half is the full-sandbox council, which design section 8.6
+says may "write and execute freely inside" its runner. Every provider
+once ran self-restricted in that kind too, so these tests pin both
+directions, and the chairbot chat, which is read-only in every council.
 
 The engine is driven with the shared fake providers; the two real
 provider connections are driven up to the bounded-turn primitive, which
@@ -23,9 +30,15 @@ from vaibify.gui import agentCouncilDockerGateway
 from vaibify.gui.agentCouncilAntigravityProvider import (
     AntigravityRunnerConnection,
 )
+from vaibify.gui import agentCouncilProviderRegistry
 from vaibify.gui.agentCouncilCodexProvider import (
     LIST_CODEX_READ_ONLY_COUNCIL_FLAGS,
     CodexRunnerConnection,
+)
+from vaibify.gui.agentCouncilProviders import (
+    LIST_CLAUDE_FULL_SANDBOX_FLAGS,
+    LIST_CLAUDE_READ_ONLY_FLAGS,
+    ClaudeRunnerConnection,
 )
 
 from tests.agentCouncilHarness import ffnDecideAllAccept, fixtureBuildCouncil
@@ -110,3 +123,80 @@ def testAnAntigravityParticipantInAReadOnlyCouncilPlansOnly(monkeypatch):
         AntigravityRunnerConnection, False, monkeypatch)
     assert _fbArgvCarriesFlags(saReadOnly, ["--mode", "plan"])
     assert not _fbArgvCarriesFlags(saFull, ["--mode", "plan"])
+
+
+@pytest.mark.falsification
+def testAClaudeParticipantInAReadOnlyCouncilHasNoShell(monkeypatch):
+    """Kills: a read-only Claude turn that keeps its Bash tool."""
+    saReadOnly = _flistArgvOfOneTurn(
+        ClaudeRunnerConnection, True, monkeypatch)
+    assert _fbArgvCarriesFlags(saReadOnly, LIST_CLAUDE_READ_ONLY_FLAGS)
+    sDisallowed = saReadOnly[saReadOnly.index("--disallowedTools") + 1]
+    assert "Bash" in sDisallowed.split(",")
+    assert saReadOnly[saReadOnly.index("--permission-mode") + 1] == "plan"
+
+
+@pytest.mark.falsification
+def testAClaudeParticipantInAFullSandboxMayEditAndRun(monkeypatch):
+    """Kills: a full-sandbox Claude turn left in plan mode."""
+    saFull = _flistArgvOfOneTurn(ClaudeRunnerConnection, False, monkeypatch)
+    assert _fbArgvCarriesFlags(saFull, LIST_CLAUDE_FULL_SANDBOX_FLAGS)
+    assert saFull[saFull.index("--permission-mode") + 1] == (
+        "bypassPermissions")
+    sDisallowed = saFull[saFull.index("--disallowedTools") + 1]
+    assert "Bash" not in sDisallowed.split(",")
+    assert "WebFetch" in sDisallowed.split(",")
+
+
+@pytest.mark.falsification
+def testTheClaudeConnectionPassesTheCouncilKindToItsArgv(monkeypatch):
+    """Kills: the Claude turn composing its argv without the kind."""
+    saReadOnly = _flistArgvOfOneTurn(
+        ClaudeRunnerConnection, True, monkeypatch)
+    saFull = _flistArgvOfOneTurn(ClaudeRunnerConnection, False, monkeypatch)
+    assert saReadOnly != saFull
+
+
+@pytest.mark.falsification
+def testACodexParticipantInAFullSandboxWritesItsWorkspace(monkeypatch):
+    """Kills: a full-sandbox Codex turn kept in the read-only sandbox."""
+    saReadOnly = _flistArgvOfOneTurn(CodexRunnerConnection, True, monkeypatch)
+    saFull = _flistArgvOfOneTurn(CodexRunnerConnection, False, monkeypatch)
+    assert saFull[saFull.index("--sandbox") + 1] == "workspace-write"
+    assert saReadOnly[saReadOnly.index("--sandbox") + 1] == "read-only"
+
+
+@pytest.mark.falsification
+def testEveryCodexTurnSearchesTheWebLive(monkeypatch):
+    """Kills: Codex web search left disabled in either council kind."""
+    for bReadOnlyCouncil in (True, False):
+        saArgv = _flistArgvOfOneTurn(
+            CodexRunnerConnection, bReadOnlyCouncil, monkeypatch)
+        assert _fbArgvCarriesFlags(saArgv, ["-c", 'web_search="live"'])
+
+
+def _flistChatArgv(sProvider):
+    return agentCouncilProviderRegistry.flistComposeProviderChatArgv(
+        sProvider, "model-x", "charter")
+
+
+@pytest.mark.falsification
+def testTheChairbotChatOverClaudeHasNoShell():
+    """Kills: the Claude chat composed with the full-sandbox flags."""
+    assert _fbArgvCarriesFlags(
+        _flistChatArgv("claude"), LIST_CLAUDE_READ_ONLY_FLAGS)
+
+
+@pytest.mark.falsification
+def testTheChairbotChatOverCodexHasNoCommandTool():
+    """Kills: the Codex chat keeping its shell tools."""
+    saChat = _flistChatArgv("codex")
+    assert _fbArgvCarriesFlags(saChat, LIST_CODEX_READ_ONLY_COUNCIL_FLAGS)
+    assert saChat[saChat.index("--sandbox") + 1] == "read-only"
+    assert _fbArgvCarriesFlags(saChat, ["-c", 'web_search="live"'])
+
+
+@pytest.mark.falsification
+def testTheChairbotChatOverAntigravityPlansOnly():
+    """Kills: the Antigravity chat run without plan mode."""
+    assert _fbArgvCarriesFlags(_flistChatArgv("gemini"), ["--mode", "plan"])

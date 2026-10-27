@@ -314,7 +314,8 @@ def _fnRefuseLaunchWhileCampaignBusy(dictControllerState, dictRegistry,
 
 def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
                              sProjectRepoPath, sCampaignId, sName,
-                             listExcludedPaths=None, dictSnapshotScope=None):
+                             listExcludedPaths=None, dictSnapshotScope=None,
+                             bReserveWorkingSpace=True):
     """Build the closure that captures the snapshot under the project lock.
 
     The bounded project lock (design section 9.2) is the commit
@@ -337,7 +338,7 @@ def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
     # would let a daemon restart between the two make the button's
     # promise and the capture's refusal disagree.
     dictBounds = agentCouncilCapacity.fdictResolveCouncilCapacity(
-        dictCtx.get("docker"))
+        dictCtx.get("docker"), bReserveWorkingSpace=bReserveWorkingSpace)
 
     async def _fdictCaptureUnderProjectLock():
         dictLaneTuple = commitCarrier.fdictBuildLaneTupleFromRequest(
@@ -1004,7 +1005,10 @@ def _fnRegisterStartCouncil(app, dictCtx):
                         dictCtx, requestHttp, sContainerId,
                         sProjectRepoPath, sCampaignId, sName,
                         request.listExcludedPaths,
-                        dictCampaign["dictSnapshotScope"]),
+                        dictCampaign["dictSnapshotScope"],
+                        bReserveWorkingSpace=(
+                            dictCampaign["dictSettings"]["sExecutionPermission"]
+                            != agentCouncilCampaign.S_EXECUTION_READ_ONLY)),
                     sImageReference,
                     ftStageRunnerCredential=fdictBuildCredentialStagers(
                         dictCtx, sContainerId, setProviders,

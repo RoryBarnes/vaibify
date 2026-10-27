@@ -4674,7 +4674,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # against the shared plain-id pattern.
     # 1580 -> 1581 (2026-10-06): the capabilities answer carries each
     # provider's own reason it has no copyable login.
-    "routes/councilRoutes.py": 1581,
+    # 1581 -> 1585 (2026-10-26): the snapshot capture is bounded by the
+    # council kind's own ceiling, so a read-only council keeps the whole
+    # working tree and a full-sandbox one keeps half of it free.
+    "routes/councilRoutes.py": 1585,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4723,7 +4726,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1358 -> 1404 (2026-10-02): the credential-exclusion policy grew
     # nine entries plus prefix and component-sequence matching; it is
     # the same responsibility (what a snapshot contains and why).
-    "agentCouncilContext.py": 1404,
+    # 1404 -> 1429 (2026-10-26): the pre-flight says whether the
+    # full-sandbox ceiling also fits, and a size refusal the reserve
+    # caused names the ways to narrow the snapshot.
+    # 1429 -> 1437 (2026-10-26): the manifest records the runner sizes
+    # the capture was bounded by, for the member's execution note.
+    "agentCouncilContext.py": 1437,
     # NEW at 837 (2026-08-26): the store crossed the default cap when
     # the durable provenance sidecar landed — the evidence ledger's
     # recorded state and the turn counter now survive a hub restart
@@ -4847,7 +4855,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # contract, so its wording lives here.
     # 1275 -> 1281 (2026-10-01): the version-history entry for charter
     # 1.8.0, which records the missed bump of clauses 6 and 7.
-    "agentCouncilCharter.py": 1281,
+    # 1281 -> 1178 (2026-10-26): the evidence claim contract moved to
+    # agentCouncilEvidenceContract.py, which changes with evidence policy
+    # rather than with the protocol text.
+    # 1178 -> 1269 (2026-10-26): charter 1.9.0's clauses for using the
+    # copy, and the per-kind execution notes a member and the chat read.
+    # 1269 -> 1271 (2026-10-26): the note says the working tree is
+    # noexec, measured in a runner, so scripts run through interpreters.
+    # 1271 -> 1273 (2026-10-27): a full-sandbox working tree is
+    # executable, so that sentence goes; the validator reads a verdict
+    # only when it is text and applies the non-blank pattern the schema
+    # states.
+    "agentCouncilCharter.py": 1273,
     # NEW at 810 (2026-08-29): the notes derivation joins the decision
     # grouping and the held-question descriptor. All three are the same
     # responsibility — reading a settled record into what a researcher
@@ -4908,7 +4927,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # against the daemon's own answer with bounded retries -- the
     # wedged daemon it defends against absorbs the first kill while
     # reporting success (measured live).
-    "agentCouncilDockerGateway.py": 1027,
+    # +2 (2026-10-27): runner creation passes on whether the writable
+    # mounts are executable; the runner module composes the options.
+    "agentCouncilDockerGateway.py": 1029,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
@@ -4977,7 +4998,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # already owns "what happened to a turn".
     # 1302 -> 1349 (2026-10-01): a turn the gateway killed, failed or left
     # empty names the real reason for every provider, from one extractor.
-    "agentCouncilProviders.py": 1349,
+    # 1349 -> 1371 (2026-10-26): the Claude permission flags per council
+    # kind, so a full-sandbox member edits and runs its copy (section 8.6)
+    # and a read-only one has no shell.
+    # 1371 -> 1404 (2026-10-26): the evidence executor applies a
+    # modified-state claim's manifest in its fresh sandbox before the
+    # command runs; it extends that one seam rather than forking it.
+    # 1404 -> 1408 (2026-10-27): a full-sandbox turn and the replay
+    # sandbox ask for executable writable mounts, so `./script` and a
+    # program a member builds run there and replay the same way.
+    "agentCouncilProviders.py": 1408,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -6686,7 +6716,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2219 -> 2238 (2026-10-01): a campaign a dead hub interrupted gets its
     # running attempt settled as an interruption, so Retry can admit it.
     # 2238 -> 2251 (2026-10-01): the shutdown releases the egress boundary after the runners drain.
-    "agentCouncilController.py": 2251,
+    # 2251 -> 2279 (2026-10-26): the launch composes the note telling a
+    # member what its council's kind permits and how much room it has.
+    "agentCouncilController.py": 2279,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
