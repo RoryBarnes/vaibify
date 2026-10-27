@@ -4860,7 +4860,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rather than with the protocol text.
     # 1178 -> 1269 (2026-10-26): charter 1.9.0's clauses for using the
     # copy, and the per-kind execution notes a member and the chat read.
-    "agentCouncilCharter.py": 1269,
+    # 1269 -> 1271 (2026-10-26): the note says the working tree is
+    # noexec, measured in a runner, so scripts run through interpreters.
+    "agentCouncilCharter.py": 1271,
     # NEW at 810 (2026-08-29): the notes derivation joins the decision
     # grouping and the held-question descriptor. All three are the same
     # responsibility — reading a settled record into what a researcher

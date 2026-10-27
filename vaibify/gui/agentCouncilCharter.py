@@ -456,8 +456,10 @@ def fsDescribeExecutionPermission(bReadOnlyCouncil, dictWorkingSpace=None,
         f"{dictSpace.get('iFreeAfterCopyBytes', 0) // (1024 * 1024)} MB "
         "free before you record any baseline; /tmp is "
         f"{dictSpace.get('iScratchBytes', 0) // (1024 * 1024)} MB of "
-        "scratch. There is no network beyond your provider, which can "
-        "search the web for you. "
+        "scratch. Files there cannot be executed directly, so run a "
+        "script through its interpreter, such as `sh script.sh` or "
+        "`python3 script.py`. There is no network beyond your provider, "
+        "which can search the web for you. "
         + _fsDescribeBaselineRecording(
             bGitAvailable, bool(dictSpace.get("bFullBaselineFits")))
         + " This turn's changes disappear when it ends; the next turn "

@@ -488,3 +488,38 @@ def testTheCredentialCeilingHoldsAtTheExactBoundaryLive():
             container.remove(force=True)
         except Exception:
             pass
+
+
+def test_a_modified_state_claim_is_replayed_in_a_real_sandbox(
+        tCouncilLiveHarness):
+    """The replay rebuilds the stated copy and records its own result.
+
+    The exit code and digest are the sandbox's: the command exits 3 and
+    prints the files as the manifest left them, which no participant
+    reported.
+    """
+    import hashlib
+    dictGateway, _ = tCouncilLiveHarness
+    bufferTar = io.BytesIO()
+    with tarfile.open(fileobj=bufferTar, mode="w") as fileTar:
+        infoMember = tarfile.TarInfo(name="model.txt")
+        infoMember.size = 4
+        fileTar.addfile(infoMember, io.BytesIO(b"old\n"))
+    fdictExecute = ffnBuildBaselineEvidenceExecutor(
+        dictGateway, "campReplay", S_RUNNER_TEST_IMAGE, "snapshot-hash",
+        bufferTar.getvalue(), dictLimits=_fdictSmallLimits(),
+        fWallClockSeconds=120.0)
+    sCommand = "cat model.txt added/new.txt && readlink latest; exit 3"
+    dictEvidence = fdictExecute({
+        "sCommandText": sCommand,
+        "dictChangeManifest": {
+            "listModifiedFiles": [
+                {"sPath": "model.txt", "sContent": "new\n"},
+                {"sPath": "added/new.txt", "sContent": "added\n"}],
+            "listDeletedPaths": [], "listChangedFileModes": [],
+            "listSymlinkTargets": [
+                {"sPath": "latest", "sTarget": "model.txt"}]}})
+    assert dictEvidence["iExitCode"] == 3
+    assert dictEvidence["sOutputDigest"] == hashlib.sha256(
+        b"new\nadded\nmodel.txt\n").hexdigest()
+    assert dictEvidence["sSnapshotHash"] == "snapshot-hash"

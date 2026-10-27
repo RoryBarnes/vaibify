@@ -699,3 +699,233 @@ def test_lifecycle_timing_reproduces_containment_measurement(
         f"full lifecycle took {fTotalSeconds:.1f}s; the design premise "
         "is that per-turn disposal is negligible next to model latency"
     )
+
+
+# ----- members write and run their own copies (full sandbox) -----------
+
+S_PROBE_SCRIPT = "#!/bin/sh\necho ran > /tmp/probeMarker\n"
+
+
+def _fbaBuildTarballOf(dictFiles, dictSymlinks=None):
+    """Build a snapshot tarball of named files and symlinks."""
+    bufferTar = io.BytesIO()
+    with tarfile.open(fileobj=bufferTar, mode="w") as fileTar:
+        for sName, baContent in dictFiles.items():
+            infoMember = tarfile.TarInfo(name=sName)
+            infoMember.size = len(baContent)
+            infoMember.mode = 0o755 if sName.endswith(".sh") else 0o644
+            fileTar.addfile(infoMember, io.BytesIO(baContent))
+        for sName, sTarget in (dictSymlinks or {}).items():
+            infoLink = tarfile.TarInfo(name=sName)
+            infoLink.type = tarfile.SYMTYPE
+            infoLink.linkname = sTarget
+            fileTar.addfile(infoLink)
+    return bufferTar.getvalue()
+
+
+def _fdictRunInRunner(dictGateway, sHandle, sCommand, baStdin=None,
+                      listCommand=None):
+    return moduleGateway.fdictExecuteBoundedTurn(
+        dictGateway, sHandle, listCommand or ["/bin/sh", "-c", sCommand],
+        fWallClockSeconds=120.0, sWorkingDirectory="/council",
+        baStdinPayload=baStdin)
+
+
+def _fbImageHasGit(dictGateway, sHandle):
+    return _fdictRunInRunner(
+        dictGateway, sHandle, "command -v git >/dev/null")["iExitCode"] == 0
+
+
+def test_a_full_sandbox_member_writes_runs_and_diffs_its_own_copy(
+        tCouncilHarness):
+    """The container permits what a full-sandbox member is told it may do.
+
+    Writes to /council and /tmp, runs a script that was in the snapshot
+    (proven by the marker it leaves), records a baseline and diffs
+    against it, and cannot write the read-only system files or execute
+    a file directly from the noexec working tree. With git
+    the baseline is the per-file staging the execution note teaches;
+    an image without git takes the note's other path, copies in /tmp.
+    """
+    _, dictGateway, _ = tCouncilHarness
+    dictRunner = _fdictCreateTracked(tCouncilHarness)
+    sHandle = dictRunner["sHandle"]
+    moduleGateway.fnCopySnapshotIntoRunner(
+        dictGateway, sHandle, _fbaBuildTarballOf({
+            "probeScript.sh": S_PROBE_SCRIPT.encode(),
+            "model.txt": b"fTolerance = 1e-6\n"}))
+    dictWrite = _fdictRunInRunner(
+        dictGateway, sHandle,
+        "echo new > /council/created.txt && echo scratch > /tmp/s.txt "
+        "&& sh ./probeScript.sh && cat /tmp/probeMarker")
+    assert dictWrite["iExitCode"] == 0, dictWrite
+    assert "ran" in dictWrite["sOutput"]
+    # Both tmpfs mounts are noexec (Docker's default for --tmpfs), so a
+    # file is run through its interpreter, never executed directly; the
+    # execution note tells members so. Pinned here so a change to that
+    # posture is a decision rather than a surprise.
+    dictDirect = _fdictRunInRunner(dictGateway, sHandle, "./probeScript.sh")
+    assert dictDirect["iExitCode"] == 126, dictDirect
+    if _fbImageHasGit(dictGateway, sHandle):
+        sBaseline = (
+            "git init -q && git add --force model.txt && "
+            "echo 'fTolerance = 1e-9' > model.txt && echo n > added.txt && "
+            "git add --force --intent-to-add added.txt && git diff")
+    else:
+        sBaseline = (
+            "cp model.txt /tmp/model.txt.orig && "
+            "echo 'fTolerance = 1e-9' > model.txt && "
+            "python3 -c \"import difflib,sys; sys.stdout.writelines("
+            "difflib.unified_diff(open('/tmp/model.txt.orig').readlines(),"
+            " open('model.txt').readlines()))\"")
+    dictDiff = _fdictRunInRunner(dictGateway, sHandle, sBaseline)
+    assert dictDiff["iExitCode"] == 0, dictDiff
+    assert "+fTolerance = 1e-9" in dictDiff["sOutput"], dictDiff
+    assert "-fTolerance = 1e-6" in dictDiff["sOutput"], dictDiff
+    dictSystem = _fdictRunInRunner(dictGateway, sHandle, "echo x > /etc/x")
+    assert dictSystem["iExitCode"] != 0
+    assert "Read-only file system" in dictSystem["sOutput"], dictSystem
+    dictDestroyed = moduleGateway.fdictDestroyAndSettle(dictGateway, sHandle)
+    assert dictDestroyed["sOutcome"] == "destroyed", dictDestroyed
+
+
+# ----- modified-state replay and its confinement, on a real container --
+
+DICT_HOSTILE_SNAPSHOT_LINKS = {
+    # Lexically inside the root, so the snapshot copy admits them; on
+    # disk ``b`` resolves through ``a -> .`` to /tmp/outside.
+    "a": ".",
+    "b": "a/../tmp/outside",
+    "victimLink": "a/../tmp/outside/victim",
+}
+
+LIST_CONTAINER_ESCAPE_PROBES = [
+    ("writeThroughTheDotDotPair", {"listModifiedFiles": [
+        {"sPath": "b/planted", "sContent": "x"}]}),
+    ("writeThroughTheSelfLink", {"listModifiedFiles": [
+        {"sPath": "a/b/planted", "sContent": "x"}]}),
+    ("overwriteASymlinkedFile", {"listModifiedFiles": [
+        {"sPath": "victimLink", "sContent": "x"}]}),
+    ("deleteThroughASymlinkedDirectory", {"listDeletedPaths": [
+        "b/victim"]}),
+    ("chmodASymlinkedFile", {"listChangedFileModes": [
+        {"sPath": "victimLink", "sMode": "777"}]}),
+    ("chmodThroughASymlinkedDirectory", {"listChangedFileModes": [
+        {"sPath": "b/victim", "sMode": "777"}]}),
+    ("dotDotPath", {"listModifiedFiles": [
+        {"sPath": "../tmp/outside/victim", "sContent": "x"}]}),
+    ("absolutePath", {"listModifiedFiles": [
+        {"sPath": "/tmp/outside/victim", "sContent": "x"}]}),
+    ("createASymlinkThenWriteThroughIt", {
+        "listSymlinkTargets": [{"sPath": "escape",
+                                "sTarget": "../tmp/outside"}],
+        "listModifiedFiles": [{"sPath": "escape/victim", "sContent": "x"}]}),
+]
+
+S_DESCRIBE_OUTSIDE = (
+    "cd /tmp/outside && ls -la --time-style=+ . && sha256sum victim")
+
+
+def _fdictCompleteManifest(dictKinds):
+    dictManifest = {"listModifiedFiles": [], "listDeletedPaths": [],
+                    "listChangedFileModes": [], "listSymlinkTargets": []}
+    dictManifest.update(dictKinds)
+    return dictManifest
+
+
+def test_every_confinement_probe_is_refused_on_the_containers_filesystem(
+        tCouncilHarness):
+    """The unit probes again, on the kernel and filesystem a sandbox has."""
+    from vaibify.gui import agentCouncilManifest
+    _, dictGateway, _ = tCouncilHarness
+    dictSandbox = _fdictCreateTracked(tCouncilHarness, bSandbox=True)
+    sHandle = dictSandbox["sHandle"]
+    moduleGateway.fnCopySnapshotIntoRunner(
+        dictGateway, sHandle, _fbaBuildTarballOf(
+            {"run.sh": b"echo run\n"}, DICT_HOSTILE_SNAPSHOT_LINKS))
+    assert _fdictRunInRunner(
+        dictGateway, sHandle,
+        "mkdir /tmp/outside && echo original > /tmp/outside/victim "
+        "&& chmod 644 /tmp/outside/victim")["iExitCode"] == 0
+    sOutsideBefore = _fdictRunInRunner(
+        dictGateway, sHandle, S_DESCRIBE_OUTSIDE)["sOutput"]
+    listEscapes = []
+    for sName, dictKinds in LIST_CONTAINER_ESCAPE_PROBES:
+        dictApplied = _fdictRunInRunner(
+            dictGateway, sHandle, "",
+            baStdin=agentCouncilManifest.fbaEncodeManifestForProgram(
+                _fdictCompleteManifest(dictKinds)),
+            listCommand=agentCouncilManifest.flistComposeManifestApplyCommand(
+                "/council"))
+        if dictApplied["iExitCode"] != (
+                agentCouncilManifest.I_MANIFEST_REFUSED_EXIT_CODE):
+            listEscapes.append(f"{sName}: {dictApplied}")
+        sOutsideAfter = _fdictRunInRunner(
+            dictGateway, sHandle, S_DESCRIBE_OUTSIDE)["sOutput"]
+        if sOutsideAfter != sOutsideBefore:
+            listEscapes.append(f"{sName}: changed /tmp/outside")
+    moduleGateway.fdictDestroyAndSettle(dictGateway, sHandle)
+    assert not listEscapes, "\n".join(listEscapes)
+
+
+# ----- the working-space reserve, at its worst case ---------------------
+
+
+def _fiUsableCouncilBytes(dictGateway, sHandle):
+    sOutput = _fdictRunInRunner(
+        dictGateway, sHandle, "df -B1 /council | tail -1")["sOutput"]
+    return int(sOutput.split()[3])
+
+
+def test_a_snapshot_at_the_full_sandbox_ceiling_still_leaves_the_reserve(
+        tCouncilHarness):
+    """The worst case the reserve is sized for: incompressible bytes,
+    the most files a snapshot may hold, just under the full-sandbox
+    ceiling, in a runner of the floor size every machine gets.
+
+    Also measures the page rounding the ceiling's margin assumes, and
+    checks the note would not offer a whole-copy git baseline here.
+    """
+    from vaibify.gui import agentCouncilCapacity, agentCouncilRunner
+    _, dictGateway, _ = tCouncilHarness
+    dictFloor = agentCouncilCapacity.fdictFloorCouncilCapacity()
+    dictReserved = agentCouncilCapacity.fdictReserveWorkingSpace(dictFloor)
+    iFileCount = dictFloor["iMaxSnapshotFileCount"]
+    iFileBytes = (dictReserved["iMaxSnapshotTotalBytes"] - 1) // iFileCount
+    iSnapshotBytes = iFileBytes * iFileCount
+    bufferTar = io.BytesIO()
+    with tarfile.open(fileobj=bufferTar, mode="w") as fileTar:
+        for iIndex in range(iFileCount):
+            infoMember = tarfile.TarInfo(name=f"d{iIndex // 500:03d}/f{iIndex:05d}")
+            infoMember.size = iFileBytes
+            fileTar.addfile(infoMember, io.BytesIO(os.urandom(iFileBytes)))
+    dictLimits = agentCouncilRunner.fdictBuildDefaultRunnerLimits()
+    dictRunner = _fdictCreateTracked(tCouncilHarness, dictLimits=dictLimits)
+    sHandle = dictRunner["sHandle"]
+    iUsableEmpty = _fiUsableCouncilBytes(dictGateway, sHandle)
+    moduleGateway.fnCopySnapshotIntoRunner(
+        dictGateway, sHandle, bufferTar.getvalue())
+    iUsableAfterCopy = _fiUsableCouncilBytes(dictGateway, sHandle)
+    iRoundingMeasured = (iUsableEmpty - iUsableAfterCopy) - iSnapshotBytes
+    sStage = ("git init -q && git add --force d000/f00000 d000/f00001 "
+              "d000/f00002" if _fbImageHasGit(dictGateway, sHandle) else
+              "cp d000/f00000 d000/f00001 d000/f00002 /tmp/")
+    assert _fdictRunInRunner(dictGateway, sHandle, sStage)["iExitCode"] == 0
+    iUsableAfterStaging = _fiUsableCouncilBytes(dictGateway, sHandle)
+    iReserve = dictLimits["iWorkingTreeBytes"] // 2
+    iStagedBytes = 3 * iFileBytes
+    iMargin = agentCouncilCapacity.fiEstimateTmpfsRoundingBytes(3)
+    print(f"usable after copy {iUsableAfterCopy} B, after staging "
+          f"{iUsableAfterStaging} B, page rounding measured "
+          f"{iRoundingMeasured} B over {iFileCount} files")
+    assert iRoundingMeasured <= agentCouncilCapacity.fiEstimateTmpfsRoundingBytes(
+        iFileCount)
+    assert iUsableAfterStaging >= iReserve - iStagedBytes - iMargin
+    dictOutput = _fdictRunInRunner(
+        dictGateway, sHandle,
+        "head -c 10485760 /dev/zero > /council/testOutput.bin && "
+        "wc -c < /council/testOutput.bin")
+    assert dictOutput["sOutput"].strip().endswith("10485760"), dictOutput
+    assert agentCouncilCapacity.fdictDescribeWorkingSpace(
+        dictLimits["iWorkingTreeBytes"], dictLimits["iScratchBytes"],
+        iSnapshotBytes, iFileCount)["bFullBaselineFits"] is False

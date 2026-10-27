@@ -397,3 +397,63 @@ def test_teardown_proves_absence_and_is_idempotent(dictGatewayLive):
     assert dictSecondRemoval["bProxyAbsenceProven"] is True
     assert dictSecondRemoval["bNetworkAbsenceProven"] is True
     assert dictSecondRemoval["saIndeterminateResources"] == []
+
+
+S_MEMBER_COMMAND_PROBES = (
+    "python3 -c \"$RESOLVE\" example.com; "
+    "python3 -c \"$DIAL\" \"$FORBIDDEN_ADDRESS\" \"$STAND_IN_PORT\"; "
+    "python3 -c \"$CONNECT\" \"$FORBIDDEN_TARGET\""
+)
+
+
+def test_a_full_sandbox_member_command_reaches_nothing_but_its_proxy(
+        dictGatewayLive, dictEgressTopology):
+    """A command a member runs is held by the runner, not by its CLI.
+
+    A full-sandbox member may run anything (design section 8.6), so the
+    network boundary has to hold for an arbitrary command inside a
+    runner built by the PRODUCTION create specification on the campaign
+    network, not only for the stand-in containers the tests above use.
+    The specification takes no council kind at all, so this one runner
+    stands for both kinds; the probes are the ones the stand-ins prove,
+    run here as the member's own shell command through the gateway.
+    """
+    from vaibify.gui import agentCouncilEgress, agentCouncilProviders
+    from vaibify.gui import agentCouncilDockerGateway as moduleGateway
+    sCampaignId = dictEgressTopology["sCampaignId"]
+    dictEgress = {"sNetworkName": agentCouncilEgress.fsComposeNetworkName(
+        sCampaignId)}
+    listDnsServers, listDnsOptions = agentCouncilProviders.ftBuildDnsWiring(
+        dictEgress)
+    dictEnvironment = dict(dictEgressTopology["dictRunnerEnvironment"])
+    dictEnvironment.update({
+        "RESOLVE": S_SNIPPET_RESOLVE_NAME, "DIAL": S_SNIPPET_DIAL_ADDRESS,
+        "CONNECT": S_SNIPPET_CONNECT_THROUGH_PROXY,
+        "FORBIDDEN_ADDRESS": dictEgressTopology["sForbiddenAddress"],
+        "FORBIDDEN_TARGET": f"{S_FORBIDDEN_HOSTNAME}:{I_STAND_IN_PORT}",
+        "STAND_IN_PORT": str(I_STAND_IN_PORT),
+    })
+    from vaibify.gui.agentCouncilRunner import fdictBuildDefaultRunnerLimits
+    dictLimits = fdictBuildDefaultRunnerLimits()
+    dictCreated = moduleGateway.fdictReserveAndCreateRunner(
+        dictGatewayLive, sCampaignId, "claude",
+        {"iMemoryBytes": dictLimits["iMemoryBytes"],
+         "fCpuCount": dictLimits["fCpuCount"]}, S_RUNNER_IMAGE,
+        dictLimits, dictEgress["sNetworkName"], False, dictEnvironment,
+        listDnsServers, listDnsOptions)
+    assert dictCreated["bCreated"], dictCreated
+    try:
+        dictRun = moduleGateway.fdictExecuteBoundedTurn(
+            dictGatewayLive, dictCreated["sHandle"],
+            ["/bin/sh", "-c", S_MEMBER_COMMAND_PROBES],
+            fWallClockSeconds=120.0, sWorkingDirectory="/council")
+    finally:
+        dictDestroyed = moduleGateway.fdictDestroyAndSettle(
+            dictGatewayLive, dictCreated["sHandle"])
+    sOutput = dictRun["sOutput"]
+    assert "RESOLVE-gaierror:" in sOutput and "RESOLVE-OK" not in sOutput, (
+        sOutput)
+    assert "DIAL-OSError:101" in sOutput, sOutput
+    assert "STATUS:HTTP/1.1 403 Forbidden" in sOutput, sOutput
+    assert S_PROVIDER_MARKER not in sOutput
+    assert dictDestroyed["sOutcome"] == "destroyed", dictDestroyed
