@@ -102,7 +102,12 @@ const VaibifyTerminal = (function () {
             '<button class="terminal-pane-select" data-pane="' +
             iPaneId + '" title="Give the mouse to this pane instead of ' +
             'to the program running in it, so dragging selects text ' +
-            'and the wheel scrolls the scrollback">Select text</button>' +
+            'and the wheel scrolls the scrollback. A program that ' +
+            'draws on the whole screen, such as vim or htop, keeps no ' +
+            'scrollback here, so only what is on screen can be ' +
+            'selected. Holding the mouse just above or below the text ' +
+            'keeps scrolling; move back over the text to stop.">' +
+            'Select text</button>' +
             '<button class="terminal-pane-reset" data-pane="' +
             iPaneId + '" title="Switch off mouse reporting and the other ' +
             'input modes a program that died left on, keeping the ' +
