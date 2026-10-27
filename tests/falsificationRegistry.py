@@ -36663,4 +36663,17 @@ LIST_FALSIFICATIONS = [
         old='        dictCampaign, dictParticipant, S_CHAT_EXECUTION_NOTE)\n',
         new='        dictCampaign, dictParticipant,\n        (dictCampaign.get("dictProjectIdentity") or {}).get(\n            "sExecutionPermissionNote", ""))\n',
     ),
+    # --- 2026-10-26: the convene form says full-sandbox members may
+    # edit and run their own copies.
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilMaximumRoundsReachesTheRecord.py::'
+            'testTheExecutionMenuSaysMembersMayEditAndRunTheirCopies'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        # the convene form rendered without the hint
+        old=('            "<p class=\\"council-hint\\" id=\\"councilExecutionHint\\">" +\n'
+             '            "members may edit and run their own copies</p>" +\n'),
+        new='',
+    ),
 ]
