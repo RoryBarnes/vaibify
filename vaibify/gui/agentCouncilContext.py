@@ -1230,6 +1230,14 @@ def _fdictWriteSnapshotManifest(
                 "iMaxSnapshotFileCount", "iMaxSnapshotMemberBytes",
                 "iMaxSnapshotTotalBytes")
         },
+        # The runner sizes the bounds were derived from, for the note
+        # telling a member how much room its copy leaves it. Read with
+        # .get because a caller may pass only the three bounds above.
+        "dictRunnerSpaceAtCapture": {
+            sSpaceName: dictCapture["dictBounds"].get(sSpaceName)
+            for sSpaceName in (
+                "iRunnerWorkingTreeBytes", "iRunnerScratchBytes")
+        },
         "sSnapshotSha256": _fsComputeSnapshotContentHash(
             dictCapture["listIncludedEntries"],
         ),

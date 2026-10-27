@@ -266,6 +266,11 @@ LIST_CAMPAIGN_REQUIRED_KEYS = [
 LIST_PROJECT_IDENTITY_KEYS = [
     "sResourceName", "sProjectRepoPath", "sSnapshotIdentity",
     "sSnapshotScopeNote",
+    # What this council's kind lets a member do with its copy, with the
+    # room it has once the snapshot is in. Composed once at launch, so
+    # a campaign keeps the note it was convened under; empty for a
+    # campaign convened before the note existed.
+    "sExecutionPermissionNote",
     # Pinned at launch, compared at resume (continuation plan 4.2,
     # researcher ruling 3): the immutable image id the runners actually
     # executed in, and the byte digest of the sealed snapshot archive.
@@ -281,6 +286,7 @@ DICT_EMPTY_PROJECT_IDENTITY = {
     "sImageIdentity": "",
     "sSnapshotArchiveSha256": "",
     "sSnapshotScopeNote": "",
+    "sExecutionPermissionNote": "",
 }
 
 

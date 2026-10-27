@@ -16217,7 +16217,8 @@ LIST_FALSIFICATIONS = [
         # The chat clause replaces the whole charter instead of joining
         # it, so the chairbot loses its standing instructions.
         old=(
-            '    listSections = _flistComposeStandingSections(dictCampaign, dictParticipant)\n'
+            '    listSections = _flistComposeStandingSections(\n'
+            '        dictCampaign, dictParticipant, S_CHAT_EXECUTION_NOTE)\n'
             '    listSections.append(S_CHAT_INSTRUCTION)'
         ),
         new='    listSections = [S_CHAT_INSTRUCTION]',
@@ -36629,5 +36630,37 @@ LIST_FALSIFICATIONS = [
         # the capture resolves the default ceiling whatever the kind
         old='        dictCtx.get("docker"), bReserveWorkingSpace=bReserveWorkingSpace)\n',
         new='        dictCtx.get("docker"))\n',
+    ),
+    # --- 2026-10-26: charter 1.9.0 tells each member what its council's
+    # kind permits; the chat always gets its own read-only note.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilExecutionPermissionNote.py::'
+            'testAReadOnlyCouncilIsToldItCannotEditOrRun'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # a read-only council handed the full-sandbox note
+        old='    if bReadOnlyCouncil:\n        return S_READ_ONLY_EXECUTION_NOTE\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilExecutionPermissionNote.py::'
+            'testEveryProtocolTurnCarriesItsCampaignsNote'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # the standing sections drop the execution note
+        old='    if sExecutionNote:\n        listSections.append(sExecutionNote)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilExecutionPermissionNote.py::'
+            'testTheChatNeverInheritsTheFullSandboxNote'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # the chat inherits the full-sandbox note
+        old='        dictCampaign, dictParticipant, S_CHAT_EXECUTION_NOTE)\n',
+        new='        dictCampaign, dictParticipant,\n        (dictCampaign.get("dictProjectIdentity") or {}).get(\n            "sExecutionPermissionNote", ""))\n',
     ),
 ]

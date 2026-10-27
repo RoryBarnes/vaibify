@@ -4729,7 +4729,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1404 -> 1429 (2026-10-26): the pre-flight says whether the
     # full-sandbox ceiling also fits, and a size refusal the reserve
     # caused names the ways to narrow the snapshot.
-    "agentCouncilContext.py": 1429,
+    # 1429 -> 1437 (2026-10-26): the manifest records the runner sizes
+    # the capture was bounded by, for the member's execution note.
+    "agentCouncilContext.py": 1437,
     # NEW at 837 (2026-08-26): the store crossed the default cap when
     # the durable provenance sidecar landed — the evidence ledger's
     # recorded state and the turn counter now survive a hub restart
@@ -4856,7 +4858,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1281 -> 1178 (2026-10-26): the evidence claim contract moved to
     # agentCouncilEvidenceContract.py, which changes with evidence policy
     # rather than with the protocol text.
-    "agentCouncilCharter.py": 1178,
+    # 1178 -> 1269 (2026-10-26): charter 1.9.0's clauses for using the
+    # copy, and the per-kind execution notes a member and the chat read.
+    "agentCouncilCharter.py": 1269,
     # NEW at 810 (2026-08-29): the notes derivation joins the decision
     # grouping and the held-question descriptor. All three are the same
     # responsibility — reading a settled record into what a researcher
@@ -6701,7 +6705,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2219 -> 2238 (2026-10-01): a campaign a dead hub interrupted gets its
     # running attempt settled as an interruption, so Retry can admit it.
     # 2238 -> 2251 (2026-10-01): the shutdown releases the egress boundary after the runners drain.
-    "agentCouncilController.py": 2251,
+    # 2251 -> 2279 (2026-10-26): the launch composes the note telling a
+    # member what its council's kind permits and how much room it has.
+    "agentCouncilController.py": 2279,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
