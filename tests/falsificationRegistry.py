@@ -36442,4 +36442,86 @@ LIST_FALSIFICATIONS = [
         old='        if bInteractive:\n',
         new='        if True:\n',
     ),
+    # --- 2026-10-26: members write and run in a full-sandbox council;
+    # a read-only council and the chairbot chat run nothing.
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testAClaudeParticipantInAFullSandboxMayEditAndRun'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # full-sandbox Claude keeps plan mode
+        old='    "--permission-mode", "bypassPermissions",\n',
+        new='    "--permission-mode", "plan",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testAClaudeParticipantInAReadOnlyCouncilHasNoShell'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # read-only Claude keeps Bash
+        old='    "--disallowedTools", "Bash,WebFetch",\n',
+        new='    "--disallowedTools", "WebFetch",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testTheClaudeConnectionPassesTheCouncilKindToItsArgv'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # the Claude turn ignores the council kind
+        old='            self.saCliProgram, bReadOnlyCouncil=dictTurnRequest.get(\n                "bReadOnlyCouncil", False))\n',
+        new='            self.saCliProgram)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testACodexParticipantInAFullSandboxWritesItsWorkspace'
+        ),
+        source='vaibify/gui/agentCouncilCodexProvider.py',
+        # full-sandbox Codex kept in the read-only sandbox
+        old='    sSandboxMode = "read-only" if bReadOnlyCouncil else "workspace-write"\n',
+        new='    sSandboxMode = "read-only"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testEveryCodexTurnSearchesTheWebLive'
+        ),
+        source='vaibify/gui/agentCouncilCodexProvider.py',
+        # Codex search left disabled
+        old='        "-c", \'web_search="live"\',\n',
+        new='        "-c", \'web_search="disabled"\',\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testTheChairbotChatOverClaudeHasNoShell'
+        ),
+        source='vaibify/gui/agentCouncilProviderRegistry.py',
+        # chat Claude composed with the full-sandbox flags
+        old='            sModelId, sInstructionChannel, bReadOnlyCouncil=True)\n',
+        new='            sModelId, sInstructionChannel)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testTheChairbotChatOverCodexHasNoCommandTool'
+        ),
+        source='vaibify/gui/agentCouncilProviderRegistry.py',
+        # chat Codex keeps its shell tools
+        old='            sModelId, sInstructionChannel, bStructured=False,\n            bReadOnlyCouncil=True)\n',
+        new='            sModelId, sInstructionChannel, bStructured=False)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReadOnlyCouncilRunsNoCommands.py::'
+            'testTheChairbotChatOverAntigravityPlansOnly'
+        ),
+        source='vaibify/gui/agentCouncilProviderRegistry.py',
+        # chat Antigravity runs without plan mode
+        old='        sModelId, bStructured=False, bReadOnlyCouncil=True)\n',
+        new='        sModelId, bStructured=False)\n',
+    ),
 ]

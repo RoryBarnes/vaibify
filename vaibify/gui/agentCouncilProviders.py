@@ -62,6 +62,8 @@ __all__ = [
     "I_ANTHROPIC_API_PORT",
     "S_RUNNER_CLAUDE_CONFIG_DIRECTORY",
     "LIST_CLAUDE_MODEL_ALIAS_FALLBACK",
+    "LIST_CLAUDE_FULL_SANDBOX_FLAGS",
+    "LIST_CLAUDE_READ_ONLY_FLAGS",
     "S_FAILURE_CLEAN_EXIT",
     "S_FAILURE_NON_ZERO_EXIT",
     "S_FAILURE_KILLED_NO_EXIT_CODE",
@@ -145,14 +147,28 @@ I_MAX_CREDENTIAL_FILE_BYTES = dockerConnection.I_MAX_CREDENTIAL_FILE_BYTES
 # The default CLI program vector and its fixed, allowlisted flags. The
 # only interpolated values are the resolved model id and the composed
 # instruction; nothing else varies per turn. ``--verbose`` is required
-# by the CLI for stream-json print output; ``--permission-mode plan`` is
-# a behavioural nicety, never the boundary (section 8.6).
+# by the CLI for stream-json print output.
 LIST_CLAUDE_CLI_PROGRAM = ["claude"]
 LIST_CLAUDE_FIXED_FLAGS = [
     "-p",
     "--output-format", "stream-json",
     "--verbose",
+]
+# The permission flags per council kind. The runner is the boundary
+# (section 8.6): in a full-sandbox council the member edits and runs its
+# own disposable copy freely. A read-only council removes the shell
+# outright, because plan mode alone still runs commands the model judges
+# read-only. WebFetch is off in both, since the runner's only network is
+# its provider; web search runs on the provider's servers and stays on.
+# One comma-separated value per flag, the form the CLI's help documents
+# and the init event was seen to honour (Claude Code 2.1.278).
+LIST_CLAUDE_FULL_SANDBOX_FLAGS = [
+    "--permission-mode", "bypassPermissions",
+    "--disallowedTools", "WebFetch",
+]
+LIST_CLAUDE_READ_ONLY_FLAGS = [
     "--permission-mode", "plan",
+    "--disallowedTools", "Bash,WebFetch",
 ]
 
 # The un-verified CLI alias set the picker falls back to when no API key
@@ -210,7 +226,8 @@ class RunnerCredentialError(Exception):
 # ----- pure argv / stdin / parsing surface -----------------------------
 
 
-def flistComposeClaudeArgv(sModelId, sInstructionChannel, saCliProgram=None):
+def flistComposeClaudeArgv(sModelId, sInstructionChannel, saCliProgram=None,
+                           bReadOnlyCouncil=False):
     """Compose the exact, fixed argument vector for one headless turn.
 
     The only interpolated values are the resolved model id and the
@@ -223,9 +240,13 @@ def flistComposeClaudeArgv(sModelId, sInstructionChannel, saCliProgram=None):
     """
     saProgram = list(saCliProgram) if saCliProgram else list(
         LIST_CLAUDE_CLI_PROGRAM)
+    listPermissionFlags = (
+        LIST_CLAUDE_READ_ONLY_FLAGS if bReadOnlyCouncil
+        else LIST_CLAUDE_FULL_SANDBOX_FLAGS)
     return (
         saProgram
         + list(LIST_CLAUDE_FIXED_FLAGS)
+        + list(listPermissionFlags)
         + ["--model", sModelId,
            "--append-system-prompt", sInstructionChannel]
     )
@@ -1177,7 +1198,8 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         """
         saArgv = flistComposeClaudeArgv(
             self.sRequestedModel, dictTurnRequest["sInstructionChannel"],
-            self.saCliProgram)
+            self.saCliProgram, bReadOnlyCouncil=dictTurnRequest.get(
+                "bReadOnlyCouncil", False))
         baStdin = fsComposeUntrustedPromptText(
             dictTurnRequest["listQuotedMaterial"]).encode("utf-8")
         fEffectiveWallClock = ffClampTurnBudgetToLoginLife(

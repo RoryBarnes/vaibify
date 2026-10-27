@@ -242,17 +242,22 @@ def flistComposeCodexArgv(sModelId, sInstructionChannel,
                           bReadOnlyCouncil=False):
     """Compose a fixed Codex exec argv with a separate instruction lane.
 
-    The read-only sandbox stops writes, not commands, so a read-only
-    council also removes both command tools: the project is not run.
+    A full-sandbox council writes and runs inside its own runner, which
+    is the boundary (section 8.6). The read-only sandbox stops writes,
+    not commands, so a read-only council also removes both command
+    tools: the project is not run. Web search is ``live`` in both: it
+    runs on the provider's servers, so the runner's network is
+    unchanged.
     """
     saProgram = list(saCliProgram) if saCliProgram else list(
         LIST_CODEX_CLI_PROGRAM)
+    sSandboxMode = "read-only" if bReadOnlyCouncil else "workspace-write"
     saArgv = saProgram + [
         "exec", "--ephemeral", "--json", "--ignore-user-config",
-        "--ignore-rules", "--strict-config", "--sandbox", "read-only",
+        "--ignore-rules", "--strict-config", "--sandbox", sSandboxMode,
         "--skip-git-repo-check", "--model", sModelId,
         "-c", f"developer_instructions={json.dumps(sInstructionChannel)}",
-        "-c", 'web_search="disabled"',
+        "-c", 'web_search="live"',
     ]
     if bReadOnlyCouncil:
         saArgv.extend(LIST_CODEX_READ_ONLY_COUNCIL_FLAGS)

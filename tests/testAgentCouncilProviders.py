@@ -67,9 +67,15 @@ def testArgvCarriesOnlyAllowlistedFlags():
     saArgv = providers.flistComposeClaudeArgv("opus", "instruction text")
     assert saArgv[0] == "claude"
     for sFlag in ("-p", "--output-format", "stream-json", "--verbose",
-                  "--permission-mode", "plan", "--model",
+                  "--permission-mode", "bypassPermissions",
+                  "--disallowedTools", "WebFetch", "--model",
                   "--append-system-prompt"):
         assert sFlag in saArgv
+    saReadOnly = providers.flistComposeClaudeArgv(
+        "opus", "instruction text", bReadOnlyCouncil=True)
+    assert saReadOnly[saReadOnly.index("--permission-mode") + 1] == "plan"
+    assert saReadOnly[saReadOnly.index("--disallowedTools") + 1] == (
+        "Bash,WebFetch")
     saOverridden = providers.flistComposeClaudeArgv(
         "opus", "x", saCliProgram=["python3", "/council/fakeProvider.py"])
     assert saOverridden[:2] == ["python3", "/council/fakeProvider.py"]

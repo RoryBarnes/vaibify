@@ -4977,7 +4977,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # already owns "what happened to a turn".
     # 1302 -> 1349 (2026-10-01): a turn the gateway killed, failed or left
     # empty names the real reason for every provider, from one extractor.
-    "agentCouncilProviders.py": 1349,
+    # 1349 -> 1371 (2026-10-26): the Claude permission flags per council
+    # kind, so a full-sandbox member edits and runs its copy (section 8.6)
+    # and a read-only one has no shell.
+    "agentCouncilProviders.py": 1371,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
