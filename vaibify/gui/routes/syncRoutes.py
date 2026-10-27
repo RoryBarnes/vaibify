@@ -1748,13 +1748,15 @@ def _fdictAttachCommitStateToResult(
 
 
 def _fnRecordPushedRemoteHostSide(
-    dictCtx, sContainerId, sWorkdir, dictReachedRemote,
+    dictCtx, sContainerId, dictWorkflow, sWorkdir, dictReachedRemote,
 ):
     """Remember, in the hub's own registry, where this push landed.
 
     The record a later verify is bound to. It is held outside every
     file the container can write, because the container writes the
-    origin URL the verify would otherwise trust.
+    origin URL the verify would otherwise trust. The open workflow's
+    copy is refreshed in the same step, so the verify this push makes
+    possible does not wait for the project to be reopened.
     """
     if not dictReachedRemote.get("sOwner"):
         return
@@ -1763,6 +1765,8 @@ def _fnRecordPushedRemoteHostSide(
         fsContainerNameForId(dictCtx.get("docker"), sContainerId),
         sWorkdir, dictReachedRemote["sOwner"], dictReachedRemote["sRepo"],
         dictReachedRemote.get("sBranch", ""))
+    workflowManager.fnAttachHostGithubBinding(
+        dictWorkflow, dictCtx.get("docker"), sContainerId)
 
 
 def _fsApplyPushBookkeeping(
@@ -1999,7 +2003,7 @@ def _fnRegisterGithubPush(app, dictCtx):
             return dictResult
         if dictResult.get("bSuccess"):
             _fnRecordPushedRemoteHostSide(
-                dictCtx, sContainerId, sWorkdir,
+                dictCtx, sContainerId, dictWorkflow, sWorkdir,
                 dictPushed["dictReachedRemote"])
             sBookkeepingWarning = _fsApplyPushBookkeeping(
                 dictCtx, sContainerId, dictWorkflow,

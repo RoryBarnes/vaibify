@@ -4434,7 +4434,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 936 -> 940 (2026-10-24): a committed workflow save announces an
     # in-container agent's change to the open tab (researcherNotices
     # holds the logic).
-    "routeContext.py": 940,
+    # 940 -> 946 (2026-10-27): the post-push verify asks the resolver
+    # whether the project has the remote, never a dictRemotes key.
+    "routeContext.py": 946,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -5902,7 +5904,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # is never derived to the green "unnecessary".
     # 2953 -> 2954 (2026-10-24, re-measured on the consolidated branch):
     # the create-step builder also takes bNoInputData from the request.
-    "workflowManager.py": 2954,
+    # 2954 -> 2967 (2026-10-27): one helper attaches the host push
+    # record, so a push can refresh the open workflow's copy too.
+    "workflowManager.py": 2967,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -6983,7 +6987,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-09-24): the live-run readers ask the per-project run
     # slots instead of a single per-container task.
     # 1063 -> 1068 (2026-10-01): the writer's stop accepts a join bound.
-    "pipelineState.py": 1068,
+    # 1068 -> 1097 (2026-10-27): a host incident reaches the
+    # container-readable state as a redacted, bounded summary.
+    "pipelineState.py": 1097,
     # 1222 -> 1229 (2026-10-01): a TFRecord feature is read from the decoded example.
     # 1229 -> 1240 (2026-10-01): the module says where its loaders run.
     "dataLoaders.py": 1240,
@@ -7609,7 +7615,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the panel greeted the one repository the workflow lives in with
     # the track-or-ignore prompt. Same cohesive responsibility; the
     # only new code is naming the repo and reusing the shared merge.
-    "routes/repoRoutes.py": 849,
+    # 849 -> 890 (2026-10-27): a Repos-panel push of the project repo
+    # records where it landed, as the GitHub sync push does.
+    "routes/repoRoutes.py": 890,
     # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
     # when its last three routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Two of the three could not stay inline:
@@ -7908,7 +7916,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # answer beside the newest execution profile it names.
     # 2394 -> 2400 (2026-10-24): the declared-vs-image check expects
     # the analysis stack every image carries.
-    "routes/reproducibilityRoutes.py": 2400,
+    # 2400 -> 2404 (2026-10-27): the image-origin facts are named as
+    # facts, not readiness gaps.
+    "routes/reproducibilityRoutes.py": 2404,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

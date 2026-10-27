@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from vaibify.reproducibility.credentialRedactor import fsRedactCredentials
 
 from .. import syncDispatcher, trackedReposManager
+from . import syncRoutes
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import WORKSPACE_ROOT, fnBumpSyncEpoch
@@ -678,9 +679,45 @@ def _fdictResolveRemoteThenPush(
             supervisor.sTarget = _fsDescribePushTarget(
                 sRepoName, _fsStoredRemoteUrl(dictSidecar, sRepoName),
             )
-        return fnPush()
+        dictReachedRemote = _fdictReadReachedRemoteIfProjectRepo(
+            dictCtx, sContainerId, sRepoName,
+        )
+        dictResult = fnPush()
+        dictResult[_S_REACHED_REMOTE_KEY] = dictReachedRemote
+        return dictResult
 
     return fdictCarryARefusalBackInsteadOfRaising(fgenericCheckTrackedThenPush)
+
+
+# The remote a project-repo push reaches rides back from the worker under
+# this key and is removed before the response leaves the route.
+_S_REACHED_REMOTE_KEY = "_dictReachedRemote"
+
+
+def _fdictProjectWorkflowFor(dictCtx, sContainerId, sRepoName):
+    """Return the open workflow when ``sRepoName`` is its project repo, else None."""
+    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId)
+    if not dictWorkflow:
+        return None
+    sRepoPath = (dictWorkflow.get("sProjectRepoPath") or "").rstrip("/")
+    if sRepoPath != _fsRepositoryPathFor(sContainerId, sRepoName):
+        return None
+    return dictWorkflow
+
+
+def _fdictReadReachedRemoteIfProjectRepo(dictCtx, sContainerId, sRepoName):
+    """Read where a project-repo push lands, inside the push's own worker.
+
+    The same reading the GitHub sync push records, so a push from the
+    Repos panel binds the GitHub verify exactly as that route's does.
+    Any other repository reads nothing: no verify is bound to it.
+    """
+    if _fdictProjectWorkflowFor(dictCtx, sContainerId, sRepoName) is None:
+        return {}
+    return syncRoutes._fdictReadReachedRemote(
+        dictCtx["docker"], sContainerId,
+        _fsRepositoryPathFor(sContainerId, sRepoName),
+    )
 
 
 async def _fdictPushRepositoryUnderTheDrain(
@@ -730,9 +767,16 @@ async def _fdictFinishRepoPush(
     land its commit and then fail the push, and the badges must repaint
     to the post-commit truth.
     """
+    dictReachedRemote = dictResult.pop(_S_REACHED_REMOTE_KEY, None) or {}
     fnBumpSyncEpoch(dictCtx, sContainerId)
     if not dictResult.get("bSuccess"):
         return dictResult
+    dictWorkflow = _fdictProjectWorkflowFor(dictCtx, sContainerId, sRepoName)
+    if dictWorkflow is not None:
+        syncRoutes._fnRecordPushedRemoteHostSide(
+            dictCtx, sContainerId, dictWorkflow,
+            _fsRepositoryPathFor(sContainerId, sRepoName), dictReachedRemote,
+        )
     sWarning = await _fsAfterRepoPushSuccess(
         dictCtx, sContainerId, sRepoName, requestHttp,
     )
@@ -754,11 +798,8 @@ async def _fsAfterRepoPushSuccess(
     can land its commit and then fail the push, and the badges must
     repaint to the post-commit truth.
     """
-    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId)
-    if not dictWorkflow:
-        return ""
-    sRepoPath = (dictWorkflow.get("sProjectRepoPath") or "").rstrip("/")
-    if sRepoPath != _fsRepositoryPathFor(sContainerId, sRepoName):
+    dictWorkflow = _fdictProjectWorkflowFor(dictCtx, sContainerId, sRepoName)
+    if dictWorkflow is None:
         return ""
     return await fsRefreshVerifyCacheAfterPush(
         dictCtx, sContainerId, dictWorkflow, "github",

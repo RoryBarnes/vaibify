@@ -1134,7 +1134,7 @@ Usage:
 
 **Diagnosing a failed run from inside the container.** When a pipeline reports exit-code -9999 ("runner disappeared") or the dashboard shows a step stuck in an unknown state:
 
-- "what killed the last run?" → `vaibify-do get-pipeline-state` — returns the reconciled `pipeline_state.json` with `sFailureReason` (symptom, e.g. `heartbeat_stale`) and `sFailureCauseHost` (the actual host exception, e.g. an ASGI WebSocket close). `iActiveStepAtDeath` names the step that was running when the runner died.
+- "what killed the last run?" → `vaibify-do get-pipeline-state` — returns the reconciled `pipeline_state.json` with `sFailureReason` (symptom, e.g. `heartbeat_stale`) and `sFailureCauseHost` (a summary of the host exception, e.g. an ASGI WebSocket close, with credentials redacted and the host home directory shown as `~`). `iActiveStepAtDeath` names the step that was running when the runner died.
 - "show the host log for this container" → `vaibify-do get-host-log-tail --lines 200` (or `--lines=200`) — returns `{bSanitized: true, listIncidents: [...]}`: an allowlisted ring of recent host exceptions tagged with this container id. **You get no log lines.** The raw `~/.vaibify/vaibify.log` spans every container and carries host paths, so it is withheld from the agent lane by design; when you need the text, ask the researcher to read that file on their own machine. An empty `listIncidents` means nothing was recorded against this container, NOT that nothing went wrong: a host-side failure logged without the container tag does not appear here at all. Do not report "the log is empty, so nothing failed."
 
 Both actions are read-only and agent-safe. Use them BEFORE asking the researcher to investigate from the host.

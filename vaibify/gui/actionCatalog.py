@@ -1212,8 +1212,8 @@ LIST_AGENT_ACTIONS = [
                      "container, identical to the dashboard's /state poll. "
                      "Read-only; lets the in-container agent see the same "
                      "post-reconciliation view the dashboard sees (with "
-                     "stale-heartbeat fields stamped, including "
-                     "sFailureCauseHost and iActiveStepAtDeath)."},
+                     "stale-heartbeat fields stamped, including a "
+                     "redacted sFailureCauseHost and iActiveStepAtDeath)."},
     # ---- Reproducing a published project (human-only) ----
     # REGISTERED rather than excluded, so the catalog says what these
     # are and the server-side gate refuses them by their own flag

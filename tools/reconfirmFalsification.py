@@ -681,6 +681,12 @@ def fnCopyLocalChangesIntoWorktree(sWorktree):
             input=sDiff, text=True, check=True,
         )
     for sRelative in _flistUntrackedFiles():
+        if sRelative.endswith("/"):
+            # git lists a nested repository (a .claude/worktrees/
+            # checkout) as one directory entry; it is never part of
+            # the change being confirmed, and copying it as a file
+            # raised IsADirectoryError and killed the run.
+            continue
         pathTarget = pathlib.Path(sWorktree) / sRelative
         pathTarget.parent.mkdir(parents=True, exist_ok=True)
         try:

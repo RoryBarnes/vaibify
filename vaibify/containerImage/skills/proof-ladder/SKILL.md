@@ -243,7 +243,11 @@ answered; standalone binaries are declared or waived
 a current rebuild attestation, the envelope on GitHub, the envelope
 AND the attestation in the Zenodo archive, the environment image
 archived, no archive left on the Zenodo sandbox, and a current
-`reproduce.sh`.
+`reproduce.sh`. The readiness answer also carries `bImageWasBuilt` and
+`bPinnedImageObtainable`: facts about how the image came to exist,
+which choose the remedy a refusal names on someone else's
+containerized clone. They are not criteria; never report a `false`
+one as a gap.
 
 **The last steps have an order**, because some rewrite files others
 have already fingerprinted, and a published Zenodo version cannot be

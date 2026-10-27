@@ -72,6 +72,7 @@ __all__ = [
     "fdictRunReverifyForWorkflow",
     "fdictRunReverifyOnce",
     "flistSelectConfiguredServices",
+    "flistSelectDeclaredServices",
     "flistZenodoDeclaredRecords",
     "fnScheduleReverify",
     "fsArxivCacheDir",
@@ -262,8 +263,13 @@ def _fsDescribeMissingRemote(sService):
     )
 
 
-def _fdictRequireServiceConfig(dictWorkflow, sService, filesRepo=None):
-    """Return the per-service config dict, deriving GitHub's when absent."""
+def _fdictResolveServiceConfig(dictWorkflow, sService, filesRepo=None):
+    """Return the config the project declares or derives; raise when it has none.
+
+    Whether the project HAS this remote, before asking whether it may be
+    verified now: GitHub's binding to the last push is the second
+    question, answered by :func:`_fdictRequireServiceConfig`.
+    """
     if sService not in LIST_SUPPORTED_SERVICES:
         raise ReverifyConfigError(
             f"Unsupported service '{sService}'."
@@ -278,6 +284,12 @@ def _fdictRequireServiceConfig(dictWorkflow, sService, filesRepo=None):
         dictConfig.update(_fdictDeriveGithubConfig(filesRepo))
     if not dictConfig:
         raise ReverifyConfigError(_fsDescribeMissingRemote(sService))
+    return dictConfig
+
+
+def _fdictRequireServiceConfig(dictWorkflow, sService, filesRepo=None):
+    """Return the per-service config dict, deriving GitHub's when absent."""
+    dictConfig = _fdictResolveServiceConfig(dictWorkflow, sService, filesRepo)
     if sService == "github":
         _fnRequireGithubConfigBoundToThePush(dictWorkflow, dictConfig)
     if sService == "zenodo" and not dictConfig.get("sService"):
@@ -914,21 +926,45 @@ def flistSelectConfiguredServices(dictWorkflow, filesRepo=None):
     ``filesRepo`` is what makes that derivation possible. Without it
     the answer falls back to recorded configuration alone, which is the
     honest answer when there is no checkout to ask.
+
+    A push asks the narrower-by-one question in
+    :func:`flistSelectDeclaredServices`; both share one resolver.
     """
+    return _flistServicesPassing(
+        _fdictRequireServiceConfig, dictWorkflow, filesRepo)
+
+
+def flistSelectDeclaredServices(dictWorkflow, filesRepo=None):
+    """Return the services this project HAS a remote for, verifiable now or not.
+
+    The question a push asks before its follow-up verify, which differs
+    from :func:`flistSelectConfiguredServices` in one place: a GitHub
+    remote not yet bound to a recorded push is included. The verify then
+    refuses with the reason and its remedy, which reaches the researcher
+    as the push's warning; dropping the service instead would leave a
+    successful push followed by a silence about whether anything was
+    compared.
+    """
+    return _flistServicesPassing(
+        _fdictResolveServiceConfig, dictWorkflow, filesRepo)
+
+
+def _flistServicesPassing(fdictResolve, dictWorkflow, filesRepo):
+    """Return the supported services ``fdictResolve`` accepts, in order."""
     if filesRepo is not None:
         # Normalized here, as every other public entry point in this
         # module does: the resolver wants an adapter, and a caller
         # holding only a repo path would otherwise reach it as a bare
         # string and fail on the first attribute access.
         filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    listConfigured = []
+    listPassing = []
     for sService in LIST_SUPPORTED_SERVICES:
         try:
-            _fdictRequireServiceConfig(dictWorkflow, sService, filesRepo)
+            fdictResolve(dictWorkflow, sService, filesRepo)
         except ReverifyConfigError:
             continue
-        listConfigured.append(sService)
-    return listConfigured
+        listPassing.append(sService)
+    return listPassing
 
 
 def fdictRunReverifyForWorkflow(dictWorkflow, sNowIso=None, filesRepo=None):

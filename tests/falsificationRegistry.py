@@ -2153,8 +2153,17 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_fdictLevel2Gaps_subset_failure_keeps_level2_false',
         source='vaibify/reproducibility/levelGates.py',
-        old='            bL1 and bGithub and bZenodo and bArxiv and bDecl\n            and bModels and bPersonal and bArchiveAnswered,',
-        new='            bL1 or bGithub and bZenodo and bArxiv and bDecl\n            and bModels and bPersonal and bArchiveAnswered,',
+        # Level 1 alone grants Level 2: the publication conjuncts are skipped
+        old=(
+            '    if not fbAtLeastLevel1(dictWorkflow, filesRepo):\n'
+            '        return False\n'
+            '    if flistLevel2BasenameCollisions(dictWorkflow):\n'
+        ),
+        new=(
+            '    if fbAtLeastLevel1(dictWorkflow, filesRepo):\n'
+            '        return True\n'
+            '    if flistLevel2BasenameCollisions(dictWorkflow):\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_blocker_cache_evicts_oldest_entry_first',
@@ -15488,8 +15497,7 @@ LIST_FALSIFICATIONS = [
         source='vaibify/reproducibility/scheduledReverify.py',
         old=(
             '        try:\n'
-            '            _fdictRequireServiceConfig('
-            'dictWorkflow, sService, filesRepo)\n'
+            '            fdictResolve(dictWorkflow, sService, filesRepo)\n'
             '        except ReverifyConfigError:\n'
             '            continue\n'
         ),
@@ -25805,7 +25813,7 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testVerifyRemoteIsBoundToThePush.py::testThePushRouteRecordsTheRemoteItReachedOnlyOnSuccess',
         source='vaibify/gui/routes/syncRoutes.py',
-        old='            _fnRecordPushedRemoteHostSide(\n                dictCtx, sContainerId, sWorkdir,\n                dictPushed["dictReachedRemote"])\n',
+        old='            _fnRecordPushedRemoteHostSide(\n                dictCtx, sContainerId, dictWorkflow, sWorkdir,\n                dictPushed["dictReachedRemote"])\n',
         new='',
     ),
     # --- Removing a project from the list needs the container's lease ---
@@ -37067,5 +37075,96 @@ LIST_FALSIFICATIONS = [
         # the question changes and the skill keeps the old wording
         old='"How much speed should vaibify trade for repeatable files?"',
         new='"How much speed should vaibify trade for identical files?"',
+    ),
+    # --- 2026-10-27: a push re-verifies every remote the project has ---
+    Falsification(
+        nodeid=(
+            'tests/testPostPushVerifyFollowsTheSharedPredicate.py::'
+            'testAPushReverifiesGithubDerivedFromOrigin'
+        ),
+        source='vaibify/gui/routeContext.py',
+        # back to the dictRemotes key test that skips origin-derived GitHub
+        old=(
+            '        if sService not in scheduledReverify.'
+            'flistSelectDeclaredServices(\n'
+            '                dictWorkflow, filesRepo):\n'
+        ),
+        new=(
+            '        if not ((dictWorkflow or {}).get("dictRemotes") or {})'
+            '.get(sService):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPostPushVerifyFollowsTheSharedPredicate.py::'
+            'testAnUnboundGithubRemoteIsStillVerifiedSoItsRefusalIsReported'
+        ),
+        source='vaibify/gui/routeContext.py',
+        # the open-time question, which drops an unbound remote silently
+        old='scheduledReverify.flistSelectDeclaredServices(',
+        new='scheduledReverify.flistSelectConfiguredServices(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVerifyRemoteIsBoundToThePush.py::'
+            'testAProjectsFirstPushBindsItsOpenWorkflowWithoutAReload'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # the load-time copy of the push record stays in force
+        old=(
+            '    workflowManager.fnAttachHostGithubBinding(\n'
+            '        dictWorkflow, dictCtx.get("docker"), sContainerId)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testARepoPanelPushOfTheProjectRepoRecordsWhereItLanded'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        # a Repos-panel push of the project repo records nothing
+        old=(
+            '    if dictWorkflow is not None:\n'
+            '        syncRoutes._fnRecordPushedRemoteHostSide('
+        ),
+        new=(
+            '    if False:\n'
+            '        syncRoutes._fnRecordPushedRemoteHostSide('
+        ),
+    ),
+    # --- 2026-10-27: the Level 2 gaps dict reports the gate's verdict ---
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoGapsAgreeWithTheGate.py::'
+            'testABasenameCollisionReadsBelowLevelTwoInTheGapsDict'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # the verdict rebuilt from keys that omit two of the conjuncts
+        old='        "bAtLeastLevel2": fbAtLeastLevel2(dictWorkflow, filesRepo),\n',
+        new=(
+            '        "bAtLeastLevel2": (\n'
+            '            bL1 and bGithub and bZenodo and bArxiv and bDecl\n'
+            '            and bModels and bPersonal and bArchiveAnswered),\n'
+        ),
+    ),
+    # --- 2026-10-27: a host incident reaches the container redacted ---
+    Falsification(
+        nodeid=(
+            'tests/testPipelineStateHostIncidents.py::'
+            'test_reconcile_never_writes_a_credential_or_the_host_home_'
+            'into_the_container'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        # the raw exception text lands in a container-readable file
+        old=(
+            '    dictReconciled["sFailureCauseHost"] = '
+            'fsSummarizeHostIncident(\n        dictIncident)\n'
+        ),
+        new=(
+            '    dictReconciled["sFailureCauseHost"] = (\n'
+            '        dictIncident.get("sExceptionRepr", "")\n'
+            '        or dictIncident.get("sMessage", ""))\n'
+        ),
     ),
 ]

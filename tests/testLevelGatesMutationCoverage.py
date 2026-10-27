@@ -277,9 +277,9 @@ def test_fdictLevel2Gaps_subset_failure_keeps_level2_false(tmp_path):
     a disjunction would report the work as publication-reproducible while
     the mirror/deposit sync is still missing.
 
-    Kills: Change one conjunct in `bL1 and bGithub and bZenodo and
-    bArxiv and bDecl` to `or` in fdictLevel2Gaps (applied as `bL1 or
-    bGithub and ...`)
+    Kills: letting Level 1 alone grant Level 2 in _fbComputeLevel2,
+    whose verdict fdictLevel2Gaps reports (applied as an early
+    `return True` when fbAtLeastLevel1 holds).
     """
     sProjectRepo = str(tmp_path)
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()

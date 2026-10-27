@@ -2358,6 +2358,60 @@ def testThePostPushVerifyRewritesTheSyncCacheUnderItsOwnDrain():
     )
 
 
+@pytest.mark.falsification
+def testARepoPanelPushOfTheProjectRepoRecordsWhereItLanded():
+    """A Repos-panel push binds the GitHub verify as the sync push does.
+
+    Only the GitHub sync push recorded the remote a push reached, so a
+    project pushed from the Repos panel stayed unbound and its verify
+    answered "has not pushed to GitHub from this hub" while the
+    dashboard told the researcher to push from the Repos panel
+    (researcher-reported, 2026-10-27). The remote is read inside the
+    push's own worker, where the exec is admitted, and the key that
+    carries it never reaches the response.
+
+    Kills: dropping the record call from ``_fdictFinishRepoPush``.
+    """
+    from vaibify.config import registryManager
+    from vaibify.gui import routeContext
+
+    listReadAdmissions = []
+
+    def fdictRecordTheRead(connectionDocker, sContainerId, sRepoPath):
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            S_CONTAINER_ID,
+        )
+        listReadAdmissions.append(
+            "" if admission is None else admission.sMode,
+        )
+        return {"sOwner": "example-owner", "sRepo": "example-repo",
+                "sBranch": "main"}
+
+    client, _connectionDocker = _tConnectGatedClient(
+        DockerDoubleWhereThePushedRepoIsTheProjectRepo(),
+    )
+    from vaibify.gui.routes import syncRoutes
+    with patch.object(
+        syncRoutes, "_fdictReadReachedRemote", fdictRecordTheRead,
+    ), patch.object(
+        registryManager, "fnRecordPushedGithubRemote",
+    ) as mockRecord, patch.object(
+        routeContext, "fdictRunRemoteVerifyBlocking",
+        lambda dictWorkflow, sService, filesRepo: {"sService": sService},
+    ):
+        response = client.post(
+            f"/api/repos/{S_CONTAINER_ID}/{S_PUSH_REPO_NAME}/push-staged",
+            json={"sCommitMessage": "[vaibify] Update repository"},
+        )
+    assert response.status_code == 200, response.text
+    assert "_dictReachedRemote" not in response.json()
+    assert listReadAdmissions == [
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD]
+    assert mockRecord.call_count == 1
+    assert mockRecord.call_args.args[2:] == (
+        "example-owner", "example-repo", "main")
+
+
 class DockerDoubleThatBlocksTheRepoPush(
     DockerDoubleServingATokenedTrackedRepo,
 ):

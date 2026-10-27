@@ -17,9 +17,10 @@ answer is usually already recorded.
    `vaibify-do get-pipeline-state`
    Returns the reconciled `pipeline_state.json`:
    - `sFailureReason` — the symptom (e.g. `heartbeat_stale`).
-   - `sFailureCauseHost` — the actual host-side exception (e.g. an
-     ASGI WebSocket close). This is the real cause; the reason is
-     just the symptom vaibify observed.
+   - `sFailureCauseHost` — a summary of the host-side exception (e.g.
+     an ASGI WebSocket close), with credentials redacted, the host's
+     home directory written as `~`, and its length capped. This is the
+     real cause; the reason is just the symptom vaibify observed.
    - `iActiveStepAtDeath` — the step that was running when the runner
      died. Start your investigation there.
 

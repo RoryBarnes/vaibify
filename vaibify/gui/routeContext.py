@@ -756,15 +756,21 @@ async def fsRefreshVerifyCacheAfterPush(
     redaction-safe warning string on failure, so the push toast can
     tell the researcher the L2 check did not run instead of leaving
     a silent gap between "pushed" and "still unknown". A service the
-    workflow never configured in ``dictRemotes`` is skipped without
-    a warning — there is nothing to verify against, and nagging a
+    project has no remote for is skipped without a warning — nagging a
     researcher who only uses plain git pushes would teach them to
-    ignore real warnings.
+    ignore real warnings. "Has a remote" is the resolver's own answer
+    (``flistSelectDeclaredServices``), never a ``dictRemotes`` key
+    test: GitHub is derived from the checkout's ``origin`` when no
+    entry records it, and a key test skipped every post-push verify for
+    exactly those projects. An unbound GitHub remote is still verified,
+    so its refusal reaches the researcher as this warning.
     """
-    if not ((dictWorkflow or {}).get("dictRemotes") or {}).get(sService):
-        return ""
     try:
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        from vaibify.reproducibility import scheduledReverify
+        if sService not in scheduledReverify.flistSelectDeclaredServices(
+                dictWorkflow, filesRepo):
+            return ""
         await _fnRunPostPushVerifyBlocking(
             sContainerId, dictWorkflow, sService, filesRepo, requestHttp,
         )

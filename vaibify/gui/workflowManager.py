@@ -74,6 +74,7 @@ __all__ = [
     "fsDeriveProjectRepoPathFromWorkflow",
     "fsDeriveRepoRootFromDirectory",
     "fnAttachComputedTrackedPaths",
+    "fnAttachHostGithubBinding",
     "fdictAutoDetectScripts",
     "fdictBuildDirectDependencies",
     "fdictBuildImplicitDependencies",
@@ -482,9 +483,21 @@ def fdictLoadWorkflowFromContainer(
     # from: a save still in flight when the dashboard switches projects
     # must not land in the project that is open by then.
     dictWorkflow[S_LOADED_FROM_KEY] = sWorkflowPath
+    fnAttachHostGithubBinding(dictWorkflow, connectionDocker, sContainerId)
+    return dictWorkflow
+
+
+def fnAttachHostGithubBinding(dictWorkflow, connectionDocker, sContainerId):
+    """Attach the hub's CURRENT record of where this project's pushes landed.
+
+    The GitHub verify is bound to this copy, so it must be refreshed
+    wherever the record changes, not only when the project loads: a copy
+    taken before the project's first push made that push's own remedy
+    ("push once, then verify") refuse until the project was reopened
+    (researcher-reported, 2026-10-27).
+    """
     dictWorkflow[S_HOST_GITHUB_BINDING_KEY] = _fdictHostPushedGithubRemotes(
         connectionDocker, sContainerId)
-    return dictWorkflow
 
 
 def _fdictHostPushedGithubRemotes(connectionDocker, sContainerId):

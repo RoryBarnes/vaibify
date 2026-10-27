@@ -2405,6 +2405,8 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             "bPromptRecordCurrent": bool,
             "bSupervisionClean": bool,
             "bProjectContextFileExists": bool,
+            "bNoBasenameCollisions": bool,
+            "bOverleafFullySynced": bool,
             "bAtLeastLevel2": bool,
         }
 
@@ -2431,7 +2433,18 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     ``bPromptRecordCurrent`` are informational only — they feed the
     optional PROOF rows and never join the conjunction (the Prompt
     Record follows the arXiv rule: unconfigured is trivially True).
+    ``bAtLeastLevel2`` is the gate's own verdict, never a conjunction
+    rebuilt here: the rebuilt one omitted the basename-collision and
+    Overleaf conjuncts and could read True below Level 2. Those two
+    conjuncts carry keys of their own, so every False verdict has a
+    False key beside it naming why.
     """
+    with fcontextLevelComputation():
+        return _fdictCollectLevel2Gaps(dictWorkflow, filesRepo)
+
+
+def _fdictCollectLevel2Gaps(dictWorkflow, filesRepo):
+    """Build the gaps dict inside one level-computation memo."""
     bL1 = fbAtLeastLevel1(dictWorkflow, filesRepo)
     bGithub = fbWorkflowFullySyncedWithGithub(
         dictWorkflow, filesRepo,
@@ -2467,9 +2480,11 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
         "bProjectContextFileExists": ffilesEnsureRepoFiles(
             filesRepo,
         ).fbIsFile(".vaibify/AGENTS.md"),
-        "bAtLeastLevel2":
-            bL1 and bGithub and bZenodo and bArxiv and bDecl
-            and bModels and bPersonal and bArchiveAnswered,
+        "bNoBasenameCollisions": not flistLevel2BasenameCollisions(
+            dictWorkflow),
+        "bOverleafFullySynced": not _flistOverleafLevel2Blockers(
+            dictWorkflow, filesRepo),
+        "bAtLeastLevel2": fbAtLeastLevel2(dictWorkflow, filesRepo),
     }
 
 
