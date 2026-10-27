@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.1.4.dev102 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.1.4.dev113 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a4affc64"></script>
+      <script src="_static/documentation_options.js?v=6418a839"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -341,6 +341,50 @@ masked by whatever is in <code class="docutils literal notranslate"><span class=
 open past the cap and confirm two things: the run you started keeps
 going, and the refusal the tab meets <em>names the ending</em> rather than
 claiming the server restarted.</p>
+</section>
+<section id="the-terminal-and-the-clipboard">
+<h2>The terminal and the clipboard<a class="headerlink" href="#the-terminal-and-the-clipboard" title="Link to this heading"></a></h2>
+<p><strong>Claude Code draws in its classic renderer inside vaibify.</strong> Its
+fullscreen renderer enters the terminal’s alternate screen
+(<code class="docutils literal notranslate"><span class="pre">ESC[?1049h</span></code>), where xterm keeps no scrollback, and captures the
+mouse. Every shell vaibify opens sets
+<code class="docutils literal notranslate"><span class="pre">CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1</span></code>, from the one table in
+<code class="docutils literal notranslate"><span class="pre">vaibify/config/agentTerminalEnvironment.py</span></code>. Measured on 2026-10-26
+with Claude Code 2.1.311 in a container with no network: the default
+was the classic renderer; <code class="docutils literal notranslate"><span class="pre">CLAUDE_CODE_NO_FLICKER=1</span></code> selected the
+fullscreen one (the CLI’s <code class="docutils literal notranslate"><span class="pre">/tui</span> <span class="pre">fullscreen</span></code> command is the other way
+in); and adding <code class="docutils literal notranslate"><span class="pre">CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1</span></code> to
+<code class="docutils literal notranslate"><span class="pre">CLAUDE_CODE_NO_FLICKER=1</span></code> kept it classic. Whether the installed CLI
+still honors the variable is upstream’s decision, so
+<code class="docutils literal notranslate"><span class="pre">tests/testClaudeCodeRendererLive.py</span></code> asks it nightly, forcing
+fullscreen as its control. It reports inconclusive, never a pass,
+when the control does not reach the fullscreen renderer.</p>
+<p><strong>A browser’s clipboard permission runs from the press, and expires.</strong>
+Measured once on 2026-10-26, in real Firefox on a bare localhost page
+(the Firefox version was not recorded), with the page writing the
+clipboard 200 ms after the release, as the terminal’s copy-on-select
+does: holds of 0.5 s and 3 s were accepted, and holds of 6 s and 9 s
+were refused with <code class="docutils literal notranslate"><span class="pre">NotAllowedError</span></code>. That is consistent with the HTML
+standard’s <em>transient activation</em>, which a press grants for a duration
+each browser chooses and the standard expects to be at most a few
+seconds (<a class="reference external" href="https://html.spec.whatwg.org/multipage/interaction.html#tracking-user-activation">Tracking user
+activation</a>).
+A long drag can therefore outlast the permission before the copy is
+written. This is why the refusal toast says that long selections <em>can</em>
+outlast it and that right-clicking the highlight, which is a fresh
+press, tries again. It is one measurement of one browser version, not
+a browser contract, and the toast never claims it as the cause of any
+particular refusal.</p>
+<p><strong>No lane can reproduce it.</strong> Playwright’s own Firefox build (Firefox
+155.0, Playwright 1.63) accepted the same write after holds of up to
+9 s, with <code class="docutils literal notranslate"><span class="pre">navigator.userActivation.isActive</span></code> still true throughout
+and the pointer held still. So the browser tests stand in for the
+refusal with a <code class="docutils literal notranslate"><span class="pre">writeText</span></code> that rejects
+(<code class="docutils literal notranslate"><span class="pre">tests/browser/testARefusedCopyOnSelectSaysHowToRetry.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">tests/browser/testRightClickingTheHighlightCopiesIt.py</span></code>): they pin the
+page’s answer to a refusal, never the browser’s reason for one. The
+real browser is checked by hand: hold a drag for more than 6 s in
+Firefox, read the toast, then right-click the highlight and paste.</p>
 </section>
 <section id="creating-custom-templates">
 <h2>Creating custom templates<a class="headerlink" href="#creating-custom-templates" title="Link to this heading"></a></h2>

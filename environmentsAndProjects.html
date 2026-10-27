@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Environments and Projects &mdash; Vaibify 0.1.4.dev102 documentation</title>
+  <title>Environments and Projects &mdash; Vaibify 0.1.4.dev113 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a4affc64"></script>
+      <script src="_static/documentation_options.js?v=6418a839"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -787,11 +787,34 @@ an editor, also takes your drag gestures. To get text out:</p>
 <li><p><strong>Select text</strong> in the pane’s tab bar gives the mouse back to the
 pane, so dragging selects; turn it off to give the mouse back to the
 program.</p></li>
+<li><p>Holding <strong>Option</strong> (on a Mac) or <strong>Shift</strong> (elsewhere) while dragging
+does the same for one drag. That is the key the pane honors, whatever
+a program’s own hint says: a program may suggest Shift on a Mac,
+where it does nothing.</p></li>
 <li><p><strong>Shift + wheel</strong> always scrolls the pane.</p></li>
 <li><p><strong>Copy all</strong> copies the pane’s whole scrollback.</p></li>
 </ul>
 <p>Selected text is copied automatically; Cmd+C, Ctrl+Shift+C, and
-Ctrl+Insert also work.</p>
+Ctrl+Insert also work. Dragging past the top or bottom edge keeps
+scrolling while you hold the mouse there; move back over the text to
+stop. If the browser refuses a copy, which can happen when a selection
+is held for more than a few seconds, right-click the highlighted text
+to try again.</p>
+<p>A program that draws on the whole screen, such as vim or htop, keeps
+no scrollback: while it runs, selecting and <strong>Copy all</strong> reach only
+what is on screen. Claude Code’s fullscreen renderer is such a
+program, so vaibify runs Claude Code in its classic renderer instead,
+which writes into the scrollback like any other program. Every shell
+vaibify opens sets <code class="docutils literal notranslate"><span class="pre">CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1</span></code>, so a new
+terminal tab gets it even in a container started before vaibify set
+it.</p>
+<p>When a program asks to copy text, such as Claude Code’s <code class="docutils literal notranslate"><span class="pre">/copy</span></code> or the
+link <code class="docutils literal notranslate"><span class="pre">/login</span></code> prints, a notice at the top of the pane shows how many
+characters it wants to copy and a preview of them. Nothing reaches
+your clipboard until you click <strong>Copy</strong>, and <strong>Dismiss</strong> drops the
+request. A request from a tab you are not looking at waits on that
+tab, which is marked with a dot. A program can never read your
+clipboard through the pane.</p>
 <p>A program that is killed outright, such as an agent killed for lack of
 memory, never hands the mouse back, and every mouse move then prints
 characters like <code class="docutils literal notranslate"><span class="pre">35;97;9M</span></code> at the prompt. A container’s shell switches
