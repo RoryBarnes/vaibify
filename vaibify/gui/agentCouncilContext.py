@@ -879,9 +879,16 @@ def _fnEnforceCaptureLimits(dictCapture, infoMember, sRelativePath):
             raise SnapshotRefusedError(
                 f"The repository exceeds the total snapshot size limit "
                 f"({dictBounds['iMaxSnapshotTotalBytes']} bytes); capture "
-                "refused."
+                "refused." + _fsDescribeWorkingSpaceRemedy(dictBounds)
             )
     dictCapture["iIncludedMemberCount"] = iMemberCount
+
+
+def _fsDescribeWorkingSpaceRemedy(dictBounds):
+    """Name the ways out of a total-size refusal the reserve caused."""
+    if not dictBounds.get("bReservesWorkingSpace"):
+        return ""
+    return " " + agentCouncilCapacity.S_WORKING_SPACE_REMEDY
 
 
 def _fnRefuseEscapingSymlink(sRelativePath, sLinkTarget):
@@ -1287,9 +1294,14 @@ def fdictAssessSnapshotFeasibility(connectionDocker, sContainerId,
     totals it compares only grow as the capture proceeds.
     """
     dictBounds = dictBounds or agentCouncilCapacity.fdictResolveCouncilCapacity(
-        connectionDocker)
+        connectionDocker, bReserveWorkingSpace=False)
     dictWeight = connectionDocker.fdictWeighRepository(
         sContainerId, sProjectRepoPath)
+    iFullSandboxCeiling = (
+        agentCouncilCapacity.fdictReserveWorkingSpace(dictBounds)[
+            "iMaxSnapshotTotalBytes"]
+        if "iRunnerWorkingTreeBytes" in dictBounds
+        else dictBounds["iMaxSnapshotTotalBytes"])
     listOversizedFiles = [
         dictFile for dictFile in dictWeight.get("listLargestFiles", [])
         if dictFile["iSizeBytes"] > dictBounds["iMaxSnapshotMemberBytes"]
@@ -1335,6 +1347,19 @@ def fdictAssessSnapshotFeasibility(connectionDocker, sContainerId,
         "iMaxSnapshotMemberBytes": dictBounds["iMaxSnapshotMemberBytes"],
         "iMaxSnapshotFileCount": dictBounds["iMaxSnapshotFileCount"],
         "iMaxSnapshotTotalBytes": dictBounds["iMaxSnapshotTotalBytes"],
+        # The pre-flight is judged against the read-only ceiling, the
+        # larger, so a repository only a read-only council can carry is
+        # still offered. These say whether the default kind fits too.
+        "iMaxFullSandboxSnapshotTotalBytes": iFullSandboxCeiling,
+        "bFitsFullSandbox": (
+            not listReasons
+            and dictWeight["iTotalBytes"] <= iFullSandboxCeiling),
+        "sFullSandboxNote": (
+            "" if dictWeight["iTotalBytes"] <= iFullSandboxCeiling else
+            f"It holds {dictWeight['iTotalBytes'] // (1024 * 1024)} MB, "
+            f"above the {iFullSandboxCeiling // (1024 * 1024)} MB a "
+            "full-sandbox council accepts. "
+            + agentCouncilCapacity.S_WORKING_SPACE_REMEDY),
         "sReason": (
             "" if not listReasons else
             "This project cannot be snapshotted for a council because "

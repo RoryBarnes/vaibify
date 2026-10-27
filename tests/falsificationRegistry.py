@@ -36598,4 +36598,36 @@ LIST_FALSIFICATIONS = [
         old='            if dictManifest is not None:\n',
         new='            if False:\n',
     ),
+    # --- 2026-10-26: a full-sandbox council keeps half the working
+    # tree free for its members' writes.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilWorkingSpaceReserve.py::'
+            'testAFullSandboxCeilingKeepsHalfTheWorkingTreeFree'
+        ),
+        source='vaibify/gui/agentCouncilCapacity.py',
+        # a full-sandbox ceiling equal to the whole working tree
+        old='    if bReserveWorkingSpace:\n        return fdictReserveWorkingSpace(dictCapacity)\n',
+        new='    if False:\n        return fdictReserveWorkingSpace(dictCapacity)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilWorkingSpaceReserve.py::'
+            'testAWholeCopyBaselineIsOfferedOnlyWhenHalfTheReserveSurvivesIt'
+        ),
+        source='vaibify/gui/agentCouncilCapacity.py',
+        # a whole-copy git baseline offered whatever its size
+        old='            iFreeAfterCopyBytes - iSnapshotBytes - iRoundingBytes\n            >= iReserveBytes // 2),\n',
+        new='            True),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilWorkingSpaceReserve.py::'
+            'testTheSnapshotCaptureIsBoundedByItsCouncilKind'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        # the capture resolves the default ceiling whatever the kind
+        old='        dictCtx.get("docker"), bReserveWorkingSpace=bReserveWorkingSpace)\n',
+        new='        dictCtx.get("docker"))\n',
+    ),
 ]

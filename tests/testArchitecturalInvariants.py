@@ -4674,7 +4674,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # against the shared plain-id pattern.
     # 1580 -> 1581 (2026-10-06): the capabilities answer carries each
     # provider's own reason it has no copyable login.
-    "routes/councilRoutes.py": 1581,
+    # 1581 -> 1585 (2026-10-26): the snapshot capture is bounded by the
+    # council kind's own ceiling, so a read-only council keeps the whole
+    # working tree and a full-sandbox one keeps half of it free.
+    "routes/councilRoutes.py": 1585,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4723,7 +4726,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1358 -> 1404 (2026-10-02): the credential-exclusion policy grew
     # nine entries plus prefix and component-sequence matching; it is
     # the same responsibility (what a snapshot contains and why).
-    "agentCouncilContext.py": 1404,
+    # 1404 -> 1429 (2026-10-26): the pre-flight says whether the
+    # full-sandbox ceiling also fits, and a size refusal the reserve
+    # caused names the ways to narrow the snapshot.
+    "agentCouncilContext.py": 1429,
     # NEW at 837 (2026-08-26): the store crossed the default cap when
     # the durable provenance sidecar landed — the evidence ledger's
     # recorded state and the turn counter now survive a hub restart
