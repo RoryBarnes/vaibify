@@ -194,24 +194,51 @@ def _fnDismissTheBar(pageDashboard):
     pageDashboard.wait_for_selector(S_BAR, state="detached", timeout=5000)
 
 
+S_RELEASE_FROM_OFF_THE_DASHBOARD = """async (dictHeld) => {
+    const response = await fetch(
+        '/api/registry/' + encodeURIComponent(dictHeld.sName) + '/release', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Session-Token': dictHeld.sToken,
+                'X-Vaibify-Lease': dictHeld.sLease,
+            },
+            body: '{}',
+        });
+    return response.status + ' ' + await response.text();
+}"""
+
+
 @pytest.fixture(autouse=True)
-def fnReleaseTheProjectAfterwards(pageDashboard):
-    """Release the host project before the page closes.
+def fnReleaseTheProjectAfterwards(pageDashboard, serverHub):
+    """Leave the dashboard, then release the host project from off it.
 
     A project is held by one browser session at a time, and a page that
     merely closes leaves its claim to the hub's reaper -- measured here
     at over ninety seconds before the next test could claim it. The
-    release route ends the page's shell with proof first, as it does
-    for a researcher who chooses Release.
+    order matters: a workflow view that is still open claims the
+    project it is showing, so a release made from it was taken straight
+    back, by a claim that never opened a socket (measured under a
+    parallel lane). So the page first leaves for a static file on the
+    same origin, where no dashboard code runs, and the release goes
+    from there with the session's own credential and lease.
     """
     yield
-    pageDashboard.evaluate(
-        """async (sName) => {
-            try {
-                await VaibifyApi.fdictPost('/api/registry/'
-                    + encodeURIComponent(sName) + '/release', {});
-            } catch (error) {}
-        }""", S_HOST_PROJECT_READY)
+    dictHeld = pageDashboard.evaluate(
+        """(sName) => ({
+            sName: sName,
+            sToken: VaibifyApp.fsGetSessionToken(),
+            sLease: VaibifyApp.fsGetLeaseForContainer(sName) || '',
+        })""", S_HOST_PROJECT_READY)
+    pageDashboard.goto(serverHub.sBaseUrl + "/static/styleMain.css")
+    sAnswer = "never claimed"
+    if dictHeld["sLease"]:
+        sAnswer = pageDashboard.evaluate(
+            S_RELEASE_FROM_OFF_THE_DASHBOARD, dictHeld)
+    assert S_HOST_PROJECT_READY not in serverHub.app.state.dictContainerOwners, (
+        f"the hub still owns the project after its release ({sAnswer}), "
+        "so the next test in this module would wait on the reaper"
+    )
 
 
 @pytest.mark.falsification
