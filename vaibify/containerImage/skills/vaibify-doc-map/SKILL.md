@@ -25,7 +25,8 @@ All paths are under `/usr/share/vaibify/docs/`.
 | AI-provenance states (declared/recorded/supervised) | proofLadder.md | `## The Replay axis` |
 | How a project reaches Level 3 | reproducibility.md | `## PROOF Level 3 — Reproducible`, `## The order of the final steps` |
 | The reproducibility envelope files | reproducibility.md | `## The reproducibility envelope` (Tier 1/2/3 subsections) |
-| How `vaibify reproduce` verifies | reproducibility.md | `## The verification ceremony`, `## Reproducing a published project` |
+| The determinism question and what each answer does | reproducibility.md | `## The determinism question` |
+| How a Level 3 rerun verifies and is assessed; `vaibify reproduce` | reproducibility.md | `## The verification process`, `## How a rerun is assessed`, `## Reproducing a published project` |
 | The project.json / step object schema | environmentsAndProjects.md | `## The project file`, `## The step object` |
 | Project size limits, core allocation | environmentsAndProjects.md | `## Project size limits`, `## Core allocation` |
 | Test kinds and how tests are generated | testing.md | `## Testing your project`, `### How tests are generated` |

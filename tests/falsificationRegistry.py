@@ -602,9 +602,13 @@ LIST_FALSIFICATIONS = [
             'testTheGuideDoesNotAdvertiseTheWithdrawnDirector'
         ),
         source='vaibify/containerImage/entrypoint.sh',
-        old='- `/workspace/.vaibify/logs/` — Pipeline execution logs\n',
+        old=(
+            '- `/workspace/<RepoName>/.vaibify/projects/` — Project JSON '
+            'files (each repository can have its own)\n'
+        ),
         new=(
-            '- `/workspace/.vaibify/logs/` — Pipeline execution logs\n'
+            '- `/workspace/<RepoName>/.vaibify/projects/` — Project JSON '
+            'files (each repository can have its own)\n'
             '- `/workspace/.vaibify/director.py` — Standalone pipeline '
             'executor\n'
         ),
@@ -37032,5 +37036,36 @@ LIST_FALSIFICATIONS = [
         # the evidence sandbox cannot replay a built program
         old='            dictLimits=dictLimits, bSandbox=True,\n            bWritableMountsExecutable=True)\n',
         new='            dictLimits=dictLimits, bSandbox=True)\n',
+    ),
+    # --- 2026-10-27: container guidance agrees with the catalog ---
+    Falsification(
+        nodeid=(
+            'tests/testContainerGuidanceMatchesCatalog.py::'
+            'testEveryVaibifyDoActionInContainerGuidanceExists'
+        ),
+        source='vaibify/containerImage/skills/proof-ladder/SKILL.md',
+        # the skill teaches an action the catalog never held
+        old='`vaibify-do commit-canonical`, which commits exactly',
+        new='`vaibify-do manifest-check`, which commits exactly',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerGuidanceMatchesCatalog.py::'
+            'testContainerGuidanceAgreesWithAgentSafety'
+        ),
+        source='vaibify/containerImage/skills/proof-ladder/SKILL.md',
+        # a user-only choice is taught as the agent's to make
+        old='`declare-determinism` is USER-ONLY',
+        new='`declare-determinism` is agent-safe',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerGuidanceMatchesCatalog.py::'
+            'testProofLadderQuotesTheLiveDeterminismQuestion'
+        ),
+        source='vaibify/reproducibility/determinismGate.py',
+        # the question changes and the skill keeps the old wording
+        old='"How much speed should vaibify trade for repeatable files?"',
+        new='"How much speed should vaibify trade for identical files?"',
     ),
 ]

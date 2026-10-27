@@ -302,13 +302,13 @@ def _fsResolveLockInput(filesRepo):
     ``requirements.lock``, so compiling *from* requirements.txt is
     unambiguous.
 
-    ``.vaibify/requirements.txt`` is last and is the one vaibify
-    itself tells researchers to maintain -- the entrypoint installs it
-    on container startup. Probing only the repo root meant the
-    documented dependency file had no connection to the file this
-    tier compiles, so a project that followed the documented workflow
-    exactly could never turn the L3 dependency row green, and the
-    tier said nothing about why.
+    ``.vaibify/requirements.txt`` is last: the mirror the entrypoint
+    writes on every container start from what the image installed
+    (declared once, in ``pythonPackages`` in ``vaibify.yml``). Probing
+    only the repo root meant a project with no dependency file of its
+    own had no connection to the file this tier compiles, so it could
+    never turn the L3 dependency row green, and the tier said nothing
+    about why. A root file of the researcher's own still wins.
     """
     for sCandidate in T_LOCK_INPUT_CANDIDATES:
         if filesRepo.fbIsFile(sCandidate):

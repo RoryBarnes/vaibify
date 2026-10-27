@@ -23,6 +23,13 @@ directly in a terminal.**
 - `vaibify-do run-from-step A05` — rerun from a step onward.
 - `vaibify-do run-all` — the whole pipeline.
 
+Each of these runs a step's data commands, then its plot commands,
+then its tests (a plot-only step skips its data commands).
+`vaibify-do run-data-only A09` runs the data commands, then the tests;
+`vaibify-do run-plots-only A09` runs the plot commands only. A data
+failure ends the step, a plot failure leaves the tests unrun, and
+failing tests never fail the step.
+
 A dispatched run lights the step's status marker orange while it runs
 and records its result; the researcher sees it happen. That visibility
 is the entire reason to prefer `vaibify-do` over running the script
@@ -68,8 +75,9 @@ project the researcher has open in the dashboard, and
 ## Editing the project, not just running it
 
 Change the project only through `vaibify-do` actions
-(`create-step`, `update-step`, `reorder-steps`, …). Never hand-edit an
-existing `project.json` or `state.json` with `sed`/`Edit`/an editor:
+(`create-step`, `insert-step`, `update-step`, …); `reorder-steps` is
+user-only, so ask the researcher to move a step. Never hand-edit
+`project.json` or `state.json` with `sed`/`Edit`/an editor:
 
 - Direct edits bypass the host save path — step-label recomputation,
   positional→symbolic token normalization, and reload detection — and
@@ -81,9 +89,11 @@ existing `project.json` or `state.json` with `sed`/`Edit`/an editor:
   dry-runs the whole graph so you can verify a rewire before running
   anything), pass it as `sBaseFingerprint`, and retry on a 409.
 
-The one sanctioned exception is *creating a brand-new* project in
-toolkit mode, where no `create-project` action exists yet — writing a
-fresh `.vaibify/projects/<slug>.json` is expected there.
+Creating a project has no exception either: never write a fresh
+`.vaibify/projects/<slug>.json` yourself.
+`vaibify-do adopt-directory-as-project` turns an existing directory
+into a project, and `vaibify-do create-project` asks the researcher to
+create one in their browser (see the create-pipeline-step skill).
 
 ## Honesty
 

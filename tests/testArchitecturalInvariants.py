@@ -134,9 +134,9 @@ SET_ALLOWED_SCIENCE_TERM_SOURCE_FILES = {
 #
 # STILL NOT ENFORCED:
 #
-#   *.md is not a scanned glob, so
-#   vaibify/containerImage/skills/create-pipeline-step/SKILL.md:52
-#   (example step name) is invisible to this scan.
+#   *.md is not a scanned glob, so a science-specific example in a
+#   skill is invisible to this scan (create-pipeline-step's step-name
+#   example was genericised by hand, 2026-10-27).
 #
 #   tests/ is an excluded directory, and the fixtures there use real
 #   object names freely (testStepSlugContract, testSyncRoutesCoverage,

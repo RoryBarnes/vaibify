@@ -17,7 +17,9 @@ monitor (weekly and monthly account limits, other sessions on the
 same account), so work as if the session could end at any moment:
 
 - Commit completed units of work as you go — never let more than one
-  work unit sit uncommitted.
+  work unit sit uncommitted. After each commit or push you make from
+  the shell, run `vaibify-do reconcile-remote-state`, or the dashboard
+  keeps showing the state before it.
 - Maintain a running `RESUME_NOTES.md` in the working directory: what
   is done, what is in flight, the exact next command. Update it
   BEFORE starting each risky or long operation, not after.
@@ -52,12 +54,19 @@ conservative.
    thresholds in the task prompt — honor those.)
 3. **At the pause threshold (default 95%)**:
    - Finish or cleanly abort the current unit; never pause mid-edit.
-   - Commit everything; update `RESUME_NOTES.md` with next steps.
+   - Commit everything, then `vaibify-do reconcile-remote-state`;
+     update `RESUME_NOTES.md` with next steps.
    - Compute seconds until the window resets (the block ends 5 hours
      after its first message; the monitor reports the block start).
      Add a 60-second margin.
-   - Pause with a single blocking call: `sleep <seconds>`. A sleeping
-     tool call consumes no tokens while it waits.
+   - Do not pause with a foreground `sleep`: Claude Code caps a
+     foreground command far below an hours-long wait and blocks a
+     foreground `sleep`. If your harness can run a command in the
+     background and wake you when it exits (Claude Code's Bash
+     `run_in_background`), start `sleep <seconds>` that way and end
+     your turn; it consumes no tokens while it waits. Otherwise stop:
+     tell the researcher when the window resets and that
+     `RESUME_NOTES.md` holds the next step, and let them resume you.
 4. **On resume**: re-read `RESUME_NOTES.md`, confirm the usage window
    has reset, and continue from the recorded next step.
 5. **If you are ever restarted without having paused** (a limit or

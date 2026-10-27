@@ -33,12 +33,13 @@ each easy to get wrong:
 - The equivalence **tolerance is declared in the publication**, per
   quantity and with a justification, and must cover every quantity
   the paper's claims rest on. Publishing it beforehand is what makes
-  it pre-registered rather than a rationalisation.
+  it pre-registered rather than a rationalization.
 - L5 then returns a **verdict** — did every compared quantity fall
   inside that tolerance? Whether the tolerance was *appropriate* is
   the reader's call, not the ladder's.
-- Byte-identity across the two runs is NOT expected. Each artifact
-  must independently be L3; the two are not compared byte for byte.
+- Byte-identity across the two runs is NOT expected. The second
+  analysis must itself reach Level 4; the two are not compared byte
+  for byte.
 
 "A different model" means a different model identifier — a floor, not
 a guarantee, since same-vendor siblings likely share a pretraining
@@ -68,20 +69,52 @@ by inspecting raw files. Two traps that have produced false
 - Test markers (`<repo>/.vaibify/test_markers/<slug>/*.json`) are
   receipts of the *last external run* — one marker records only the
   categories that run executed. The accumulated ledger is
-  `.vaibify/state.json` (`dictStepState.<dir>.dictVerification`).
+  `.vaibify/state.json`, namespaced per project since schema v3:
+  `dictWorkflowState.<repo-relative project.json path>.dictStepState`.
+  A top-level `dictStepState` is quarantined legacy data, not the
+  ledger.
 - Marker `dictOutputHashes` values are **git blob SHA-1s**
   (`sha1("blob <size>\0" + content)`), not sha256/sha1/md5 of the
   bytes. A uniform 100% mismatch means your algorithm is wrong, not
   that the data drifted.
 
+## Before the first run, when Level 3 is the goal: Determinism
+
+The Determinism block asks ONE question: "How much speed should
+vaibify trade for repeatable files?" The answers are "Prioritize
+speed" and "Repeatable across computers". Either passes; only an
+unanswered question fails. The answer picks the execution settings
+EVERY run uses, so ask for it before the first run, not after Level 2:
+
+- Until it is answered, runs use the speed settings.
+- Changing the answer later means rerunning every step once,
+  regenerating the envelope (the rerun replays the settings the
+  envelope records), and verifying Level 3 again; it retires the
+  current attestation.
+
+The answer is the researcher's — `declare-determinism` is USER-ONLY.
+Relay the question with both choices; never pick one for them, and do
+not hunt for a seed to "fix" the row: it asks what they choose, not
+what the scripts do.
+
 ## L1 — Self-Consistent
 
 All tests pass; every declared output's hash matches its recorded
-baseline; the project lives in a git repo (fix: `git init`).
+baseline; the project lives in a git repo. A missing repository is
+created with `init-project-repo` (USER-ONLY — surface it) or, for a
+directory that is not yet a project, `adopt-directory-as-project`.
+Never run `git init` in a shell: that makes a repository the
+dashboard never hears about.
 
-1. `vaibify-do run-all` — execute the pipeline end to end.
-2. `vaibify-do run-all-tests` — unit, integrity, qualitative,
-   quantitative. A category only runs once it is DECLARED: its
+1. `vaibify-do run-all` — execute the pipeline end to end. Each
+   enabled step runs its data commands, then its plot commands, then
+   its tests, so a successful run-all has already run every declared
+   test; do NOT follow it with `run-all-tests`. A step whose plot
+   commands fail skips its tests (the log says so), and a failing test
+   never fails the step.
+2. `vaibify-do run-all-tests` only when the tests changed and the
+   outputs did not — it runs every step's tests without the data or
+   plot commands. A category only runs once it is DECLARED: its
    commands live at `dictTests.dictQualitative` (and `.dictIntegrity`,
    `.dictQuantitative`). The best way to get them is
    `vaibify-do generate-tests-deterministic <step>
@@ -113,9 +146,15 @@ that is N/A, not a gap. The full statement of what each tier does and
 does not prove is in the repo-root agent guide.
 
 L1 also requires the researcher's per-step attestation (`sUser` is
-`passed`) and a declared input contract on **every ordinary step** —
-neither is something you can supply, so surface them rather than
-attempting them. **The AI Declaration step is the one exception, in
+`passed`), which only they can give, and a declared input contract on
+**every ordinary step**, which you may declare with
+`add-input-data-file` or `declare-no-input-data` once the researcher
+has confirmed what the step reads. Two more things hold the level at 0
+and are easy to misread: an unresolved remote-data pull marker forces
+level 0 with no step blocker (the next successful run of that step
+clears it), and a dependency scan that found an unreconciled input
+(`rescan-dependencies` is agent-safe; dismissing a finding is
+USER-ONLY). **The AI Declaration step is the one exception, in
 both directions: it is L1-NOT-APPLICABLE.** It emits no L1 blocker and
 carries no L1 requirement, because the declaration is a publication
 artifact — its sign-off is the LEVEL 2 criterion
@@ -127,37 +166,63 @@ reports `iProofLevel` and the backend derivation is the ground truth.
 
 ## L2 — Published
 
-Every canonical file's hash matches an immutable public authority
-(GitHub commit, Zenodo DOI; Overleaf/arXiv when configured).
+Every published file's hash matches an immutable public authority
+(GitHub commit, Zenodo DOI; Overleaf/arXiv when configured), AND the
+researcher has answered the publication questions. Read
+`dictLevel2Gaps` from `vaibify-do check-l2-readiness`: every `false`
+key is one remaining criterion. They are:
+
+- **Published copies** match: GitHub (`bGithubFullySynced`) and
+  Zenodo (`bZenodoFullySynced`); Overleaf and arXiv only when bound
+  or recorded. No two compared files may share a basename.
+- **AI Declaration** signed and still current
+  (`bAiDeclarationAttested`). A sign-off the files have moved past
+  reads as stale.
+- **AI models** declared (`bAiModelsDeclared`): `declare-ai-model` is
+  agent-safe, but declare only facts the researcher confirmed.
+- **Personal AI Configuration** answered (`bPersonalLayerDeclared`):
+  `declare-personal-layer` is USER-ONLY. Any answer passes, including
+  "declared-private"; never ask them to produce a file.
+- **Environment archive** question answered (`bImageArchiveAnswered`):
+  `answer-environment-archive` is USER-ONLY.
+
+A remote verify compares one set of files, but they gate different
+levels: the project's own files (declared outputs, scripts,
+`project.json`) gate Level 2; the reproducibility envelope
+(`MANIFEST.sha256`, `requirements.lock`, `reproduce.sh`,
+`.vaibify/environment.json`, `Dockerfile`, `.vaibify/rerunAssessment.py`,
+and any `requirements.txt` / `environment.yml` / `pyproject.toml`)
+gates Level 3. `.vaibify/l3_attestation.json` and
+`.vaibify/ai_provenance.json` are compared and shown, but gate nothing
+in this comparison.
 
 1. Confirm L1 first.
-2. Envelope present at the repo root: `MANIFEST.sha256`,
-   `requirements.lock`, `.vaibify/environment.json` (regenerated
-   automatically at the L1 crossing; if missing, run
-   `vaibify-do regenerate-envelope` — never write them by hand).
-3. **Commit the canonical state before any push.** Run
-   `vaibify-do manifest-check` → `listNeedsCommit` is the exact set
-   of canonical files awaiting commit; if non-empty, run
-   `vaibify-do commit-canonical`. An uncommitted canonical file is an
-   L2 blocker, not cosmetic.
-4. **Surface, do not invoke, the publication clicks**: Push to
-   GitHub / Push to Overleaf / Publish to Zenodo. `push-to-github` is
-   agent-callable when the researcher asks; `push-to-overleaf`,
-   `publish-to-zenodo`, and `accept-plots-as-standard` are USER-ONLY
-   by design — publication requires human attestation. Never retry a
+2. **Commit the canonical state before any push**: run
+   `vaibify-do commit-canonical`, which commits exactly the canonical
+   files awaiting commit (`listNeedsCommit`). An uncommitted canonical
+   file is an L2 blocker, not cosmetic.
+3. **Surface, do not invoke, the publication clicks**: the Sync
+   menu's Push to GitHub, Push to Overleaf and Archive to Zenodo.
+   `push-to-github` is agent-callable when the researcher asks;
+   `push-to-overleaf`, `publish-to-zenodo` and
+   `accept-plots-as-standard` are USER-ONLY by design — publication
+   requires human attestation. Never retry a
    `sRefusal: "user-only-action"` response.
-5. After the researcher pushes: `vaibify-do verify-remote` confirms
-   remote hashes match the current local files.
-6. **After a push that did NOT go through vaibify** — a `git push`
+4. A push through vaibify re-verifies that remote on its own. Report
+   its counts only when the response carries no
+   `sPostPushVerifyWarning`; with one, say the comparison did not run
+   and that **Verify now** on the remote's row in **Published copies**
+   runs it. `vaibify-do verify-remote <service>` is the same check.
+5. **After a push that did NOT go through vaibify** — a `git push`
    you or the researcher typed in a terminal, or one a script made —
-   run `vaibify-do reconcile-remote-state`. The L2 cells read a
-   cached comparison that only an explicit verify rewrites, and the
-   badge map only refreshes when a vaibify route bumps the sync
-   epoch; terminal git bumps neither, so the dashboard keeps showing
-   the pre-push state indefinitely. It is not wrong, it has not been
-   told. Report `iMatching`, `iTotalFiles` and `listDiverged` from
-   the response — if the cell was already green the researcher sees
-   no change and cannot otherwise tell the reconcile from a no-op.
+   run `vaibify-do reconcile-remote-state` (GitHub only). The L2 cells
+   read a cached comparison; terminal git rewrites nothing, so until a
+   verify runs (this call, Verify now, or the scheduled re-verify every
+   six hours) the dashboard shows the pre-push state, and a comparison
+   older than 24 hours reads as unknown. Report `iMatching`,
+   `iTotalFiles` and `listDiverged` from the response's
+   `dictVerifyStatus` — if the cell was already green the researcher
+   sees no change and cannot otherwise tell the reconcile from a no-op.
 
    **Check this before concluding a green L2 cell is a bug.** A
    requirement row reads what the last verify recorded, not what
@@ -165,51 +230,88 @@ Every canonical file's hash matches an immutable public authority
 
 ## L3 — Reproducible
 
-A third party can re-fetch the published artifacts and re-execute
-from source.
+A third party can obtain the pinned environment, re-run the workflow
+from the published files, and get results the published comparisons
+accept.
 
-1. Confirm L2 first.
-2. `vaibify-do check-l3-readiness` — per-criterion pass/fail for the
-   six verifiers (manifest complete, dependency lock hash-pinned,
-   environment digest-pinned, Dockerfile pinned, reproduce.sh pinned,
-   determinism declared). Drive the rest from its gap dict.
-3. `vaibify-do audit-determinism` — determinism-focused view; read
-   `listDeterminismIssues` for what the verdict was computed from and
-   translate into a per-step fix list. Determinism is THREE questions
-   since 2026-08-30 — last-digit numeric differences, thread count,
-   Intel MKL mode — and every one must be answered before the row
-   passes. ANSWERING is the criterion, never a particular answer:
-   "I do not accept those differences", "the thread count is not
-   fixed" and "this project does not use MKL" are complete, passing
-   answers. So a project whose scripts contain no RNG at all still
-   fails this row until the researcher answers all three: the gate
-   asks what they assert, not what the code happens to do. Say so
-   rather than hunting for a seed that is not there. The answers are
-   the researcher's to give — `declare-determinism` is not
-   agent-safe, so relay the questions and let them choose.
-4. `vaibify-do regenerate-envelope` — the WRITER. It rewrites
+Read `vaibify-do check-l3-readiness`. Readiness has eight parts, each
+its own row: the manifest is complete; the manifest matches the files;
+the dependency lock is hash-pinned; the environment snapshot exists;
+the Dockerfile is pinned; `reproduce.sh` exists; Determinism is
+answered; standalone binaries are declared or waived
+(`declare-standalone-binaries`, USER-ONLY). Level 3 itself also needs
+a current rebuild attestation, the envelope on GitHub, the envelope
+AND the attestation in the Zenodo archive, the environment image
+archived, no archive left on the Zenodo sandbox, and a current
+`reproduce.sh`.
+
+**The last steps have an order**, because some rewrite files others
+have already fingerprinted, and a published Zenodo version cannot be
+changed. When order matters, the dashboard puts a "Do this next" arrow
+on the section that holds the row to fix; with no arrow, the remaining
+work can be done in any order. The order:
+
+1. **Determinism answered before the run that made the outputs** (see
+   above).
+2. `vaibify-do regenerate-envelope` — the WRITER. It rewrites
    `MANIFEST.sha256`, `requirements.lock` and
-   `.vaibify/environment.json`, and returns `dictTierResults`; read
-   it, because a tier that could not run reports `bWritten: false`
-   with an `sSkipReason` and the readiness gap alone cannot tell that
-   apart from "regeneration is not what fixes this gate". Then
-   `vaibify-do generate-reproduce-script` for `reproduce.sh`.
-   `generate-l3-envelope` is READ-ONLY despite its name — a
-   diagnostic view, not a regeneration. Calling it and expecting
-   files to change is a documented dead end.
+   `.vaibify/environment.json` (including the execution settings the
+   Determinism answer chose), and returns `dictTierResults`; read it,
+   because a tier that could not run reports `bWritten: false` with an
+   `sSkipReason` and the readiness gap alone cannot tell that apart
+   from "regeneration is not what fixes this gate".
+   `generate-l3-envelope` is READ-ONLY despite its name — a diagnostic
+   view, not a regeneration.
    On a CLONE, check first: when "Manifest matches the files" fails
    and `vaibify-do list-committed-file-differences` reports
-   `sManifestOwnership: "foreign"`, the manifest is the author's claim
-   and regenerating replaces it with this container's bytes. The
-   remedy is the committed versions of the files it lists —
-   `restore-committed-files`, which is USER-ONLY because it discards
-   the container's changes to them. Name the files and let the
-   researcher choose; Verify offers the same restore.
-5. `vaibify-do view-l3-attestation` — has the rebuild been done, and
-   why is the badge lit or not.
-6. USER-ONLY, surface never invoke: `pin-base-image-digest`
-   (Dockerfile edit) and `verify-l3-reproducibility` (the
-   hours-long rebuild + hash compare).
+   `sManifestOwnership: "foreign"`, the manifest is the author's claim.
+   `regenerate-envelope` then answers 409 unless the researcher agrees
+   to replace it (`bReplaceForeignManifest`); relay that choice, never
+   supply it. The usual remedy is the committed versions of the files
+   it lists — `restore-committed-files`, USER-ONLY because it discards
+   the container's changes to them. An envelope from an author's
+   OBTAINED image is refused with `switch-to-building`; say so.
+3. `vaibify-do generate-reproduce-script` — writes `reproduce.sh` and
+   re-pins the manifest in the same action.
+4. **Settle the manifest.** The attestation records the manifest's
+   fingerprint, so any later change makes it stale.
+5. **Archive the environment** — `deposit-environment-archive`
+   (USER-ONLY). It writes the archive record into
+   `.vaibify/environment.json` and re-pins the manifest, so it comes
+   before the verify. A sandbox deposit must be promoted to permanent
+   Zenodo (`promote-environment-archive`, USER-ONLY) before Level 3.
+6. **Verify Level 3** — `verify-l3-reproducibility`, USER-ONLY: the
+   Run menu's "Verify Level 3 Reproducibility". It re-runs every step
+   in a throwaway container built from the pinned image and grades each
+   output: byte-identical, comparisons passed, not reproduced, or not
+   enough evidence. Byte identity is never required, but an output
+   whose bytes changed passes ONLY through a published quantitative
+   comparison: integrity and qualitative checks alone grade it "not
+   enough evidence", which fails. A step whose quantitative tests are
+   N/A therefore passes Level 1 and can fail Level 3 on another
+   computer; say so before the researcher relies on it. Before
+   running, the verify also refuses when the image does not match the
+   declared packages, the Dockerfile does not describe the pinned
+   image, or the image does not satisfy `requirements.lock`; each
+   refusal names its remedy, so relay it. Then commit the attestation
+   (`vaibify-do commit-canonical`).
+7. **Push to GitHub, then publish a Zenodo version** that holds the
+   envelope and the attestation (Sync menu → Archive to Zenodo, which
+   is the researcher's). Publishing before step 6 costs a second
+   Zenodo version. When the project's Zenodo record is on a different
+   site from the one it publishes to, the Zenodo row says so and offers
+   the choice; relay it, it is the researcher's.
+
+`vaibify-do view-l3-attestation` shows the last rebuild record. A
+"passed" record does not count when it is historical (made by an older
+verifier or comparison policy) or ran under different execution
+settings from the current Determinism answer: decide from
+`bL3AttestationCurrent` in the readiness answer, never from `sStatus`.
+
+The Dockerfile row's remedy is `copy-image-dockerfile` (USER-ONLY): it
+writes the image's own build chain into the repository and re-pins the
+manifest. `pin-base-image-digest` is only a read-only view of that
+gap.
 
 ## Reporting honesty
 
@@ -225,6 +327,13 @@ project's source. They did not name these fields and have no reason to
 know them. So report in the words the dashboard uses: step labels
 (`A01`, `I01`), the names on the badges (Tests, Verified, N/A), and
 the button they would click.
+
+Quote a dashboard label ONLY as the dashboard spells it, and give the
+whole path to it (section, row, then control), e.g. Project block →
+Published copies → GitHub mirror → Verify now. An action name is never
+a label: `publish-where-the-zenodo-record-is` is not a button anyone
+can find. When you do not know a control's label, say so and describe
+where to look, rather than inventing a name.
 
 `vaibify-do check-l2-readiness` returns `listLevel1Blockers`, and every
 entry carries `sRemediationHint` — the exact sentence the dashboard

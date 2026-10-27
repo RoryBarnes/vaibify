@@ -19,7 +19,7 @@ saStartupWarnings=()
 # it.
 #
 # The code is the vocabulary; the REMEDY text is not here on purpose. A shell
-# script baked into an image cannot share the host's Python remedy catalogue,
+# script baked into an image cannot share the host's Python remedy catalog,
 # and an image built months ago would otherwise hand out advice that has since
 # changed. The host translates the code at read time.
 #
@@ -742,8 +742,9 @@ S_IMAGE_REQUIREMENTS="/etc/vaibify/requirements.txt"
 #
 # The repository's .vaibify/requirements.txt is a GENERATED MIRROR of
 # what this image installed, not a second place to declare packages.
-# PROOF Level 3 compiles requirements.lock from that mirror, so the
-# image, the mirror and the lock agree by construction.
+# PROOF Level 3 compiles requirements.lock from that mirror when the
+# repository root holds no pyproject.toml, requirements.in or
+# requirements.txt of its own (dependencyPinning.T_LOCK_INPUT_CANDIDATES).
 #
 # What the previous shape cost, and why a hand-edited mirror is
 # replaced rather than kept: the file used to be an independent
@@ -1106,7 +1107,7 @@ The vaibify dashboard is the researcher's ground truth; any action you would oth
 
 `vaibify-do` is the **in-container CLI** for that purpose — it runs inside this container, reads its session config from `/tmp/vaibify-session.env` and the action catalog from `/tmp/vaibify-action-catalog.json`, and dispatches HTTP/WebSocket calls to the host vaibify backend. It is not host-only.
 
-**Prefer `vaibify-do`** for editing `project.json` (it goes through schema validation and atomic save). Direct edits are detected by the host's polling loop and the dashboard reloads on the next tick — but `vaibify-do` remains the canonical path. Files under `<repository>/.vaibify/test_markers/`, `<repository>/.vaibify/pipeline_state.json` and `<repository>/.vaibify/logs/` are still outputs of backend actions; do not hand-edit them. **One container, several projects: `vaibify-do` acts on the project OPEN IN THE DASHBOARD.** It declares the project you are working in (the nearest directory above yours holding `.vaibify/projects/`), and every response begins with a stderr line `vaibify-do: project '<name>' at <directory>` naming the project the hub actually acted on — read it, even when you keep only the head of the output. If the two differ, the hub refuses with `sRefusal: "project-mismatch"` (a `runRefused` event with `sReason: "projectMismatch"` for runs) and nothing is done. Do NOT work around it by editing `project.json` directly or running the steps in the shell: tell the researcher which project you are working in and ask them to open it in the dashboard, or, if you meant the open project, work from its directory. Only one pipeline runs per container at a time; a run refused because another project's pipeline holds the container names that project — wait for it rather than retrying in a loop.
+**Prefer `vaibify-do`** for editing `project.json` (it goes through schema validation and atomic save). Direct edits are detected by the host's polling loop and the dashboard reloads on the next tick — but `vaibify-do` remains the canonical path. Files under `<repository>/.vaibify/test_markers/`, `<repository>/.vaibify/pipeline_state.json` and `<repository>/.vaibify/logs/` are still outputs of backend actions; do not hand-edit them. **One container, several projects: `vaibify-do` acts on the project OPEN IN THE DASHBOARD.** It declares the project you are working in (the nearest directory above yours holding `.vaibify/projects/`), and every response begins with a stderr line `vaibify-do: project '<name>' at <directory>` naming the project the hub actually acted on — read it, even when you keep only the head of the output. If the two differ, the hub refuses with `sRefusal: "project-mismatch"` (a `runRefused` event with `sReason: "projectMismatch"` for runs) and nothing is done. Do NOT work around it by editing `project.json` directly or running the steps in the shell: tell the researcher which project you are working in and ask them to open it in the dashboard, or, if you meant the open project, work from its directory. One pipeline runs per PROJECT at a time; a run refused because this project's pipeline is already running names what holds it — wait for it rather than retrying in a loop. Another project's run in the same container does not refuse yours: `vaibify-do` acknowledges it for you and prints a `concurrentRunWarning` event naming those runs and the container limits the runs share.
 
 **Turning a sandbox directory into a project.** Run `vaibify-do adopt-directory-as-project` — the one path, idempotent, and the researcher opens the result themselves. **Never hand-write `project.json` to CREATE a project**: the file is real but the repository is never registered, so every workflow action then refuses with "No project is open". The **create-pipeline-step** skill has the arguments, the refusal codes, and what to tell the researcher afterwards.
 
@@ -1126,15 +1127,15 @@ Usage:
 - "run unit tests on step A09" → `vaibify-do run-unit-tests A09`
 - "run all tests" → `vaibify-do run-all-tests`
 - "commit the current state" → `vaibify-do commit-canonical`
-- "pull a file from the container" → `vaibify-do pull-file <sPath>`
+- "pull a file from the container" → `vaibify-do pull-file sContainerPath=<absolute path under /workspace> sHostDestination='~/.vaibify/exports/<VAIBIFY_CONTAINER_ID>/'` (the only place an agent pull may land; quote the `~` so the host, not your shell, expands it, and tell the researcher the `sHostPath` it reports)
 - "make step A09's figures the standard" → `vaibify-do accept-plots-as-standard A09` (USER-ONLY — surface the request, do not run)
-- "push to GitHub" → `vaibify-do push-to-github`
+- "push these output files to GitHub" → `vaibify-do push-to-github listFilePaths='["<repo-relative path>", ...]'` (not a general `git push`: to push commits, run `git push`, then `vaibify-do reconcile-remote-state`)
 - "push to Overleaf / Zenodo" → USER-ONLY — surface the request, do not run
 
 **Diagnosing a failed run from inside the container.** When a pipeline reports exit-code -9999 ("runner disappeared") or the dashboard shows a step stuck in an unknown state:
 
 - "what killed the last run?" → `vaibify-do get-pipeline-state` — returns the reconciled `pipeline_state.json` with `sFailureReason` (symptom, e.g. `heartbeat_stale`) and `sFailureCauseHost` (the actual host exception, e.g. an ASGI WebSocket close). `iActiveStepAtDeath` names the step that was running when the runner died.
-- "show the host log for this container" → `vaibify-do get-host-log-tail --lines 200` (or `--lines=200`) — returns `{bSanitized: true, listIncidents: [...]}`: an allowlisted ring of recent host exceptions tagged with this container id. **You get no log lines.** The raw `~/.vaibify/vaibify.log` spans every container and carries host paths, so it is withheld from the agent lane by design — only the dashboard sees `listLines`. An empty `listIncidents` means nothing was recorded against this container, NOT that nothing went wrong: a host-side failure logged without the container tag does not appear here at all. Do not report "the log is empty, so nothing failed."
+- "show the host log for this container" → `vaibify-do get-host-log-tail --lines 200` (or `--lines=200`) — returns `{bSanitized: true, listIncidents: [...]}`: an allowlisted ring of recent host exceptions tagged with this container id. **You get no log lines.** The raw `~/.vaibify/vaibify.log` spans every container and carries host paths, so it is withheld from the agent lane by design; when you need the text, ask the researcher to read that file on their own machine. An empty `listIncidents` means nothing was recorded against this container, NOT that nothing went wrong: a host-side failure logged without the container tag does not appear here at all. Do not report "the log is empty, so nothing failed."
 
 Both actions are read-only and agent-safe. Use them BEFORE asking the researcher to investigate from the host.
 
@@ -1151,7 +1152,7 @@ The repair is one action:
 
 It fetches origin, re-runs the GitHub content verify that the Level 2 cells read, records what the verify proved, and bumps the epoch so every open tab repaints. Read-only plus bookkeeping; the working tree is untouched. Run it after ANY out-of-band git operation, without being asked.
 
-**Report the verdict, not the fact that you ran it.** The response carries `dictVerifyStatus` with `iMatching`, `iTotalFiles`, and `listDiverged`. Say "19 of 19 files match GitHub" or name the files in `listDiverged`. A researcher who is told only "I ran the reconcile" has learned nothing, and if the badge was already showing a check they will see no visible change and cannot tell success from a no-op. `vaibify-do verify-remote github` re-runs just the comparison if you want the numbers without the fetch and repaint.
+**Report the verdict, not the fact that you ran it — and only a verdict this call produced.** The response carries `dictVerifyStatus` with `iMatching`, `iTotalFiles`, `listDiverged` and `sLastVerified`. When `sVerifyWarning` is empty and `sLastVerified` is later than the moment you ran the action, say "19 of 19 files match GitHub" or name the files in `listDiverged`. Otherwise the comparison did not run and `dictVerifyStatus` is an older cached result: say so, quote `sVerifyWarning` if there is one, do not report its counts, and name the remedy — Verify now on the GitHub mirror row in the Project block. After `push-to-github`, whose response carries no counts and carries `sPostPushVerifyWarning` when its comparison failed, take the numbers from `vaibify-do verify-remote github` under the same rule. A researcher who is told only "I ran the reconcile" has learned nothing, and if the badge was already showing a check they will see no visible change and cannot tell success from a no-op. `vaibify-do verify-remote github` re-runs just the comparison, without the fetch, and repaints the dashboard too.
 
 **Run steps through `vaibify-do`, not by executing scripts directly in a shell.** A `vaibify-do run-step`/`run-selected-steps` dispatch lights the step's marker as *running* on the dashboard; a bare `python …` you launch yourself is invisible to the dashboard as a running step — the researcher only sees dependent steps flip stale once its outputs land. If you must run something directly, tell the researcher what you ran and on which step. See the `running-steps` skill for the full protocol, including safe (compare-and-swap) project edits.
 
@@ -1173,9 +1174,9 @@ It fetches origin, re-runs the GitHub content verify that the Level 2 cells read
 
 **Prefer the generator over hand-writing a test.** `vaibify-do generate-tests-deterministic <step> sCategory=qualitative` (or `integrity` / `quantitative`, or omit `sCategory` for all three) INTROSPECTS the step's declared output data files and writes the test plus its standards from what is actually in them — the real columns, JSON keys, array names, shapes and values — and declares the category for you, so no separate `update-step` is needed. Reach for it first: assertions derived from the data beat assertions derived from your reading of the data, and this is the difference between pinning the keys that exist and the keys you believed existed. It never reaches an LLM, and it never overwrites a test file the researcher edited — it answers `bNeedsOverwriteConfirm` with the paths, which you bring back to them rather than forcing. (`generate-tests` is the separate user-only route: same introspection, but it can also fall back to an LLM, and AI-authored test content is the researcher's to review.)
 
-**Declaring and running a test category.** Hand-write a test only when the generator cannot express what you need. Integrity, qualitative and quantitative tests are yours to write AND to run — none of the three is user-only. The order is load-bearing, because a category that declares no commands cannot be run — `run-test-category` answers `No commands for category` until it is declared. (1) Declare it: `vaibify-do update-step <step> '{"dictTests": {...}}'`, where the categories live at `dictTests.dictIntegrity` / `.dictQualitative` / `.dictQuantitative`, each `{"sFilePath": ..., "saCommands": [...]}`. (2) Write the test file — `vaibify-do save-and-run-test <step> sFilePath=... sContent=...` writes and immediately executes one. (3) Run it and record the axis: `vaibify-do run-test-category <step> sCategory=qualitative`, or `vaibify-do run-all-tests` for every category of every step. Two traps worth knowing before you hit them: `dictTests` is REPLACED wholesale, never merged, so send every category you mean to keep in the same update (an update that would drop a category's commands is refused unless you pass `bConfirmDestructive=true`); and `save-and-run-test` records only the aggregate unit-test state, never a category's — step (1) is the only thing that moves `sQualitative` off `unnecessary`. A category with no commands is N/A and counts green; never fabricate trivial tests to colour the dashboard.
+**Declaring and running a test category.** Hand-write a test only when the generator cannot express what you need. Integrity, qualitative and quantitative tests are yours to write AND to run — none of the three is user-only. The order is load-bearing, because a category that declares no commands cannot be run — `run-test-category` answers `No commands for category` until it is declared. (1) Declare it: `vaibify-do update-step <step> '{"dictTests": {...}}'`, where the categories live at `dictTests.dictIntegrity` / `.dictQualitative` / `.dictQuantitative`, each `{"sFilePath": ..., "saCommands": [...]}`. (2) Write the test file — `vaibify-do save-and-run-test <step> sFilePath=... sContent=...` writes and immediately executes one. (3) Run it and record the axis: `vaibify-do run-test-category <step> sCategory=qualitative`, or `vaibify-do run-all-tests` for every category of every step. Two traps worth knowing before you hit them: `dictTests` is REPLACED wholesale, never merged, so send every category you mean to keep in the same update (an update that would drop a category's commands is refused unless you pass `bConfirmDestructive=true`); and `save-and-run-test` records only the aggregate unit-test state, never a category's — step (1) is the only thing that moves `sQualitative` off `unnecessary`. A category with no commands is N/A and counts green; never fabricate trivial tests to color the dashboard.
 
-**What Level 1 actually requires, and the one step it exempts.** Per ORDINARY step: every present test axis green, a declared input contract (`saInputDataFiles` or `bNoInputData`), timing clean, and the researcher's own attestation (`sUser` is `passed`). The last one is theirs to give — surface it, never attempt it. **The AI Declaration step is L1-NOT-APPLICABLE**: it emits no L1 blocker and carries no L1 requirement, because the declaration is a publication artifact whose sign-off is the LEVEL 2 criterion `ai-declaration-unattested`. An AI Declaration step reading `"sUser": "untested"` is therefore NOT what is holding a project below Level 1, and telling the researcher to approve it in order to reach L1 is wrong — a step kind carved out of a rule is invisible if you reason from the rule alone, so read the blockers instead of inferring them. `vaibify-do check-l2-readiness` reports `iProofLevel` AND `listLevel1Blockers` — ask it rather than reconstructing an answer from project.json or state.json, which is how agents before you told researchers things that were simply untrue. Its `bScriptStalenessEvaluated: false` means one criterion was not evaluated, so an empty list means "nothing found here", never "nothing is wrong". The backend derivation is the ground truth, and when your own reading of the files disagrees with it, say so rather than acting on your reading.
+**What Level 1 actually requires, and the one step it exempts.** A git project repository with at least one step, no unresolved remote-data pull marker (one holds the whole project at level 0 and adds nothing to `listLevel1Blockers`), and per ORDINARY step: a declared input contract (`saInputDataFiles` or `bNoInputData`); no cross-step read the dependency scan found and the workflow does not declare, and a scan that is current; timing clean (no `bUpstreamModified`, no `listModifiedFiles`); no script edited after its outputs landed; every present test axis green, with its freshness actually checked; and the researcher's own attestation (`sUser` is `passed`, not gone stale since the outputs changed). The last one is theirs to give — surface it, never attempt it. **The AI Declaration step is L1-NOT-APPLICABLE**: it emits no L1 blocker and carries no L1 requirement, because the declaration is a publication artifact whose sign-off is the LEVEL 2 criterion `ai-declaration-unattested`. An AI Declaration step reading `"sUser": "untested"` is therefore NOT what is holding a project below Level 1, and telling the researcher to approve it in order to reach L1 is wrong — a step kind carved out of a rule is invisible if you reason from the rule alone, so read the blockers instead of inferring them. `vaibify-do check-l2-readiness` reports `iProofLevel` AND `listLevel1Blockers` — ask it rather than reconstructing an answer from project.json or state.json, which is how agents before you told researchers things that were simply untrue. Its `bScriptStalenessEvaluated: false` means two criteria were not evaluated (a script edited after its outputs landed, and whether each test result's freshness could be checked — both need scans only the dashboard's poll runs), so an empty list means "nothing found here", never "nothing is wrong". The backend derivation is the ground truth, and when your own reading of the files disagrees with it, say so rather than acting on your reading.
 
 **Report in the researcher's words, not the schema's.** They are a scientist using a dashboard, not a reader of vaibify's source; they did not name these fields and have no reason to know them. Every L1 blocker carries `sRemediationHint`, the exact sentence the dashboard shows them ("Step has never been verified — click verify when satisfied") — relay that sentence rather than translating it back into `sUser`, `dictQualitative` or `axis-not-green`. Speak in step labels (`A01`, `I01`), the names on the badges, and the button to click. Save identifiers for when the researcher asks for one, or when you are writing code or a command they will run: "Step A02 has no qualitative tests defined, which counts as N/A — nothing is blocking you there" is a report; "`sQualitative` is `unnecessary` because `dictQualitative.saCommands` is empty" is the same fact addressed to the wrong reader.
 
@@ -1185,7 +1186,7 @@ It fetches origin, re-runs the GitHub content verify that the Level 2 cells read
 
 - `/workspace/` — All repositories and working files
 - `/workspace/<RepoName>/.vaibify/projects/` — Project JSON files (each repository can have its own)
-- `/workspace/.vaibify/logs/` — Pipeline execution logs
+- `/workspace/<RepoName>/.vaibify/logs/` — Pipeline execution logs, one directory per project repository (the workspace-root `/workspace/.vaibify/logs/` is not where a project's runs log)
 
 ## Resources
 
@@ -1206,12 +1207,12 @@ Cross-step filename references inside command strings use `{step:<sStepId>.<stem
 
 The older positional form `{StepNN.stem}` still parses but is **deprecated**: `NN` is a 1-based index into `listSteps`, so it renumbers whenever a step is inserted, deleted, or reordered, and a reference that used to point at one step silently starts pointing at another. Write the symbolic form in anything new, and prefer converting a positional token when you are already editing that command.
 
-Run a step: `vaibify-do run-step A09` (see **Acting on the researcher's behalf** above). There is no in-container pipeline executor to invoke directly — running work through `vaibify-do` is what keeps the researcher's dashboard showing the truth.
+Run a step: `vaibify-do run-step A09` (see **Interacting with the vaibify dashboard** above). There is no in-container pipeline executor to invoke directly — running work through `vaibify-do` is what keeps the researcher's dashboard showing the truth.
 
 ## Vaibified Repository Structure
 
 A vaibified repo contains:
-- One camelCase directory per step
+- One directory per step, its basename derived from the step's name by `fsSlugFromStepName` (each word's first letter capitalized, spaces removed: "generate samples" → `GenerateSamples`)
 - Scripts prefixed with `data` (analysis) or `plot` (visualization)
 - A `Plot/` directory for output figures
 - `.vaibify/projects/*.json` defining the pipeline
@@ -1267,9 +1268,9 @@ convention; theirs win.
 ## Creating New Pipeline Steps
 
 To author a new analysis or plot step, use the
-**create-pipeline-step** skill — it carries the 5-phase protocol
-(discover dependencies, name, wire the cross-step tokens, write the
-project entry, verify).
+**create-pipeline-step** skill — it carries the protocol in Phases 0-5
+(confirm there is a project, discover dependencies, name, wire the
+cross-step tokens, write the scripts and project entry, verify).
 
 The one rule that must never be violated: **every file a script reads
 from another step must be a CLI argument named in the project command
@@ -1285,7 +1286,7 @@ procedure to fix them permanently.
 ### Detection and Immediate Fix
 
 1. If a script raises `ModuleNotFoundError` or `ImportError`, identify the PyPI package name.
-2. Install it immediately: `pip install <package>>=<minimum_version>`
+2. Install it immediately: `pip install '<package>>=<minimum_version>'` (quoted, or the shell reads `>` as a redirect)
 3. Verify the script now runs.
 
 ### Persisting the Dependency
@@ -1294,7 +1295,7 @@ The immediate `pip install` is ephemeral, and **you cannot make it permanent fro
 
 Dependencies are declared in exactly ONE place: `pythonPackages` in the project's `vaibify.yml`. That file lives on the researcher's host, it is what the container image is built from, and you have no access to it.
 
-`<repo>/.vaibify/requirements.txt` is a GENERATED MIRROR of that list. It is rewritten from the image on every container start, and PROOF Level 3 compiles `requirements.lock` from it — so the image, the mirror and the lock agree by construction. Editing the mirror changes nothing that survives: the next start replaces it and reports your edit as lost.
+`<repo>/.vaibify/requirements.txt` is a GENERATED MIRROR of that list. It is rewritten from the image on every container start. Editing the mirror changes nothing that survives: the next start replaces it and reports your edit as lost. PROOF Level 3 compiles `requirements.lock` from the first of `pyproject.toml`, `requirements.in` or `requirements.txt` it finds at the repository root, and from the mirror only when none of those exists — so a dependency file you add at the repository root changes what the lock is compiled from, not what the image installs.
 
 So: **tell the researcher which package you need and why, and ask them to add it to `pythonPackages` in `vaibify.yml` and rebuild the image.** Until they do, your `pip install` holds for this container session only — say that plainly rather than reporting the dependency as handled.
 
@@ -1306,7 +1307,7 @@ Why it works this way, since editing a file in here looks more convenient: a pac
 - Always include a version lower bound (e.g., `>=1.0`).
 - Before adding a package, check for version conflicts: `pip install --dry-run <package>`
 - Do not add packages that duplicate functionality already available in the container.
-- Distinguish **code dependencies** (packages — belong in requirements.txt) from **data
+- Distinguish **code dependencies** (packages — declared in `pythonPackages` in `vaibify.yml`) from **data
   dependencies** (files from other steps — belong in `{step:<sStepId>.<stem>}` references).
 
 ## Important

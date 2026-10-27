@@ -20,7 +20,11 @@ source first.
 2. **Fetch the e-print source** into a temp directory:
    `mkdir -p /tmp/arxiv-<id> && curl -sL https://arxiv.org/e-print/<id> -o /tmp/arxiv-<id>/src`
    The payload is a gzipped tar, a bare gzipped .tex, or (rarely) a
-   PDF. Check with `file src`, then `tar -xf` or `gunzip` as needed.
+   PDF. The image does not install `file`, so tell them apart this way:
+   `tar -tzf src` lists a tarball (extract with `tar -xzf src`); a
+   "does not look like a tar archive" error means one gzipped .tex
+   (`gunzip -c src > main.tex`); `head -c 5 src` printing `%PDF-` means
+   a PDF.
 3. **Find the main file**: `grep -l '\\documentclass' *.tex`. Follow
    `\input{}` / `\include{}` references as needed.
 4. **Read selectively, not linearly.** Abstract first, then only the
