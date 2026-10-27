@@ -233,6 +233,22 @@ claiming the server restarted.
 
 ## The terminal and the clipboard
 
+**Claude Code draws in its classic renderer inside vaibify.** Its
+fullscreen renderer enters the terminal's alternate screen
+(`ESC[?1049h`), where xterm keeps no scrollback, and captures the
+mouse. Every shell vaibify opens sets
+`CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1`, from the one table in
+`vaibify/config/agentTerminalEnvironment.py`. Measured on 2026-10-26
+with Claude Code 2.1.311 in a container with no network: the default
+was the classic renderer; `CLAUDE_CODE_NO_FLICKER=1` selected the
+fullscreen one (the CLI's `/tui fullscreen` command is the other way
+in); and adding `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` to
+`CLAUDE_CODE_NO_FLICKER=1` kept it classic. Whether the installed CLI
+still honors the variable is upstream's decision, so
+`tests/testClaudeCodeRendererLive.py` asks it nightly, forcing
+fullscreen as its control. It reports inconclusive, never a pass,
+when the control does not reach the fullscreen renderer.
+
 **A browser's clipboard permission runs from the press, and expires.**
 Measured once on 2026-10-26, in real Firefox on a bare localhost page
 (the Firefox version was not recorded), with the page writing the

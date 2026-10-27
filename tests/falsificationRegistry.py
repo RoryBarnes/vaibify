@@ -36701,4 +36701,26 @@ LIST_FALSIFICATIONS = [
         old='        event.stopPropagation();\n        VaibifyFileOps.fnCopyToClipboard(terminal.getSelection());\n',
         new='        event.stopPropagation();\n',
     ),
+    # --- 2026-10-26: with a program on the alternate screen, the Select
+    # text title and the terminal help say only the screen exists ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testAFullScreenProgramsLimitIsStated.py::'
+            'test_select_text_states_the_full_screen_limit'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # the Select text title promises scrollback a full-screen program lacks
+        old="            'and the wheel scrolls the scrollback. A program that ' +\n            'draws on the whole screen, such as vim or htop, keeps no ' +\n            'scrollback here, so only what is on screen can be ' +\n            'selected. Holding the mouse just above or below the text ' +\n",
+        new="            'and the wheel scrolls the scrollback. Holding the mouse ' +\n            'just above or below the text ' +\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAFullScreenProgramsLimitIsStated.py::'
+            'test_the_terminal_help_states_the_full_screen_limit'
+        ),
+        source='vaibify/gui/static/scriptLegendPanel.js',
+        # the terminal help drops its full-screen paragraph
+        old="            '<p><strong>A program that draws on the whole ' +\n            'screen</strong> (vim, htop) keeps no scrollback in the ' +\n            'pane: while it runs, selecting and Copy all reach only ' +\n            'what is on screen. vaibify runs Claude Code in its ' +\n            'classic renderer, which writes into the scrollback, so ' +\n            'its earlier output stays reachable.</p>' +\n",
+        new='',
+    ),
 ]
