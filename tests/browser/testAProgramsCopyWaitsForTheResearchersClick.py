@@ -135,9 +135,9 @@ def _fnDialTheVisibleShell(pageDashboard):
     )
 
 
-def _fnOpenAHostShell(pageDashboard, serverHub):
+def _fnOpenAHostShell(pageDashboard, serverHub, sInitScript=S_RECORDERS):
     """Install the recorders, enter the host project, dial a shell."""
-    pageDashboard.add_init_script(S_RECORDERS)
+    pageDashboard.add_init_script(sInitScript)
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     pageDashboard.wait_for_selector(".xterm", timeout=20000)
     _fnDialTheVisibleShell(pageDashboard)

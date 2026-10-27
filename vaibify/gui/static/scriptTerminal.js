@@ -548,10 +548,22 @@ const VaibifyTerminal = (function () {
             dictTab.sPendingSelection = "";
             if (sSelection) {
                 VaibifyFileOps.fnCopyToClipboardWithoutStealingFocus(
-                    sSelection);
+                    sSelection, S_COPY_ON_SELECT_REFUSAL_MESSAGE);
             }
         }, I_COPY_ON_SELECT_DELAY_MS);
     }
+
+    /* A browser lets a page write the clipboard only for a few seconds
+       after the researcher's last press, and this copy is written
+       after the RELEASE, so a long drag can outlast that permission
+       (measured in Firefox; see docs/developers.md). The sentence
+       names that as a possibility, never as the cause: one refusal
+       after one long drag does not establish why that write failed.
+       Right-clicking the highlight is a fresh press, so it retries. */
+    var S_COPY_ON_SELECT_REFUSAL_MESSAGE =
+        "The browser refused the copy. Long selections can outlast its " +
+        "clipboard permission. Right-click the highlighted text to try " +
+        "again.";
 
     function fnCopySelectionOnRightClick(event, terminal) {
         if (!terminal.hasSelection()) return;

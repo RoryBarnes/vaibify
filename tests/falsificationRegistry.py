@@ -36679,4 +36679,26 @@ LIST_FALSIFICATIONS = [
         old='        } else if (iClosedIndex < dictPane.iActiveTabIndex) {\n',
         new='        } else if (false) {\n',
     ),
+    # --- 2026-10-26: a refused copy-on-select says how to retry, and
+    # the right-click retry it names copies the highlight ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testARefusedCopyOnSelectSaysHowToRetry.py::'
+            'test_a_refused_copy_on_select_says_how_to_try_again'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # a refused copy-on-select reports the old sentence, with no retry
+        old='                    sSelection, S_COPY_ON_SELECT_REFUSAL_MESSAGE);\n',
+        new='                    sSelection);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testRightClickingTheHighlightCopiesIt.py::'
+            'test_right_clicking_the_highlight_after_a_refusal_copies_it'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # a right-click on a selection no longer copies it
+        old='        event.stopPropagation();\n        VaibifyFileOps.fnCopyToClipboard(terminal.getSelection());\n',
+        new='        event.stopPropagation();\n',
+    ),
 ]
