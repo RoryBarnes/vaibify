@@ -63,10 +63,15 @@ def _fdictClaimAOf(fixture, dictOut):
 def testBaselineClaimIsRecordedAgainstTheServerSnapshotNotTheModelHash():
     """A baseline confirmed claim runs through the injected executor in a
     fresh sandbox; the ledger's state identity is the executor's snapshot
-    hash, never the hash the model asserted (sections 7.4, 9.6)."""
+    hash, never a hash the model asserted (sections 7.4, 9.6). A model
+    cannot even offer one now: validation refuses the field."""
+    from vaibify.gui.agentCouncilCharter import fdictValidateTurnResult
+    dictAsserting = fdictMakeTurnResult(listEvidence=[{
+        "sStatus": "confirmed", "sStateForm": "baseline",
+        "sCommandText": "pytest -q", "sSnapshotHash": "MODEL-ASSERTED-HASH"}])
+    assert fdictValidateTurnResult(dictAsserting)["bValid"] is False
     listEvidence = [{"sStatus": "confirmed", "sStateForm": "baseline",
-                     "sCommandText": "pytest -q",
-                     "sSnapshotHash": "MODEL-ASSERTED-HASH"}]
+                     "sCommandText": "pytest -q"}]
     fixture = fixtureBuildCouncil(
         LIST_TWO_SPECS, _ffnDecideProposalEvidence(listEvidence),
         sChairbotHandle="A")
@@ -79,7 +84,6 @@ def testBaselineClaimIsRecordedAgainstTheServerSnapshotNotTheModelHash():
     listEntries = fixture.ledger.flistCollectEntries()
     assert len(listEntries) == 1
     assert listEntries[0]["sSnapshotHash"] == "baseline-snapshot-hash-0001"
-    assert listEntries[0]["sSnapshotHash"] != "MODEL-ASSERTED-HASH"
 
 
 @pytest.mark.falsification
@@ -121,46 +125,78 @@ def testConfirmedClaimRevertsWhenLedgerEntryCannotBeRetained():
     assert ledger.flistCollectEntries() == []
 
 
-def testModifiedStateClaimWithCompleteManifestIsConfirmed():
-    """A runner-modified command is a labeled modified-state experiment
-    carrying a reconstructable change manifest (section 7.4)."""
-    dictManifest = {"dictModifiedFileContents": {"module.py": "new source"},
-                    "listDeletedPaths": [], "dictChangedFileModes": {},
-                    "dictSymlinkTargets": {}}
-    listEvidence = [{"sStatus": "confirmed", "sStateForm": "modifiedState",
-                     "sCommandText": "./experiment.sh", "sSnapshotHash": "h",
-                     "sExecutionImageIdentity": "image", "iExitCode": 0,
-                     "sOutputDigest": "digest",
-                     "dictChangeManifest": dictManifest}]
-    fixture = fixtureBuildCouncil(
-        LIST_TWO_SPECS, _ffnDecideProposalEvidence(listEvidence),
-        sChairbotHandle="A")
-    dictOut = fixture.fdictDrive()
-    dictClaim = _fdictClaimAOf(fixture, dictOut)
-    assert dictClaim["sStatus"] == "confirmed"
-    assert dictClaim["sLedgerStateForm"] == "modifiedState"
-    listEntries = fixture.ledger.flistCollectEntries()
-    assert listEntries[0]["dictChangeManifest"][
-        "dictModifiedFileContents"] == {"module.py": "new source"}
-    assert fixture.listBaselineCalls == []
+DICT_PARTICIPANT_MANIFEST = {
+    "listModifiedFiles": [{"sPath": "module.py", "sContent": "new source"}],
+    "listDeletedPaths": [], "listChangedFileModes": [],
+    "listSymlinkTargets": [],
+}
 
 
-def testModifiedStateClaimWithIncompleteManifestReverts():
-    """A modified-state manifest that cannot reconstruct the tested state
-    is refused, and the claim reverts (section 7.4)."""
+@pytest.mark.falsification
+def testModifiedStateClaimRevertsUntilVaibifyReplaysIt():
+    """A participant's own report of a modified-state run never confirms.
+
+    Kills: recording a modified-state claim from what the participant
+    supplied, with no replay behind it.
+    """
     listEvidence = [{"sStatus": "confirmed", "sStateForm": "modifiedState",
-                     "sCommandText": "./experiment.sh", "sSnapshotHash": "h",
-                     "sExecutionImageIdentity": "image", "iExitCode": 0,
-                     "sOutputDigest": "digest",
-                     "dictChangeManifest": {
-                         "dictModifiedFileContents": {"module.py": "x"}}}]
+                     "sCommandText": "./experiment.sh",
+                     "dictChangeManifest": DICT_PARTICIPANT_MANIFEST}]
     fixture = fixtureBuildCouncil(
         LIST_TWO_SPECS, _ffnDecideProposalEvidence(listEvidence),
         sChairbotHandle="A")
     dictOut = fixture.fdictDrive()
     dictClaim = _fdictClaimAOf(fixture, dictOut)
     assert dictClaim["sStatus"] == "asserted"
-    assert "incompleteChangeManifest" in dictClaim["sReversionReason"]
+    assert dictClaim["sReversionReason"] == "modifiedStateNotReplayed"
+    assert fixture.ledger.flistCollectEntries() == []
+
+
+def testModifiedStateClaimWithIncompleteManifestIsRefusedAtValidation():
+    """A manifest that cannot reconstruct the tested state never reaches
+    the engine: validation names the missing kind of change, so the
+    participant's one repair attempt is told what to add (section 7.4)."""
+    from vaibify.gui.agentCouncilCharter import fdictValidateTurnResult
+    dictResult = fdictMakeTurnResult(listEvidence=[{
+        "sStatus": "confirmed", "sStateForm": "modifiedState",
+        "sCommandText": "./experiment.sh",
+        "dictChangeManifest": {"listModifiedFiles": [
+            {"sPath": "module.py", "sContent": "x"}]}}])
+    dictVerdict = fdictValidateTurnResult(dictResult)
+    assert dictVerdict["bValid"] is False
+    assert any("listDeletedPaths" in sProblem
+               for sProblem in dictVerdict["listProblems"])
+
+
+@pytest.mark.falsification
+def testAWebSourceKeepsItsLinksAndLosesAnyCredential():
+    """A web source stays in the record; a token in its query does not.
+
+    Kills: settling a web source without scanning it for credentials.
+    """
+    listEvidence = [
+        {"sStatus": "supportedBySourceInspection", "sStateForm": "webSource",
+         "listSourceLinks": ["https://example.org/notes"],
+         "sSearchQuery": "solver tolerance default"},
+        {"sStatus": "supportedBySourceInspection", "sStateForm": "webSource",
+         "listSourceLinks": ["https://example.org/notes"],
+         "sSearchQuery": "Bearer abcdefghij0123456789zz"},
+    ]
+    fixture = fixtureBuildCouncil(
+        LIST_TWO_SPECS, _ffnDecideProposalEvidence(listEvidence),
+        sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    dictClean = _fdictClaimAOf(fixture, dictOut)
+    dictRound = dictOut["listRounds"][0]
+    dictTainted = next(
+        dictRecord["dictResult"]["listEvidence"][1]
+        for dictRecord in dictRound["dictTurnsByPhase"]["independentProposals"]
+        if fixture.fsHandleForId(dictRecord["sParticipantId"]) == "A")
+    assert dictClean["sStatus"] == "supportedBySourceInspection"
+    assert dictClean["listSourceLinks"] == ["https://example.org/notes"]
+    assert dictTainted["sStatus"] == "asserted"
+    assert dictTainted["sReversionReason"] == "credentialInWebSource"
+    assert "abcdefghij0123456789zz" not in dictTainted["sSearchQuery"]
     assert fixture.ledger.flistCollectEntries() == []
 
 

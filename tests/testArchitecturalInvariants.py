@@ -4847,7 +4847,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # contract, so its wording lives here.
     # 1275 -> 1281 (2026-10-01): the version-history entry for charter
     # 1.8.0, which records the missed bump of clauses 6 and 7.
-    "agentCouncilCharter.py": 1281,
+    # 1281 -> 1178 (2026-10-26): the evidence claim contract moved to
+    # agentCouncilEvidenceContract.py, which changes with evidence policy
+    # rather than with the protocol text.
+    "agentCouncilCharter.py": 1178,
     # NEW at 810 (2026-08-29): the notes derivation joins the decision
     # grouping and the held-question descriptor. All three are the same
     # responsibility — reading a settled record into what a researcher

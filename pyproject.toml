@@ -91,6 +91,11 @@ dev = [
     # range covers the whole interpreter matrix; the cap stops a new
     # major release from changing the findings under a green branch.
     "pylint>=3.3,<5",
+    # tests/testCouncilEvidenceContract.py judges the strict schema the
+    # council hands Codex and Antigravity with a real validator rather
+    # than the engine's own code. Draft7Validator, the draft the schema
+    # needs, exists from 3.2 and in every release since.
+    "jsonschema>=3.2",
     # Also a runtime dependency below 3.14 (see `dependencies`); kept
     # here without the marker so a 3.14 CI leg exercises the wheel as
     # well as the standard library's codec.

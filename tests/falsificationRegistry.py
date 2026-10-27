@@ -36524,4 +36524,46 @@ LIST_FALSIFICATIONS = [
         old='        sModelId, bStructured=False, bReadOnlyCouncil=True)\n',
         new='        sModelId, bStructured=False)\n',
     ),
+    # --- 2026-10-26: one evidence contract; a participant reports no
+    # provenance, and a web source is never confirmed.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilEvidenceContract.py::'
+            'testTheSchemaAndTheValidatorGiveEveryRowTheSameVerdict'
+        ),
+        source='vaibify/gui/agentCouncilEvidenceContract.py',
+        # the validator tolerates fields the strict schema forbids
+        old='    listUnexpected = sorted(\n        set(jsonEntry) - set(DICT_EVIDENCE_FIELDS_BY_FORM[sStateForm]))\n',
+        new='    listUnexpected = []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilEvidenceContract.py::'
+            'testTheLedgerRefusesAnEntryWithoutObservedProvenance'
+        ),
+        source='vaibify/gui/agentCouncilStore.py',
+        # the ledger accepts an entry with no observed provenance
+        old='        for sFieldName in LIST_LEDGER_REQUIRED_FIELDS:\n',
+        new='        for sFieldName in []:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilLedger.py::'
+            'testModifiedStateClaimRevertsUntilVaibifyReplaysIt'
+        ),
+        source='vaibify/gui/agentCouncilEvidence.py',
+        # a modified-state claim stays confirmed on the participant's word
+        old='                self._fnRevertClaim(dictClaim, "modifiedStateNotReplayed")\n',
+        new='                pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilLedger.py::'
+            'testAWebSourceKeepsItsLinksAndLosesAnyCredential'
+        ),
+        source='vaibify/gui/agentCouncilEvidence.py',
+        # a web source is kept without a credential scan
+        old='        if not any(agentCouncilStore.fbDetectCredentialText(sText)\n                   for sText in listTexts):\n            return\n',
+        new='        return\n',
+    ),
 ]

@@ -22,6 +22,14 @@ import copy
 import json
 import uuid
 
+from .agentCouncilEvidenceContract import (
+    DICT_EVIDENCE_CLAIM_TEMPLATE,
+    S_EVIDENCE_KEY,
+    fdictComposeEvidenceOutputSchema,
+    flistFindEvidenceClaimProblems,
+    fsComposeEvidenceFormsText,
+)
+
 __all__ = [
     "DICT_PHASE_INSTRUCTIONS",
     "DICT_VERDICT_REQUIRES_NONEMPTY",
@@ -193,7 +201,15 @@ S_PHASE_VETO = "veto"
 # stop conditions for an implementer. Two different charter texts had
 # been shipped under 1.7.0, although a campaign persists "the version
 # and text it ran under".
-S_CHARTER_VERSION = "1.8.0"
+# 1.9.0 (2026-10-26, researcher rulings): one evidence contract with
+# four forms. A modified-state claim carries its command and its
+# changes and no provenance numbers, because vaibify replays it and
+# records what it observed; a web source names the links a search
+# returned and is never confirmed. The contract used to differ by
+# provider: Claude's template offered a modified-state claim with its
+# own exit code and digest, which the strict schema Codex and
+# Antigravity are held to did not.
+S_CHARTER_VERSION = "1.9.0"
 _S_CHARTER_CLAUSES = """\
 COUNCIL CHARTER (version {sVersion})
 
@@ -415,54 +431,6 @@ DICT_VERDICT_REQUIRES_NONEMPTY = {
     "blockingObjection": "listBlockingObjections",
 }
 
-# The evidence claim shape the engine actually consumes
-# (agentCouncilEvidence.EvidenceDisciplineMixin). A model told
-# "array of strings" here returns strings, and every one of them is
-# silently skipped by `if not isinstance(dictClaim, dict): continue` —
-# the claim never reaches the ledger and nothing reports the loss.
-# The fake evidence tests manufacture dictionaries directly, so no
-# fake lane could have surfaced it.
-S_EVIDENCE_KEY = "listEvidence"
-# Spelled here for the same reason TUPLE_TURN_VERDICTS is: the
-# campaign module imports this one. tests/testCouncilRunnerAccess.py::
-# testTheEvidenceVocabularyMatchesTheEngine pins them together.
-S_EVIDENCE_STATUS_CONFIRMED = "confirmed"
-S_EVIDENCE_STATE_MODIFIED = "modifiedState"
-TUPLE_EVIDENCE_CLAIM_STATUSES = (
-    "confirmed", "supportedBySourceInspection", "asserted",
-    "blockedForWantOfEvidence",
-)
-TUPLE_EVIDENCE_STATE_FORMS = ("baseline", "modifiedState")
-# The claim fields EVERY entry carries. Deliberately only what the
-# evidence engine CONSUMES: an earlier draft of this contract also
-# required an 'sClaimText', which production reads nowhere — asking a
-# model for a field that goes nowhere spends its tokens and fails its
-# turns for nothing. Requiring exactly the consumed set is what makes
-# "exact" true in both directions.
-TUPLE_EVIDENCE_BASE_FIELDS = ("sStatus",)
-# A confirmed claim names the command its confirmation rests on. The
-# two state forms then diverge, and the divergence is the whole point:
-# a BASELINE claim is re-run by the engine itself against the sealed
-# snapshot (agentCouncilEvidence._fnRecordBaselineClaim), so the model
-# supplies only the command; a MODIFIED-STATE claim is accepted on the
-# model's own provenance, so it must carry that provenance or the
-# ledger records a confirmation with empty fields.
-TUPLE_EVIDENCE_MODIFIED_STATE_FIELDS = (
-    "sSnapshotHash", "sExecutionImageIdentity", "iExitCode",
-    "sOutputDigest", "dictChangeManifest",
-)
-DICT_EVIDENCE_CLAIM_TEMPLATE = {
-    "sStatus": "<one of " + "|".join(TUPLE_EVIDENCE_CLAIM_STATUSES) + ">",
-    "sStateForm": "<when sStatus is confirmed: one of "
-                  + "|".join(TUPLE_EVIDENCE_STATE_FORMS) + ">",
-    "sCommandText": "<when sStatus is confirmed: the exact command>",
-    "sSnapshotHash": "<modifiedState only: the snapshot it ran against>",
-    "sExecutionImageIdentity": "<modifiedState only: the image identity>",
-    "iExitCode": "<modifiedState only: integer exit code>",
-    "sOutputDigest": "<modifiedState only: digest of the output>",
-    "dictChangeManifest": "<modifiedState only: object of changed paths>",
-}
-
 LIST_TURN_RESULT_STRING_KEYS = ["sSummary", "sVerdict"]
 LIST_TURN_RESULT_ARRAY_KEYS = [
     "listAssumptions", "listEvidence", "listMathematicalClaims",
@@ -657,7 +625,7 @@ def _flistFindArrayProblems(sKeyName, jsonValue):
         listProblems = []
         for iIndex, jsonEntry in enumerate(jsonValue):
             listProblems.extend(
-                _flistFindEvidenceClaimProblems(iIndex, jsonEntry))
+                flistFindEvidenceClaimProblems(iIndex, jsonEntry))
         return listProblems
     listProblems = []
     for iIndex, jsonEntry in enumerate(jsonValue):
@@ -672,54 +640,6 @@ def _flistFindArrayProblems(sKeyName, jsonValue):
             listProblems.append(
                 f"'{sKeyName}' entry {iIndex} is empty; an array with "
                 "nothing to say is [], never padded")
-    return listProblems
-
-
-def _flistFindEvidenceClaimProblems(iIndex, jsonEntry):
-    """Validate ONE evidence claim against its discriminated shape.
-
-    `isinstance(entry, dict)` alone accepted ``{}``, an invented
-    status, and a modifiedState confirmation with no provenance — all
-    of which the evidence engine then drops or records with empty
-    fields, silently. A claim the ledger cannot use is a claim the
-    model should be told to fix on its one repair attempt.
-    """
-    sWhere = f"'{S_EVIDENCE_KEY}' entry {iIndex}"
-    if not isinstance(jsonEntry, dict):
-        return [f"{sWhere} must be an object with "
-                f"{list(TUPLE_EVIDENCE_BASE_FIELDS)}, not "
-                f"{type(jsonEntry).__name__}"]
-    listProblems = [
-        f"{sWhere} needs a non-empty '{sField}'"
-        for sField in TUPLE_EVIDENCE_BASE_FIELDS
-        if not isinstance(jsonEntry.get(sField), str)
-        or not jsonEntry.get(sField, "").strip()]
-    sStatus = jsonEntry.get("sStatus")
-    if isinstance(sStatus, str) and sStatus not in (
-            TUPLE_EVIDENCE_CLAIM_STATUSES):
-        listProblems.append(
-            f"{sWhere} has status {sStatus!r}, which is not one of "
-            f"{list(TUPLE_EVIDENCE_CLAIM_STATUSES)}; the engine ignores "
-            "a status it does not know, so the claim would vanish")
-    if sStatus != S_EVIDENCE_STATUS_CONFIRMED:
-        return listProblems
-    sStateForm = jsonEntry.get("sStateForm")
-    if sStateForm not in TUPLE_EVIDENCE_STATE_FORMS:
-        listProblems.append(
-            f"{sWhere} is confirmed, so 'sStateForm' must be one of "
-            f"{list(TUPLE_EVIDENCE_STATE_FORMS)}; a confirmed claim "
-            "with any other value is reverted as unprovenanced")
-    if not str(jsonEntry.get("sCommandText") or "").strip():
-        listProblems.append(
-            f"{sWhere} is confirmed, so it needs the 'sCommandText' its "
-            "confirmation rests on")
-    if sStateForm == S_EVIDENCE_STATE_MODIFIED:
-        listProblems.extend(
-            f"{sWhere} is a confirmed modifiedState claim, so it needs "
-            f"'{sField}' — the ledger records this provenance verbatim "
-            "and cannot recover it later"
-            for sField in TUPLE_EVIDENCE_MODIFIED_STATE_FIELDS
-            if jsonEntry.get(sField) in (None, "", {}))
     return listProblems
 
 
@@ -757,6 +677,7 @@ def fsComposeExactResultSchema():
         "shown shape — an evidence entry returned as a bare string is "
         "discarded and your claim is lost.\n"
         + json.dumps(dictTemplate, indent=2, sort_keys=True)
+        + "\n" + fsComposeEvidenceFormsText()
     )
 
 
@@ -1036,7 +957,7 @@ def fdictComposeTurnResultJsonSchema(dictCampaign, sPhase):
     for sKeyName in listArrayKeys:
         dictProperties[sKeyName] = {
             "type": "array",
-            "items": (_fdictComposeEvidenceOutputSchema()
+            "items": (fdictComposeEvidenceOutputSchema()
                       if sKeyName == S_EVIDENCE_KEY else
                       {"type": "string", "minLength": 1}),
         }
@@ -1046,30 +967,6 @@ def fdictComposeTurnResultJsonSchema(dictCampaign, sPhase):
         "required": list(dictProperties),
         "additionalProperties": False,
     }
-
-
-def _fdictComposeEvidenceOutputSchema():
-    """Constrain evidence to strict-schema forms the engine can verify."""
-    dictUnconfirmed = {
-        "type": "object",
-        "properties": {"sStatus": {
-            "type": "string",
-            "enum": list(TUPLE_EVIDENCE_CLAIM_STATUSES[1:]),
-        }},
-        "required": ["sStatus"],
-        "additionalProperties": False,
-    }
-    dictBaseline = {
-        "type": "object",
-        "properties": {
-            "sStatus": {"type": "string", "enum": ["confirmed"]},
-            "sStateForm": {"type": "string", "enum": ["baseline"]},
-            "sCommandText": {"type": "string", "minLength": 1},
-        },
-        "required": ["sStatus", "sStateForm", "sCommandText"],
-        "additionalProperties": False,
-    }
-    return {"anyOf": [dictUnconfirmed, dictBaseline]}
 
 
 def flistBuildQuotedMaterial(dictCampaign, dictRound, sPhase, sParticipantId):

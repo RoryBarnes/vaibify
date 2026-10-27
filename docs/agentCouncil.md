@@ -155,12 +155,12 @@ Every participant receives the same server-owned **charter** as its
 highest-priority instruction, on the command line, so it never collides
 with the project's own instruction files, which are not copied into the
 snapshot at all. It is reproduced verbatim. This is the text of the charter
-version 1.8.0 (the constant `S_CHARTER_VERSION` in
+version 1.9.0 (the constant `S_CHARTER_VERSION` in
 `vaibify/gui/agentCouncilCharter.py`; each council records the version
 and text it ran under, so an older plan stays readable as what it was):
 
 ```text
-COUNCIL CHARTER (version 1.8.0)
+COUNCIL CHARTER (version 1.9.0)
 
 1. Role and its limits. You are one of several independent models
 convened to produce either an implementation plan for a proposed
