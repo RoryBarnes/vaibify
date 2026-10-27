@@ -4983,7 +4983,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1349 -> 1371 (2026-10-26): the Claude permission flags per council
     # kind, so a full-sandbox member edits and runs its copy (section 8.6)
     # and a read-only one has no shell.
-    "agentCouncilProviders.py": 1371,
+    # 1371 -> 1404 (2026-10-26): the evidence executor applies a
+    # modified-state claim's manifest in its fresh sandbox before the
+    # command runs; it extends that one seam rather than forking it.
+    "agentCouncilProviders.py": 1404,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans

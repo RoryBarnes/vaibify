@@ -36549,21 +36549,53 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testAgentCouncilLedger.py::'
-            'testModifiedStateClaimRevertsUntilVaibifyReplaysIt'
-        ),
-        source='vaibify/gui/agentCouncilEvidence.py',
-        # a modified-state claim stays confirmed on the participant's word
-        old='                self._fnRevertClaim(dictClaim, "modifiedStateNotReplayed")\n',
-        new='                pass\n',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testAgentCouncilLedger.py::'
             'testAWebSourceKeepsItsLinksAndLosesAnyCredential'
         ),
         source='vaibify/gui/agentCouncilEvidence.py',
         # a web source is kept without a credential scan
         old='        if not any(agentCouncilStore.fbDetectCredentialText(sText)\n                   for sText in listTexts):\n            return\n',
         new='        return\n',
+    ),
+    # --- 2026-10-26: vaibify replays a modified-state claim under
+    # filesystem-aware confinement before the ledger records it.
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilLedger.py::'
+            'testAModifiedStateClaimRecordsWhatTheReplaySandboxObserved'
+        ),
+        source='vaibify/gui/agentCouncilEvidence.py',
+        # the ledger's exit code taken from the claim, not the sandbox
+        old='            "iExitCode": dictExecution.get("iExitCode"),\n',
+        new='            "iExitCode": dictClaim.get("iExitCode", 0),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilLedger.py::'
+            'testAManifestTheReplayCannotApplyLeavesTheClaimAsserted'
+        ),
+        source='vaibify/gui/agentCouncilEvidence.py',
+        # a failed replay recorded as though it had run
+        old='            self._fnRevertClaim(\n                dictClaim, f"modifiedStateReplayFailed: {error}")\n            return\n',
+        new='            dictExecution = {"sSnapshotHash": "h", "sExecutionImageIdentity": "i",\n                             "iExitCode": 0, "sOutputDigest": "d"}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilManifestConfinement.py::'
+            'testEveryEscapeProbeIsRefusedAndTouchesNothingOutside'
+        ),
+        source='vaibify/gui/agentCouncilManifest.py',
+        # the manifest walk follows a symlinked directory
+        old='I_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='I_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageCouncilGatewayLifecycle.py::'
+            'testAManifestThatCannotBeAppliedRunsNoCommandAndDestroysTheSandbox'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # the replay runs the command without applying the manifest
+        old='            if dictManifest is not None:\n',
+        new='            if False:\n',
     ),
 ]

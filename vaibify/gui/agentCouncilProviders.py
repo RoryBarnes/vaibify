@@ -45,6 +45,7 @@ import time
 
 from . import agentCouncilDockerGateway
 from . import agentCouncilEgress
+from . import agentCouncilManifest
 from . import agentCouncilRunner
 from . import providerApiTransport
 from .agentCouncilCampaign import (
@@ -1318,6 +1319,13 @@ def ffnBuildBaselineEvidenceExecutor(dictGateway, sCampaignId,
     and no evidence over an unaccounted sandbox ever becomes confirmed
     (remediation R4). Returns the callback the engine invokes as
     ``fdictExecuteBaselineEvidence(dictRequest)``.
+
+    A request carrying a ``dictChangeManifest`` is a modified-state
+    replay through this same lifecycle: the manifest is applied to the
+    fresh copy (``agentCouncilManifest``) before the command runs, so the
+    recorded result is one vaibify observed on a state it rebuilt
+    itself. A manifest that cannot be applied raises before the command
+    runs, and the sandbox is still destroyed and proven gone.
     """
     def fdictExecuteBaselineEvidence(dictRequest):
         dictCreated = agentCouncilDockerGateway.fdictReserveAndCreateRunner(
@@ -1333,6 +1341,10 @@ def ffnBuildBaselineEvidenceExecutor(dictGateway, sCampaignId,
         try:
             agentCouncilDockerGateway.fnCopySnapshotIntoRunner(
                 dictGateway, sHandle, baSnapshotTar)
+            dictManifest = dictRequest.get("dictChangeManifest")
+            if dictManifest is not None:
+                _fnApplyChangeManifestInSandbox(
+                    dictGateway, sHandle, dictManifest, fWallClockSeconds)
             dictExecuted = agentCouncilDockerGateway.fdictExecuteBoundedTurn(
                 dictGateway, sHandle,
                 ["/bin/sh", "-c", dictRequest.get("sCommandText", "")],
@@ -1356,6 +1368,27 @@ def ffnBuildBaselineEvidenceExecutor(dictGateway, sCampaignId,
             "sOutputDigest": _fsDigestText(dictExecuted["sOutput"]),
         }
     return fdictExecuteBaselineEvidence
+
+
+def _fnApplyChangeManifestInSandbox(dictGateway, sHandle, dictManifest,
+                                    fWallClockSeconds):
+    """Apply a claim's manifest to the sandbox's copy, or raise.
+
+    The program is fixed and server-owned; the manifest is its stdin.
+    """
+    dictApplied = agentCouncilDockerGateway.fdictExecuteBoundedTurn(
+        dictGateway, sHandle,
+        agentCouncilManifest.flistComposeManifestApplyCommand(
+            agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT),
+        fWallClockSeconds=fWallClockSeconds,
+        sWorkingDirectory=agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT,
+        baStdinPayload=agentCouncilManifest.fbaEncodeManifestForProgram(
+            dictManifest))
+    if dictApplied["iExitCode"] != 0:
+        raise agentCouncilDockerGateway.CouncilGatewayError(
+            "the change manifest could not be applied to a fresh copy of "
+            f"the snapshot (exit {dictApplied['iExitCode']}): "
+            + dictApplied["sOutput"].strip()[-300:])
 
 
 def _fdictComposeSandboxCost(dictLimits):

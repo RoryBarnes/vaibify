@@ -132,24 +132,71 @@ DICT_PARTICIPANT_MANIFEST = {
 }
 
 
-@pytest.mark.falsification
-def testModifiedStateClaimRevertsUntilVaibifyReplaysIt():
-    """A participant's own report of a modified-state run never confirms.
+def _fdictModifiedStateClaim():
+    return {"sStatus": "confirmed", "sStateForm": "modifiedState",
+            "sCommandText": "./experiment.sh",
+            "dictChangeManifest": DICT_PARTICIPANT_MANIFEST}
 
-    Kills: recording a modified-state claim from what the participant
-    supplied, with no replay behind it.
+
+def _fdictReplayObserved(dictRequest):
+    """What a sandbox observed: an exit code no participant reported."""
+    return {"sSnapshotHash": "baseline-snapshot-hash-0001",
+            "sExecutionImageIdentity": "sha256:image", "iExitCode": 7,
+            "sOutputDigest": "observed-digest"}
+
+
+@pytest.mark.falsification
+def testAModifiedStateClaimRecordsWhatTheReplaySandboxObserved():
+    """The ledger's provenance is the replay's, and it carries the manifest.
+
+    Kills: building a modified-state entry's exit code from anything but
+    the sandbox's own run.
     """
-    listEvidence = [{"sStatus": "confirmed", "sStateForm": "modifiedState",
-                     "sCommandText": "./experiment.sh",
-                     "dictChangeManifest": DICT_PARTICIPANT_MANIFEST}]
     fixture = fixtureBuildCouncil(
-        LIST_TWO_SPECS, _ffnDecideProposalEvidence(listEvidence),
+        LIST_TWO_SPECS, _ffnDecideProposalEvidence([_fdictModifiedStateClaim()]),
+        ffnBaselineExecute=_fdictReplayObserved, sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    dictClaim = _fdictClaimAOf(fixture, dictOut)
+    assert dictClaim["sStatus"] == "confirmed"
+    assert dictClaim["sLedgerStateForm"] == "modifiedState"
+    assert fixture.listBaselineCalls == [{
+        "sCommandText": "./experiment.sh",
+        "dictChangeManifest": DICT_PARTICIPANT_MANIFEST}]
+    dictEntry = fixture.ledger.flistCollectEntries()[0]
+    assert dictEntry["iExitCode"] == 7
+    assert dictEntry["sOutputDigest"] == "observed-digest"
+    assert dictEntry["sExecutionImageIdentity"] == "sha256:image"
+    assert dictEntry["dictChangeManifest"]["dictModifiedFileContents"] == {
+        "module.py": "new source"}
+
+
+@pytest.mark.falsification
+def testAManifestTheReplayCannotApplyLeavesTheClaimAsserted():
+    """Kills: confirming a claim whose replay raised."""
+    def fdictRefuseToApply(dictRequest):
+        raise RuntimeError("the change manifest could not be applied")
+
+    fixture = fixtureBuildCouncil(
+        LIST_TWO_SPECS, _ffnDecideProposalEvidence([_fdictModifiedStateClaim()]),
+        ffnBaselineExecute=fdictRefuseToApply, sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    dictClaim = _fdictClaimAOf(fixture, dictOut)
+    assert dictClaim["sStatus"] == "asserted"
+    assert dictClaim["sReversionReason"].startswith(
+        "modifiedStateReplayFailed")
+    assert fixture.ledger.flistCollectEntries() == []
+
+
+def testAReadOnlyCouncilReplaysNoModifiedStateClaim():
+    fixture = fixtureBuildCouncil(
+        LIST_TWO_SPECS, _ffnDecideProposalEvidence([_fdictModifiedStateClaim()]),
+        dictSettings={"sExecutionPermission": "readOnly"},
         sChairbotHandle="A")
     dictOut = fixture.fdictDrive()
     dictClaim = _fdictClaimAOf(fixture, dictOut)
     assert dictClaim["sStatus"] == "asserted"
-    assert dictClaim["sReversionReason"] == "modifiedStateNotReplayed"
-    assert fixture.ledger.flistCollectEntries() == []
+    assert dictClaim["sReversionReason"] == "readOnlyCouncil"
+    assert fixture.listBaselineCalls == []
 
 
 def testModifiedStateClaimWithIncompleteManifestIsRefusedAtValidation():

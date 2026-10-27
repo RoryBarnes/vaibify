@@ -1421,6 +1421,62 @@ def testBaselineEvidenceRunsInAnIsolatedSandboxAndDigestsItsOutput(
     assert dictGatewayState["dictRegistry"]["dictReservationsById"] == {}
 
 
+DICT_REPLAY_MANIFEST = {
+    "listModifiedFiles": [{"sPath": "model.py", "sContent": "f = 1\n"}],
+    "listDeletedPaths": [], "listChangedFileModes": [],
+    "listSymlinkTargets": [],
+}
+
+
+def testAReplayAppliesTheManifestThenRunsTheCommandInOneSandbox(
+        daemonFake, dictGatewayState):
+    import hashlib
+    from vaibify.gui import agentCouncilManifest
+    listCommands = []
+
+    def ftAnswer(dictExec):
+        listCommands.append(dictExec)
+        return (b"applied" if dictExec["listCommand"][0] == "python3"
+                else b"1 passed\n", 0)
+
+    daemonFake.fnHandleTurn = ftAnswer
+    dictEvidence = ffnBuildBaseline(dictGatewayState)({
+        "sCommandText": "pytest -q", "dictChangeManifest": DICT_REPLAY_MANIFEST})
+    listTurns = [dictExec for dictExec in listCommands
+                 if dictExec["listCommand"][0] in ("python3", "/bin/sh")]
+    assert [dictExec["listCommand"][0] for dictExec in listTurns] == [
+        "python3", "/bin/sh"]
+    assert listTurns[0]["listCommand"] == (
+        agentCouncilManifest.flistComposeManifestApplyCommand("/council"))
+    assert json.loads(listTurns[0]["baStdin"]) == DICT_REPLAY_MANIFEST
+    assert dictEvidence["sOutputDigest"] == hashlib.sha256(
+        b"1 passed\n").hexdigest()
+    assert len(daemonFake.listCreateCalls) == 1
+    assert daemonFake.dictContainersById == {}
+
+
+@pytest.mark.falsification
+def testAManifestThatCannotBeAppliedRunsNoCommandAndDestroysTheSandbox(
+        daemonFake, dictGatewayState):
+    """Kills: running the claim's command without applying its manifest."""
+    listPrograms = []
+
+    def ftRefuse(dictExec):
+        listPrograms.append(dictExec["listCommand"][0])
+        return (b"refused: 'b' is a symlink or not a directory\n", 3) if (
+            dictExec["listCommand"][0] == "python3") else (b"ran", 0)
+
+    daemonFake.fnHandleTurn = ftRefuse
+    with pytest.raises(gateway.CouncilGatewayError,
+                       match="could not be applied"):
+        ffnBuildBaseline(dictGatewayState)({
+            "sCommandText": "pytest -q",
+            "dictChangeManifest": DICT_REPLAY_MANIFEST})
+    assert "/bin/sh" not in listPrograms
+    assert daemonFake.dictContainersById == {}
+    assert dictGatewayState["dictRegistry"]["dictReservationsById"] == {}
+
+
 def testBaselineSandboxAdmissionRefusalIsAGatewayError(
         daemonFake, dictGatewayState):
     dictGatewayState["dictRegistry"]["bAdmittingNewTurns"] = False

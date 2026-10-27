@@ -14,11 +14,12 @@ the supporting command is re-run server-side through the injected
 baseline-evidence executor in a fresh sandbox, so the ledger's state
 identity IS the snapshot hash and the runner's possibly-mutated copy is
 never trusted; or modified-state — the runner's own experiment, carrying
-a reconstructable change manifest, which vaibify must replay itself
-before the ledger may record it. Until that replay exists a
-modified-state claim reverts (``modifiedStateNotReplayed``): a
-participant's own report of its exit code is never a confirmation. A
-read-only council confirms nothing. Anything the ledger refuses to
+a reconstructable change manifest, which vaibify replays itself: the
+same executor seeds a fresh sandbox from the snapshot, applies the
+manifest there and runs the command, and the ledger records what that
+sandbox observed. A participant's own report of an exit code is never
+a confirmation, and a manifest vaibify cannot apply reverts the claim.
+A read-only council confirms nothing. Anything the ledger refuses to
 retain (unprovenanced, oversize, credential-bearing, or an incomplete
 manifest) reverts the claim rather than shipping a ``confirmed`` label
 with no basis.
@@ -36,6 +37,7 @@ concrete engine through the method-resolution order.
 
 import asyncio
 
+from . import agentCouncilManifest
 from . import agentCouncilStore
 from .agentCouncilCampaign import (
     S_CLAIM_ASSERTED,
@@ -66,7 +68,7 @@ class EvidenceDisciplineMixin:
             elif dictClaim.get("sStateForm") == "baseline":
                 await self._fnRecordBaselineClaim(dictClaim)
             elif dictClaim.get("sStateForm") == "modifiedState":
-                self._fnRevertClaim(dictClaim, "modifiedStateNotReplayed")
+                await self._fnRecordModifiedStateClaim(dictClaim)
             else:
                 self._fnRevertClaim(dictClaim, "unprovenancedConfirmedClaim")
 
@@ -110,18 +112,53 @@ class EvidenceDisciplineMixin:
         except Exception as error:
             self._fnRevertClaim(dictClaim, f"baselineExecutorFailed: {error}")
             return
-        dictEntry = {
+        self._fnSettleClaimAgainstLedger(dictClaim, self._fdictComposeObservedEntry(
+            dictClaim, "baseline", dictExecution))
+
+    async def _fnRecordModifiedStateClaim(self, dictClaim):
+        """Replay a modified-state claim before the ledger may record it.
+
+        The same executor and the same off-loop, wall-clock-bounded call
+        as a baseline claim; the request adds the manifest, which the
+        executor applies to its fresh copy of the snapshot before it
+        runs the command. Any failure to admit, apply or run reverts the
+        claim with the reason.
+        """
+        dictManifest = dictClaim.get("dictChangeManifest")
+        try:
+            dictExecution = await asyncio.to_thread(
+                self.fdictExecuteBaselineEvidence,
+                {"sCommandText": dictClaim.get("sCommandText", ""),
+                 "dictChangeManifest": dictManifest})
+        except Exception as error:
+            self._fnRevertClaim(
+                dictClaim, f"modifiedStateReplayFailed: {error}")
+            return
+        dictEntry = self._fdictComposeObservedEntry(
+            dictClaim, "modifiedState", dictExecution)
+        dictEntry["dictChangeManifest"] = (
+            agentCouncilManifest.fdictTranslateManifestForLedger(dictManifest))
+        self._fnSettleClaimAgainstLedger(dictClaim, dictEntry)
+
+    def _fdictComposeObservedEntry(self, dictClaim, sStateForm,
+                                   dictExecution):
+        """Build a ledger entry whose provenance is what the sandbox saw.
+
+        Shared by both confirmed forms because these four fields are the
+        whole point of a replay: they come from the executor, never from
+        the claim, and two copies of this mapping could drift apart.
+        """
+        return {
             "sClaimIdentifier": self._fsMintClaimIdentifier(),
             "sAttemptBinding": self._fsDescribeCurrentAttemptBinding(),
             "sCommandText": dictClaim.get("sCommandText", ""),
-            "sStateForm": "baseline",
+            "sStateForm": sStateForm,
             "sSnapshotHash": dictExecution.get("sSnapshotHash", ""),
             "sExecutionImageIdentity":
                 dictExecution.get("sExecutionImageIdentity", ""),
             "iExitCode": dictExecution.get("iExitCode"),
             "sOutputDigest": dictExecution.get("sOutputDigest", ""),
         }
-        self._fnSettleClaimAgainstLedger(dictClaim, dictEntry)
 
     def _fnSettleClaimAgainstLedger(self, dictClaim, dictEntry):
         dictAnswer = self.fdictRecordEvidence(dictEntry)

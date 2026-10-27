@@ -1280,9 +1280,9 @@ def testEveryRequiredEvidenceFieldIsOneTheEngineReads():
     from vaibify.gui import agentCouncilEvidenceContract
     sEvidenceSource = pathlib.Path(
         "vaibify/gui/agentCouncilEvidence.py").read_text()
-    # The modified-state manifest joins this list when vaibify replays
-    # it; until then the engine reverts the claim without reading it.
     for sField in (agentCouncilEvidenceContract.TUPLE_EVIDENCE_BASE_FIELDS
+                   + agentCouncilEvidenceContract.
+                   TUPLE_EVIDENCE_MODIFIED_STATE_FIELDS
                    + agentCouncilEvidenceContract.TUPLE_EVIDENCE_WEB_SOURCE_FIELDS
                    + ("sStateForm", "sCommandText")):
         assert sField in sEvidenceSource, (
