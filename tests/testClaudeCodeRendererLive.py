@@ -17,10 +17,14 @@ three outcomes, never two:
   run is INCONCLUSIVE -- a login prompt, an early exit, or an upstream
   change to the forcing variable -- and the test skips saying so,
   never passes;
-* the SWITCHED run adds vaibify's own environment to the same request
-  and must reach the renderer (it turns on bracketed paste,
-  ``ESC[?2004h``) without entering the alternate screen. That is the
-  pass or fail;
+* the SWITCHED run adds vaibify's own environment to the same request.
+  Entering any alternate screen (modes 47, 1047 or 1049, alone or
+  combined with others in one sequence) FAILS, whatever else the output
+  shows. Otherwise it must have reached its prompt (bracketed paste,
+  ``ESC[?2004h``) to pass; output that did neither is inconclusive.
+  ``fsJudgeTheSwitchedRun`` makes that call, and
+  ``tests/testClaudeCodeRendererVerdict.py`` pins it on every pull
+  request;
 * the DEFAULT run, with neither variable, is recorded and printed,
   never asserted: whether the default is fullscreen is Claude's choice.
 
@@ -75,9 +79,13 @@ S_DUMMY_API_KEY = "vaibify-canary-not-a-credential-0000000000000000"
 F_CAPTURE_SECONDS = 12.0
 I_ROWS = 40
 I_COLUMNS = 120
-BA_ALTERNATE_SCREEN = b"\x1b[?1049h"
-S_ALTERNATE_SCREEN_MODE = "1049"
+# Every mode the vendored xterm switches to its alternate buffer on, not
+# only the 1049 Claude uses today.
+SET_ALTERNATE_SCREEN_MODES = frozenset({"47", "1047", "1049"})
 S_BRACKETED_PASTE_MODE = "2004"
+S_VERDICT_ENTERED_ALTERNATE_SCREEN = "entered the alternate screen"
+S_VERDICT_NEVER_REACHED_PROMPT = "never reached its prompt"
+S_VERDICT_STAYED_CLASSIC = "stayed in the classic renderer"
 DICT_FORCE_FULLSCREEN = {"CLAUDE_CODE_NO_FLICKER": "1"}
 
 
@@ -164,12 +172,36 @@ def _fbaCaptureClaude(tDockerClients, dictEnvironment):
         container.remove(force=True)
 
 
-def _fsetModesSet(baOutput):
-    """Return every DEC private mode the output switched on."""
+def fsetModesSet(baOutput):
+    """Return every DEC private mode the output switched on.
+
+    Parsed, never byte-matched: one sequence may set several modes
+    (``ESC[?1049;1006h``), and a byte match for ``ESC[?1049h`` misses it.
+    """
     setModes = set()
     for baModes in re.findall(rb"\x1b\[\?([0-9;]+)h", baOutput):
         setModes.update(baModes.decode("ascii").split(";"))
     return setModes
+
+
+def fbEnteredTheAlternateScreen(baOutput):
+    """Return True when the output switched to an alternate screen."""
+    return bool(fsetModesSet(baOutput) & SET_ALTERNATE_SCREEN_MODES)
+
+
+def fsJudgeTheSwitchedRun(baSwitched):
+    """Return what the run with vaibify's environment establishes.
+
+    The alternate screen is judged FIRST. Output that entered it is a
+    failure whether or not the CLI also reached its prompt; only output
+    that did NOT enter it needs the prompt as evidence that the renderer
+    ran at all, and without that evidence the run is inconclusive.
+    """
+    if fbEnteredTheAlternateScreen(baSwitched):
+        return S_VERDICT_ENTERED_ALTERNATE_SCREEN
+    if S_BRACKETED_PASTE_MODE not in fsetModesSet(baSwitched):
+        return S_VERDICT_NEVER_REACHED_PROMPT
+    return S_VERDICT_STAYED_CLASSIC
 
 
 def _fsDescribe(sLabel, baOutput):
@@ -178,7 +210,7 @@ def _fsDescribe(sLabel, baOutput):
         rb"\x1b\[[0-9;?>]*[ -/]*[@-~]|\x1b\][^\x07]*\x07", b"", baOutput,
     ).decode("utf-8", "replace")
     return (f"{sLabel}: {len(baOutput)} bytes, modes set "
-            f"{sorted(_fsetModesSet(baOutput))}, text "
+            f"{sorted(fsetModesSet(baOutput))}, text "
             f"{' '.join(sText.split())[:300]!r}")
 
 
@@ -192,7 +224,7 @@ def test_vaibifys_switch_keeps_claude_off_the_alternate_screen(
     """
     baControl = _fbaCaptureClaude(tDockerClients, DICT_FORCE_FULLSCREEN)
     print(_fsDescribe("control (fullscreen forced)", baControl))
-    if S_ALTERNATE_SCREEN_MODE not in _fsetModesSet(baControl):
+    if not fbEnteredTheAlternateScreen(baControl):
         pytest.skip(
             "INCONCLUSIVE: forcing the fullscreen renderer did not enter "
             "the alternate screen, so this run cannot tell whether "
@@ -203,16 +235,17 @@ def test_vaibifys_switch_keeps_claude_off_the_alternate_screen(
     dictSwitched.update(fdictBuildAgentTerminalEnvironment())
     baSwitched = _fbaCaptureClaude(tDockerClients, dictSwitched)
     print(_fsDescribe("switched (vaibify's environment)", baSwitched))
-    if S_BRACKETED_PASTE_MODE not in _fsetModesSet(baSwitched):
-        pytest.skip(
-            "INCONCLUSIVE: with vaibify's environment the CLI never "
-            "reached its prompt, so the absence of the alternate screen "
-            "would prove nothing. " + _fsDescribe("switched", baSwitched))
     baDefault = _fbaCaptureClaude(tDockerClients, {})
     print(_fsDescribe("default (no variables)", baDefault))
-    assert BA_ALTERNATE_SCREEN not in baSwitched, (
+    sVerdict = fsJudgeTheSwitchedRun(baSwitched)
+    assert sVerdict != S_VERDICT_ENTERED_ALTERNATE_SCREEN, (
         "Claude Code entered the alternate screen despite vaibify's "
         "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1: the dashboard terminal "
         "will lose scrollback and selection under it again. "
         + _fsDescribe("switched", baSwitched)
     )
+    if sVerdict == S_VERDICT_NEVER_REACHED_PROMPT:
+        pytest.skip(
+            "INCONCLUSIVE: with vaibify's environment the CLI never "
+            "reached its prompt, so the absence of the alternate screen "
+            "would prove nothing. " + _fsDescribe("switched", baSwitched))

@@ -36723,4 +36723,26 @@ LIST_FALSIFICATIONS = [
         old="            '<p><strong>A program that draws on the whole ' +\n            'screen</strong> (vim, htop) keeps no scrollback in the ' +\n            'pane: while it runs, selecting and Copy all reach only ' +\n            'what is on screen. vaibify runs Claude Code in its ' +\n            'classic renderer, which writes into the scrollback, so ' +\n            'its earlier output stays reachable.</p>' +\n",
         new='',
     ),
+    # --- 2026-10-26: the renderer canary judges the alternate screen
+    # first, by parsed modes (review findings) ---
+    Falsification(
+        nodeid=(
+            'tests/testClaudeCodeRendererVerdict.py::'
+            'test_a_combined_mode_sequence_counts_as_the_alternate_screen'
+        ),
+        source='tests/testClaudeCodeRendererLive.py',
+        # the alternate screen is found by an exact byte match, not by parsed modes
+        old='    return bool(fsetModesSet(baOutput) & SET_ALTERNATE_SCREEN_MODES)\n',
+        new='    return b"\\x1b[?1049h" in baOutput\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaudeCodeRendererVerdict.py::'
+            'test_the_alternate_screen_fails_the_run_without_a_prompt'
+        ),
+        source='tests/testClaudeCodeRendererLive.py',
+        # a missing prompt is judged inconclusive before the alternate screen
+        old='    if fbEnteredTheAlternateScreen(baSwitched):\n        return S_VERDICT_ENTERED_ALTERNATE_SCREEN\n    if S_BRACKETED_PASTE_MODE not in fsetModesSet(baSwitched):\n        return S_VERDICT_NEVER_REACHED_PROMPT\n',
+        new='    if S_BRACKETED_PASTE_MODE not in fsetModesSet(baSwitched):\n        return S_VERDICT_NEVER_REACHED_PROMPT\n    if fbEnteredTheAlternateScreen(baSwitched):\n        return S_VERDICT_ENTERED_ALTERNATE_SCREEN\n',
+    ),
 ]
