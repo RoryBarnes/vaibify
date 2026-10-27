@@ -490,6 +490,40 @@ def testTheCredentialCeilingHoldsAtTheExactBoundaryLive():
             pass
 
 
+def test_a_replayed_claim_executes_its_script_and_a_native_program(
+        tCouncilLiveHarness):
+    """A claim resting on `./run.sh` or a program is confirmable.
+
+    The manifest writes a script and makes it executable; the command
+    runs it directly and then a native program copied into /tmp, which
+    a noexec replay sandbox would refuse with 126.
+    """
+    import hashlib
+    dictGateway, _ = tCouncilLiveHarness
+    bufferTar = io.BytesIO()
+    with tarfile.open(fileobj=bufferTar, mode="w") as fileTar:
+        infoMember = tarfile.TarInfo(name="model.txt")
+        infoMember.size = 4
+        fileTar.addfile(infoMember, io.BytesIO(b"old\n"))
+    fdictExecute = ffnBuildBaselineEvidenceExecutor(
+        dictGateway, "campReplayExec", S_RUNNER_TEST_IMAGE, "snapshot-hash",
+        bufferTar.getvalue(), dictLimits=_fdictSmallLimits(),
+        fWallClockSeconds=120.0)
+    dictEvidence = fdictExecute({
+        "sCommandText": (
+            "./run.sh && cp /bin/echo /tmp/nativeEcho && "
+            "/tmp/nativeEcho native ran"),
+        "dictChangeManifest": {
+            "listModifiedFiles": [
+                {"sPath": "run.sh", "sContent": "#!/bin/sh\necho script ran\n"}],
+            "listDeletedPaths": [],
+            "listChangedFileModes": [{"sPath": "run.sh", "sMode": "755"}],
+            "listSymlinkTargets": []}})
+    assert dictEvidence["iExitCode"] == 0, dictEvidence
+    assert dictEvidence["sOutputDigest"] == hashlib.sha256(
+        b"script ran\nnative ran\n").hexdigest()
+
+
 def test_a_modified_state_claim_is_replayed_in_a_real_sandbox(
         tCouncilLiveHarness):
     """The replay rebuilds the stated copy and records its own result.

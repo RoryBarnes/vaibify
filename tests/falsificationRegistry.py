@@ -36979,4 +36979,58 @@ LIST_FALSIFICATIONS = [
              '            "members may edit and run their own copies</p>" +\n'),
         new='',
     ),
+    # --- 2026-10-27: a malformed evidence value is a problem the repair
+    # path names, never an exception, and both validators agree on it.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilEvidenceContract.py::'
+            'testEveryMalformedValueGetsOneVerdictAndNoException'
+        ),
+        source='vaibify/gui/agentCouncilEvidenceContract.py',
+        # an unhashable 'sStateForm' raises in the form lookup
+        old='    if not isinstance(sStateForm, str) or (\n            sStateForm not in DICT_EVIDENCE_FIELDS_BY_FORM):\n',
+        new='    if sStateForm not in DICT_EVIDENCE_FIELDS_BY_FORM:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilEvidenceContract.py::'
+            'testAMalformedEvidenceFormIsRepairedNotRaised'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        # an unhashable verdict raises in the required-list lookup
+        old='    sRequiredKey = None if bRequireSummary or not isinstance(\n        sVerdict, str) else DICT_VERDICT_REQUIRES_NONEMPTY.get(sVerdict)\n',
+        new='    sRequiredKey = None if bRequireSummary else (\n        DICT_VERDICT_REQUIRES_NONEMPTY.get(sVerdict))\n',
+    ),
+    # --- 2026-10-27: a full-sandbox runner and its replay sandbox may
+    # execute files on their writable mounts; nothing else may.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRunnerExecutableMounts.py::'
+            'testAFullSandboxTurnAsksForAnExecutableRunner'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # a full-sandbox runner left noexec
+        old='            dictEnvironment or None, listDnsServers, listDnsOptions,\n            dictTurnRequest.get("bReadOnlyCouncil") is False)\n',
+        new='            dictEnvironment or None, listDnsServers, listDnsOptions,\n            False)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRunnerExecutableMounts.py::'
+            'testAReadOnlyTurnAndAnUnstatedOneStayNoexec'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # a request that does not say it is a full sandbox may execute
+        old='            dictTurnRequest.get("bReadOnlyCouncil") is False)\n',
+        new='            dictTurnRequest.get("bReadOnlyCouncil") is not True)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilRunnerExecutableMounts.py::'
+            'testTheReplaySandboxCanExecuteWhatTheMemberBuilt'
+        ),
+        source='vaibify/gui/agentCouncilProviders.py',
+        # the evidence sandbox cannot replay a built program
+        old='            dictLimits=dictLimits, bSandbox=True,\n            bWritableMountsExecutable=True)\n',
+        new='            dictLimits=dictLimits, bSandbox=True)\n',
+    ),
 ]

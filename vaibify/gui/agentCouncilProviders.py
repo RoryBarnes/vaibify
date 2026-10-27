@@ -1149,7 +1149,9 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         and the runner joins only the campaign's internal egress network
         (or no network at all in the fake-provider tests). The
         reservation id becomes the context identity; no Docker id enters
-        the protocol record (section 9.8).
+        the protocol record (section 9.8). Its writable mounts are
+        executable only when the request says it is a full-sandbox
+        council's turn, so a request that does not say stays noexec.
         """
         self._listEvents = []
         self._dictTurnExecution = None
@@ -1166,7 +1168,8 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
             self.dictGateway, self.sCampaignId, self.sProvider,
             self._fdictComposeRunnerCost(), self.sImageReference,
             self.dictLimits, sNetworkName, False,
-            dictEnvironment or None, listDnsServers, listDnsOptions)
+            dictEnvironment or None, listDnsServers, listDnsOptions,
+            dictTurnRequest.get("bReadOnlyCouncil") is False)
         if not dictCreated["bCreated"]:
             raise agentCouncilDockerGateway.CouncilGatewayError(
                 "runner admission refused: " + dictCreated["sRefusalReason"])
@@ -1331,7 +1334,8 @@ def ffnBuildBaselineEvidenceExecutor(dictGateway, sCampaignId,
         dictCreated = agentCouncilDockerGateway.fdictReserveAndCreateRunner(
             dictGateway, sCampaignId, S_BASELINE_SANDBOX_PROVIDER,
             _fdictComposeSandboxCost(dictLimits), sImageReference,
-            dictLimits=dictLimits, bSandbox=True)
+            dictLimits=dictLimits, bSandbox=True,
+            bWritableMountsExecutable=True)
         if not dictCreated["bCreated"]:
             raise agentCouncilDockerGateway.CouncilGatewayError(
                 "baseline sandbox admission refused: "

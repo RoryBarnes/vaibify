@@ -20,11 +20,13 @@ request one turn is handed.
 
 import copy
 import json
+import re
 import uuid
 
 from .agentCouncilEvidenceContract import (
     DICT_EVIDENCE_CLAIM_TEMPLATE,
     S_EVIDENCE_KEY,
+    S_NON_BLANK_PATTERN,
     fdictComposeEvidenceOutputSchema,
     flistFindEvidenceClaimProblems,
     fsComposeEvidenceFormsText,
@@ -456,9 +458,8 @@ def fsDescribeExecutionPermission(bReadOnlyCouncil, dictWorkingSpace=None,
         f"{dictSpace.get('iFreeAfterCopyBytes', 0) // (1024 * 1024)} MB "
         "free before you record any baseline; /tmp is "
         f"{dictSpace.get('iScratchBytes', 0) // (1024 * 1024)} MB of "
-        "scratch. Files there cannot be executed directly, so run a "
-        "script through its interpreter, such as `sh script.sh` or "
-        "`python3 script.py`. There is no network beyond your provider, "
+        "scratch. You may run anything in either, scripts and programs "
+        "you build included. There is no network beyond your provider, "
         "which can search the web for you. "
         + _fsDescribeBaselineRecording(
             bGitAvailable, bool(dictSpace.get("bFullBaselineFits")))
@@ -672,8 +673,9 @@ def fdictValidateTurnResult(dictCandidate, bRequirePatch=False,
     # promises no question list and requiring one refuses the honest
     # ending. `bRequireSummary` is already this phase's discriminator;
     # scoping the rule to it beats inventing a second one.
-    sRequiredKey = None if bRequireSummary else (
-        DICT_VERDICT_REQUIRES_NONEMPTY.get(dictCandidate.get("sVerdict")))
+    sVerdict = dictCandidate.get("sVerdict")
+    sRequiredKey = None if bRequireSummary or not isinstance(
+        sVerdict, str) else DICT_VERDICT_REQUIRES_NONEMPTY.get(sVerdict)
     if sRequiredKey and not (dictCandidate.get(sRequiredKey) or []):
         listProblems.append(
             f"'sVerdict' is {dictCandidate['sVerdict']!r}, so "
@@ -719,7 +721,7 @@ def _flistFindArrayProblems(sKeyName, jsonValue):
             listProblems.append(
                 f"'{sKeyName}' entry {iIndex} must be a string, not "
                 f"{type(jsonEntry).__name__}")
-        elif not jsonEntry.strip():
+        elif not re.search(S_NON_BLANK_PATTERN, jsonEntry):
             # Empty-string padding satisfies "array of strings" while
             # saying nothing; the charter's "never padded" is a rule
             # the validator has to hold up.
@@ -1052,7 +1054,7 @@ def fdictComposeTurnResultJsonSchema(dictCampaign, sPhase):
             "type": "array",
             "items": (fdictComposeEvidenceOutputSchema()
                       if sKeyName == S_EVIDENCE_KEY else
-                      {"type": "string", "minLength": 1}),
+                      {"type": "string", "pattern": S_NON_BLANK_PATTERN}),
         }
     return {
         "type": "object",

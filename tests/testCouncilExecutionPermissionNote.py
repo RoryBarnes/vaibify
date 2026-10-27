@@ -59,7 +59,7 @@ def testAFullSandboxNoteNamesTheRoomAndTheGitBaseline():
         I_MEBIBYTE)
     assert f"about {iFreeMebibytes} MB free" in sNote
     assert "/tmp is 64 MB" in sNote
-    assert "cannot be executed directly" in sNote
+    assert "You may run anything in either" in sNote
     assert "git add --force --intent-to-add" in sNote
     assert "git add -A" not in sNote
 

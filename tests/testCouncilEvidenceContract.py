@@ -22,8 +22,10 @@ records (the store's tests at the bottom), and the replay that turns the
 first into the second (commit-three tests).
 """
 
+import copy
 import io
 import json
+import re
 import tarfile
 
 import jsonschema
@@ -38,7 +40,11 @@ from vaibify.gui import (
 )
 from vaibify.gui.agentCouncilStore import CouncilEvidenceLedger
 
-from tests.agentCouncilHarness import fdictMakeTurnResult
+from tests.agentCouncilHarness import (
+    fdictDecideCompleted,
+    fdictMakeTurnResult,
+    fixtureBuildCouncil,
+)
 
 
 def _fdictManifest(**dictOverrides):
@@ -136,6 +142,44 @@ LIST_CONTRACT_ROWS = [
         sSearchQuery="first line\nsecond line"), False),
     ("emptyObject", {}, False),
     ("bareString", "I ran the tests and they passed", False),
+    # Malformed values a model can still emit. Each must be a problem
+    # the repair path can name, never an exception that stops the turn.
+    ("formIsAnArray", {"sStatus": "confirmed", "sStateForm": [],
+                       "sCommandText": "x"}, False),
+    ("formIsAnObject", {"sStatus": "asserted", "sStateForm": {}}, False),
+    ("modeIsANumber", _fdictModified(
+        dictChangeManifest=_fdictManifest(listChangedFileModes=[{
+            "sPath": "run.sh", "sMode": 755}])), False),
+    # Whitespace is nothing to run and nothing to name: both refuse it.
+    ("baselineBlankCommand", dict(DICT_BASELINE, sCommandText=" "), False),
+    ("baselineWhitespaceCommand", dict(DICT_BASELINE, sCommandText="\t\n"),
+     False),
+    ("modifiedBlankPath", _fdictModified(
+        dictChangeManifest=_fdictManifest(listModifiedFiles=[{
+            "sPath": " ", "sContent": "x"}])), False),
+    ("modifiedBlankDeletedPath", _fdictModified(
+        dictChangeManifest=_fdictManifest(listDeletedPaths=["  "])), False),
+    ("modifiedBlankLinkTarget", _fdictModified(
+        dictChangeManifest=_fdictManifest(listSymlinkTargets=[{
+            "sPath": "latest", "sTarget": " "}])), False),
+    ("modifiedBlankContentIsAFile", _fdictModified(
+        dictChangeManifest=_fdictManifest(listModifiedFiles=[{
+            "sPath": "a.txt", "sContent": " "}])), True),
+    ("commandWithNonAsciiSpaceOnly", dict(
+        DICT_BASELINE, sCommandText="\u00a0"), True),
+    # A schema's `$` is the end of the text; Python's also matches before
+    # a final newline, so these passed the validator and failed the CLI.
+    ("webSourceQueryTrailingNewline", _fdictWeb(
+        sSearchQuery="release notes\n"), False),
+    ("webSourceLinkTrailingNewline", _fdictWeb(
+        listSourceLinks=["https://example.org/x\n"]), False),
+    ("modeTrailingNewline", _fdictModified(
+        dictChangeManifest=_fdictManifest(listChangedFileModes=[{
+            "sPath": "run.sh", "sMode": "755\n"}])), False),
+    # Python's \s and ECMA-262's differ (U+001C is whitespace to one
+    # only), so the link pattern names its whitespace explicitly.
+    ("webSourceLinkWithFileSeparator", _fdictWeb(
+        listSourceLinks=["https://example.org/a\u001cb"]), True),
 ]
 
 
@@ -152,8 +196,26 @@ def _fdictResultWith(jsonEntry):
     return dictResult
 
 
+def _fiterMatchPatternAsEcma(validator, sPattern, jsonInstance, dictSchema):
+    """Apply a schema pattern as ECMA-262 does, which Python's re does not.
+
+    A JSON Schema pattern is an ECMA-262 regular expression, and the
+    CLIs that enforce one follow it; ``jsonschema`` hands it to Python's
+    ``re.search``, whose ``$`` also matches before a final newline. The
+    stand-in must judge the way the real enforcer does.
+    """
+    if validator.is_type(jsonInstance, "string") and not re.search(
+            sPattern.replace("$", r"\Z"), jsonInstance):
+        yield jsonschema.ValidationError(
+            f"{jsonInstance!r} does not match {sPattern!r}")
+
+
+EcmaPatternValidator = jsonschema.validators.extend(
+    jsonschema.Draft7Validator, {"pattern": _fiterMatchPatternAsEcma})
+
+
 def _fbSchemaAccepts(dictSchema, dictResult):
-    validator = jsonschema.Draft7Validator(dictSchema)
+    validator = EcmaPatternValidator(dictSchema)
     return not list(validator.iter_errors(dictResult))
 
 
@@ -190,6 +252,127 @@ def testTheSchemaAndTheValidatorGiveEveryRowTheSameVerdict():
                 f"{sName}: schema {bSchema}, validator {bValidator}, "
                 f"expected {bExpectedValid}")
     assert not listDisagreements, "\n".join(listDisagreements)
+
+
+def _flistCollectPatterns(jsonSchema):
+    if isinstance(jsonSchema, dict):
+        listPatterns = [jsonSchema["pattern"]] if "pattern" in jsonSchema else []
+        for jsonValue in jsonSchema.values():
+            listPatterns.extend(_flistCollectPatterns(jsonValue))
+        return listPatterns
+    if isinstance(jsonSchema, list):
+        return [sPattern for jsonValue in jsonSchema
+                for sPattern in _flistCollectPatterns(jsonValue)]
+    return []
+
+
+def testNoSchemaPatternUsesAClassWhoseMeaningDiffersByDialect():
+    """\\s, \\d and \\w mean different sets in Python and ECMA-262.
+
+    The validator and the CLIs would then disagree on exactly the
+    characters those sets differ on, so every class is spelled out.
+    """
+    listPatterns = _flistCollectPatterns(_fdictProposalSchema())
+    assert listPatterns
+    for sPattern in listPatterns:
+        assert not re.search(r"\\[sSdDwWbB]", sPattern), sPattern
+
+
+LIST_PROBE_VALUES = [
+    None, True, 0, 1.5, "", " ", "\t\n", "x", "x\n", [], ["x"], [" "],
+    [[]], {}, {"sPath": "x"}]
+
+
+def _fdictFuzzBaseResult():
+    dictResult = _fdictResultWith(DICT_BASELINE)
+    dictResult["listEvidence"] = [
+        {"sStatus": "asserted"}, dict(DICT_BASELINE), _fdictModified(),
+        _fdictWeb()]
+    dictResult["listPlanItems"] = ["write the patch"]
+    return dictResult
+
+
+def _flistEveryValuePath(jsonValue, tPath=()):
+    """Return the path to every value inside a turn result, itself included."""
+    listPaths = [tPath]
+    if isinstance(jsonValue, dict):
+        for sKey, jsonChild in jsonValue.items():
+            listPaths.extend(_flistEveryValuePath(jsonChild, tPath + (sKey,)))
+    elif isinstance(jsonValue, list):
+        for iIndex, jsonChild in enumerate(jsonValue):
+            listPaths.extend(
+                _flistEveryValuePath(jsonChild, tPath + (iIndex,)))
+    return listPaths
+
+
+def _fjsonReplaceAtPath(jsonRoot, tPath, jsonProbe):
+    jsonCopy = copy.deepcopy(jsonRoot)
+    jsonParent = jsonCopy
+    for keyStep in tPath[:-1]:
+        jsonParent = jsonParent[keyStep]
+    jsonParent[tPath[-1]] = jsonProbe
+    return jsonCopy
+
+
+@pytest.mark.falsification
+def testEveryMalformedValueGetsOneVerdictAndNoException():
+    """Kills: a validator that raises on a value, or rules on it alone.
+
+    Every value in a result holding all four evidence forms is replaced
+    by each probe in turn. The validator must answer, not raise, because
+    an exception here interrupts the campaign instead of following the
+    repair path, and its answer must be the strict schema's.
+    """
+    dictBase = _fdictFuzzBaseResult()
+    dictSchema = _fdictProposalSchema()
+    assert _fbValidatorAccepts(dictBase) and _fbSchemaAccepts(
+        dictSchema, dictBase)
+    listFailures = []
+    for tPath in _flistEveryValuePath(dictBase)[1:]:
+        for jsonProbe in LIST_PROBE_VALUES:
+            dictMutant = _fjsonReplaceAtPath(dictBase, tPath, jsonProbe)
+            try:
+                bValidator = _fbValidatorAccepts(dictMutant)
+            except Exception as errorRaised:
+                listFailures.append(f"{tPath} = {jsonProbe!r}: raised "
+                                    f"{type(errorRaised).__name__}")
+                continue
+            bSchema = _fbSchemaAccepts(dictSchema, dictMutant)
+            if bSchema != bValidator:
+                listFailures.append(f"{tPath} = {jsonProbe!r}: schema "
+                                    f"{bSchema}, validator {bValidator}")
+    assert not listFailures, "\n".join(listFailures)
+
+
+@pytest.mark.falsification
+def testAMalformedEvidenceFormIsRepairedNotRaised():
+    """Kills: an unhashable 'sStateForm' stopping the campaign.
+
+    Driven through the engine: the first proposal carries an evidence
+    form and a verdict that are arrays, the repair is valid, and the
+    turn completes on its one repair attempt.
+    """
+    dictMalformed = fdictMakeTurnResult(listEvidence=[
+        {"sStatus": "confirmed", "sStateForm": [], "sCommandText": "x"}])
+    dictMalformed["sVerdict"] = []
+    ffnDecide = lambda sHandle, dictRequest: (
+        fdictDecideCompleted(dictMalformed)
+        if (sHandle == "B" and dictRequest["sPhase"] == (
+            agentCouncilCharter.S_PHASE_PROPOSAL)
+            and not dictRequest["bRepairRequest"])
+        else fdictDecideCompleted(fdictMakeTurnResult("accept")))
+    fixture = fixtureBuildCouncil(
+        [{"sHandle": "A", "sProvider": "prov-a", "sRequestedModel": "a"},
+         {"sHandle": "B", "sProvider": "prov-b", "sRequestedModel": "b"}],
+        ffnDecide, sChairbotHandle="A")
+    dictOut = fixture.fdictDrive()
+    listRecords = [
+        dictRecord for dictRound in dictOut["listRounds"]
+        for dictRecord in dictRound["dictTurnsByPhase"].get(
+            agentCouncilCharter.S_PHASE_PROPOSAL, [])
+        if fixture.fsHandleForId(dictRecord["sParticipantId"]) == "B"]
+    assert listRecords[0]["bRepairAttempted"] is True
+    assert listRecords[0]["sStatus"] == "completed"
 
 
 def _fdictReadTarballJson(baTarball, sMemberName):

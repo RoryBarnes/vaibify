@@ -86,7 +86,8 @@ def tCouncilHarness():
                 pass
 
 
-def _fdictCreateTracked(tCouncilHarness, dictLimits=None, bSandbox=False):
+def _fdictCreateTracked(tCouncilHarness, dictLimits=None, bSandbox=False,
+                        bWritableMountsExecutable=False):
     """Create a runner through the gateway; return its handle record.
 
     The returned dict carries ``sHandle`` (the gateway's opaque key for
@@ -105,6 +106,7 @@ def _fdictCreateTracked(tCouncilHarness, dictLimits=None, bSandbox=False):
         S_RUNNER_TEST_IMAGE,
         dictLimits=dictEffectiveLimits,
         bSandbox=bSandbox,
+        bWritableMountsExecutable=bWritableMountsExecutable,
     )
     assert dictCreated["bCreated"] is True, dictCreated
     sHandle = dictCreated["sHandle"]
@@ -704,6 +706,59 @@ def test_lifecycle_timing_reproduces_containment_measurement(
 # ----- members write and run their own copies (full sandbox) -----------
 
 S_PROBE_SCRIPT = "#!/bin/sh\necho ran > /tmp/probeMarker\n"
+# A script and a native program, each executed directly from one
+# writable directory. The program is a copy of a system binary, which
+# needs no compiler; S_BUILD_AND_RUN compiles one when the image can.
+S_EXECUTE_FROM_DIRECTORY = (
+    "printf '#!/bin/sh\\necho script ran\\n' > {sDirectory}/direct.sh && "
+    "chmod 755 {sDirectory}/direct.sh && {sDirectory}/direct.sh && "
+    "cp /bin/echo {sDirectory}/nativeEcho && "
+    "{sDirectory}/nativeEcho native ran")
+S_BUILD_AND_RUN = (
+    "if command -v cc >/dev/null; then "
+    "printf '#include <stdio.h>\\nint main(void){puts(\"built ran\");"
+    "return 0;}\\n' > built.c && cc -o built built.c && ./built; "
+    "else echo no compiler; fi")
+
+
+def _fsReadMountOptions(dictGateway, sHandle, sMountPoint):
+    sOutput = _fdictRunInRunner(
+        dictGateway, sHandle,
+        f"awk '$2 == \"{sMountPoint}\" {{print $4}}' /proc/mounts")["sOutput"]
+    return sOutput.strip()
+
+
+def test_only_an_executable_runner_executes_and_neither_gains_privilege(
+        tCouncilHarness):
+    """Both postures, read from the kernel's own mount table.
+
+    The default runner (a read-only council's, the chat's) keeps both
+    writable mounts noexec, so a script or program there is refused
+    with 126. The executable one runs them, and in both the mounts stay
+    nosuid and nodev.
+    """
+    _, dictGateway, _ = tCouncilHarness
+    for bExecutable in (False, True):
+        dictRunner = _fdictCreateTracked(
+            tCouncilHarness, bWritableMountsExecutable=bExecutable)
+        sHandle = dictRunner["sHandle"]
+        for sDirectory in ("/council", "/tmp"):
+            listOptions = _fsReadMountOptions(
+                dictGateway, sHandle, sDirectory).split(",")
+            assert "nosuid" in listOptions and "nodev" in listOptions, (
+                sDirectory, listOptions)
+            assert ("noexec" in listOptions) is (not bExecutable), (
+                sDirectory, listOptions)
+            dictDirect = _fdictRunInRunner(
+                dictGateway, sHandle, S_EXECUTE_FROM_DIRECTORY.format(
+                    sDirectory=sDirectory))
+            assert (dictDirect["iExitCode"] == 0) is bExecutable, (
+                sDirectory, dictDirect)
+            if not bExecutable:
+                assert dictDirect["iExitCode"] == 126, dictDirect
+        dictDestroyed = moduleGateway.fdictDestroyAndSettle(
+            dictGateway, sHandle)
+        assert dictDestroyed["sOutcome"] == "destroyed", dictDestroyed
 
 
 def _fbaBuildTarballOf(dictFiles, dictSymlinks=None):
@@ -741,14 +796,15 @@ def test_a_full_sandbox_member_writes_runs_and_diffs_its_own_copy(
     """The container permits what a full-sandbox member is told it may do.
 
     Writes to /council and /tmp, runs a script that was in the snapshot
-    (proven by the marker it leaves), records a baseline and diffs
-    against it, and cannot write the read-only system files or execute
-    a file directly from the noexec working tree. With git
-    the baseline is the per-file staging the execution note teaches;
+    (proven by the marker it leaves), executes scripts and native
+    programs from both writable directories, records a baseline and
+    diffs against it, and cannot write the read-only system files. With
+    git the baseline is the per-file staging the execution note teaches;
     an image without git takes the note's other path, copies in /tmp.
     """
     _, dictGateway, _ = tCouncilHarness
-    dictRunner = _fdictCreateTracked(tCouncilHarness)
+    dictRunner = _fdictCreateTracked(
+        tCouncilHarness, bWritableMountsExecutable=True)
     sHandle = dictRunner["sHandle"]
     moduleGateway.fnCopySnapshotIntoRunner(
         dictGateway, sHandle, _fbaBuildTarballOf({
@@ -760,12 +816,17 @@ def test_a_full_sandbox_member_writes_runs_and_diffs_its_own_copy(
         "&& sh ./probeScript.sh && cat /tmp/probeMarker")
     assert dictWrite["iExitCode"] == 0, dictWrite
     assert "ran" in dictWrite["sOutput"]
-    # Both tmpfs mounts are noexec (Docker's default for --tmpfs), so a
-    # file is run through its interpreter, never executed directly; the
-    # execution note tells members so. Pinned here so a change to that
-    # posture is a decision rather than a surprise.
-    dictDirect = _fdictRunInRunner(dictGateway, sHandle, "./probeScript.sh")
-    assert dictDirect["iExitCode"] == 126, dictDirect
+    for sDirectory in ("/council", "/tmp"):
+        dictDirect = _fdictRunInRunner(
+            dictGateway, sHandle, S_EXECUTE_FROM_DIRECTORY.format(
+                sDirectory=sDirectory))
+        assert dictDirect["iExitCode"] == 0, (sDirectory, dictDirect)
+        assert "script ran" in dictDirect["sOutput"], dictDirect
+        assert "native ran" in dictDirect["sOutput"], dictDirect
+    dictBuilt = _fdictRunInRunner(dictGateway, sHandle, S_BUILD_AND_RUN)
+    assert dictBuilt["iExitCode"] == 0, dictBuilt
+    assert "built ran" in dictBuilt["sOutput"] or (
+        "no compiler" in dictBuilt["sOutput"]), dictBuilt
     if _fbImageHasGit(dictGateway, sHandle):
         sBaseline = (
             "git init -q && git add --force model.txt && "

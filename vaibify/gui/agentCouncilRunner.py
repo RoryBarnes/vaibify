@@ -208,7 +208,7 @@ def fdictComposeRunnerCreateSpecification(
     sImageReference, sReservationId,
     dictLimits=None, sNetworkName=None, bSandbox=False,
     dictEnvironment=None, listDnsServers=None, listDnsOptions=None,
-    sResourceName="",
+    sResourceName="", bWritableMountsExecutable=False,
 ):
     """Compose the SDK create keywords for one disposable council container.
 
@@ -228,6 +228,15 @@ def fdictComposeRunnerCreateSpecification(
     name is permitted and degrades to exactly the old behaviour — the
     survivor is unattributable, so a reconcile sweeps it — which is the
     fail-closed direction, because it preserves crash recovery.
+
+    ``bWritableMountsExecutable`` lets a file on the two tmpfs mounts be
+    executed, so a full-sandbox member can run `./script` and a program
+    it builds, and the evidence sandbox can replay that claim. Every
+    other container keeps them noexec. Both answers are written out
+    rather than left to Docker's default, and nosuid and nodev hold in
+    both: an executable file there runs as the council user, with no
+    capability, no privilege gain and no device, like any command the
+    member could already type.
     """
     if dictLimits is None:
         dictLimits = fdictBuildDefaultRunnerLimits()
@@ -238,14 +247,16 @@ def fdictComposeRunnerCreateSpecification(
     sRole = S_ROLE_SANDBOX if bSandbox else S_ROLE_RUNNER
     sContainerName = (
         f"vaibifyCouncil{sRole.capitalize()}{secrets.token_hex(6)}")
+    sMountFlags = ("exec" if bWritableMountsExecutable else "noexec") + (
+        ",nosuid,nodev")
     dictTmpfsMounts = {
         S_RUNNER_SNAPSHOT_ROOT: (
-            f"size={dictLimits['iWorkingTreeBytes']},"
+            f"{sMountFlags},size={dictLimits['iWorkingTreeBytes']},"
             f"uid={_I_CONTAINER_DEFAULT_UID},"
             f"gid={_I_CONTAINER_DEFAULT_GID},mode=0700"
         ),
         S_RUNNER_SCRATCH_ROOT: (
-            f"size={dictLimits['iScratchBytes']},mode=1777"
+            f"{sMountFlags},size={dictLimits['iScratchBytes']},mode=1777"
         ),
     }
     return {

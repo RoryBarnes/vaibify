@@ -36,6 +36,7 @@ __all__ = [
     "S_EVIDENCE_STATE_WEB_SOURCE",
     "S_EVIDENCE_STATUS_CONFIRMED",
     "S_FILE_MODE_PATTERN",
+    "S_NON_BLANK_PATTERN",
     "S_SEARCH_QUERY_PATTERN",
     "S_SOURCE_LINK_PATTERN",
     "TUPLE_EVIDENCE_BASE_FIELDS",
@@ -119,11 +120,17 @@ DICT_CHANGE_MANIFEST_ENTRY_FIELDS = {
     "listChangedFileModes": ("sPath", "sMode"),
     "listSymlinkTargets": ("sPath", "sTarget"),
 }
-# Bounds on a web source, written as patterns the strict schema carries
-# verbatim and the validator applies the same way, so neither can pass
-# what the other refuses.
+# Bounds written as patterns the strict schema carries verbatim and the
+# validator applies the same way, so neither can pass what the other
+# refuses. Two dialect differences are written out of them. Whitespace
+# is an explicit ASCII class, never \s or str.strip(), whose sets differ
+# between Python and the ECMA-262 dialect a JSON Schema pattern is
+# written in. And a schema's `$` is the end of the text, where Python's
+# also matches before a final newline, so the validator applies an
+# anchored pattern with re.fullmatch.
+S_NON_BLANK_PATTERN = r"[^ \t\n\r\f\v]"
 I_MAXIMUM_SOURCE_LINKS = 10
-S_SOURCE_LINK_PATTERN = r"^https://[^\s]{1,2040}$"
+S_SOURCE_LINK_PATTERN = r"^https://[^ \t\n\r\f\v]{1,2040}$"
 S_SEARCH_QUERY_PATTERN = r"^[^\r\n]{1,500}$"
 S_FILE_MODE_PATTERN = "^[0-7]{3,4}$"
 DICT_EVIDENCE_CLAIM_TEMPLATE = {
@@ -171,8 +178,7 @@ def flistFindEvidenceClaimProblems(iIndex, jsonEntry):
     listProblems = [
         f"{sWhere} needs a non-empty '{sField}'"
         for sField in TUPLE_EVIDENCE_BASE_FIELDS
-        if not isinstance(jsonEntry.get(sField), str)
-        or not jsonEntry.get(sField, "").strip()]
+        if not _fbIsNonEmptyString(jsonEntry.get(sField))]
     sStatus = jsonEntry.get("sStatus")
     if isinstance(sStatus, str) and sStatus not in (
             TUPLE_EVIDENCE_CLAIM_STATUSES):
@@ -181,7 +187,8 @@ def flistFindEvidenceClaimProblems(iIndex, jsonEntry):
             f"{list(TUPLE_EVIDENCE_CLAIM_STATUSES)}; the engine ignores "
             "a status it does not know, so the claim would vanish")
     sStateForm = jsonEntry.get("sStateForm", "")
-    if sStateForm not in DICT_EVIDENCE_FIELDS_BY_FORM:
+    if not isinstance(sStateForm, str) or (
+            sStateForm not in DICT_EVIDENCE_FIELDS_BY_FORM):
         listProblems.append(
             f"{sWhere} has 'sStateForm' {sStateForm!r}, which is not one "
             f"of {list(TUPLE_EVIDENCE_STATE_FORMS)}; leave it out for an "
@@ -211,7 +218,13 @@ def flistFindEvidenceClaimProblems(iIndex, jsonEntry):
 
 
 def _fbIsNonEmptyString(jsonValue):
-    return isinstance(jsonValue, str) and bool(jsonValue.strip())
+    return isinstance(jsonValue, str) and bool(
+        re.search(S_NON_BLANK_PATTERN, jsonValue))
+
+
+def _fbMatchesAnchoredPattern(sPattern, jsonValue):
+    return isinstance(jsonValue, str) and bool(
+        re.fullmatch(sPattern, jsonValue))
 
 
 def _flistFindStatusProblemsForForm(sWhere, sStatus, sStateForm):
@@ -278,8 +291,8 @@ def _flistFindManifestEntryProblems(sEntryWhere, jsonItem, tEntryFields):
         if sField != "sContent" and not _fbIsNonEmptyString(jsonItem[sField])]
     if not isinstance(jsonItem.get("sContent", ""), str):
         listProblems.append(f"{sEntryWhere} 'sContent' must be text")
-    if "sMode" in jsonItem and not re.search(
-            S_FILE_MODE_PATTERN, str(jsonItem["sMode"])):
+    if "sMode" in jsonItem and not _fbMatchesAnchoredPattern(
+            S_FILE_MODE_PATTERN, jsonItem["sMode"]):
         listProblems.append(
             f"{sEntryWhere} 'sMode' must be an octal mode such as 755")
     return listProblems
@@ -299,11 +312,9 @@ def _flistFindWebSourceProblems(sWhere, jsonEntry):
             f"{sWhere} link {iLink} must be one https:// link of at most "
             "2048 characters, exactly as your search returned it"
             for iLink, jsonLink in enumerate(jsonLinks)
-            if not isinstance(jsonLink, str)
-            or not re.search(S_SOURCE_LINK_PATTERN, jsonLink))
-    jsonQuery = jsonEntry.get("sSearchQuery")
-    if not isinstance(jsonQuery, str) or not re.search(
-            S_SEARCH_QUERY_PATTERN, jsonQuery):
+            if not _fbMatchesAnchoredPattern(S_SOURCE_LINK_PATTERN, jsonLink))
+    if not _fbMatchesAnchoredPattern(
+            S_SEARCH_QUERY_PATTERN, jsonEntry.get("sSearchQuery")):
         listProblems.append(
             f"{sWhere} needs 'sSearchQuery': the one-line query you "
             "searched for, at most 500 characters")
@@ -341,7 +352,7 @@ def fdictComposeEvidenceOutputSchema():
     every property as required and forbids any other, the shape strict
     structured output demands, so a map keyed by path never appears.
     """
-    dictCommand = {"type": "string", "minLength": 1}
+    dictCommand = {"type": "string", "pattern": S_NON_BLANK_PATTERN}
     dictUnconfirmed = _fdictComposeStrictObject({"sStatus": {
         "type": "string", "enum": list(TUPLE_EVIDENCE_UNCONFIRMED_STATUSES)}})
     dictBaseline = _fdictComposeStrictObject({
@@ -382,12 +393,12 @@ def _fdictComposeStrictObject(dictProperties):
 
 def _fdictComposeChangeManifestSchema():
     """Return the manifest schema, one fixed-shape array per change kind."""
-    dictPath = {"type": "string", "minLength": 1}
+    dictPath = {"type": "string", "pattern": S_NON_BLANK_PATTERN}
     dictEntryFieldSchemas = {
         "sPath": dictPath,
         "sContent": {"type": "string"},
         "sMode": {"type": "string", "pattern": S_FILE_MODE_PATTERN},
-        "sTarget": {"type": "string", "minLength": 1},
+        "sTarget": {"type": "string", "pattern": S_NON_BLANK_PATTERN},
     }
     dictProperties = {}
     for sKey, tEntryFields in DICT_CHANGE_MANIFEST_ENTRY_FIELDS.items():

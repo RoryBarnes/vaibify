@@ -43,10 +43,11 @@ Every turn — each proposal, review, synthesis, and vote — runs in a
 fresh runner built from the project's image by its immutable id,
 holding a copy of a sealed snapshot of the project. The copy at
 `/council` and the scratch space at `/tmp` are writable; the rest of the
-runner's filesystem, its system files included, is read-only. Neither
-writable directory is executable, so a participant runs a script
-through its interpreter (`sh script.sh`, `python3 script.py`) rather than
-executing a file directly, and cannot run a binary it builds. Its only
+runner's filesystem, its system files included, is read-only. In a
+full-sandbox council a participant may run anything in either writable
+directory, a script it wrote or a program it built included, as the
+same unprivileged user with no capabilities; a read-only council's
+runners and the chat keep both directories non-executable. Its only
 network path is its own provider's API, and when the turn ends the
 whole container is destroyed and its absence confirmed. No participant
 inherits another's state or its own earlier work.

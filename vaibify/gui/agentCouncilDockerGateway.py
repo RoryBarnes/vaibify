@@ -167,6 +167,7 @@ def fdictReserveAndCreateRunner(
     dictGateway, sCampaignId, sProvider, dictRunnerCost, sImageReference,
     dictLimits=None, sNetworkName=None, bSandbox=False,
     dictEnvironment=None, listDnsServers=None, listDnsOptions=None,
+    bWritableMountsExecutable=False,
 ):
     """Reserve admission, then create and start one council container.
 
@@ -196,7 +197,8 @@ def fdictReserveAndCreateRunner(
             agentCouncilRunner.fdictComposeRunnerCreateSpecification(
                 sImageReference, sReservationId, dictLimits, sNetworkName,
                 bSandbox, dictEnvironment, listDnsServers, listDnsOptions,
-                dictGateway.get("sResourceName", "")))
+                dictGateway.get("sResourceName", ""),
+                bWritableMountsExecutable))
         containerRunner = dictGateway["dockerCouncil"].containers.create(
             sImageReference, **dictSpecification["dictCreateKeywords"])
         containerRunner.start()

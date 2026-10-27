@@ -4862,7 +4862,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # copy, and the per-kind execution notes a member and the chat read.
     # 1269 -> 1271 (2026-10-26): the note says the working tree is
     # noexec, measured in a runner, so scripts run through interpreters.
-    "agentCouncilCharter.py": 1271,
+    # 1271 -> 1273 (2026-10-27): a full-sandbox working tree is
+    # executable, so that sentence goes; the validator reads a verdict
+    # only when it is text and applies the non-blank pattern the schema
+    # states.
+    "agentCouncilCharter.py": 1273,
     # NEW at 810 (2026-08-29): the notes derivation joins the decision
     # grouping and the held-question descriptor. All three are the same
     # responsibility — reading a settled record into what a researcher
@@ -4923,7 +4927,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # against the daemon's own answer with bounded retries -- the
     # wedged daemon it defends against absorbs the first kill while
     # reporting success (measured live).
-    "agentCouncilDockerGateway.py": 1027,
+    # +2 (2026-10-27): runner creation passes on whether the writable
+    # mounts are executable; the runner module composes the options.
+    "agentCouncilDockerGateway.py": 1029,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
@@ -4998,7 +5004,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1371 -> 1404 (2026-10-26): the evidence executor applies a
     # modified-state claim's manifest in its fresh sandbox before the
     # command runs; it extends that one seam rather than forking it.
-    "agentCouncilProviders.py": 1404,
+    # 1404 -> 1408 (2026-10-27): a full-sandbox turn and the replay
+    # sandbox ask for executable writable mounts, so `./script` and a
+    # program a member builds run there and replay the same way.
+    "agentCouncilProviders.py": 1408,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
