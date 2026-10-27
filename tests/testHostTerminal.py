@@ -131,6 +131,35 @@ def test_a_real_shell_round_trips_and_the_drain_proves_it_gone(
 
 
 @pytest.mark.falsification
+def test_the_host_shell_carries_the_classic_renderer_switch(
+    tProjectAndSession, monkeypatch,
+):
+    """A real host shell reads Claude's classic-renderer switch.
+
+    The hub's own environment is cleared of the variable first, so the
+    shell can only have it from the launch. The echoed command line
+    names the variable, never its value, so the marker below appears
+    only in the shell's output.
+
+    Kills: dropping the agent terminal environment from
+    ``HostConnection.fdictLaunchTerminalShellSuspended``.
+    """
+    monkeypatch.delenv("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN", raising=False)
+    _, session = tProjectAndSession
+    session.fnStart()
+    try:
+        session.fnSendInput(
+            b"echo RENDERER-[$CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN]\n")
+        assert _fbAwaitOutputContains(session, "RENDERER-[1]"), (
+            "the host shell's environment lacks the classic-renderer "
+            "switch"
+        )
+    finally:
+        terminalContainment.fdictDrainSessionRecord(session)
+        session.fnClose()
+
+
+@pytest.mark.falsification
 def test_the_record_is_in_flight_before_the_shell_can_run(
     tProjectAndSession,
 ):

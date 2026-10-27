@@ -36472,4 +36472,79 @@ LIST_FALSIFICATIONS = [
         old='        if bInteractive:\n',
         new='        if True:\n',
     ),
+    # --- 2026-10-26: every shell vaibify opens selects Claude Code's
+    # classic renderer (CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1) ---
+    Falsification(
+        nodeid=(
+            'tests/testContainerManager.py::'
+            'test_flistBuildRunArgs_carries_the_classic_renderer_switch'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # the container is created without the switch
+        old='    saRunArgs.extend(flistBuildAgentTerminalEnvironmentArguments())\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerManager.py::'
+            'test_the_connect_shell_carries_the_classic_renderer_switch'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # vaibify connect's exec omits the switch
+        old='        *flistBuildAgentTerminalEnvironmentArguments(),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerConnection.py::'
+            'test_fsExecCreate_forwards_an_exec_environment'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # an exec's own variables never reach the daemon
+        old=(
+            '        if dictEnvironment:\n'
+            '            dictKwargs["environment"] = dictEnvironment\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTerminalContainment.py::'
+            'test_the_contained_shell_carries_the_classic_renderer_switch'
+        ),
+        source='vaibify/gui/terminalSession.py',
+        # the dashboard terminal's exec omits the switch
+        old=(
+            '            listCommand=["/bin/sh", "-c", sWrapperScript],\n'
+            '            dictEnvironment=fdictBuildAgentTerminalEnvironment(),\n'
+        ),
+        new='            listCommand=["/bin/sh", "-c", sWrapperScript],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTerminalContainmentLive.py::'
+            'test_a_real_terminal_exec_carries_the_classic_renderer_switch'
+        ),
+        source='vaibify/gui/terminalSession.py',
+        # the dashboard terminal's exec omits the switch; needs a
+        # reachable daemon, or the test skips and survives vacuously
+        old=(
+            '            listCommand=["/bin/sh", "-c", sWrapperScript],\n'
+            '            dictEnvironment=fdictBuildAgentTerminalEnvironment(),\n'
+        ),
+        new='            listCommand=["/bin/sh", "-c", sWrapperScript],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_the_host_shell_carries_the_classic_renderer_switch'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # the host terminal's PTY inherits the hub's environment alone
+        old=(
+            '                env=_fdictComposeLaunchEnvironment(\n'
+            '                    fdictBuildAgentTerminalEnvironment()),\n'
+        ),
+        new='',
+    ),
 ]

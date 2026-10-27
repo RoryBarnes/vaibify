@@ -259,6 +259,34 @@ def test_fsExecCreate_defaults_to_image_user(mockGetDocker):
     assert dictKwargs["user"] == "scientist"
 
 
+@pytest.mark.falsification
+@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
+def test_fsExecCreate_forwards_an_exec_environment(mockGetDocker):
+    """Variables handed to one exec reach the daemon; none means none.
+
+    The terminal's shell carries the classic-renderer switch on its
+    own exec so a container created before the switch still gets it;
+    the confined read and write programs pass nothing and must not
+    gain an environment they never asked for.
+
+    Kills: dropping the ``environment`` keyword from ``fsExecCreate``.
+    """
+    from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
+    _CACHED_CONTAINER_USER.clear()
+    mockDocker, mockClient = _fMockDockerModule()
+    mockGetDocker.return_value = mockDocker
+    mockClient.containers.get.return_value = _fMockContainerWithUser(
+        "scientist")
+    mockClient.api.exec_create.return_value = {"Id": "exec_id"}
+    conn = DockerConnection()
+    conn.fsExecCreate(
+        "abc123", dictEnvironment={"SWITCH_UNDER_TEST": "1"})
+    dictKwargs = mockClient.api.exec_create.call_args[1]
+    assert dictKwargs["environment"] == {"SWITCH_UNDER_TEST": "1"}
+    conn.fsExecCreate("abc123", listCommand=["true"], bTty=False)
+    assert "environment" not in mockClient.api.exec_create.call_args[1]
+
+
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
 def test_resolve_user_falls_back_to_researcher_when_attrs_missing(
     mockGetDocker,

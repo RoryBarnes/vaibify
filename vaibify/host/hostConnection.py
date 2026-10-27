@@ -68,6 +68,9 @@ import time
 
 from vaibify.config import mutationAdmission
 from vaibify.config import processLiveness
+from vaibify.config.agentTerminalEnvironment import (
+    fdictBuildAgentTerminalEnvironment,
+)
 from vaibify.docker.confinedWrite import (
     ContainerWriteExistsError,
     ContainerWriteRefusedError,
@@ -795,6 +798,8 @@ class HostConnection:
                  str(iGateRead)],
                 stdin=iSlaveFd, stdout=iSlaveFd, stderr=iSlaveFd,
                 cwd=sWorkdir, pass_fds=(iGateRead,), close_fds=True,
+                env=_fdictComposeLaunchEnvironment(
+                    fdictBuildAgentTerminalEnvironment()),
             )
         except Exception:
             os.close(iMasterFd)

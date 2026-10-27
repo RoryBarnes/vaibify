@@ -61,6 +61,7 @@ def test_fnStart_creates_exec():
     session.fnStart()
     mockConn.fsExecCreate.assert_called_once_with(
         "cid", sUser="user",
+        dictEnvironment={"CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN": "1"},
     )
     assert session._bRunning is True
     assert session._sExecId == "exec_id_123"

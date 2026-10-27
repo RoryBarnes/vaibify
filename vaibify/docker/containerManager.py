@@ -23,6 +23,10 @@ import subprocess
 import tarfile
 import time
 
+from vaibify.config.agentTerminalEnvironment import (
+    flistBuildAgentTerminalEnvironmentArguments,
+)
+
 from . import fnRunDockerCommand
 from .volumeManager import fsGetCredentialsVolumeName, fsGetVolumeName
 from .x11Forwarding import flistConfigureX11Args
@@ -576,6 +580,7 @@ def flistBuildRunArgs(
     _fnAddBindMounts(config, saRunArgs)
     _fnAddGpuPassthrough(config, saRunArgs)
     _fnAddAgentUpdateEnvs(config, saRunArgs)
+    saRunArgs.extend(flistBuildAgentTerminalEnvironmentArguments())
     if bCredentials:
         _fnAddAgentHostBridge(config, saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
@@ -1325,8 +1330,9 @@ def fprocessLaunchInteractiveExec(sContainerName, sUser, sWrapperScript):
     exit.
     """
     return subprocess.Popen([
-        "docker", "exec", "-it", "-u", sUser, sContainerName,
-        "/bin/sh", "-c", sWrapperScript,
+        "docker", "exec", "-it", "-u", sUser,
+        *flistBuildAgentTerminalEnvironmentArguments(),
+        sContainerName, "/bin/sh", "-c", sWrapperScript,
     ])
 
 

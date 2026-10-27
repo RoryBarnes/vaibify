@@ -3558,7 +3558,7 @@ class DockerConnection:
 
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None,
-        listCommand=None, bTty=True,
+        listCommand=None, bTty=True, dictEnvironment=None,
     ):
         """Create an interactive exec instance, return exec id.
 
@@ -3570,6 +3570,8 @@ class DockerConnection:
         destroyed by tokenization). ``bTty`` False asks for the plain
         multiplexed stream, which the stdin-fed program write needs so
         its standard error stays separate from its standard output.
+        ``dictEnvironment`` adds variables to this exec alone, over the
+        container's own environment.
         """
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
@@ -3582,6 +3584,8 @@ class DockerConnection:
             "stderr": True,
             "user": sUser,
         }
+        if dictEnvironment:
+            dictKwargs["environment"] = dictEnvironment
         sExecId = self._clientDocker.api.exec_create(
             container.id, **dictKwargs
         )["Id"]
