@@ -1,7 +1,7 @@
 """Persist and validate PROOF L3 reproduction attestations.
 
 The L3 gate is the only PROOF rung gated on a *recorded* outcome of
-an expensive operation (rebuild + hash compare). The persisted
+an expensive operation (an assessed rerun). The persisted
 record lives at ``<projectRepo>/.vaibify/l3_attestation.json``; every
 attempt is also archived to
 ``<projectRepo>/.vaibify/l3_attestations/<timestamp>.json`` so the

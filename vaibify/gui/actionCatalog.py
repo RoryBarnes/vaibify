@@ -79,7 +79,9 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "WS", "sPath": "runAll",
      "bAgentSafe": True,
      "sDescription": "Run every enabled step in the active workflow in "
-                     "order; disabled steps are skipped, not run. "
+                     "order; disabled steps are skipped, not run. Each "
+                     "step runs its data, then plots, then tests, so "
+                     "do not follow this with run-all-tests. "
                      "Refused with sReason=remoteDataOverwrite when a "
                      "covered step would re-pull remote data over the "
                      "canonical copy — ask the researcher, then retry "
@@ -115,8 +117,8 @@ LIST_AGENT_ACTIONS = [
     {"sName": "run-data-only", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runSelected",
      "bAgentSafe": True,
-     "sDescription": "Run only the data commands for one step (skip "
-                     "tests and plots). Args: step label or 0-based "
+     "sDescription": "Run one step's data commands, then its tests "
+                     "(plots are skipped). Args: step label or 0-based "
                      "index. Payload: sRunMode=dataOnly."},
     {"sName": "run-plots-only", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runSelected",
@@ -161,7 +163,7 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}/save-and-run-test",
      "bAgentSafe": True,
      "sDescription": "Write a test file and execute it. "
-                     "Args: {sRelativePath, sContent}."},
+                     "Args: {sFilePath, sContent}."},
     {"sName": "generate-tests-deterministic",
      "sCategory": "verification",
      "sMethod": "POST",
@@ -311,7 +313,7 @@ LIST_AGENT_ACTIONS = [
                      "(shown in its Input Data block and watched for "
                      "modification). Args: {sPath} repo-relative; "
                      "step products are rejected — those stay "
-                     "{StepNN.*} tokens in commands."},
+                     "{step:<sStepId>.<stem>} tokens in commands."},
     {"sName": "declare-no-input-data", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/declare-no-input-data",
@@ -559,10 +561,12 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level2/readiness",
      "bAgentSafe": True,
-     "sDescription": "Return per-criterion pass/fail for the L2 "
-                     "Publication gate (GitHub fully synced, Zenodo "
-                     "fully synced, AI Declaration step present) so "
-                     "the dashboard can render the readiness card."},
+     "sDescription": "Return iProofLevel, the L1 blockers and the L2 "
+                     "Publication gaps (dictLevel2Gaps: published "
+                     "copies on GitHub and Zenodo, AI Declaration "
+                     "signed, AI models declared, Personal AI "
+                     "Configuration and environment-archive questions "
+                     "answered); every false key is one criterion."},
     {"sName": "report-l2-gaps", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level2/readiness",
@@ -624,10 +628,11 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/workflow/{sContainerId}/level3/readiness",
      "bAgentSafe": True,
      "sDescription": "Return per-criterion pass/fail for the L3 "
-                     "Reproducibility readiness check (manifest, "
-                     "lockfile, environment digest, Dockerfile pin, "
-                     "reproduce.sh, determinism declaration) so the "
-                     "dashboard can render the L3 readiness card."},
+                     "Reproducibility readiness check (manifest "
+                     "complete and matching the files, lockfile, "
+                     "environment snapshot, Dockerfile pin, "
+                     "reproduce.sh, determinism answered, binaries "
+                     "declared or waived) and bL3AttestationCurrent."},
     {"sName": "audit-determinism", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level3/readiness",
@@ -764,10 +769,10 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/level3/verify",
      "bAgentSafe": False,
-     "sDescription": "Kick off the expensive rebuild + hash compare "
-                     "and write .vaibify/l3_attestation.json. "
-                     "User-only because the rebuild can take hours "
-                     "and is the only L3 promotion path."},
+     "sDescription": "Re-run the workflow in a throwaway container "
+                     "from the pinned image, grade every output, and "
+                     "write .vaibify/l3_attestation.json. User-only: "
+                     "it is the only L3 promotion path."},
     {"sName": "declare-standalone-binaries", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/binaries/declare",

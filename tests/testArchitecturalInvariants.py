@@ -7486,7 +7486,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1540 -> 1544 (2026-10-24): create-step and insert-step say that
     # bPlotOnly defaults off and that bNoInputData is accepted.
     # 1544 -> 1548 (2026-10-24): the setup wizard's step route is excluded from the agent catalog, with why.
-    "actionCatalog.py": 1548,
+    # 1548 -> 1553 (2026-10-27): run-all says it runs every step's
+    # tests, and the L2/L3 readiness descriptions name their criteria.
+    "actionCatalog.py": 1553,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
