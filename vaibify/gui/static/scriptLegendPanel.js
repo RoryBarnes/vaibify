@@ -500,13 +500,30 @@ var VaibifyLegendPanel = (function () {
             'vanish the instant you release -- that is the program ' +
             'repainting, not a failed copy, and the text is on the ' +
             'clipboard regardless. A toast confirms it.</p>' +
+            '<p>If a program in the pane tells you to hold a ' +
+            'different key while selecting, hold <strong>' +
+            sModifierKey + '</strong> instead: it is the key this ' +
+            'pane honors on this machine.</p>' +
             '<p><strong>Dragging past the bottom</strong> of the pane ' +
             'scrolls further text into the selection, and keeps ' +
             'scrolling while you hold the pointer outside the ' +
-            'window.</p>' +
+            'window. Holding the mouse just above or below the text ' +
+            'keeps scrolling; move back over the text to stop.</p>' +
+            '<p><strong>A program that draws on the whole ' +
+            'screen</strong> (vim, htop) keeps no scrollback in the ' +
+            'pane: while it runs, selecting and Copy all reach only ' +
+            'what is on screen. vaibify runs Claude Code in its ' +
+            'classic renderer, which writes into the scrollback, so ' +
+            'its earlier output stays reachable.</p>' +
             '<p><strong>Copying:</strong> a selection is copied ' +
             'automatically. <strong>' + sCopyShortcut + '</strong> ' +
-            'and right-clicking a selection also copy it.</p>' +
+            'and right-clicking a selection also copy it. If the ' +
+            'browser refuses a copy, right-click the highlighted ' +
+            'text to try again.</p>' +
+            '<p><strong>A program asking to copy</strong> (Claude ' +
+            'Code\'s /copy, or its login link) shows a notice at the ' +
+            'top of the pane with what it wants to copy. Nothing ' +
+            'reaches your clipboard until you click Copy.</p>' +
             '<p><strong>Ctrl+Insert</strong> copies too, and is worth ' +
             'knowing because no browser reserves it. Ctrl+Shift+C is ' +
             'also Firefox\'s Inspector shortcut, and whether the page ' +

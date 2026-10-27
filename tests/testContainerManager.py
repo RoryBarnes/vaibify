@@ -607,3 +607,66 @@ def test_a_failed_stop_on_a_container_that_still_exists_is_not_settled():
         return_value=(True, "abc123\n"),
     ):
         assert fbStopContainerProvenSettled("someProject") is False
+
+
+S_CLASSIC_RENDERER_SWITCH = "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1"
+
+
+def _fbArgumentsCarryEnvironmentPair(listArguments, sAssignment):
+    """Return True when ``-e sAssignment`` appears as an adjacent pair."""
+    return any(
+        listArguments[iIndex] == "-e"
+        and listArguments[iIndex + 1] == sAssignment
+        for iIndex in range(len(listArguments) - 1)
+    )
+
+
+@pytest.mark.falsification
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_carries_the_classic_renderer_switch(mockX11):
+    """The container's own environment selects Claude's classic renderer.
+
+    The fullscreen renderer draws on the alternate screen, where the
+    dashboard terminal keeps no scrollback. The switch rides on every
+    project, whether or not its Claude feature is on, because a
+    researcher can install the agent by hand.
+
+    Kills: dropping the agent terminal environment from
+    ``flistBuildRunArgs``.
+    """
+    saArgs = flistBuildRunArgs(_fConfigMinimal())
+    assert _fbArgumentsCarryEnvironmentPair(
+        saArgs, S_CLASSIC_RENDERER_SWITCH,
+    ), saArgs
+
+
+@pytest.mark.falsification
+def test_the_connect_shell_carries_the_classic_renderer_switch():
+    """``vaibify connect``'s exec sets the switch before the container name.
+
+    A container created before the switch existed keeps its old
+    environment, so the exec carries the variable itself. Docker reads
+    options only before the container name; after it they would be
+    the program's arguments.
+
+    Kills: dropping the agent terminal environment from
+    ``fprocessLaunchInteractiveExec``.
+    """
+    from vaibify.docker.containerManager import (
+        fprocessLaunchInteractiveExec,
+    )
+    with patch(
+        "vaibify.docker.containerManager.subprocess.Popen",
+    ) as mockPopen:
+        fprocessLaunchInteractiveExec("projectBox", "researcher", "exec sh")
+    listArgv = mockPopen.call_args[0][0]
+    iContainerIndex = listArgv.index("projectBox")
+    assert _fbArgumentsCarryEnvironmentPair(
+        listArgv[:iContainerIndex], S_CLASSIC_RENDERER_SWITCH,
+    ), listArgv
+    assert listArgv[iContainerIndex:] == [
+        "projectBox", "/bin/sh", "-c", "exec sh",
+    ]

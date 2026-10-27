@@ -240,6 +240,43 @@ def test_prover_reports_survivors_after_exec_inspect_says_dead(
     terminalContainment.fdictDrainSessionRecord(session)
 
 
+@pytest.mark.falsification
+def test_a_real_terminal_exec_carries_the_classic_renderer_switch(
+    tLiveContainer,
+):
+    """A real terminal exec's shell reads Claude's classic-renderer switch.
+
+    The throwaway container is created without the variable, exactly
+    like a container created before the switch existed, so the shell
+    can only have it from its own exec. The echoed command line names
+    the variable, never its value, so the marker appears only in the
+    shell's output.
+
+    Kills: dropping the agent terminal environment from
+    ``TerminalSession._fnStartContained``. Kill-confirmation requires
+    a reachable Docker daemon; without one this test skips and the
+    mutant survives vacuously.
+    """
+    from vaibify.gui import terminalContainment
+    session = _fsessionStartContainedTerminal(
+        tLiveContainer, SimpleNamespace())
+    try:
+        session.fnSendInput(
+            b"echo RENDERER-[$CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN]\n")
+        baCollected = b""
+        fDeadline = time.monotonic() + 15.0
+        while b"RENDERER-[1]" not in baCollected:
+            if time.monotonic() > fDeadline:
+                pytest.fail(
+                    "the terminal exec's shell lacks the classic-renderer "
+                    f"switch; it printed {baCollected[-200:]!r}")
+            baCollected += session.fbaReadOutput() or b""
+            time.sleep(0.05)
+    finally:
+        terminalContainment.fdictDrainSessionRecord(session)
+        session.fnClose()
+
+
 # ---------------------------------------------------------------------
 # Case 44: every authority-ending path that exists today, real halves.
 # ---------------------------------------------------------------------

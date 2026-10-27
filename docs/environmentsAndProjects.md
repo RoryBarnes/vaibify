@@ -571,11 +571,36 @@ an editor, also takes your drag gestures. To get text out:
 - **Select text** in the pane's tab bar gives the mouse back to the
   pane, so dragging selects; turn it off to give the mouse back to the
   program.
+- Holding **Option** (on a Mac) or **Shift** (elsewhere) while dragging
+  does the same for one drag. That is the key the pane honors, whatever
+  a program's own hint says: a program may suggest Shift on a Mac,
+  where it does nothing.
 - **Shift + wheel** always scrolls the pane.
 - **Copy all** copies the pane's whole scrollback.
 
 Selected text is copied automatically; Cmd+C, Ctrl+Shift+C, and
-Ctrl+Insert also work.
+Ctrl+Insert also work. Dragging past the top or bottom edge keeps
+scrolling while you hold the mouse there; move back over the text to
+stop. If the browser refuses a copy, which can happen when a selection
+is held for more than a few seconds, right-click the highlighted text
+to try again.
+
+A program that draws on the whole screen, such as vim or htop, keeps
+no scrollback: while it runs, selecting and **Copy all** reach only
+what is on screen. Claude Code's fullscreen renderer is such a
+program, so vaibify runs Claude Code in its classic renderer instead,
+which writes into the scrollback like any other program. Every shell
+vaibify opens sets `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1`, so a new
+terminal tab gets it even in a container started before vaibify set
+it.
+
+When a program asks to copy text, such as Claude Code's `/copy` or the
+link `/login` prints, a notice at the top of the pane shows how many
+characters it wants to copy and a preview of them. Nothing reaches
+your clipboard until you click **Copy**, and **Dismiss** drops the
+request. A request from a tab you are not looking at waits on that
+tab, which is marked with a dot. A program can never read your
+clipboard through the pane.
 
 A program that is killed outright, such as an agent killed for lack of
 memory, never hands the mouse back, and every mouse move then prints
