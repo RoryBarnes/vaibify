@@ -84,13 +84,44 @@ var VaibifyContainerManager = (function () {
             /* Hiding the banner here used to read as "Docker is fine"
                whenever the PROBE failed, which is the one moment the
                researcher most needs to hear that vaibify cannot tell. */
-            _fnRenderDockerStatusBanner(elBanner, {
-                sHint: "vaibify could not check whether Docker is " +
-                    "available: " + VaibifyUtilities.fsSanitizeErrorForUser(
-                        error && error.message) + " Click Retry.",
-                sCommand: "", sError: "", sEndpoint: "",
-            });
+            _fnRenderDockerStatusBanner(
+                elBanner, _fdictDescribeUncheckedDocker(error));
         }
+    }
+
+    /* A failed check is a statement about the check, never about
+       Docker: with vaibify's own server stopped, this banner once read
+       "Docker is unavailable" over a Docker that was answering
+       (researcher-reported, 2026-10-26). Retry and Set up Docker both
+       ask that server, so a server that is not answering gets Reload,
+       the remedy the connection toast also offers. */
+    function _fdictDescribeUncheckedDocker(error) {
+        if (error && error.sKind === "network") {
+            return {
+                sHeadline: "vaibify's server is not answering.",
+                sHint: "Docker was not checked. Start vaibify again: it " +
+                    "opens a fresh dashboard. If it comes back on this " +
+                    "page's port, Reload works too.",
+                bServerNotAnswering: true,
+            };
+        }
+        return {
+            sHeadline: "Docker was not checked.",
+            sHint: "vaibify could not ask whether Docker is available: " +
+                VaibifyUtilities.fsSanitizeErrorForUser(
+                    error && error.message) + " Click Retry.",
+        };
+    }
+
+    function _fsDockerBannerActionsHtml(dictStatus) {
+        if (dictStatus.bServerNotAnswering) {
+            return '<button id="btnReloadDashboard" type="button">' +
+                'Reload</button>';
+        }
+        return '<button id="btnSetupDocker" type="button">' +
+            'Set up Docker</button>' +
+            '<button id="btnRetryDockerStatus" type="button">' +
+            'Retry</button>';
     }
 
     /* Docker answering is not Docker being ready: the Colima machine
@@ -125,9 +156,11 @@ var VaibifyContainerManager = (function () {
                 ? 'Endpoint vaibify used: <code>' + sEndpoint + '</code>.'
                 : '') +
             (sError ? '<div>' + sError + '</div>' : '');
+        var sHeadline = VaibifyUtilities.fnEscapeHtml(
+            dictStatus.sHeadline || "Docker is unavailable.");
         elBanner.innerHTML =
             '<div class="docker-status-banner-message">' +
-            '<strong>Docker is unavailable.</strong> ' + sHint +
+            '<strong>' + sHeadline + '</strong> ' + sHint +
             (sCommand
                 ? ' Usually this failure means you need to run <code>'
                   + sCommand + '</code> and then click Retry. If that '
@@ -140,10 +173,7 @@ var VaibifyContainerManager = (function () {
                 : '') +
             '</div>' +
             '<div class="docker-status-banner-actions">' +
-            '<button id="btnSetupDocker" type="button">'
-            + 'Set up Docker</button>' +
-            '<button id="btnRetryDockerStatus" type="button">'
-            + 'Retry</button></div>';
+            _fsDockerBannerActionsHtml(dictStatus) + '</div>';
         elBanner.style.display = "flex";
         var elRetry = document.getElementById("btnRetryDockerStatus");
         if (elRetry) {
@@ -152,6 +182,12 @@ var VaibifyContainerManager = (function () {
         var elSetup = document.getElementById("btnSetupDocker");
         if (elSetup) {
             elSetup.addEventListener("click", VaibifyRuntimeSetup.fnOpen);
+        }
+        var elReload = document.getElementById("btnReloadDashboard");
+        if (elReload) {
+            elReload.addEventListener("click", function () {
+                window.location.reload();
+            });
         }
     }
 
@@ -289,6 +325,9 @@ var VaibifyContainerManager = (function () {
             ? ' data-locked="true" data-locked-message="' +
               sLockedMessage + '"'
             : "";
+        var sStatusTitle = (bDeleting || bUnavailable || bQuarantined)
+            ? "" : ' title="' + VaibifyUtilities.fnEscapeHtml(
+                _fsTileStatusTooltip(dictContainer, bHost)) + '"';
         return (
             '<div class="container-tile' + sStateClass +
             '" data-name="' +
@@ -308,7 +347,7 @@ var VaibifyContainerManager = (function () {
                 ? "true" : "false") +
             '"' + _fsRenderHostTileData(dictContainer, bHost) +
             sLockedAttr + sLockedTitle + '>' +
-            '<div class="container-tile-main">' +
+            '<div class="container-tile-main"' + sStatusTitle + '>' +
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
@@ -819,6 +858,35 @@ var VaibifyContainerManager = (function () {
         return (
             "<p>Unsettled operations still holding this container:</p>" +
             "<ul class=\"quarantine-records\">" + sRows + "</ul>");
+    }
+
+    /* What the tile is and what a click on it does, in words: a dot
+       alone never said that clicking a stopped tile starts it
+       (researcher-reported, 2026-10-26). Each sentence states what
+       fnHandleContainerClick does for that state; locked, quarantined
+       and deleting tiles keep their own explanation. */
+    function _fsTileStatusTooltip(dictContainer, bHost) {
+        var sStatus = dictContainer.sStatus;
+        if (bHost && sStatus === "missing") {
+            return "Its folder is gone: " +
+                (dictContainer.sDirectory || "directory unknown") +
+                ". Move it back, or remove the tile with \u22ee \u2192 " +
+                "Remove from list.";
+        }
+        if (bHost) {
+            return "Ready on this machine, with no container. Click to " +
+                "open it.";
+        }
+        if (sStatus === "running") return "Running. Click to open it.";
+        if (sStatus === "stopped") {
+            return "Stopped. Click to start it and open it, or use " +
+                "\u22ee \u2192 Start to start it without opening.";
+        }
+        if (_fbImageObtained(dictContainer)) {
+            return "Not built yet. Click to obtain the author's image " +
+                "and start it.";
+        }
+        return "Not built yet. Click to build its image and start it.";
     }
 
     function _fsStatusDotClass(sStatus) {
@@ -3213,7 +3281,8 @@ var VaibifyContainerManager = (function () {
         '&nbsp; <span class="status-dot status-not-built"></span> not built ' +
         '&nbsp; <span class="status-dot status-host-ready"></span> ready ' +
         '(this machine) &nbsp; <span class="status-dot status-missing">' +
-        '</span> directory missing</p>' +
+        '</span> directory missing. Hover a tile to see what clicking ' +
+        'it does.</p>' +
         '<p><span class="containment-chip containment-chip--contained">' +
         'contained</span> runs in a container &nbsp; ' +
         '<span class="containment-chip containment-chip--direct">' +
@@ -3233,6 +3302,9 @@ var VaibifyContainerManager = (function () {
         'command that usually fixes it; run it, then click Retry. If that ' +
         'does not work, run <code>vaibify doctor</code> in a terminal, ' +
         'which reads the failed attempt\'s log.</p>' +
+        '<p><strong>vaibify\'s server is not answering.</strong> This ' +
+        'page could not reach vaibify itself, so Docker was not checked. ' +
+        'Start <code>vaibify</code> again; it opens a fresh dashboard.</p>' +
         '<p><strong>One environment per browser tab.</strong> Starting ' +
         'or opening an environment claims it for this tab, so starting a ' +
         'second one is refused until the first is released. Accept the ' +

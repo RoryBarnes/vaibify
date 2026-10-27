@@ -231,6 +231,52 @@ open past the cap and confirm two things: the run you started keeps
 going, and the refusal the tab meets *names the ending* rather than
 claiming the server restarted.
 
+## The terminal and the clipboard
+
+**Claude Code draws in its classic renderer inside vaibify.** Its
+fullscreen renderer enters the terminal's alternate screen
+(`ESC[?1049h`), where xterm keeps no scrollback, and captures the
+mouse. Every shell vaibify opens sets
+`CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1`, from the one table in
+`vaibify/config/agentTerminalEnvironment.py`. Measured on 2026-10-26
+with Claude Code 2.1.311 in a container with no network: the default
+was the classic renderer; `CLAUDE_CODE_NO_FLICKER=1` selected the
+fullscreen one (the CLI's `/tui fullscreen` command is the other way
+in); and adding `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` to
+`CLAUDE_CODE_NO_FLICKER=1` kept it classic. Whether the installed CLI
+still honors the variable is upstream's decision, so
+`tests/testClaudeCodeRendererLive.py` asks it nightly, forcing
+fullscreen as its control. It reports inconclusive, never a pass,
+when the control does not reach the fullscreen renderer.
+
+**A browser's clipboard permission runs from the press, and expires.**
+Measured once on 2026-10-26, in real Firefox on a bare localhost page
+(the Firefox version was not recorded), with the page writing the
+clipboard 200 ms after the release, as the terminal's copy-on-select
+does: holds of 0.5 s and 3 s were accepted, and holds of 6 s and 9 s
+were refused with `NotAllowedError`. That is consistent with the HTML
+standard's *transient activation*, which a press grants for a duration
+each browser chooses and the standard expects to be at most a few
+seconds ([Tracking user
+activation](https://html.spec.whatwg.org/multipage/interaction.html#tracking-user-activation)).
+A long drag can therefore outlast the permission before the copy is
+written. This is why the refusal toast says that long selections *can*
+outlast it and that right-clicking the highlight, which is a fresh
+press, tries again. It is one measurement of one browser version, not
+a browser contract, and the toast never claims it as the cause of any
+particular refusal.
+
+**No lane can reproduce it.** Playwright's own Firefox build (Firefox
+155.0, Playwright 1.63) accepted the same write after holds of up to
+9 s, with `navigator.userActivation.isActive` still true throughout
+and the pointer held still. So the browser tests stand in for the
+refusal with a `writeText` that rejects
+(`tests/browser/testARefusedCopyOnSelectSaysHowToRetry.py`,
+`tests/browser/testRightClickingTheHighlightCopiesIt.py`): they pin the
+page's answer to a refusal, never the browser's reason for one. The
+real browser is checked by hand: hold a drag for more than 6 s in
+Firefox, read the toast, then right-click the highlight and paste.
+
 ## Creating custom templates
 
 The templates offered on the **Create New** wizard's **Template** page

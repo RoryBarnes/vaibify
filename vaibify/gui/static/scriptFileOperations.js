@@ -47,8 +47,11 @@ var VaibifyFileOps = (function () {
        what separates those two states. The failure is reported for
        the same reason: this repository's rule is that an ugly truth
        is shown, not hidden, and a clipboard write that is refused
-       every time should be loud enough to get fixed. */
-    function fnCopyToClipboardWithoutStealingFocus(sText) {
+       every time should be loud enough to get fixed.
+
+       ``sRefusalMessage`` lets a caller that knows how its own copy is
+       retried say so; without it the refusal is reported plainly. */
+    function fnCopyToClipboardWithoutStealingFocus(sText, sRefusalMessage) {
         if (!navigator.clipboard || !navigator.clipboard.writeText) {
             VaibifyApp.fnShowToast(
                 "This browser did not offer a clipboard to copy into.",
@@ -59,7 +62,8 @@ var VaibifyFileOps = (function () {
             VaibifyApp.fnShowToast("Copied to clipboard", "success");
         }).catch(function () {
             VaibifyApp.fnShowToast(
-                "The browser refused the clipboard write.", "error");
+                sRefusalMessage || "The browser refused the clipboard write.",
+                "error");
         });
     }
 

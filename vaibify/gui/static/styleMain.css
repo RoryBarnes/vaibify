@@ -354,9 +354,12 @@ html, body {
     background-position: center;
 }
 
+/* Stopped is a resting state, not a failure. Red is kept for what needs
+   fixing (a missing folder), so stopped is a filled grey, darker than a
+   host project's "ready" grey so the two never read alike (ruled
+   2026-10-26). */
 .status-dot.status-stopped {
-    background: #8a0c0c;
-    box-shadow: 0 0 6px rgba(201, 17, 17, 0.4);
+    background: var(--text-muted);
 }
 
 .status-dot.status-not-built {
@@ -3366,6 +3369,65 @@ body.proof-level-3 .toolbar-label {
 
 .terminal-kill-overlay:hover {
     opacity: 1;
+}
+
+/* A program's request to set the clipboard. It OVERLAYS the top rows
+   and never takes height: a bar in the layout flow would fire the
+   pane's ResizeObserver, and a notice must not resize the program it
+   is about. The right edge stops short of the Kill button. */
+.terminal-clipboard-request {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 40px;
+    z-index: 11;
+    padding: 6px 10px;
+    background: var(--bg-modal);
+    border: 1px solid var(--highlight-color);
+    border-top: none;
+    border-radius: 0 0 var(--border-radius) var(--border-radius);
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.5;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.terminal-clipboard-request-preview {
+    padding: 1px 4px;
+    background: var(--bg-input);
+    border-radius: 3px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.terminal-clipboard-request-button {
+    margin-left: 6px;
+    padding: 2px 10px;
+}
+
+.terminal-clipboard-request-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.terminal-clipboard-request-hint,
+.terminal-clipboard-request-held {
+    color: var(--text-secondary);
+}
+
+.terminal-clipboard-request-status {
+    color: var(--color-red-text);
+}
+
+.terminal-clipboard-request-hint:empty,
+.terminal-clipboard-request-held:empty,
+.terminal-clipboard-request-status:empty {
+    display: none;
+}
+
+.terminal-tab-clipboard-marker {
+    color: var(--highlight-color);
+    font-size: 10px;
 }
 
 .btn-terminal-help {

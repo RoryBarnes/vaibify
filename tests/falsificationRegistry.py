@@ -36404,6 +36404,36 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/browser/testTileTooltipsSayWhatAClickDoes.py::'
+            'testEveryTileSaysWhatItIsAndWhatAClickDoes'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # the dot is again the only word about a tile's state
+        old="            '<div class=\"container-tile-main\"' + sStatusTitle + '>' +\n",
+        new="            '<div class=\"container-tile-main\">' +\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTileTooltipsSayWhatAClickDoes.py::'
+            'testAStoppedContainerIsGreyNotRed'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        # a resting container is drawn in the red kept for failures
+        old='.status-dot.status-stopped {\n    background: var(--text-muted);\n}\n',
+        new='.status-dot.status-stopped {\n    background: #8a0c0c;\n}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDockerBannerNamesWhatFailed.py::'
+            'testAServerThatDoesNotAnswerIsNeverReportedAsDockerUnavailable'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # a check that never reached the server is drawn as Docker's state
+        old='        if (error && error.sKind === "network") {\n            return {\n                sHeadline: "vaibify\'s server is not answering.",\n',
+        new='        if (false) {\n            return {\n                sHeadline: "vaibify\'s server is not answering.",\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testRuntimeSetupPlan.py::'
             'testOnlyAnUndersizedMachineIsAnnouncedOnTheHub'
         ),
@@ -36441,5 +36471,278 @@ LIST_FALSIFICATIONS = [
         # the step itself carries the lock, which sudo and pkexec close
         old='        if bInteractive:\n',
         new='        if True:\n',
+    ),
+    # --- 2026-10-26: every shell vaibify opens selects Claude Code's
+    # classic renderer (CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1) ---
+    Falsification(
+        nodeid=(
+            'tests/testContainerManager.py::'
+            'test_flistBuildRunArgs_carries_the_classic_renderer_switch'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # the container is created without the switch
+        old='    saRunArgs.extend(flistBuildAgentTerminalEnvironmentArguments())\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerManager.py::'
+            'test_the_connect_shell_carries_the_classic_renderer_switch'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # vaibify connect's exec omits the switch
+        old='        *flistBuildAgentTerminalEnvironmentArguments(),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerConnection.py::'
+            'test_fsExecCreate_forwards_an_exec_environment'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # an exec's own variables never reach the daemon
+        old=(
+            '        if dictEnvironment:\n'
+            '            dictKwargs["environment"] = dictEnvironment\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTerminalContainment.py::'
+            'test_the_contained_shell_carries_the_classic_renderer_switch'
+        ),
+        source='vaibify/gui/terminalSession.py',
+        # the dashboard terminal's exec omits the switch
+        old=(
+            '            listCommand=["/bin/sh", "-c", sWrapperScript],\n'
+            '            dictEnvironment=fdictBuildAgentTerminalEnvironment(),\n'
+        ),
+        new='            listCommand=["/bin/sh", "-c", sWrapperScript],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTerminalContainmentLive.py::'
+            'test_a_real_terminal_exec_carries_the_classic_renderer_switch'
+        ),
+        source='vaibify/gui/terminalSession.py',
+        # the dashboard terminal's exec omits the switch; needs a
+        # reachable daemon, or the test skips and survives vacuously
+        old=(
+            '            listCommand=["/bin/sh", "-c", sWrapperScript],\n'
+            '            dictEnvironment=fdictBuildAgentTerminalEnvironment(),\n'
+        ),
+        new='            listCommand=["/bin/sh", "-c", sWrapperScript],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostTerminal.py::'
+            'test_the_host_shell_carries_the_classic_renderer_switch'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # the host terminal's PTY inherits the hub's environment alone
+        old=(
+            '                env=_fdictComposeLaunchEnvironment(\n'
+            '                    fdictBuildAgentTerminalEnvironment()),\n'
+        ),
+        new='',
+    ),
+    # --- 2026-10-26: a program's OSC 52 clipboard request is shown with
+    # a preview and copied only on the researcher's click ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_a_request_is_not_copied_when_it_arrives'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # the clipboard is written the moment a request arrives
+        old='                var dictRequest = fdictParseClipboardRequest(sData);\n',
+        new='                var dictRequest = fdictParseClipboardRequest(sData);\n                if (dictRequest && dictRequest.sText) {\n                    VaibifyFileOps.fpromiseCopyText(dictRequest.sText);\n                }\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_a_click_in_the_bars_first_second_does_nothing'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # Copy is armed the moment its bar appears
+        old='    function fnArmClipboardCopyAfterDelay(elCopy) {\n        elCopy.disabled = true;\n',
+        new='    function fnArmClipboardCopyAfterDelay(elCopy) {\n        elCopy.disabled = false;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_copy_writes_exactly_the_decoded_text'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # the payload is decoded as Latin-1 instead of UTF-8
+        old='            return new TextDecoder("utf-8", {fatal: true}).decode(baBytes);\n',
+        new='            return String.fromCharCode.apply(null, baBytes);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_a_read_of_the_clipboard_is_never_answered'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # a read is answered with the clipboard's contents
+        old='                var dictRequest = fdictParseClipboardRequest(sData);\n',
+        new='                if (/;\\?$/.test(sData) && dictTab.websocket) {\n                    dictTab.websocket.send(new TextEncoder().encode(\n                        "\\x1b]52;c;" + window.btoa("secret") + "\\x07"));\n                }\n                var dictRequest = fdictParseClipboardRequest(sData);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_a_later_request_never_changes_the_bar_on_screen'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # a newer request replaces the one already on screen
+        old='        if (!dictTab.dictClipboardRequest) {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_a_burst_leaves_one_bar_and_holds_the_newest'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # the earliest waiting request is held instead of the newest
+        old='            dictTab.dictHeldClipboardRequest = dictRequest;\n',
+        new='            dictTab.dictHeldClipboardRequest =\n                dictTab.dictHeldClipboardRequest || dictRequest;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_an_encoded_request_over_the_cap_is_never_decoded'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # an oversized payload is decoded before it is refused
+        old='        if (sEncoded.length > I_CLIPBOARD_REQUEST_MAX_ENCODED_CHARACTERS) {\n            return {sKind: "refused"};\n        }\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_decoded_text_over_the_cap_is_refused'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # decoded text over the limit is offered for copying
+        old='        if (baBytes.length > I_CLIPBOARD_REQUEST_MAX_DECODED_BYTES) {\n            return {sKind: "refused"};\n        }\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_the_preview_never_renders_markup'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # the preview is built from markup
+        old='        elPreview.textContent = fsBuildClipboardPreview(dictRequest.sText);\n',
+        new='        elPreview.innerHTML = fsBuildClipboardPreview(dictRequest.sText);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_the_preview_shows_its_control_characters'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # control and reordering characters act unseen in the preview
+        old='        return fsMakeInvisibleCharactersVisible(sPreview)\n',
+        new='        return sPreview\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_showing_and_removing_the_bar_never_resizes_the_program'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # the bar sits in the layout flow and takes the terminal's height
+        old='        dictPane.elPane.querySelector(".terminal-pane-container")\n            .appendChild(elBar);\n',
+        new='        elBar.style.position = "static";\n        dictPane.elPane.insertBefore(elBar,\n            dictPane.elPane.querySelector(".terminal-pane-container"));\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_a_background_tabs_request_waits_on_its_own_tab'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # a request renders on the pane rather than on its own tab
+        old='        var dictRequest = dictTab ? dictTab.dictClipboardRequest : null;\n',
+        new='        var dictRequest = null;\n        dictPane.listTabs.forEach(function (dictEach) {\n            dictRequest = dictRequest || dictEach.dictClipboardRequest;\n        });\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProgramsCopyWaitsForTheResearchersClick.py::'
+            'test_closing_a_tab_to_the_left_keeps_the_visible_tabs_request'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # closing a tab left of the active one leaves the index past it
+        old='        } else if (iClosedIndex < dictPane.iActiveTabIndex) {\n',
+        new='        } else if (false) {\n',
+    ),
+    # --- 2026-10-26: a refused copy-on-select says how to retry, and
+    # the right-click retry it names copies the highlight ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testARefusedCopyOnSelectSaysHowToRetry.py::'
+            'test_a_refused_copy_on_select_says_how_to_try_again'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # a refused copy-on-select reports the old sentence, with no retry
+        old='                    sSelection, S_COPY_ON_SELECT_REFUSAL_MESSAGE);\n',
+        new='                    sSelection);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testRightClickingTheHighlightCopiesIt.py::'
+            'test_right_clicking_the_highlight_after_a_refusal_copies_it'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # a right-click on a selection no longer copies it
+        old='        event.stopPropagation();\n        VaibifyFileOps.fnCopyToClipboard(terminal.getSelection());\n',
+        new='        event.stopPropagation();\n',
+    ),
+    # --- 2026-10-26: with a program on the alternate screen, the Select
+    # text title and the terminal help say only the screen exists ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testAFullScreenProgramsLimitIsStated.py::'
+            'test_select_text_states_the_full_screen_limit'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # the Select text title promises scrollback a full-screen program lacks
+        old="            'and the wheel scrolls the scrollback. A program that ' +\n            'draws on the whole screen, such as vim or htop, keeps no ' +\n            'scrollback here, so only what is on screen can be ' +\n            'selected. Holding the mouse just above or below the text ' +\n",
+        new="            'and the wheel scrolls the scrollback. Holding the mouse ' +\n            'just above or below the text ' +\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAFullScreenProgramsLimitIsStated.py::'
+            'test_the_terminal_help_states_the_full_screen_limit'
+        ),
+        source='vaibify/gui/static/scriptLegendPanel.js',
+        # the terminal help drops its full-screen paragraph
+        old="            '<p><strong>A program that draws on the whole ' +\n            'screen</strong> (vim, htop) keeps no scrollback in the ' +\n            'pane: while it runs, selecting and Copy all reach only ' +\n            'what is on screen. vaibify runs Claude Code in its ' +\n            'classic renderer, which writes into the scrollback, so ' +\n            'its earlier output stays reachable.</p>' +\n",
+        new='',
+    ),
+    # --- 2026-10-26: the renderer canary judges the alternate screen
+    # first, by parsed modes (review findings) ---
+    Falsification(
+        nodeid=(
+            'tests/testClaudeCodeRendererVerdict.py::'
+            'test_a_combined_mode_sequence_counts_as_the_alternate_screen'
+        ),
+        source='tests/testClaudeCodeRendererLive.py',
+        # the alternate screen is found by an exact byte match, not by parsed modes
+        old='    return bool(fsetModesSet(baOutput) & SET_ALTERNATE_SCREEN_MODES)\n',
+        new='    return b"\\x1b[?1049h" in baOutput\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaudeCodeRendererVerdict.py::'
+            'test_the_alternate_screen_fails_the_run_without_a_prompt'
+        ),
+        source='tests/testClaudeCodeRendererLive.py',
+        # a missing prompt is judged inconclusive before the alternate screen
+        old='    if fbEnteredTheAlternateScreen(baSwitched):\n        return S_VERDICT_ENTERED_ALTERNATE_SCREEN\n    if S_BRACKETED_PASTE_MODE not in fsetModesSet(baSwitched):\n        return S_VERDICT_NEVER_REACHED_PROMPT\n',
+        new='    if S_BRACKETED_PASTE_MODE not in fsetModesSet(baSwitched):\n        return S_VERDICT_NEVER_REACHED_PROMPT\n    if fbEnteredTheAlternateScreen(baSwitched):\n        return S_VERDICT_ENTERED_ALTERNATE_SCREEN\n',
     ),
 ]

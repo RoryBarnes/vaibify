@@ -21,6 +21,10 @@ import struct
 import termios
 import uuid
 
+from vaibify.config.agentTerminalEnvironment import (
+    fdictBuildAgentTerminalEnvironment,
+)
+
 from . import terminalContainment
 
 
@@ -67,7 +71,8 @@ class TerminalSession:
         """Create and start the docker exec instance."""
         if self._dictContainment is None:
             self._sExecId = self._connectionDocker.fsExecCreate(
-                self._sContainerId, sUser=self._sUser
+                self._sContainerId, sUser=self._sUser,
+                dictEnvironment=fdictBuildAgentTerminalEnvironment(),
             )
             self._socketExec = (
                 self._connectionDocker.fsocketExecStart(self._sExecId)
@@ -89,6 +94,7 @@ class TerminalSession:
         self._sExecId = self._connectionDocker.fsExecCreate(
             self._sContainerId, sUser=self._sUser,
             listCommand=["/bin/sh", "-c", sWrapperScript],
+            dictEnvironment=fdictBuildAgentTerminalEnvironment(),
         )
         terminalContainment.fnPromoteTerminalOperation(
             sContainerName, sOperationId, self._sExecId,

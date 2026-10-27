@@ -307,7 +307,7 @@ class DockerConnectionRecorder:
         self.socketExec = ExecSocketRecorder()
         self.listCreated = []
 
-    def fsExecCreate(self, sContainerId, sUser=None):
+    def fsExecCreate(self, sContainerId, sUser=None, dictEnvironment=None):
         self.listCreated.append((sContainerId, sUser))
         return "execIdentifierAlpha"
 

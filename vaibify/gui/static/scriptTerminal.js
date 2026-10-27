@@ -102,7 +102,12 @@ const VaibifyTerminal = (function () {
             '<button class="terminal-pane-select" data-pane="' +
             iPaneId + '" title="Give the mouse to this pane instead of ' +
             'to the program running in it, so dragging selects text ' +
-            'and the wheel scrolls the scrollback">Select text</button>' +
+            'and the wheel scrolls the scrollback. A program that ' +
+            'draws on the whole screen, such as vim or htop, keeps no ' +
+            'scrollback here, so only what is on screen can be ' +
+            'selected. Holding the mouse just above or below the text ' +
+            'keeps scrolling; move back over the text to stop.">' +
+            'Select text</button>' +
             '<button class="terminal-pane-reset" data-pane="' +
             iPaneId + '" title="Switch off mouse reporting and the other ' +
             'input modes a program that died left on, keeping the ' +
@@ -275,6 +280,10 @@ const VaibifyTerminal = (function () {
             iResizeAckTimer: null,
             iCopyOnSelectTimer: null,
             sPendingSelection: "",
+            /* A program's clipboard request on screen, and the one
+               newer request held behind it. */
+            dictClipboardRequest: null,
+            dictHeldClipboardRequest: null,
         };
         dictPane.listTabs.push(dictTab);
         fnRenderPaneTabs(iPaneId);
@@ -299,6 +308,12 @@ const VaibifyTerminal = (function () {
             elTab.innerHTML =
                 "<span>" + dictTab.sLabel + "</span>" +
                 '<span class="close-tab">&times;</span>';
+            if (dictTab.dictClipboardRequest &&
+                    iTabIndex !== dictPane.iActiveTabIndex) {
+                elTab.insertBefore(
+                    felBuildClipboardRequestMarker(),
+                    elTab.querySelector(".close-tab"));
+            }
             var iCapturedPane = iPaneId;
             var iCapturedTab = iTabIndex;
             elTab.querySelector(".close-tab").addEventListener(
@@ -315,6 +330,18 @@ const VaibifyTerminal = (function () {
             });
             elTabBar.insertBefore(elTab, elAdd);
         });
+        fnRenderClipboardRequestBar(dictPane);
+    }
+
+    /* A background tab's request cannot show its bar, so the tab says
+       it is waiting rather than letting it go unseen. */
+    function felBuildClipboardRequestMarker() {
+        var elMarker = document.createElement("span");
+        elMarker.className = "terminal-tab-clipboard-marker";
+        elMarker.title = "The program in this tab wants to copy text. " +
+            "Open the tab to see it.";
+        elMarker.textContent = "\u25cf";
+        return elMarker;
     }
 
     function fnActivateTabInPane(iPaneId, iTabIndex) {
@@ -431,6 +458,7 @@ const VaibifyTerminal = (function () {
 
         fnTrackFollowingOutput(dictTab, terminal);
         fnBindCopyAndSelectionHandlers(dictTab, terminal);
+        fnBindClipboardRequestHandler(dictPane, dictTab, terminal);
         fnBindScrollbackWheelHandler(dictPane, terminal);
         fnBindSelectionInterception();
         if (fbTerminalIsAvailableHere()) {
@@ -525,10 +553,22 @@ const VaibifyTerminal = (function () {
             dictTab.sPendingSelection = "";
             if (sSelection) {
                 VaibifyFileOps.fnCopyToClipboardWithoutStealingFocus(
-                    sSelection);
+                    sSelection, S_COPY_ON_SELECT_REFUSAL_MESSAGE);
             }
         }, I_COPY_ON_SELECT_DELAY_MS);
     }
+
+    /* A browser lets a page write the clipboard only for a few seconds
+       after the researcher's last press, and this copy is written
+       after the RELEASE, so a long drag can outlast that permission
+       (measured in Firefox; see docs/developers.md). The sentence
+       names that as a possibility, never as the cause: one refusal
+       after one long drag does not establish why that write failed.
+       Right-clicking the highlight is a fresh press, so it retries. */
+    var S_COPY_ON_SELECT_REFUSAL_MESSAGE =
+        "The browser refused the copy. Long selections can outlast its " +
+        "clipboard permission. Right-click the highlighted text to try " +
+        "again.";
 
     function fnCopySelectionOnRightClick(event, terminal) {
         if (!terminal.hasSelection()) return;
@@ -550,6 +590,267 @@ const VaibifyTerminal = (function () {
             function (event) {
                 fnCopySelectionOnRightClick(event, terminal);
             });
+    }
+
+    /* --- A program asking to set the clipboard (OSC 52) ---
+
+       Inside a container there is no clipboard program, so Claude Code
+       copies -- /copy, its login URL -- by printing OSC 52, an escape
+       sequence asking the TERMINAL to set the clipboard. The vendored
+       xterm has no handler for it, so every such copy was dropped and
+       the researcher's paste came up with whatever was there before.
+
+       A program in the pane is not the researcher, so nothing reaches
+       the clipboard on its word alone: the request is shown with a
+       preview, and only the researcher's click on Copy writes it. A
+       READ ("?") is never answered, because answering would hand
+       whatever the researcher last copied to any program that asks.
+
+       A request belongs to the TAB whose program sent it, not to the
+       pane, so a background tab's request waits on that tab. Each bar
+       is built for one request and its Copy closes over that
+       request's own text: a request arriving while a bar shows never
+       changes it, and is held as the single next one instead. Copy
+       stays disabled for its first second, so a bar a program times
+       to appear under the pointer cannot take a click meant for
+       something else. */
+    var I_CLIPBOARD_REQUEST_MAX_ENCODED_CHARACTERS = 1400000;
+    var I_CLIPBOARD_REQUEST_MAX_DECODED_BYTES = 1000000;
+    var I_CLIPBOARD_PREVIEW_CHARACTERS = 120;
+    var I_CLIPBOARD_COPY_ARMING_DELAY_MS = 1000;
+
+    function fbaDecodeBase64OrNull(sEncoded) {
+        var sBinary;
+        try {
+            sBinary = window.atob(sEncoded);
+        } catch (error) {
+            return null;
+        }
+        var baBytes = new Uint8Array(sBinary.length);
+        for (var iIndex = 0; iIndex < sBinary.length; iIndex++) {
+            baBytes[iIndex] = sBinary.charCodeAt(iIndex);
+        }
+        return baBytes;
+    }
+
+    function fsDecodeUtf8OrNull(baBytes) {
+        try {
+            return new TextDecoder("utf-8", {fatal: true}).decode(baBytes);
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /* The payload after "52;" is "Pc;Pd": the selection names, then
+       the base64 text. Returns null for anything that is not a write
+       of real text -- a read, a clear, a malformed or undecodable
+       payload -- and a refusal for one too large to accept, which is
+       judged on the encoded length BEFORE anything is decoded. */
+    function fdictParseClipboardRequest(sData) {
+        var iSeparator = sData.indexOf(";");
+        if (iSeparator < 0) return null;
+        var sEncoded = sData.slice(iSeparator + 1);
+        if (sEncoded === "" || sEncoded === "?") return null;
+        if (sEncoded.length > I_CLIPBOARD_REQUEST_MAX_ENCODED_CHARACTERS) {
+            return {sKind: "refused"};
+        }
+        var baBytes = fbaDecodeBase64OrNull(sEncoded);
+        if (!baBytes || baBytes.length === 0) return null;
+        if (baBytes.length > I_CLIPBOARD_REQUEST_MAX_DECODED_BYTES) {
+            return {sKind: "refused"};
+        }
+        var sText = fsDecodeUtf8OrNull(baBytes);
+        if (!sText) return null;
+        return {sKind: "copy", sText: sText};
+    }
+
+    function fiCountCharacters(sText) {
+        return sText.replace(/[\ud800-\udbff][\udc00-\udfff]/g, "_").length;
+    }
+
+    /* A preview that let a program's control or reordering characters
+       act would show the researcher something other than what Copy
+       writes, so each is drawn as a visible stand-in. */
+    var REGEX_INVISIBLE_CHARACTERS =
+        /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+    function fsMakeInvisibleCharactersVisible(sText) {
+        return sText.replace(REGEX_INVISIBLE_CHARACTERS, function (sChar) {
+            var iCode = sChar.charCodeAt(0);
+            if (sChar === "\n") return "\u21b5";
+            if (sChar === "\t") return "\u2192";
+            if (iCode < 0x20) return String.fromCharCode(0x2400 + iCode);
+            if (iCode === 0x7f) return "\u2421";
+            return "<U+" + ("000" + iCode.toString(16).toUpperCase())
+                .slice(-4) + ">";
+        });
+    }
+
+    function fsBuildClipboardPreview(sText) {
+        var listCharacters = Array.from(
+            sText.slice(0, 2 * I_CLIPBOARD_PREVIEW_CHARACTERS));
+        var sPreview = listCharacters.slice(
+            0, I_CLIPBOARD_PREVIEW_CHARACTERS).join("");
+        var bTruncated = sPreview.length < sText.length;
+        return fsMakeInvisibleCharactersVisible(sPreview)
+            + (bTruncated ? "\u2026" : "");
+    }
+
+    function fbTabIsActiveInPane(dictPane, dictTab) {
+        return dictPane.listTabs[dictPane.iActiveTabIndex] === dictTab;
+    }
+
+    function fnBindClipboardRequestHandler(dictPane, dictTab, terminal) {
+        dictTab.disposableClipboardHandler =
+            terminal.parser.registerOscHandler(52, function (sData) {
+                var dictRequest = fdictParseClipboardRequest(sData);
+                if (dictRequest) {
+                    fnReceiveClipboardRequest(dictPane, dictTab, dictRequest);
+                }
+                return true;
+            });
+    }
+
+    function fnReceiveClipboardRequest(dictPane, dictTab, dictRequest) {
+        if (!dictTab.dictClipboardRequest) {
+            dictTab.dictClipboardRequest = dictRequest;
+        } else {
+            dictTab.dictHeldClipboardRequest = dictRequest;
+        }
+        fnRenderPaneTabs(dictPane.iId);
+    }
+
+    function fnResolveClipboardRequest(dictPane, dictTab, dictRequest) {
+        if (dictTab.dictClipboardRequest !== dictRequest) return;
+        dictTab.dictClipboardRequest = dictTab.dictHeldClipboardRequest;
+        dictTab.dictHeldClipboardRequest = null;
+        fnRenderPaneTabs(dictPane.iId);
+        if (dictTab.terminal && fbTabIsActiveInPane(dictPane, dictTab)) {
+            dictTab.terminal.focus();
+        }
+    }
+
+    /* Rendered for the ACTIVE tab only. The bar shown for the same
+       request is kept rather than rebuilt, so the held-request note
+       can change without the preview or the Copy behind it changing;
+       any other request gets a bar of its own. */
+    function fnRenderClipboardRequestBar(dictPane) {
+        var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
+        var dictRequest = dictTab ? dictTab.dictClipboardRequest : null;
+        var elBar = dictPane.elClipboardBar;
+        if (elBar && elBar.isConnected && dictRequest
+                && dictPane.dictClipboardRequestShown === dictRequest) {
+            fnRenderHeldClipboardRequestNote(elBar, dictTab);
+            return;
+        }
+        if (elBar) elBar.remove();
+        dictPane.elClipboardBar = null;
+        dictPane.dictClipboardRequestShown = null;
+        if (!dictRequest) return;
+        elBar = felBuildClipboardRequestBar(dictPane, dictTab, dictRequest);
+        dictPane.elPane.querySelector(".terminal-pane-container")
+            .appendChild(elBar);
+        dictPane.elClipboardBar = elBar;
+        dictPane.dictClipboardRequestShown = dictRequest;
+        fnRenderHeldClipboardRequestNote(elBar, dictTab);
+    }
+
+    function fnRenderHeldClipboardRequestNote(elBar, dictTab) {
+        var elNote = elBar.querySelector(".terminal-clipboard-request-held");
+        elNote.textContent = dictTab.dictHeldClipboardRequest
+            ? "1 newer request is waiting." : "";
+    }
+
+    function felBuildClipboardRequestBar(dictPane, dictTab, dictRequest) {
+        var elBar = document.createElement("div");
+        elBar.className = "terminal-clipboard-request";
+        elBar.setAttribute("role", "status");
+        var elLine = document.createElement("div");
+        elLine.className = "terminal-clipboard-request-line";
+        elBar.appendChild(elLine);
+        if (dictRequest.sKind === "copy") {
+            fnFillClipboardCopyLine(elLine, dictPane, dictTab, dictRequest);
+        } else {
+            elLine.appendChild(document.createTextNode(
+                "The program in this terminal asked to copy more than " +
+                "1 MB of text. vaibify refused it, and nothing was " +
+                "copied. "));
+        }
+        var elDismiss = felBuildClipboardBarButton("Dismiss");
+        elDismiss.addEventListener("click", function () {
+            fnResolveClipboardRequest(dictPane, dictTab, dictRequest);
+        });
+        elLine.appendChild(elDismiss);
+        fnAppendClipboardBarLine(elBar, "terminal-clipboard-request-hint",
+            "To select text yourself instead, hold " +
+            VaibifyUtilities.fsNameSelectionModifierKey() +
+            " while dragging.");
+        fnAppendClipboardBarLine(
+            elBar, "terminal-clipboard-request-status", "");
+        fnAppendClipboardBarLine(
+            elBar, "terminal-clipboard-request-held", "");
+        return elBar;
+    }
+
+    function fnFillClipboardCopyLine(elLine, dictPane, dictTab, dictRequest) {
+        elLine.appendChild(document.createTextNode(
+            "The program in this terminal wants to copy " +
+            fiCountCharacters(dictRequest.sText).toLocaleString("en-US") +
+            " characters: "));
+        var elPreview = document.createElement("code");
+        elPreview.className = "terminal-clipboard-request-preview";
+        elPreview.textContent = fsBuildClipboardPreview(dictRequest.sText);
+        elLine.appendChild(elPreview);
+        elLine.appendChild(document.createTextNode(" "));
+        var elCopy = felBuildClipboardBarButton("Copy");
+        elCopy.classList.add("btn-primary", "terminal-clipboard-request-copy");
+        fnArmClipboardCopyAfterDelay(elCopy);
+        elCopy.addEventListener("click", function () {
+            fnCopyClipboardRequest(elCopy, dictPane, dictTab, dictRequest);
+        });
+        elLine.appendChild(elCopy);
+    }
+
+    function fnArmClipboardCopyAfterDelay(elCopy) {
+        elCopy.disabled = true;
+        window.setTimeout(function () {
+            elCopy.disabled = false;
+        }, I_CLIPBOARD_COPY_ARMING_DELAY_MS);
+    }
+
+    /* The write starts inside the click itself, which is what Firefox
+       and Safari require of a clipboard write. The bar stays up after
+       a refusal, so the researcher can try again from it. */
+    function fnCopyClipboardRequest(elCopy, dictPane, dictTab, dictRequest) {
+        elCopy.disabled = true;
+        VaibifyFileOps.fpromiseCopyText(dictRequest.sText).then(
+            function (bCopied) {
+                if (bCopied) {
+                    VaibifyApp.fnShowToast("Copied to clipboard", "success");
+                    fnResolveClipboardRequest(dictPane, dictTab, dictRequest);
+                    return;
+                }
+                var elStatus = elCopy.closest(".terminal-clipboard-request")
+                    .querySelector(".terminal-clipboard-request-status");
+                elStatus.textContent = "Copy failed: the browser refused " +
+                    "the clipboard write. Click Copy to try again.";
+                elCopy.disabled = false;
+            });
+    }
+
+    function felBuildClipboardBarButton(sLabel) {
+        var elButton = document.createElement("button");
+        elButton.type = "button";
+        elButton.className = "btn terminal-clipboard-request-button";
+        elButton.textContent = sLabel;
+        return elButton;
+    }
+
+    function fnAppendClipboardBarLine(elBar, sClassName, sText) {
+        var elLine = document.createElement("div");
+        elLine.className = sClassName;
+        elLine.textContent = sText;
+        elBar.appendChild(elLine);
     }
 
     /* --- Reaching the scrollback ---
@@ -735,6 +1036,9 @@ const VaibifyTerminal = (function () {
 
     function fdictLocateActiveTabUnderEvent(event) {
         if (!event.target || !event.target.closest) return null;
+        /* The clipboard notice sits inside the pane, over the text,
+           and a press on its buttons is not a press in the terminal. */
+        if (event.target.closest(".terminal-clipboard-request")) return null;
         var elContainer = event.target.closest(".terminal-pane-container");
         if (!elContainer) return null;
         var dictLocated = null;
@@ -1611,6 +1915,12 @@ const VaibifyTerminal = (function () {
             dictTab.disposableOnSelectionChange.dispose();
         }
         dictTab.disposableOnSelectionChange = null;
+        if (dictTab.disposableClipboardHandler) {
+            dictTab.disposableClipboardHandler.dispose();
+        }
+        dictTab.disposableClipboardHandler = null;
+        dictTab.dictClipboardRequest = null;
+        dictTab.dictHeldClipboardRequest = null;
         if (dictTab.iRefitTimer) {
             window.clearTimeout(dictTab.iRefitTimer);
             dictTab.iRefitTimer = null;
@@ -1648,6 +1958,13 @@ const VaibifyTerminal = (function () {
                 ".terminal-pane-container"
             );
             elContainer.innerHTML = "";
+        } else if (iClosedIndex < dictPane.iActiveTabIndex) {
+            /* Every tab after the closed one moved down a place, the
+               one on screen among them. Left alone, the index named
+               its right-hand neighbour: the tab bar highlighted a tab
+               that was not showing, and Copy all and a clipboard
+               request answered for the wrong program. */
+            dictPane.iActiveTabIndex -= 1;
         } else if (dictPane.iActiveTabIndex >= dictPane.listTabs.length) {
             dictPane.iActiveTabIndex = dictPane.listTabs.length - 1;
             fnActivateTabInPane(iPaneId, dictPane.iActiveTabIndex);

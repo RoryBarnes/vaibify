@@ -46,11 +46,13 @@ class _StubContainmentConnection:
         self.sMarkerContent = "7 7 7\n"
         self.dictJournalAtExecStart = None
         self.iSignalsUntilEmpty = -1
+        self.dictExecEnvironment = None
 
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None,
-        listCommand=None,
+        listCommand=None, dictEnvironment=None,
     ):
+        self.dictExecEnvironment = dictEnvironment
         if listCommand is not None:
             sWrapper = listCommand[2]
             iStart = sWrapper.index("/tmp/.vaibifyTerminalGroup.")
@@ -208,6 +210,32 @@ def test_start_journals_the_exec_id_before_exec_start():
     dictAfter = _fdictJournalOperations()
     assert next(iter(dictAfter.values()))["iHolderProcessGroup"] == 7
     assert appState.dictTerminalExecutionRecords[S_PROJECT]
+
+
+@pytest.mark.falsification
+def test_the_contained_shell_carries_the_classic_renderer_switch():
+    """The dashboard terminal's exec selects Claude's classic renderer.
+
+    A running container keeps the environment it was created with, so
+    the switch rides on the terminal's own exec: a new tab gets it
+    without restarting the container. The real-daemon half is in
+    ``tests/testTerminalContainmentLive.py``.
+
+    Kills: dropping the agent terminal environment from
+    ``TerminalSession._fnStartContained``.
+    """
+    connectionStub = _StubContainmentConnection()
+    session = TerminalSession(
+        connectionStub, S_CONTAINER_ID, sUser="testuser",
+        dictContainment={
+            "appState": SimpleNamespace(), "sContainerName": S_PROJECT,
+            "iOwnerGeneration": 3,
+        },
+    )
+    session.fnStart()
+    assert connectionStub.dictExecEnvironment == {
+        "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN": "1",
+    }
 
 
 def test_start_refuses_a_quarantined_container():
