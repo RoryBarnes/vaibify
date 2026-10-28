@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from vaibify.reproducibility.credentialRedactor import fsRedactCredentials
 
 from .. import syncDispatcher, trackedReposManager
+from . import syncRoutes
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import WORKSPACE_ROOT, fnBumpSyncEpoch
@@ -683,6 +684,15 @@ def _fdictResolveRemoteThenPush(
     return fdictCarryARefusalBackInsteadOfRaising(fgenericCheckTrackedThenPush)
 
 
+# How the hub log names a push made from the Repos panel. This lane
+# deliberately records NO GitHub binding: the sync push records one only
+# after checking that the researcher's token owns the remote, and a
+# binding recorded without that check lets a container-written origin
+# steer the verify -- and the researcher's token -- at any repository
+# the token can read (found in review, 2026-10-27).
+_S_REPO_PANEL_SERVICE = "GitHub (Repos panel)"
+
+
 async def _fdictPushRepositoryUnderTheDrain(
     dictCtx, sContainerId, sRepoName, fnPush, requestHttp,
 ):
@@ -703,6 +713,9 @@ async def _fdictPushRepositoryUnderTheDrain(
     from .. import commitCarrier
     dictLaneTuple = fdictRequireLaneTupleForCommit(
         requestHttp, sContainerId, f"The push of '{sRepoName}'",
+    )
+    syncRoutes._fnLogPublishRequested(
+        _S_REPO_PANEL_SERVICE, sContainerId, f"repo={sRepoName}",
     )
 
     def fdictPushUnderTheSupervisor(supervisor=None):
@@ -730,6 +743,9 @@ async def _fdictFinishRepoPush(
     land its commit and then fail the push, and the badges must repaint
     to the post-commit truth.
     """
+    syncRoutes._fnLogPublishOutcome(
+        _S_REPO_PANEL_SERVICE, sContainerId, dictResult,
+    )
     fnBumpSyncEpoch(dictCtx, sContainerId)
     if not dictResult.get("bSuccess"):
         return dictResult

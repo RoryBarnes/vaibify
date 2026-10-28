@@ -43,7 +43,11 @@ version. `tools/checkToolchainEpoch.py --verify` reads every list
 against its own `binary-<arch>` index and fails first if the lists
 disagree on a version; `--architecture` narrows either tool, and
 `checkToolchainPinDrift --write` bumps every list that pins the
-package. Regenerate a list with `apt-get install -s` under
+package -- the pins ONLY. It resolves against today's live archive and
+never moves `APT_SNAPSHOT_DATE`, so after a `--write` the date and the
+pins disagree until the date moves to a snapshot that serves the new
+versions (the first rule below); `checkToolchainEpoch.py --verify` says
+whether they agree. Regenerate a list with `apt-get install -s` under
 `--platform linux/<arch>`, per the Dockerfile's comment.
 `fresh-image-build` runs one leg per list (an amd64 and an arm64
 runner), because a daemon only ever installs the list for its own
@@ -95,13 +99,15 @@ Four things not to undo:
 ## An image carries what it was built FROM, on two axes
 
 The recipe fingerprint (`dockerfileComposer.S_RECIPE_IMAGE_LABEL`)
-covers the texts vaibify ships. A second label,
+covers the Dockerfile texts vaibify ships, the base and each overlay
+(`imageBuilder._fsComputeChainFingerprint`), and nothing those texts
+`COPY`. A second label,
 `configurationFingerprint.S_CONFIGURATION_IMAGE_LABEL`, covers the
 researcher's own `vaibify.yml` -- but only the fields the BUILD
 consumes. Together they answer "was this image built from these texts
 and this configuration", and the dashboard reads the second one on
 every container entry so an edit that needs a rebuild says so instead
-of being met by the old behaviour a restart later.
+of being met by the old behavior a restart later.
 
 Two things not to undo. `T_BAKED_CONFIGURATION_FIELDS` is a claim about
 what requires a rebuild: adding a field says changing it does, leaving
@@ -111,6 +117,21 @@ than preferences -- check the Dockerfile's build args, the generated
 label is stamped on the BASE build alone: Docker inherits a parent
 image's labels, so every overlay carries it, where the recipe label is
 re-stamped per overlay because its value differs per chain.
+
+**The in-container agent guidance is inside the pinned environment and
+outside the recipe -- a known, DEFERRED design question with its own
+plan.** The base `Dockerfile` copies `entrypoint.sh` (and with it the
+instructions it generates), `vaibify-do`, the skills and the staged
+docs, and `imageBuilder.fnBuildImage` builds that base before any
+overlay, so the guidance lies in the agent-free stage the Level 3
+envelope pins (`environmentSnapshot.fsResolveEnvironmentImageId`). A
+guidance edit, once the image is rebuilt, gives that environment a new
+image ID while the recipe fingerprint stays equal, which
+`environmentDrift` classifies as `S_DRIFT_OUTSIDE_THE_RECIPE` -- whose
+researcher-facing sentence blames the Linux distribution. Treat a
+guidance edit as an environment change. Moving the guidance above the
+pin, or widening the fingerprint, changes every project's pin once,
+and is that plan's decision rather than an edit to make here.
 
 **`introspectionScript.py` is an f-string executed inside containers.**
 Editing it as ordinary Python loses escape sequences and string
@@ -127,10 +148,11 @@ command a root-phase `chown` or sub-script resolves to. The
 `profile.d` file. In-container agents are taught the
 `{step:<sStepId>.<stem>}` token form, never the deprecated `{StepNN.x}`.
 
-## A container may host Claude, Codex, or Gemini
+## A container may host several coding agents
 
-Container agents are overlays selected by feature flags
-(`vaibify/containerImage/Dockerfile.claude`, `.codex`, `.gemini`). Each installs **as
+Container agents are overlays selected by feature flags, one per name
+in `imageBuilder.T_AGENT_OVERLAY_NAMES`, each built from its
+`vaibify/containerImage/Dockerfile.<name>`. Each installs **as
 the unprivileged container user**, not root, so the provider's own
 updater can replace its binary without sudo — do not "fix" that by
 installing as root, and do not add sudo to the image.
@@ -154,26 +176,29 @@ container the canonical file is
 and migrates a legacy CLAUDE.md in that directory into place. So write
 in-container agent guidance once, to the canonical file. Never author
 a provider-specific one — a second *real* file at one of those names
-shadows the symlink for that provider only, and the three agents
-silently start reading different instructions.
+shadows the symlink for that provider only, and the agents silently
+start reading different instructions.
 
 (These are container paths, deliberately absolute:
 `tools/checkAgentDocsPaths.py` resolves repo-relative references and
 would flag them as broken, because they exist only inside a running
 container.)
 
-**All three agents share one login store and one user.** Each agent's
-config directory is persisted into the workspace volume and symlinked
-back into the home directory (`fnPersistAgentConfig`), so logins
-survive container recreation. This pattern predates multi-agent
-support; what changed is the blast radius. Every agent runs as the
-same container user, so file permissions isolate nothing between
-them: whichever agent is compromised can read all three providers'
-credentials, and they are reachable through the dashboard's file
-routes like any other workspace path. Treat "an agent was
-compromised" as "every configured provider's session was exposed"
-when reasoning about a threat, and do not add a fourth provider
-without revisiting that.
+**Every installed agent shares one login store and one user.**
+`fnPersistInstalledAgentConfigs` persists each installed agent's
+config directory into the workspace volume and symlinks it back into
+the home directory (`fnPersistAgentConfig`; Gemini and Antigravity
+share `.gemini`), so logins survive container recreation. This pattern
+predates multi-agent support; what changed is the blast radius. Every
+agent runs as the same container user, so file permissions isolate
+nothing between them: whichever agent is compromised can read every
+installed provider's credentials, and they are reachable through the
+dashboard's file routes like any other workspace path. Treat "an agent
+was compromised" as "every configured provider's session was exposed"
+when reasoning about a threat, and do not add another provider without
+revisiting that. (This rule once read "a fourth provider"; the agent
+list has grown past it since, so the exposure it warned of is already
+wider than three.)
 
 Two more things not to undo:
 
@@ -201,7 +226,12 @@ place that names the trees, and `importlib.resources` resolves them
 identically from a checkout, an editable install, and a wheel. **Never
 reintroduce a `parents[N]` walk to reach package data** — and after
 fixing any resolution bug, grep for every other way the codebase reaches
-outside the package, not just the spelling that bit you.
+outside the package, not just the spelling that bit you. Two walks
+remain in `commandBuild.py`: `fnCopyContainerScripts` takes
+`parents[1]` (the package directory) into `reproducibility/`, and
+`fnStageCuratedDocs` takes `parents[2]` and joins `vaibify/docs/...`
+onto it. Both resolve in a wheel only because they re-enter `vaibify/`;
+they are not a pattern to copy.
 
 **Treat them as read-only, and give every build its own copy.**
 `commandBuild.fsStageBuildContext` mkdtemps a private context under
@@ -214,9 +244,13 @@ race, and refreshing a shared directory starts with `rmtree`.
 agent docs at `vaibify/docs/` are **symlinks onto the Sphinx sources** —
 never replace one with a real file, which is the shadowing trap;
 `testCuratedDocsRemainSymlinksOntoTheSphinxSources` fails if you do.
-When adding one: add the symlink, extend `T_STAGED_DOCS`, extend the
-doc-map skill's table, and add the *Sphinx source* path to
-`freshImageBuild.yml`'s triggers.
+The test refuses a real file only when `docs/` also has one of that
+name, so a curated doc with no Sphinx twin may be a real file:
+`vaibify/docs/scriptAuthoring.md` is one, and `freshImageBuild.yml`'s
+`vaibify/docs/**` trigger covers it. When adding one: add the symlink,
+extend `commandBuild.T_STAGED_DOCS`, extend the doc-map skill's table, and add
+the *Sphinx source* path to `freshImageBuild.yml`'s triggers -- a
+change to a CI workflow, which `AGENTS.md` lists under "Ask first".
 
 **Prove the distribution, not the import.** `pip-install.yml` runs
 `tools/checkInstalledDistribution.py` against an installed sdist and

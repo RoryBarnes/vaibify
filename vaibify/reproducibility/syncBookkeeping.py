@@ -310,11 +310,12 @@ def fdictDescribeCrossInstanceParent(dictWorkflow, sTargetService):
             + (f", {sRecordDoi}," if sRecordDoi else "")
             + f" is on {sRecordedPhrase}, but the project is set to "
             f"publish to {sTargetPhrase}. Zenodo can add a new version "
-            "only on the site that holds the record, so either deposit "
-            f"a new version on {sRecordedPhrase} -- which sets this "
-            "project to publish there -- or start a new, separate "
-            f"record on {sTargetPhrase}. The existing record is "
-            "untouched either way."
+            "only on the site that holds the record, so either publish "
+            f"to {sRecordedPhrase} from now on, which makes your next "
+            "publish a new version of this record, or start a new, "
+            f"separate record on {sTargetPhrase}. Neither choice "
+            "publishes anything, and the existing record is untouched "
+            "either way."
         ),
     }
 

@@ -1350,7 +1350,8 @@ class TestRunTestsNeverReportsUnexecutedAsPassed:
             "vaibify.gui.routes.testRoutes.fdictRequireWorkflow",
             return_value=dictWorkflow,
         ), patch(
-            "vaibify.gui.routes.testRoutes.fiProofLevel", return_value=1,
+            "vaibify.gui.routes.testRoutes.fiComputeProofLevelUpToOne",
+            return_value=1,
         ), patch(
             "vaibify.gui.routes.testRoutes.ffilesForWorkflow",
             return_value=[],

@@ -61,9 +61,10 @@ when submitted with nothing ticked — non-empty, and a declaration of
 nothing — so the row went green, the L3 verify refused, and every
 component was internally consistent while the screen contradicted the
 machinery (researcher-reported, 2026-08-30). The poll now ships
-`bDeterminismDeclared` and `listDeterminismIssues`; the row renders
-them. **A mirrored predicate in JS is a second authority on a question
-that has one** — the slug mirror in `scriptUtilities.js` is tolerated
+`bDeterminismDeclared` and `listDeterminismQuestions`; the row renders
+them (the poll's `listDeterminismIssues` is read by no row). **A
+mirrored predicate in JS is a second authority on a question that has
+one** — the slug mirror in `scriptUtilities.js` is tolerated
 only because it is display-only with the backend enforcing. Two
 corollaries, both from the same report: a reason must distinguish the
 shapes it describes ("no block" and "a block that pins nothing" read
@@ -80,7 +81,7 @@ row shows the profile the poll says was recorded, not one JavaScript
 would pick. And a Level 3 verdict is shown as the SERVER's sentence
 WITH its tally ("Reproduced: published comparisons passed; N of M
 files differ in their bytes"), never recomputed from per-file outcomes
-in the page, and a pass with byte differences is worded and coloured as
+in the page, and a pass with byte differences is worded and colored as
 a pass. An attestation made by the byte-only verifier, or under another
 policy or profile, renders as a previous check — true about what it
 checked, not accepted now — and its staleness reason
@@ -155,23 +156,29 @@ to turn it back into a lie:
 
 - A check that could not complete settles UNCHECKABLE with a reason.
   Red means *diverged* — a claim about the remote nobody earned — and
-  the cached record on disk stays untouched
-  (`scheduledReverify.fdictAttemptOneVerify` writes only on success; do
-  not add a write beside it).
+  the cached record on disk stays untouched. The refresh lane's
+  `remoteRefreshRoutes._fnCheckOneRemote` compares with nothing
+  written and writes only a returned status, through
+  `_fnWriteOneStatusUnderACarrier`; the scheduled loop's
+  `scheduledReverify.fdictAttemptOneVerify` likewise writes only on
+  success. Do not add a write beside either.
 - Which remotes pulse comes from
   `scheduledReverify.flistSelectConfiguredServices`, the predicate the
   scheduled loop skips on. A remote absent from `dictRemoteChecks`
   renders exactly as it did before any of this existed.
-- A check in flight moves no colour. It has compared nothing.
+- A check in flight moves no color. It has compared nothing.
 - The CHECKING timeout is evaluated when the state is READ, never on a
   timer: the failure it covers is a worker that never returns, and such
   a worker cannot clear its own flag.
 
 The refresh cannot move into the poll —
 `_fdictBuildWorkflowEnvelopeDetail` is built with no extra container
-execs and no network I/O. `docs/architecture.md` carries the model and
-the one accepted residual (a Run Step in the first seconds after open
-is refused by name while the checks hold the drain).
+execs and no network I/O. `docs/architecture.md` carries the model.
+Its residual paragraph predates the split in `remoteRefreshRoutes`:
+each remote is now compared with no carrier held, and only that
+service's status write takes a brief mode-(b) carrier, so the residual
+has narrowed to a Run Step that lands inside one such write, which is
+refused at once and by name (`_fsDescribeBlockingMutationWork`).
 `tests/testRemoteBadgeRefresh.py` and
 `tests/browser/testARunningRemoteCheckPulsesTheBadge.py` are the
 kill-confirmed guards; the browser one reads `animationName` off a live

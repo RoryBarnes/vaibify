@@ -17,22 +17,30 @@ answer is usually already recorded.
    `vaibify-do get-pipeline-state`
    Returns the reconciled `pipeline_state.json`:
    - `sFailureReason` — the symptom (e.g. `heartbeat_stale`).
-   - `sFailureCauseHost` — the actual host-side exception (e.g. an
-     ASGI WebSocket close). This is the real cause; the reason is
-     just the symptom vaibify observed.
+   - `sFailureCauseHost` — a summary of the host-side exception (e.g.
+     an ASGI WebSocket close), with credentials redacted, the host's
+     home directory written as `~`, and its length capped. This is the
+     real cause; the reason is just the symptom vaibify observed.
    - `iActiveStepAtDeath` — the step that was running when the runner
      died. Start your investigation there.
 
-2. **You need the raw host log for this container:**
+2. **You want what the host recorded against this container:**
    `vaibify-do get-host-log-tail --lines 200`
-   Returns the last N lines of `~/.vaibify/vaibify.log` filtered to
-   this container's id, plus a `listIncidents` ring of recent host
-   exceptions for the same id.
+   From inside the container this returns `{bSanitized: true,
+   listIncidents: [...]}` and NO log lines: each incident carries only
+   its time (`sIso`), level (`sLevel`) and this container's id. The raw
+   `~/.vaibify/vaibify.log` spans every container and carries host
+   paths, so this lane never receives its lines; when you need the
+   text, ask the researcher to read that file on the host. An empty
+   `listIncidents` means nothing was recorded against this container,
+   NOT that nothing failed.
 
 3. **A step failed on its own logic** (not a runner death): read the
    step's own execution log under `<repository>/.vaibify/logs/` and the
-   script's traceback; fix the script, then `vaibify-do run-step
-   <label>`.
+   script's traceback. A fix that changes no scientific calculation
+   you may make; one that would change a calculation waits for the
+   researcher's explicit direction. Either way, show the researcher the
+   diff, then `vaibify-do run-step <label>`.
 
 ## Caveats
 

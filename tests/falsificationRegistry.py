@@ -602,9 +602,13 @@ LIST_FALSIFICATIONS = [
             'testTheGuideDoesNotAdvertiseTheWithdrawnDirector'
         ),
         source='vaibify/containerImage/entrypoint.sh',
-        old='- `/workspace/.vaibify/logs/` — Pipeline execution logs\n',
+        old=(
+            '- `/workspace/<RepoName>/.vaibify/projects/` — Project JSON '
+            'files (each repository can have its own)\n'
+        ),
         new=(
-            '- `/workspace/.vaibify/logs/` — Pipeline execution logs\n'
+            '- `/workspace/<RepoName>/.vaibify/projects/` — Project JSON '
+            'files (each repository can have its own)\n'
             '- `/workspace/.vaibify/director.py` — Standalone pipeline '
             'executor\n'
         ),
@@ -2149,8 +2153,17 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_fdictLevel2Gaps_subset_failure_keeps_level2_false',
         source='vaibify/reproducibility/levelGates.py',
-        old='            bL1 and bGithub and bZenodo and bArxiv and bDecl\n            and bModels and bPersonal and bArchiveAnswered,',
-        new='            bL1 or bGithub and bZenodo and bArxiv and bDecl\n            and bModels and bPersonal and bArchiveAnswered,',
+        # Level 1 alone grants Level 2: the publication conjuncts are skipped
+        old=(
+            '    if not fbAtLeastLevel1(dictWorkflow, filesRepo):\n'
+            '        return False\n'
+            '    if flistLevel2BasenameCollisions(dictWorkflow):\n'
+        ),
+        new=(
+            '    if fbAtLeastLevel1(dictWorkflow, filesRepo):\n'
+            '        return True\n'
+            '    if flistLevel2BasenameCollisions(dictWorkflow):\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_blocker_cache_evicts_oldest_entry_first',
@@ -13264,12 +13277,11 @@ LIST_FALSIFICATIONS = [
         # a workflow whose pulled data has no committed record still
         # reports Self-Consistent (ruling R2, condition 2).
         old=(
-            '    if dictWorkflow.get('
-            '"listUnresolvedRemoteDataMarkers"):\n'
-            '        return 0\n'
+            '    return bool(dictWorkflow.get('
+            '"listUnresolvedRemoteDataMarkers"))\n'
         ),
         new=(
-            '\n'
+            '    return False\n'
         ),
     ),
     Falsification(
@@ -15484,8 +15496,7 @@ LIST_FALSIFICATIONS = [
         source='vaibify/reproducibility/scheduledReverify.py',
         old=(
             '        try:\n'
-            '            _fdictRequireServiceConfig('
-            'dictWorkflow, sService, filesRepo)\n'
+            '            fdictResolve(dictWorkflow, sService, filesRepo)\n'
             '        except ReverifyConfigError:\n'
             '            continue\n'
         ),
@@ -25801,7 +25812,7 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testVerifyRemoteIsBoundToThePush.py::testThePushRouteRecordsTheRemoteItReachedOnlyOnSuccess',
         source='vaibify/gui/routes/syncRoutes.py',
-        old='            _fnRecordPushedRemoteHostSide(\n                dictCtx, sContainerId, sWorkdir,\n                dictPushed["dictReachedRemote"])\n',
+        old='            _fnRecordPushedRemoteHostSide(\n                dictCtx, sContainerId, dictWorkflow, sWorkdir,\n                dictPushed["dictReachedRemote"])\n',
         new='',
     ),
     # --- Removing a project from the list needs the container's lease ---
@@ -28894,7 +28905,9 @@ LIST_FALSIFICATIONS = [
         old=(
             '            _fsRenderActionButton(\n'
             '                "publish-where-the-zenodo-record-is", "",\n'
-            '                "Deposit a new version\\u2026") +\n'
+            '                "Publish to " + _fsZenodoSitePhrase(\n'
+            '                    dictCrossInstance.sRecordedService) +\n'
+            '                " from now on\\u2026") +\n'
         ),
         new='',
     ),
@@ -37032,5 +37045,283 @@ LIST_FALSIFICATIONS = [
         # the evidence sandbox cannot replay a built program
         old='            dictLimits=dictLimits, bSandbox=True,\n            bWritableMountsExecutable=True)\n',
         new='            dictLimits=dictLimits, bSandbox=True)\n',
+    ),
+    # --- 2026-10-27: container guidance agrees with the catalog ---
+    Falsification(
+        nodeid=(
+            'tests/testContainerGuidanceMatchesCatalog.py::'
+            'testEveryVaibifyDoActionInContainerGuidanceExists'
+        ),
+        source='vaibify/containerImage/skills/proof-ladder/SKILL.md',
+        # the skill teaches an action the catalog never held
+        old='`vaibify-do commit-canonical`, which commits exactly',
+        new='`vaibify-do manifest-check`, which commits exactly',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerGuidanceMatchesCatalog.py::'
+            'testContainerGuidanceAgreesWithAgentSafety'
+        ),
+        source='vaibify/containerImage/skills/proof-ladder/SKILL.md',
+        # a user-only choice is taught as the agent's to make
+        old='`declare-determinism` is USER-ONLY',
+        new='`declare-determinism` is agent-safe',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerGuidanceMatchesCatalog.py::'
+            'testProofLadderQuotesTheLiveDeterminismQuestion'
+        ),
+        source='vaibify/reproducibility/determinismGate.py',
+        # the question changes and the skill keeps the old wording
+        old='"How much speed should vaibify trade for repeatable files?"',
+        new='"How much speed should vaibify trade for identical files?"',
+    ),
+    # --- 2026-10-27: a push re-verifies every remote the project has ---
+    Falsification(
+        nodeid=(
+            'tests/testPostPushVerifyFollowsTheSharedPredicate.py::'
+            'testAPushReverifiesGithubDerivedFromOrigin'
+        ),
+        source='vaibify/gui/routeContext.py',
+        # back to the dictRemotes key test that skips origin-derived GitHub
+        old=(
+            '        if sService not in scheduledReverify.'
+            'flistSelectDeclaredServices(\n'
+            '                dictWorkflow, filesRepo):\n'
+        ),
+        new=(
+            '        if not ((dictWorkflow or {}).get("dictRemotes") or {})'
+            '.get(sService):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPostPushVerifyFollowsTheSharedPredicate.py::'
+            'testAnUnboundRemoteIsRefusedBeforeAnyFetchAndTheRefusalIsRelayed'
+        ),
+        source='vaibify/reproducibility/scheduledReverify.py',
+        # the shared verify resolves the remote without the binding check
+        old=(
+            '    dictConfig = _fdictRequireServiceConfig(\n'
+            '        dictWorkflow, sService, filesRepo,\n'
+            '    )\n'
+            '    dictExpected = fdictComputeLiveExpectedHashes(\n'
+        ),
+        new=(
+            '    dictConfig = _fdictResolveServiceConfig(\n'
+            '        dictWorkflow, sService, filesRepo,\n'
+            '    )\n'
+            '    dictExpected = fdictComputeLiveExpectedHashes(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPostPushVerifyFollowsTheSharedPredicate.py::'
+            'testAnUnboundGithubRemoteIsStillVerifiedSoItsRefusalIsReported'
+        ),
+        source='vaibify/gui/routeContext.py',
+        # the open-time question, which drops an unbound remote silently
+        old='scheduledReverify.flistSelectDeclaredServices(',
+        new='scheduledReverify.flistSelectConfiguredServices(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVerifyRemoteIsBoundToThePush.py::'
+            'testAProjectsFirstPushBindsItsOpenWorkflowWithoutAReload'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # the load-time copy of the push record stays in force
+        old=(
+            '    workflowManager.fnAttachHostGithubBinding(\n'
+            '        dictWorkflow, dictCtx.get("docker"), sContainerId)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testARepoPanelPushOfTheProjectRepoRecordsNoGithubBinding'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        # a Repos-panel push records the remote it read, unchecked
+        old=(
+            '    syncRoutes._fnLogPublishOutcome(\n'
+            '        _S_REPO_PANEL_SERVICE, sContainerId, dictResult,\n'
+            '    )\n'
+        ),
+        new=(
+            '    syncRoutes._fnLogPublishOutcome(\n'
+            '        _S_REPO_PANEL_SERVICE, sContainerId, dictResult,\n'
+            '    )\n'
+            '    sRepoPath = _fsRepositoryPathFor(sContainerId, sRepoName)\n'
+            '    syncRoutes._fnRecordPushedRemoteHostSide(\n'
+            '        dictCtx, sContainerId, {}, sRepoPath,\n'
+            '        syncRoutes._fdictReadReachedRemote(\n'
+            '            dictCtx["docker"], sContainerId, sRepoPath))\n'
+        ),
+    ),
+    # --- 2026-10-27: the Level 2 gaps dict reports the gate's verdict ---
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoGapsAgreeWithTheGate.py::'
+            'testABasenameCollisionReadsBelowLevelTwoInTheGapsDict'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # the verdict rebuilt from keys that omit two of the conjuncts
+        old='        "bAtLeastLevel2": fbAtLeastLevel2(dictWorkflow, filesRepo),\n',
+        new=(
+            '        "bAtLeastLevel2": (\n'
+            '            bL1 and bGithub and bZenodo and bArxiv and bDecl\n'
+            '            and bModels and bPersonal and bArchiveAnswered),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheZenodoRowOffersVerifyFirst.py::'
+            'test_verify_stays_live_while_the_endgame_holds_the_zenodo_row'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # the Verify control keeps the Zenodo row's own wait
+        old=(
+            '        _sBlockedActionReason = _fsReasonThisRowMustWait('
+            '{sKey: sRowKey});\n'
+        ),
+        new='',
+    ),
+    # --- 2026-10-27: the dashboard map quotes only real labels ---
+    Falsification(
+        nodeid=(
+            'tests/testContainerGuidanceMatchesCatalog.py::'
+            'testEveryLabelTheDashboardMapQuotesIsOnTheDashboard'
+        ),
+        source='vaibify/containerImage/skills/dashboard-map/SKILL.md',
+        # the label an agent invented for the Environment snapshot row
+        old='  → **Environment snapshot** → **Regenerate now**.\n',
+        new='  → **Environment record** → **Regenerate now**.\n',
+    ),
+    # --- 2026-10-27: the Zenodo row offers Verify before publishing ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheZenodoRowOffersVerifyFirst.py::'
+            'test_the_zenodo_row_offers_verify_while_the_attestation_is_'
+            'not_current'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # the archive block offers no verification again
+        old='            _fsRenderVerifyBeforePublishing(dictArchive) +\n',
+        new='',
+    ),
+    # --- 2026-10-27: every external publish is logged, redacted ---
+    Falsification(
+        nodeid=(
+            'tests/testPublishLogsNameOnlyPublicIdentifiers.py::'
+            'testAFailedPublishLogsNoCredential'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # only the URL-userinfo redaction stands between a query token
+        # and the hub log
+        old=(
+            '        _fsPushOutputSnippet(fsRedactCredentials(\n'
+            '            dictResult.get("sMessage") or dictResult.get('
+            '"sOutput") or "")),\n'
+        ),
+        new=(
+            '        _fsPushOutputSnippet(\n'
+            '            dictResult.get("sMessage") or dictResult.get('
+            '"sOutput") or ""),\n'
+        ),
+    ),
+    # --- 2026-10-27: a saved test runs once ---
+    Falsification(
+        nodeid=(
+            'tests/testASavedTestRunsOnce.py::'
+            'testAFileACategoryRunsIsNotRegisteredASecondTime'
+        ),
+        source='vaibify/gui/testStatusManager.py',
+        # a category's file is registered again under a second spelling
+        old=(
+            '    if not bPassed or _fbACategoryRunsTheFile(\n'
+            '            dictStep, sFilePath, sProjectRepoPath):\n'
+        ),
+        new='    if not bPassed:\n',
+    ),
+    # --- 2026-10-27: the determinism answer joins the Level 3 order ---
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_an_unanswered_determinism_question_is_named_before_the_'
+            'envelope'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # the answer orders nothing, so the manifest becomes a second root
+        old=(
+            '    (\n'
+            '        S_DETERMINISM_ROW_KEY, "manifest",\n'
+            '        "The envelope records the settings your determinism '
+            'answer "\n'
+            '        "chooses. Answer first: choosing “Repeatable across "\n'
+            '        "computers” afterwards means regenerating the envelope "\n'
+            '        "and settling the manifest again.",\n'
+            '    ),\n'
+        ),
+        new='',
+    ),
+    # --- 2026-10-27: a sign-off reads only the Level 1 crossing ---
+    Falsification(
+        nodeid=(
+            'tests/testTheSignOffSaveReadsOnlyLevelOne.py::'
+            'testASignOffNeverEvaluatesTheLevelTwoOrThreeGate'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # the Level 1 reading computes the whole ladder again
+        old=(
+            '    with fcontextLevelComputation():\n'
+            '        return 1 if fbAtLeastLevel1(dictWorkflow, filesRepo) '
+            'else 0\n'
+        ),
+        new=(
+            '    return min(fiProofLevel(\n'
+            '        dictWorkflow, filesRepo, bHostProject=False), 1)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheSignOffSaveReadsOnlyLevelOne.py::'
+            'testTheLevelOneReadingEqualsTheLadderCappedAtOne'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # the remote-data-marker rule is dropped from the Level 1 reading
+        old=(
+            '    if _fbRemoteDataMarkersHoldLevelZero(dictWorkflow):\n'
+            '        return 0\n'
+            '    filesRepo = ffilesEnsureRepoFiles(filesRepo)\n'
+            '    with fcontextLevelComputation():\n'
+            '        return 1 if'
+        ),
+        new=(
+            '    filesRepo = ffilesEnsureRepoFiles(filesRepo)\n'
+            '    with fcontextLevelComputation():\n'
+            '        return 1 if'
+        ),
+    ),
+    # --- 2026-10-27: a host incident reaches the container redacted ---
+    Falsification(
+        nodeid=(
+            'tests/testPipelineStateHostIncidents.py::'
+            'test_reconcile_never_writes_a_credential_or_the_host_home_'
+            'into_the_container'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        # the raw exception text lands in a container-readable file
+        old=(
+            '    dictReconciled["sFailureCauseHost"] = '
+            'fsSummarizeHostIncident(\n        dictIncident)\n'
+        ),
+        new=(
+            '    dictReconciled["sFailureCauseHost"] = (\n'
+            '        dictIncident.get("sExceptionRepr", "")\n'
+            '        or dictIncident.get("sMessage", ""))\n'
+        ),
     ),
 ]

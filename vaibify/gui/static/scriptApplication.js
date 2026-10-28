@@ -4607,7 +4607,7 @@ const VaibifyApp = (function () {
             sAbsolutePath:
                 "/api/zenodo/{sContainerId}/start-new-concept",
             dictConfirm: {
-                sTitle: "Start a new deposit",
+                sTitle: "Start a separate Zenodo record",
                 sMessage: "Your next Zenodo publish will create a NEW " +
                     "record, with a DOI of its own, rather than a new " +
                     "version of the one on file, so the two will not " +
@@ -4615,8 +4615,8 @@ const VaibifyApp = (function () {
                     "its DOI keeps resolving to exactly what it " +
                     "already holds; vaibify keeps its identifiers in " +
                     "a note so you can still see them. To keep adding " +
-                    "versions to the existing record instead, choose " +
-                    "\"Deposit a new version\".",
+                    "versions to the existing record instead, use the " +
+                    "other button, which publishes where the record is.",
             },
             sToast: "Your next Zenodo publish will start a new, " +
                 "separate record.",
@@ -4625,18 +4625,19 @@ const VaibifyApp = (function () {
             sAbsolutePath:
                 "/api/zenodo/{sContainerId}/publish-where-the-record-is",
             dictConfirm: {
-                sTitle: "Deposit a new version of this record",
+                sTitle: "Publish where the Zenodo record is",
                 sMessage: "Vaibify will set this project to publish " +
                     "to the Zenodo site that holds its record, so " +
                     "your next Zenodo publish becomes a new version " +
                     "of that record under the same record DOI. This " +
                     "changes project.json, so push to GitHub as well " +
                     "as publishing to Zenodo. Nothing is published " +
-                    "until you publish from the Zenodo row.",
+                    "now: publish with Sync → Archive to Zenodo " +
+                    "when the project is ready.",
             },
             sToast: "This project now publishes where its Zenodo " +
-                "record is. Publish from the Zenodo row to add the " +
-                "new version.",
+                "record is. Nothing was published; use Sync → " +
+                "Archive to Zenodo to add the new version.",
         },
         "promote-environment-archive": {
             sPath: "/environment-archive/promote",

@@ -267,10 +267,12 @@ version and fingerprint. If you use none, say so.
 
 ## The order of the final steps
 
-Most Level 3 requirements can be met in any order. The last few cannot,
-because some of them rewrite files that others have already
-fingerprinted, and a published Zenodo version cannot be fixed. Do them
-in this order:
+Most Level 3 requirements can be met in any order. Two cannot. Answer
+the determinism question before the run that makes the results you will
+publish: the answer chooses the settings every run uses, so changing it
+afterwards means running every step again. And the last few steps rewrite
+files that others have already fingerprinted, while a published Zenodo
+version cannot be fixed. Do them in this order:
 
 1. **Make the container match the package lock** by regenerating the
    envelope. A reproduction refuses to start in a container that does

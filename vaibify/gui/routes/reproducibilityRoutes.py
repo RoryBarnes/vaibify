@@ -604,7 +604,11 @@ def _fdictReadinessGapsWithContainerFacts(
     # container facts above: the remedy for either of them differs
     # when the image was BUILT while the clone pins an obtainable
     # one -- then the fix is to switch to the author's image, not
-    # to rewrite the author's files to describe a build.
+    # to rewrite the author's files to describe a build. They ride in
+    # this dict as FACTS, not gaps: on an author's own project
+    # bPinnedImageObtainable is read from the registry's host folder,
+    # which may be a stale checkout, and says nothing about whether
+    # the published envelope can be obtained.
     dictGaps.update(fdictDescribeImageOrigin(
         fsContainerNameForId(dictCtx["docker"], sContainerId),
     ))

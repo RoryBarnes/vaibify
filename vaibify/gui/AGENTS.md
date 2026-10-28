@@ -12,13 +12,19 @@ reasoning behind the module layout, see `../../docs/architecture.md`.
 
 Every file matching `vaibify/gui/routes/*Routes.py` must export a
 module-level function `fnRegisterAll(app, dictCtx)` that registers its
-endpoints on the FastAPI application. Every such module must also be
-imported in `vaibify/gui/routes/__init__.py` so that import errors
-surface at startup.
+endpoints on the FastAPI application (a module that confines paths to
+the workspace takes the root as a third argument, `sWorkspaceRoot`, as
+`fileRoutes` does). Every such module must also be imported in
+`vaibify/gui/routes/__init__.py` so that import errors surface at
+startup, and mounted by an explicit `fnRegisterAll` call in
+`pipelineServer._fnRegisterAllRoutes` (viewer and hub) or, for a
+hub-only control-plane route, `appFactory._fnRegisterHubLifecycle`.
+Importing a module registers nothing.
 
 Enforced by
 `tests/testArchitecturalInvariants.py::testEveryRouteModuleExportsRegisterAll`
-and `testAllRouteModulesRegisteredInInit`.
+and `testAllRouteModulesRegisteredInInit`. No test checks the mounting
+call; an unmounted module's own endpoint tests are what fail.
 
 To add a new route, use the `.claude/skills/add-route-module/` recipe.
 
@@ -68,24 +74,31 @@ grepped reads as a contract that does not exist.)
 
 ### Container-access gate
 
-All container-access decisions route through ONE guard. The claim route
-(`registryRoutes`), the connect handler (`workflowRoutes`), and both
-WebSocket routes (`routes/pipelineRoutes.py`,
-`routes/terminalRoutes.py`) must authorize via
-`webSocketAuthorization.fbAuthorizeContainerSession` /
-`fiContainerSessionRejectionCode`; no route may inline a container-id
-membership check or read a process-global allow set. The single
-owner-of-record authority is `containerOwnership` over
-`app.state.dictContainerOwners` (keyed by container **name**); the access
-principal is the per-claim lease, not the shared session token. The
-WebSocket routes resolve the Docker container id to a name before calling
-the guard. New backend modules from this layer: `containerOwnership.py`
-(owner-of-record map + lease arbitration + the per-container
-live-connection counter) and `webSocketAuthorization.py` (the shared
-guard). The normative model is the "Single browser session per
-container" section of `../../docs/architecture.md`. Enforced by
-`testWebSocketGatesUseSharedAuthorizationGuard` and
-`testSetAllowedContainersRemoved`.
+All container-access decisions consult ONE authority: `containerOwnership`
+over `app.state.dictContainerOwners` (keyed by container **name**), whose
+`fbBrowserSessionOwnsLease` requires a valid per-browser credential AND
+a lease bound to that session. The access principal is the per-claim
+lease, not the shared session token, and no route may inline a
+container-id membership check or read a process-global allow set. Each
+lane reaches the authority through one entry point: the claim route
+(`registryRoutes`) commits through `sessionLifecycle.ftClaimWithCardinality`
+and so `containerOwnership.ftClaim`; the connect handler
+(`workflowRoutes`) reads the `X-Vaibify-Lease` header into
+`containerOwnership.fbBrowserSessionOwnsLease`; both WebSocket routes
+(`routes/pipelineRoutes.py`, `routes/terminalRoutes.py`) resolve the
+Docker container id to a name and call
+`webSocketAuthorization.fiContainerSessionRejectionCode` (its boolean
+wrapper `fbAuthorizeContainerSession` has no production caller); and
+every container-scoped HTTP route is checked by
+`routeScope.fiAuthorizeContainerHttp`, which `routeScope.ContainerAwareRoute`
+runs before the handler. New backend modules from this layer:
+`containerOwnership.py` (owner-of-record map + lease arbitration + the
+per-container live-connection counter) and `webSocketAuthorization.py`
+(the WebSocket guard). The normative model is the "Single browser
+session per container" section of `../../docs/architecture.md`.
+Enforced by `testWebSocketGatesUseSharedAuthorizationGuard`,
+`testSetAllowedContainersRemoved`, and
+`testContainerAwareRouteRunsAuthorityBeforeEndpoint`.
 
 ### Re-export pattern
 
@@ -136,9 +149,12 @@ state machine is documented in `fileStatusManager.py`'s module
 docstring; read it in full before modifying any transition.
 Summary of the fields and invariants:
 
-- `sUnitTest`, `sUser`, `sIntegrity`, `sQualitative`, `sQuantitative`
-  — each is `untested | passed | failed`; `sUser` may also be
-  `stale`.
+- `sUnitTest`, `sIntegrity`, `sQualitative`, `sQuantitative` — each is
+  `untested | passed | failed | unnecessary`; `unnecessary` marks a
+  category with no commands, counts as green, and survives
+  invalidation.
+- `sUser` — `untested | passed | failed | stale`.
+- `sPlotStandards` — `passed | stale`.
 - `bUpstreamModified` flags a step whose upstream outputs have
   changed.
 - `listModifiedFiles` is populated by polling.
@@ -154,22 +170,27 @@ Invariants:
   a newer mtime changes neither the tests nor the sign-off.
 - Data- or plot-file change (by content) makes the tests not current.
 - Upstream change sets `bUpstreamModified = True` and resets
-  `sUnitTest`. Only the upstream files a step names by `{step:…}`
+  `sUnitTest` and every test category to `untested` (an `unnecessary`
+  category stays). Only the upstream files a step names by `{step:…}`
   token count, and only when their bytes differ from the ones the step
   recorded consuming (`dictConsumedUpstreamDigests`).
 
 Any change to these transitions is an ask-first operation — consult
 the user before proceeding.
 
-## State schema v2: level high-water marks
+## State schema v3: level high-water marks
 
-`state.json` (schema version 2, `stateManager.py`) persists two
-add-only ratchet fields beside the verification state:
+`state.json` (schema version 3, `stateManager.py`) is repo-scoped and
+namespaces each project's state under
+`dictWorkflowState[<repo-relative project file path>]`
+(`stateManager.fsWorkflowKeyFromPath`), so saving one project never
+rewrites another's. Each section persists two add-only ratchet fields
+beside the verification state:
 
 - Per step: `dictLevelHighWater` (`{"1": isoFirstAttained, "2": ...,
-  "3": ...}`) under `dictStepState[sDirectory]`.
-- Workflow scope: `dictWorkflowLevelHighWater` (same shape) as a
-  top-level key.
+  "3": ...}`) under the section's `dictStepState[sDirectory]`.
+- Workflow scope: `dictWorkflowLevelHighWater` (same shape) at the
+  section's top level.
 
 Both are stamped by `stateManager.fbRatchetLevelHighWater`, called
 from the poll path (`pipelineRoutes.py`) after the per-step level
@@ -181,17 +202,24 @@ not-started/unassessed/none/partial/attained/unknown/not-applicable
 with `iSatisfied`/`iTotal`/`bRegression`); only "attained" stamps.
 "not-started" vs "unassessed" splits on whether the step's declared
 outputs exist on disk (the poll's `dictMaxMtimeByStep`): hollow
-circle = nothing yet, grey filled circle = material present but
+circle = nothing yet, gray filled circle = material present but
 never assessed.
 Per-step L3 counts only the criteria whose domain is non-empty on
 the step; "not-applicable" (`iTotal` 0) marks a step with nothing to
 reproduce and never stamps, never regresses, and never renders as
 attained. The workflow header row is NOT an aggregate of the step
-rows — its cells cover only workflow-attached requirements (L1:
-project repo present; L2: sync freshness + arXiv; L3: envelope
-artifacts); the all-steps aggregate is the scalar `fiProofLevel`
-rendered by the PROOF chip, so a workflow L1 check above red step
-rows is a consistent display.
+rows — its cells cover only workflow-attached requirements
+(`levelGates.fdictComputeWorkflowScopeLevelStates`). L1: project repo
+present. L2: the GitHub and Zenodo published-copy checks (verify
+freshness and divergence), the AI-model and Personal AI Configuration
+declarations and the environment-archive question
+(`_T_WORKFLOW_LEVEL2_BASE_CRITERIA`), plus the arXiv pair while an
+arXiv submission is recorded, the Overleaf pair while an Overleaf
+project is bound, and a basename collision when one is reported. L3:
+the workflow-scope envelope checks (`_T_WORKFLOW_LEVEL3_CRITERIA`). The
+all-steps aggregate is the scalar `iProofLevel`
+(`levelGates.fiProofLevel`) rendered by the PROOF chip, so a workflow
+L1 check above red step rows is a consistent display.
 The poll also emits `dictStepLevelWarnings` (regression/timestamp
 warnings gated server-side to each step's lowest non-attained level;
 the frontend's ⚠ column composes this entry with the client-known
@@ -203,8 +231,12 @@ assembled with zero extra container execs). Invariants: stamps are
 ADD-ONLY — regression never erases a stamp (the regression column
 depends on the stamp surviving); "unknown" (stale sync cache) never
 stamps and never renders attained; saves are issued only when the
-ratchet reports a change. v1 state files load without migration —
-absent keys mean "never attained on this machine"; a fresh clone
+ratchet reports a change. A pre-v3 document is migrated on load
+(`stateManager.fdictMigrateStateDocument`): its state is attributed
+when the repo holds exactly one project, and otherwise kept under
+`listQuarantinedState`, owned by nobody, so those steps read unverified
+until re-verified. Absent high-water keys mean "never attained on this
+machine"; a fresh clone
 honestly shows not-started/none cells until re-attained. Do not move
 high-water into committed test markers. Archive scope: test files
 and standards are manifest-pinned, verified, and offered for archive
@@ -227,7 +259,10 @@ by default (`bArchiveTests`, absent means true).
   OR add `(method, path)` to `SET_INTENTIONALLY_EXCLUDED_PATHS` with a
   comment explaining why.
   `tests/testArchitecturalInvariants.py::testAgentActionRegistered`
-  will fail otherwise.
+  will fail otherwise. A mutating route outside the agent catalog,
+  excluded or not, also needs exactly one CLI home in
+  `researcherActions.py` (`testEveryGuiInvokedMutationHasCliEquivalent`);
+  the `add-route-module` skill has the full list.
 
 ```bash
 python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py

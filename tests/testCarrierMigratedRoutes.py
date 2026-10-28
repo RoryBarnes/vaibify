@@ -1236,7 +1236,14 @@ def testAnExpectedRefusalLeavesTheContainerUsable(tclientGated):
 # hidden inside them.
 # ---------------------------------------------------------------------
 
-# The three test-execution routes probe ``fiProofLevel`` before and after
+# Since 2026-10-27 the three test-execution routes and the auto-archive
+# read only whether the project is at Level 1
+# (``fiComputeProofLevelUpToOne``), and the tests sense those readings
+# directly through ``_tlistRecordEveryLevelOneReading``. What follows is
+# the history of the full-ladder probe, and still describes the save's
+# own level derivation, which computes the whole ladder.
+#
+# The three test-execution routes probed ``fiProofLevel`` before and after
 # running. On an ordinary fixture that probe clears without touching a
 # general exec, so a migration that left it OUTSIDE the carrier would
 # pass every test in this suite and then be REFUSED in the field — for
@@ -1482,41 +1489,43 @@ class DockerDoubleServingAPublishedWorkflow(
 
 
 @contextlib.contextmanager
-def _tlistRecordEveryRepoHash(connectionDocker):
-    """Record the live admission at every ``fdictHashFiles`` call.
+def _tlistRecordEveryLevelOneReading(connectionDocker):
+    """Record the live admission at every Level 1 reading a route makes.
 
-    Instrumenting the ADAPTER rather than matching command text, because
-    ``fdictHashFiles`` and ``fdictHashAbsolutePaths`` build the same
-    ``python3 -c "import base64; exec(...)"`` shape and differ only
-    inside a base64 payload — a text marker could not tell the arXiv
-    conjunct's hash from any other embedded script, and a test that
-    cannot name what it observed is not evidence that the observation
-    was the one required.
+    The level probes ask ``fiComputeProofLevelUpToOne`` whether the
+    project is at Level 1, which is all the archive they feed acts on.
+    That reading reaches no general exec, so the repository-hash sensor
+    this file used while the probes computed the full ladder no longer
+    sees them; this wraps the reading itself, at both places it is
+    looked up (the test routes import it by name, the auto-archive
+    imports it from ``levelGates`` on each call).
 
     Each record also carries the length of the double's gated ledger at
     the moment of the call, which is what lets the pre-run probe and the
-    post-save auto-archive be asserted SEPARATELY: they hash the same
-    path under the same mode, so nothing about the call itself
-    distinguishes them, but the workflow save's write lands between.
+    post-save auto-archive be asserted SEPARATELY: the workflow save's
+    write lands between them.
     """
+    from vaibify.gui.routes import testRoutes
+    from vaibify.reproducibility import levelGates
     listCalls = []
-    fnRealHash = repoFiles.ContainerRepoFiles.fdictHashFiles
+    fiRealReading = levelGates.fiComputeProofLevelUpToOne
 
-    def fnRecordThenHash(self, listRelPaths):
+    def fiRecordThenRead(dictWorkflow, filesRepo):
         admission = mutationAdmission.fadmissionActiveForContainerId(
-            self.sContainerId,
+            S_CONTAINER_ID,
         )
         listCalls.append({
-            "listRelPaths": list(listRelPaths),
             "sMode": "" if admission is None else admission.sMode,
             "iLedgerLength": len(
                 connectionDocker.listAdmittedPrimitives,
             ),
         })
-        return fnRealHash(self, listRelPaths)
+        return fiRealReading(dictWorkflow, filesRepo)
 
     with patch.object(
-        repoFiles.ContainerRepoFiles, "fdictHashFiles", fnRecordThenHash,
+        testRoutes, "fiComputeProofLevelUpToOne", fiRecordThenRead,
+    ), patch.object(
+        levelGates, "fiComputeProofLevelUpToOne", fiRecordThenRead,
     ):
         yield listCalls
 
@@ -1570,36 +1579,30 @@ def _fiIndexOfTheWorkflowSave(connectionDocker):
     return len(connectionDocker.listAdmittedPrimitives)
 
 
-def _fnAssertHashCallRanUnder(dictCall, sExpectedMode, sDescription):
-    """Assert one recorded ``fdictHashFiles`` call's live admission."""
+def _fnAssertLevelReadingRanUnder(dictCall, sExpectedMode, sDescription):
+    """Assert one recorded Level 1 reading's live admission."""
     assert dictCall["sMode"] == sExpectedMode, (
-        f"the {sDescription} hashed the repository under "
+        f"the {sDescription} read the level under "
         f"{dictCall['sMode']!r}, not {sExpectedMode!r}: {dictCall}. "
-        "Under '' the probe ran OUTSIDE the carrier, which the enforced "
-        "branch refuses for every workflow at Level 2 or above."
+        "Under '' the probe ran OUTSIDE the carrier, where a hand-over "
+        "can land between the reading and the run it brackets."
     )
 
 
-def _fdictRequireHashCall(listHashCalls, iIndex, sDescription):
-    """Return one recorded hash call, or fail saying what was missing.
+def _fdictRequireLevelReading(listCalls, iIndex, sDescription):
+    """Return one recorded Level 1 reading, or fail saying it was missing.
 
-    Selected POSITIONALLY because three separate level probes hash the
-    SAME path under one request and nothing about a call distinguishes
-    them: the route's pre-run probe runs first, ``fnSaveWorkflowToContainer``
-    derives the level again inside the mode-(a) save, and the
-    auto-archive probes a third time afterwards. Order is the only
-    discriminator, so the tests below pin it.
+    Selected POSITIONALLY: the route's pre-run probe reads first and the
+    auto-archive reads afterwards, and nothing else about a call tells
+    them apart. The save's own level derivation computes the full ladder
+    through ``fiProofLevel`` and is not recorded here.
     """
-    assert listHashCalls, (
-        f"the {sDescription} never reached fdictHashFiles, so this "
-        "asserts nothing about how the level probe was admitted. Either "
-        "the fixture stopped being a Level 2 workflow (check the arXiv "
-        "conjunct: an attested declaration, declared models, a declared "
-        "personal layer, and an Overleaf-recorded commit with a pushed "
-        "figure are ALL required), or the probe moved. Recorded calls: "
-        f"{listHashCalls}"
+    assert listCalls, (
+        f"the {sDescription} never read the level, so this asserts "
+        "nothing about how the probe was admitted; the probe moved or "
+        f"stopped calling fiComputeProofLevelUpToOne. Recorded: {listCalls}"
     )
-    return listHashCalls[iIndex]
+    return listCalls[iIndex]
 
 
 @pytest.mark.falsification
@@ -1616,14 +1619,10 @@ def testTheLevelProbeAndTheTestRunShareOneLockHeldAdmission(
 ):
     """Each test-execution route probes AND runs in one mode-(b) worker.
 
-    Every one of them brackets its run with ``fiProofLevel`` to decide
-    whether the step's transition promoted the workflow, and on a
-    published workflow that probe is not a cheap dictionary read: it
-    hashes every Overleaf-pushed figure through the general exec
-    primitive. Left on the request coroutine it holds no admission at
-    all, so the enforced branch refuses it — and no fixture below Level
-    2 can see that, which is why this one goes to the trouble of being
-    Level 2.
+    Every one of them brackets its run with a Level 1 reading to decide
+    whether the step's transition promoted the workflow. Left on the
+    request coroutine that reading holds no admission at all, and a
+    hand-over could land between it and the run it brackets.
 
     Probe and run are asserted together because they are one guarantee
     and one worker: the probe must run under the SAME lock-held
@@ -1647,7 +1646,7 @@ def testTheLevelProbeAndTheTestRunShareOneLockHeldAdmission(
     ``commitCarrier.fdictCommitSynchronousMutation`` instead of
     ``fdictRunLockHeldMutation``.
 
-    Deliberately NOT "hoist ``fiProofLevel`` out of the worker", which is
+    Deliberately NOT "hoist the level probe out of the worker", which is
     the defect this test exists for: that mutant refuses the request
     outright, so the save and the auto-archive never happen and it lands
     on the two tests below as well. A mutant that kills three tests
@@ -1664,16 +1663,16 @@ def testTheLevelProbeAndTheTestRunShareOneLockHeldAdmission(
     :func:`testEveryMigratedTestRouteStillAnswersTwoHundred`.
     """
     client, connectionDocker = tclientPublished
-    with _tlistRecordEveryRepoHash(connectionDocker) as listHashCalls:
+    with _tlistRecordEveryLevelOneReading(connectionDocker) as listReads:
         client.post(
             f"/api/steps/{S_CONTAINER_ID}/0/{sRoute}", json=dictBody,
         )
-    _fnAssertHashCallRanUnder(
-        _fdictRequireHashCall(
-            listHashCalls, 0, f"pre-run AICS level probe on {sRoute}",
+    _fnAssertLevelReadingRanUnder(
+        _fdictRequireLevelReading(
+            listReads, 0, f"pre-run level probe on {sRoute}",
         ),
         mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
-        f"pre-run AICS level probe on {sRoute}",
+        f"pre-run level probe on {sRoute}",
     )
     _fnAssertExecsNamingRanUnder(
         connectionDocker, sExecMarker,
@@ -1685,8 +1684,8 @@ def testTheLevelProbeAndTheTestRunShareOneLockHeldAdmission(
 def testTheAutoArchiveProbeRunsUnderItsOwnDrain(tclientPublished):
     """POST .../run-tests carries its post-save auto-archive too.
 
-    ``fbMaybeAutoArchive`` re-reads the AICS level — the same general
-    exec — then writes the L3 envelope and pushes to Overleaf and
+    ``fbMaybeAutoArchive`` re-reads whether the project is at Level 1,
+    then writes the L3 envelope and pushes to Overleaf and
     Zenodo. It is reached from all three test-execution routes, so
     migrating them without carrying it would refuse every run on a
     published workflow at the archive rather than at the probe: the same
@@ -1707,19 +1706,19 @@ def testTheAutoArchiveProbeRunsUnderItsOwnDrain(tclientPublished):
     swap leaves the archive running and only its admission wrong.
     """
     client, connectionDocker = tclientPublished
-    with _tlistRecordEveryRepoHash(connectionDocker) as listHashCalls:
+    with _tlistRecordEveryLevelOneReading(connectionDocker) as listReads:
         client.post(f"/api/steps/{S_CONTAINER_ID}/0/run-tests")
-    dictLast = _fdictRequireHashCall(
-        listHashCalls, -1, "post-save auto-archive level probe",
+    dictLast = _fdictRequireLevelReading(
+        listReads, -1, "post-save auto-archive level probe",
     )
     assert dictLast["iLedgerLength"] > _fiIndexOfTheWorkflowSave(
         connectionDocker,
     ), (
-        "the last repository hash happened BEFORE the workflow save's "
-        "write, so it was the save's own level derivation and the "
-        f"auto-archive never probed at all: {listHashCalls}"
+        "the last level reading happened BEFORE the workflow save's "
+        "write, so it was the pre-run probe and the auto-archive never "
+        f"probed at all: {listReads}"
     )
-    _fnAssertHashCallRanUnder(
+    _fnAssertLevelReadingRanUnder(
         dictLast, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
         "post-save auto-archive level probe",
     )
@@ -2356,6 +2355,46 @@ def testThePostPushVerifyRewritesTheSyncCacheUnderItsOwnDrain():
         "reason the exact-equality gate opens; a mode of '' means it "
         "ran on the legacy to_thread lane with no admission."
     )
+
+
+@pytest.mark.falsification
+def testARepoPanelPushOfTheProjectRepoRecordsNoGithubBinding():
+    """A Repos-panel push never binds the GitHub verify.
+
+    The GitHub sync push records where a push landed only after checking
+    that the researcher's token owns the remote. The Repos panel runs no
+    such check, and a push's real destination can differ from the
+    ``origin`` url the container wrote (``pushurl``), so a binding
+    recorded here would let a container agent steer the agent-safe
+    verify, and the researcher's token, at a repository of its choosing
+    (found in review, 2026-10-27).
+
+    Kills: recording the reached remote after a Repos-panel push.
+    """
+    from vaibify.config import registryManager
+    from vaibify.gui import routeContext
+    from vaibify.gui.routes import syncRoutes
+
+    client, _connectionDocker = _tConnectGatedClient(
+        DockerDoubleWhereThePushedRepoIsTheProjectRepo(),
+    )
+    with patch.object(
+        syncRoutes, "_fdictReadReachedRemote",
+        lambda connectionDocker, sContainerId, sRepoPath: {
+            "sOwner": "example-owner", "sRepo": "example-repo",
+            "sBranch": "main"},
+    ), patch.object(
+        registryManager, "fnRecordPushedGithubRemote",
+    ) as mockRecord, patch.object(
+        routeContext, "fdictRunRemoteVerifyBlocking",
+        lambda dictWorkflow, sService, filesRepo: {"sService": sService},
+    ):
+        response = client.post(
+            f"/api/repos/{S_CONTAINER_ID}/{S_PUSH_REPO_NAME}/push-staged",
+            json={"sCommitMessage": "[vaibify] Update repository"},
+        )
+    assert response.status_code == 200, response.text
+    assert mockRecord.call_count == 0
 
 
 class DockerDoubleThatBlocksTheRepoPush(
@@ -4495,8 +4534,8 @@ def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
 
     ``fbMaybeAutoArchive`` archives on a TRANSITION -- the workflow was
     below L1 and is now at or above it -- so it compares a level read
-    taken before the edit with one taken after. Both readings hash the
-    repo through the container, so both are guarded operations, and if
+    taken before the edit with one taken after. Both readings run in the
+    same worker as the edit, and if
     the drain is dropped between them another session's write moves the
     level in the gap: the promotion is then detected, or missed, for a
     change the researcher never made.
@@ -4506,7 +4545,7 @@ def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
     test above and this one alone reports the drain.
 
     THE LEVEL GATE IS STUBBED HERE, AND THAT IS THE POINT. Against this
-    harness the real ``fiProofLevel`` declines at L1's first criterion --
+    harness the real Level 1 reading declines at its first criterion --
     the one step is ``untested``/``untested``, so it is not user-approved
     -- and returns 0 without ever reaching the container. Asserting on
     the primitive ledger would then be an assertion about a read that
@@ -4523,16 +4562,7 @@ def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
     client, _connectionDocker = tclientGated
     listModesAtTheLevelRead = []
 
-    def fiRecordTheLiveAdmission(
-        dictWorkflowArg, filesRepoArg, dictScriptStatus=None,
-        *, bHostProject,
-    ):
-        # ``bHostProject`` is keyword-only with NO default in the real
-        # gate, deliberately -- a host project cannot reach Level 3 by
-        # any amount of work, so a caller that forgot to ask must meet
-        # a TypeError. The stub spells it the same way, or it would
-        # accept a call the real function refuses.
-        del bHostProject
+    def fiRecordTheLiveAdmission(dictWorkflowArg, filesRepoArg):
         admission = mutationAdmission.fadmissionActiveForContainerId(
             S_CONTAINER_ID,
         )
@@ -4542,7 +4572,7 @@ def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
         return 0
 
     with patch.object(
-        stepRoutes, "fiProofLevel", fiRecordTheLiveAdmission,
+        stepRoutes, "fiComputeProofLevelUpToOne", fiRecordTheLiveAdmission,
     ):
         response = client.put(
             f"/api/steps/{S_CONTAINER_ID}/0",

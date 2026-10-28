@@ -24,10 +24,12 @@ one-liners, or interactive sessions. Write a script, save it, run it.
   directory as `dataFoo.py` (or `plotFoo.py` if it draws a figure).
 - **If it is exploratory** — a question that is not yet a step, and
   may never be one — put it in `explorations/` at the project-repo
-  root. This is the git-tracked home for reproducible analyses that
-  are not (yet) formal steps: preserved and re-runnable, but honestly
-  outside the pipeline, so their outputs are never presented as
-  verified results.
+  root. This is the conventional home for reproducible analyses that
+  are not (yet) formal steps: re-runnable, but honestly outside the
+  pipeline, so their outputs are never presented as verified results.
+  Vaibify does not track it for you — `commit-canonical` leaves it
+  out — so an exploration is preserved only once the researcher
+  commits it; ask them whether to.
 
 Do NOT invent a fresh step directory just to hold an exploratory
 script. "It belongs with a step" is not a reason to fabricate a step —
@@ -67,9 +69,13 @@ the surrounding code otherwise):
    fit, the samples, the summary JSON) to files, so the value is on
    disk and hashable, not just printed.
 4. **Seed any randomness.** An unseeded sampler is not reproducible;
-   set and record the seed so the run repeats bit-for-bit.
-5. **Run it through `vaibify-do`**, not by executing it directly (see
-   the running-steps skill), so the dashboard reflects the run.
+   set and record the seed so the run repeats. A seed fixes the random
+   sequence, not the last digits of floating-point results on another
+   computer — that is what the Determinism answer is for.
+5. **Run steps through `vaibify-do`** (see the running-steps skill), so
+   the dashboard reflects the run. An exploration is not a step, so no
+   `vaibify-do` action runs it: run it directly, and tell the
+   researcher in chat exactly what you ran.
 
 ## Turning it into a step
 

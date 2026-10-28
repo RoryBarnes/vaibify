@@ -751,10 +751,16 @@ def _fnRegisterOverleafPush(app, dictCtx):
         sContainerId: str, request: SyncPushRequest,
         requestHttp: Request,
     ):
-        return await _fdictHandleOverleafPushRequest(
+        _fnLogPublishRequested(
+            "Overleaf", sContainerId,
+            f"files={len(request.listFilePaths or [])}",
+        )
+        dictResult = await _fdictHandleOverleafPushRequest(
             syncDispatcher, dictCtx, sContainerId, request,
             requestHttp=requestHttp,
         )
+        _fnLogPublishOutcome("Overleaf", sContainerId, dictResult)
+        return dictResult
 
 
 def _fdictComputePostArchiveZenodoDigests(
@@ -829,15 +835,25 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         )
         _fnRefuseBasenameCollisions(request.listFilePaths)
         _fnRefuseCrossInstanceParent(dictWorkflow)
+        _fnLogPublishRequested(
+            "Zenodo", sContainerId,
+            f"files={len(request.listFilePaths)} site="
+            f"{_fsLoggableZenodoSite(dictWorkflow.get('sZenodoService'))}",
+        )
         dictResult, sZenodoService = await _ftPerformZenodoArchive(
             syncDispatcher, dictCtx, sContainerId, dictWorkflow,
             request, requestHttp,
         )
         if not dictResult["bSuccess"]:
+            _fnLogPublishOutcome("Zenodo", sContainerId, dictResult)
             return dictResult
         await _fnPersistZenodoArchiveSuccess(
             dictCtx, sContainerId, dictWorkflow, request,
             dictResult, sZenodoService, requestHttp,
+        )
+        _fnLogPublishOutcome(
+            "Zenodo", sContainerId, dictResult,
+            sIdentifier=dictWorkflow.get("sZenodoLatestDoi", ""),
         )
         return dictResult
 
@@ -1663,6 +1679,57 @@ _I_PUSH_LOG_SNIPPET_LENGTH = 300
 _RE_URL_USERINFO_SERVER = re.compile(r"(https?://)[^/\s@]+@")
 
 
+def _fnLogPublishRequested(sService, sContainerId, sDetail):
+    """Log that a publish to an external service is starting.
+
+    ``sDetail`` names what is being published by count or by a
+    validated repository name, never by a path, URL or token.
+    """
+    logger.info(
+        "%s publish requested: container=%s %s",
+        sService, sContainerId, sDetail,
+    )
+
+
+def _fsLoggableZenodoSite(sService):
+    """Return a Zenodo site name fit for the log, or "unrecognized".
+
+    The declared site lives in project.json, which the container can
+    write; only a name the client's own table knows is written, so a
+    crafted value cannot forge log lines.
+    """
+    from vaibify.reproducibility.zenodoClient import fdictZenodoServiceTable
+    sService = sService or "sandbox"
+    return sService if sService in fdictZenodoServiceTable() else "unrecognized"
+
+
+def _fnLogPublishOutcome(sService, sContainerId, dictResult, sIdentifier=""):
+    """Log a publish's outcome by its public identifier, never raw text.
+
+    Only GitHub pushes were logged, so a Zenodo version, an Overleaf
+    push or a Repos-panel push left no trace on the host
+    (researcher-reported, 2026-10-27). A failure's output is redacted
+    of every credential shape the shared redactor knows, then cut to
+    the same bounded excerpt the GitHub lines use.
+    """
+    if dictResult.get("bSuccess"):
+        logger.info(
+            "%s publish succeeded: container=%s%s", sService, sContainerId,
+            f" id={sIdentifier!r}" if sIdentifier else "",
+        )
+        return
+    from vaibify.reproducibility.credentialRedactor import (
+        fsRedactCredentials,
+    )
+    logger.info(
+        "%s publish did not complete: container=%s sErrorType=%s "
+        "sOutput=%r", sService, sContainerId,
+        dictResult.get("sErrorType", ""),
+        _fsPushOutputSnippet(fsRedactCredentials(
+            dictResult.get("sMessage") or dictResult.get("sOutput") or "")),
+    )
+
+
 def _fsPushOutputSnippet(sOutput):
     """Return a single-line, bounded, userinfo-redacted output excerpt.
 
@@ -1748,13 +1815,15 @@ def _fdictAttachCommitStateToResult(
 
 
 def _fnRecordPushedRemoteHostSide(
-    dictCtx, sContainerId, sWorkdir, dictReachedRemote,
+    dictCtx, sContainerId, dictWorkflow, sWorkdir, dictReachedRemote,
 ):
     """Remember, in the hub's own registry, where this push landed.
 
     The record a later verify is bound to. It is held outside every
     file the container can write, because the container writes the
-    origin URL the verify would otherwise trust.
+    origin URL the verify would otherwise trust. The open workflow's
+    copy is refreshed in the same step, so the verify this push makes
+    possible does not wait for the project to be reopened.
     """
     if not dictReachedRemote.get("sOwner"):
         return
@@ -1763,6 +1832,8 @@ def _fnRecordPushedRemoteHostSide(
         fsContainerNameForId(dictCtx.get("docker"), sContainerId),
         sWorkdir, dictReachedRemote["sOwner"], dictReachedRemote["sRepo"],
         dictReachedRemote.get("sBranch", ""))
+    workflowManager.fnAttachHostGithubBinding(
+        dictWorkflow, dictCtx.get("docker"), sContainerId)
 
 
 def _fsApplyPushBookkeeping(
@@ -1999,7 +2070,7 @@ def _fnRegisterGithubPush(app, dictCtx):
             return dictResult
         if dictResult.get("bSuccess"):
             _fnRecordPushedRemoteHostSide(
-                dictCtx, sContainerId, sWorkdir,
+                dictCtx, sContainerId, dictWorkflow, sWorkdir,
                 dictPushed["dictReachedRemote"])
             sBookkeepingWarning = _fsApplyPushBookkeeping(
                 dictCtx, sContainerId, dictWorkflow,

@@ -148,7 +148,7 @@ def test_all_expected_skills_are_shipped():
         "session-budget", "read-arxiv", "proof-ladder",
         "create-pipeline-step", "vaibify-doc-map",
         "diagnose-failed-run", "read-manuscript", "running-steps",
-        "reproducible-analysis", "graceful-exits",
+        "reproducible-analysis", "graceful-exits", "dashboard-map",
     ):
         assert sExpected in listSkillNames, (
             "skill not shipped: " + sExpected

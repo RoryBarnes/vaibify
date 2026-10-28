@@ -164,6 +164,45 @@ def test_reconcile_falls_back_to_message_when_no_exception_repr():
     assert dictReconciled["sFailureCauseHost"] == "host-side oom kill"
 
 
+@pytest.mark.falsification
+def test_reconcile_never_writes_a_credential_or_the_host_home_into_the_container():
+    """The cause of death reaches the container as a redacted summary.
+
+    ``pipeline_state.json`` is container-readable and get-pipeline-state
+    returns it to the agent lane, while get-host-log-tail withholds the
+    same incident's text from that lane. An exception can carry a
+    token-bearing URL and the researcher's home directory.
+
+    Kills: copying the incident's raw repr into ``sFailureCauseHost``.
+    """
+    import os
+    sHome = os.path.expanduser("~").rstrip("/")
+    sToken = "ghp_" + "a" * 36
+    dictIncident = {
+        "sIso": "2026-10-27T00:00:00+00:00",
+        "sExceptionRepr": (
+            "ConnectionError('push to https://x-access-token:" + sToken
+            + "@github.com/owner/repo.git failed reading "
+            + sHome + "/.vaibify/registry.json')"),
+    }
+    dictReconciled = _fdictReconcileStaleHeartbeat(
+        _fdictBuildStaleRunningState(), dictIncident=dictIncident,
+    )
+    sCause = dictReconciled["sFailureCauseHost"]
+    assert sCause.startswith("ConnectionError(")
+    assert sToken not in sCause
+    assert sHome not in sCause
+    assert "~/.vaibify/registry.json" in sCause
+
+
+def test_a_long_incident_is_bounded_in_the_container():
+    dictIncident = {"sIso": "", "sExceptionRepr": "RuntimeError('" + "x" * 2000}
+    dictReconciled = _fdictReconcileStaleHeartbeat(
+        _fdictBuildStaleRunningState(), dictIncident=dictIncident,
+    )
+    assert len(dictReconciled["sFailureCauseHost"]) <= 301
+
+
 def test_reconcile_preserves_existing_failure_reason_format():
     dictState = _fdictBuildStaleRunningState()
     dictReconciled = _fdictReconcileStaleHeartbeat(dictState)

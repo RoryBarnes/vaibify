@@ -134,9 +134,9 @@ SET_ALLOWED_SCIENCE_TERM_SOURCE_FILES = {
 #
 # STILL NOT ENFORCED:
 #
-#   *.md is not a scanned glob, so
-#   vaibify/containerImage/skills/create-pipeline-step/SKILL.md:52
-#   (example step name) is invisible to this scan.
+#   *.md is not a scanned glob, so a science-specific example in a
+#   skill is invisible to this scan (create-pipeline-step's step-name
+#   example was genericised by hand, 2026-10-27).
 #
 #   tests/ is an excluded directory, and the fixtures there use real
 #   object names freely (testStepSlugContract, testSyncRoutesCoverage,
@@ -4434,7 +4434,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 936 -> 940 (2026-10-24): a committed workflow save announces an
     # in-container agent's change to the open tab (researcherNotices
     # holds the logic).
-    "routeContext.py": 940,
+    # 940 -> 946 (2026-10-27): the post-push verify asks the resolver
+    # whether the project has the remote, never a dictRemotes key.
+    # 946 -> 956 (2026-10-27, review): a refusal the verify's own
+    # configuration raised is relayed in the push's warning.
+    "routeContext.py": 956,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -5450,7 +5454,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # route, and the checkpoint every progress report now passes
     # through. Still one lane (this project's image archive); the stop
     # state and its lock live in gui/archiveProgress.py.
-    "routes/environmentArchiveRoutes.py": 1019,
+    # 1019 -> 1041 (2026-10-27): a settled deposit or promotion is
+    # logged by its version DOI, as its failure already was.
+    "routes/environmentArchiveRoutes.py": 1041,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5520,7 +5526,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # N/A or error axis; returns the step as saved; and a run reads a
     # tier's standards file first, reporting a malformed one by name.
     # One concern -- what the test routes may do -- so not split.
-    "routes/testRoutes.py": 1325,
+    # 1325 -> 1328 (2026-10-27): a saved test is registered against
+    # the project repo, so a category's file is not run twice.
+    "routes/testRoutes.py": 1328,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5670,7 +5678,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +43 (2026-09-29): publish-where-the-record-is, the cross-instance
     # refusal's OTHER remedy, beside the start-new-concept route that
     # is its twin -- same flow, same bookkeeping, same module.
-    "routes/syncRoutes.py": 3688,
+    # 3688 -> 3743 (2026-10-27): Zenodo and Overleaf publishes are
+    # logged, requested and outcome, by public identifiers only.
+    # 3743 -> 3755 (2026-10-27, review): a logged Zenodo site is
+    # one the client's table knows, so it cannot forge log lines.
+    "routes/syncRoutes.py": 3755,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5902,7 +5914,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # is never derived to the green "unnecessary".
     # 2953 -> 2954 (2026-10-24, re-measured on the consolidated branch):
     # the create-step builder also takes bNoInputData from the request.
-    "workflowManager.py": 2954,
+    # 2954 -> 2967 (2026-10-27): one helper attaches the host push
+    # record, so a push can refresh the open workflow's copy too.
+    "workflowManager.py": 2967,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -6983,7 +6997,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-09-24): the live-run readers ask the per-project run
     # slots instead of a single per-container task.
     # 1063 -> 1068 (2026-10-01): the writer's stop accepts a join bound.
-    "pipelineState.py": 1068,
+    # 1068 -> 1097 (2026-10-27): a host incident reaches the
+    # container-readable state as a redacted, bounded summary.
+    # 1097 -> 1102 (2026-10-27, review): the incident is redacted
+    # before its whitespace collapses, and the real home path too.
+    "pipelineState.py": 1102,
     # 1222 -> 1229 (2026-10-01): a TFRecord feature is read from the decoded example.
     # 1229 -> 1240 (2026-10-01): the module says where its loaders run.
     "dataLoaders.py": 1240,
@@ -7486,7 +7504,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1540 -> 1544 (2026-10-24): create-step and insert-step say that
     # bPlotOnly defaults off and that bNoInputData is accepted.
     # 1544 -> 1548 (2026-10-24): the setup wizard's step route is excluded from the agent catalog, with why.
-    "actionCatalog.py": 1548,
+    # 1548 -> 1553 (2026-10-27): run-all says it runs every step's
+    # tests, and the L2/L3 readiness descriptions name their criteria.
+    "actionCatalog.py": 1553,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7607,7 +7627,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the panel greeted the one repository the workflow lives in with
     # the track-or-ignore prompt. Same cohesive responsibility; the
     # only new code is naming the repo and reusing the shared merge.
-    "routes/repoRoutes.py": 849,
+    # 849 -> 890 (2026-10-27): a Repos-panel push of the project repo
+    # records where it landed, as the GitHub sync push does.
+    # 890 -> 899 (2026-10-27): a Repos-panel push is logged as the
+    # GitHub sync push is.
+    # 899 -> 865 (2026-10-27, review): the Repos panel records no
+    # GitHub binding after all, since it runs no token-owner check.
+    "routes/repoRoutes.py": 865,
     # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
     # when its last three routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Two of the three could not stay inline:
@@ -7649,7 +7675,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1035 -> 1044 (2026-10-24): rename and directory alignment save
     # inside their own workers, so they announce an agent's change
     # after the worker returns, as fdictCommitWorkflowSave does.
-    "routes/stepRoutes.py": 1044,
+    # 1044 -> 1076 (2026-10-27): the step save logs where its time
+    # goes, phase by phase, so a slow sign-off is measured.
+    "routes/stepRoutes.py": 1076,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write
@@ -7906,7 +7934,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # answer beside the newest execution profile it names.
     # 2394 -> 2400 (2026-10-24): the declared-vs-image check expects
     # the analysis stack every image carries.
-    "routes/reproducibilityRoutes.py": 2400,
+    # 2400 -> 2404 (2026-10-27): the image-origin facts are named as
+    # facts, not readiness gaps.
+    "routes/reproducibilityRoutes.py": 2404,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

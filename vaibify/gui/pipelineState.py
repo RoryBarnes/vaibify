@@ -12,7 +12,9 @@ __all__ = [
     "I_HEARTBEAT_INTERVAL_SECONDS",
     "I_HEARTBEAT_STALE_SECONDS",
     "I_EXIT_CODE_RUNNER_DISAPPEARED",
+    "I_FAILURE_CAUSE_MAX_CHARACTERS",
     "S_STATE_PATH",
+    "fsSummarizeHostIncident",
     "fsStatePathFor",
     "fdictBuildInitialState",
     "fdictBuildStepStarted",
@@ -42,6 +44,7 @@ __all__ = [
 import asyncio
 import json
 import logging
+import os
 import posixpath
 import queue
 import threading
@@ -499,13 +502,44 @@ def fnEvictStateLockForContainer(dictCtx, sContainerId):
     dictLocks.pop(sContainerId, None)
 
 
+I_FAILURE_CAUSE_MAX_CHARACTERS = 300
+
+
 def _fnStampHostIncidentFields(dictReconciled, dictIncident):
-    """Copy host-incident details into the reconciled state dict."""
-    dictReconciled["sFailureCauseHost"] = (
-        dictIncident.get("sExceptionRepr", "")
-        or dictIncident.get("sMessage", "")
-    )
+    """Copy a container-safe summary of a host incident into the state dict."""
+    dictReconciled["sFailureCauseHost"] = fsSummarizeHostIncident(
+        dictIncident)
     dictReconciled["sLastHostIncidentIso"] = dictIncident.get("sIso", "")
+
+
+def fsSummarizeHostIncident(dictIncident):
+    """Return what killed a run, fit for a file the container can read.
+
+    The state file is container-readable and get-pipeline-state hands it
+    to the agent lane, so the host exception's raw text must not reach
+    it: an exception can carry a credential-bearing URL and host paths,
+    which is why get-host-log-tail withholds even an incident's message.
+    The summary keeps the diagnosis (exception class and message) with
+    credentials redacted, the host home directory written as ``~``, and
+    a bounded length.
+    """
+    from vaibify.reproducibility.credentialRedactor import (
+        fsRedactCredentials,
+    )
+    sRaw = str(dictIncident.get("sExceptionRepr", "")
+               or dictIncident.get("sMessage", ""))
+    # Redacted BEFORE the whitespace is collapsed: the redactor blanks a
+    # whole line that names a credential, and one collapsed line would
+    # lose the entire diagnosis to a single mention of "token".
+    sSummary = " ".join(fsRedactCredentials(sRaw).split())
+    sHome = os.path.expanduser("~").rstrip("/")
+    for sSpelling in sorted({sHome, os.path.realpath(sHome)}, key=len,
+                            reverse=True):
+        if len(sSpelling) > 1:
+            sSummary = sSummary.replace(sSpelling, "~")
+    if len(sSummary) > I_FAILURE_CAUSE_MAX_CHARACTERS:
+        sSummary = sSummary[:I_FAILURE_CAUSE_MAX_CHARACTERS] + "…"
+    return sSummary
 
 
 def _fdictReconcileStaleHeartbeat(

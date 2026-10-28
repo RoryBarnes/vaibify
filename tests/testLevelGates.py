@@ -396,6 +396,8 @@ def test_fdictLevel2Gaps_returns_per_criterion_dict(tmp_path):
         "bPromptRecordCurrent",
         "bSupervisionClean",
         "bProjectContextFileExists",
+        "bNoBasenameCollisions",
+        "bOverleafFullySynced",
         "bAtLeastLevel2",
     }
     assert dictGaps["bAiDeclarationAttested"] is True

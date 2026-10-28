@@ -239,12 +239,45 @@ def testTheRecorderWritesOnlyWhatThePushReached():
         syncRoutes, "fsContainerNameForId", return_value="boundProject",
     ):
         syncRoutes._fnRecordPushedRemoteHostSide(
-            dictCtx, "dockerid123", S_REPO_PATH,
+            dictCtx, "dockerid123", _fdictWorkflow({}), S_REPO_PATH,
             {"sOwner": "researcher", "sRepo": "project", "sBranch": "main"})
         syncRoutes._fnRecordPushedRemoteHostSide(
-            dictCtx, "dockerid123", S_REPO_PATH, {})
+            dictCtx, "dockerid123", _fdictWorkflow({}), S_REPO_PATH, {})
     mockRecord.assert_called_once_with(
         "boundProject", S_REPO_PATH, "researcher", "project", "main")
+
+
+@pytest.mark.falsification
+def testAProjectsFirstPushBindsItsOpenWorkflowWithoutAReload(pathRegistry):
+    """The push that creates the record makes the verify possible at once.
+
+    The binding the verify reads is a copy attached when the project
+    loads. A project opened before its first push held an empty copy,
+    so the verify that push should enable refused with "has not pushed
+    from this hub" until the researcher reopened the project
+    (researcher-reported, 2026-10-27).
+
+    Kills: dropping the refresh of the open workflow's copy from the
+    recorder, which leaves the load-time copy in force after the push.
+    """
+    mockDocker = MagicMock()
+    mockDocker.fcontainerGetById.return_value.name = "boundProject"
+    dictWorkflow = _fdictWorkflow({})
+    with pytest.raises(ReverifyConfigError):
+        _fdictRequireServiceConfig(
+            dictWorkflow, "github",
+            _FilesWithOrigin("https://github.com/researcher/project.git"))
+    with patch.object(
+        syncRoutes, "fsContainerNameForId", return_value="boundProject",
+    ):
+        syncRoutes._fnRecordPushedRemoteHostSide(
+            {"docker": mockDocker}, "dockerid123", dictWorkflow, S_REPO_PATH,
+            {"sOwner": "researcher", "sRepo": "project", "sBranch": "main"})
+    dictConfig = _fdictRequireServiceConfig(
+        dictWorkflow, "github",
+        _FilesWithOrigin("https://github.com/researcher/project.git"))
+    assert (dictConfig["sOwner"], dictConfig["sRepo"]) == (
+        "researcher", "project")
 
 
 # ---------------------------------------------------------------------

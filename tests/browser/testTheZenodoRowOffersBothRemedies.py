@@ -53,7 +53,11 @@ def _fsSelectRow(sHtml, sKey):
 def test_a_record_on_the_other_zenodo_offers_both_remedies(
     pageDashboard, serverHub,
 ):
-    """Both buttons, short labels, both sites named above them; no jargon.
+    """Both buttons, each saying what it does and where; no jargon.
+
+    The labels name the site each click acts on (ruled 2026-10-27): the
+    one that keeps the chain used to read "Deposit a new version" while
+    it deposited nothing.
 
     Kills: offering only "start a new record" again, which leaves the
     remedy that keeps the version chain without a control.
@@ -74,9 +78,9 @@ def test_a_record_on_the_other_zenodo_offers_both_remedies(
     )
 
     assert 'data-wf-action="publish-where-the-zenodo-record-is"' in sRow
-    assert "Deposit a new version\u2026" in sRow, sRow[:2000]
+    assert "Publish to zenodo.org from now on\u2026" in sRow, sRow[:2000]
     assert 'data-wf-action="start-new-zenodo-concept"' in sRow
-    assert "Start a new deposit\u2026" in sRow
+    assert "Start a separate record on the Zenodo sandbox\u2026" in sRow
     assert "zenodo.org (permanent)" in sRow
     assert "the Zenodo sandbox (testing only)" in sRow
     assert "10.5281/zenodo.991" in sRow

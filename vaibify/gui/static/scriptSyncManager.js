@@ -197,14 +197,19 @@ var VaibifySyncManager = (function () {
             overleaf: "Overleaf", zenodo: "Zenodo",
             github: "GitHub",
         };
-        document.getElementById("modalPushTitle").textContent =
-            "Push to " + dictNames[sService];
         _fnToggleEditZenodoMetadataButton(sService);
         _fnRenderOverleafTargetRow(sService, sContainerId);
         _fnRenderPushAnnotationHost(sService);
         _fnRenderPushFileList();
-        _bZenodoHasDeposit = sService === "zenodo" &&
-            await _fbWorkflowHasZenodoDeposit(sContainerId);
+        var sDepositDoi = sService === "zenodo"
+            ? await _fsWorkflowZenodoDepositDoi(sContainerId) : "";
+        _bZenodoHasDeposit = Boolean(sDepositDoi);
+        /* The publish that adds a version says which record it adds it
+           to: the button that only CHANGED where the next publish goes
+           used to carry these words instead. */
+        document.getElementById("modalPushTitle").textContent =
+            sDepositDoi ? "Publish a new version of " + sDepositDoi
+                : "Push to " + dictNames[sService];
         _fnApplyButtonLabels();
         _fnUpdatePushButtonStates();
         if (sService === "overleaf") {
@@ -275,15 +280,15 @@ var VaibifySyncManager = (function () {
         }
     }
 
-    async function _fbWorkflowHasZenodoDeposit(sContainerId) {
+    async function _fsWorkflowZenodoDepositDoi(sContainerId) {
         try {
             var dictDeposit = await VaibifyApi.fdictGet(
                 "/api/zenodo/" + encodeURIComponent(sContainerId) +
                 "/deposit"
             );
-            return !!(dictDeposit && dictDeposit.sDoi);
+            return (dictDeposit && dictDeposit.sDoi) || "";
         } catch (error) {
-            return false;
+            return "";
         }
     }
 

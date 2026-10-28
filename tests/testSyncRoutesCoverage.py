@@ -13,7 +13,7 @@ Covers:
 
 import json
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from fastapi.testclient import TestClient
 
@@ -2177,6 +2177,50 @@ def test_zenodo_archive_resolves_repo_relative_selections(clientHttp):
         "/workspace/repo/.vaibify/projects/project.json",
         "/workspace/repo/StepOne/data.h5",
     ]
+
+
+def test_zenodo_archive_writes_its_request_and_outcome_to_the_log(
+    clientHttp, caplog,
+):
+    """A Zenodo version is now on the host's record, by its DOI."""
+    import logging
+    _fnConnectToContainer(clientHttp)
+    dictWf = {
+        "sWorkflowName": "Test Pipeline",
+        "sZenodoService": "sandbox",
+        "sProjectRepoPath": "/workspace/repo",
+    }
+    with patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value=dictWf,
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 999, '
+                     '"sDoi": "10.5072/zenodo.999", '
+                     '"sConceptDoi": "", "sHtmlUrl": ""}'),
+    ), patch(
+        "vaibify.gui.routes.syncRoutes."
+        "_fdictComputePostArchiveZenodoDigests",
+        return_value={},
+    ), patch(
+        "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
+    ), patch(
+        # The post-publish verify would query the real Zenodo sandbox.
+        "vaibify.gui.routes.syncRoutes.fsRefreshVerifyCacheAfterPush",
+        AsyncMock(return_value=""),
+    ), caplog.at_level(logging.INFO, logger="vaibify"):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": ["/workspace/repo/StepOne/data.h5"]},
+        )
+    assert responseHttp.status_code == 200
+    listLines = [record.getMessage() for record in caplog.records]
+    assert any(
+        "Zenodo publish requested:" in s and "files=1 site=sandbox" in s
+        for s in listLines)
+    assert any(
+        "Zenodo publish succeeded:" in s and "id='10.5072/zenodo.999'" in s
+        for s in listLines)
 
 
 def test_zenodo_archive_passes_parent_deposit_id_to_dispatcher(clientHttp):

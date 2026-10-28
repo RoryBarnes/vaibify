@@ -756,15 +756,21 @@ async def fsRefreshVerifyCacheAfterPush(
     redaction-safe warning string on failure, so the push toast can
     tell the researcher the L2 check did not run instead of leaving
     a silent gap between "pushed" and "still unknown". A service the
-    workflow never configured in ``dictRemotes`` is skipped without
-    a warning — there is nothing to verify against, and nagging a
+    project has no remote for is skipped without a warning — nagging a
     researcher who only uses plain git pushes would teach them to
-    ignore real warnings.
+    ignore real warnings. "Has a remote" is the resolver's own answer
+    (``flistSelectDeclaredServices``), never a ``dictRemotes`` key
+    test: GitHub is derived from the checkout's ``origin`` when no
+    entry records it, and a key test skipped every post-push verify for
+    exactly those projects. An unbound GitHub remote is still verified,
+    so its refusal reaches the researcher as this warning.
     """
-    if not ((dictWorkflow or {}).get("dictRemotes") or {}).get(sService):
-        return ""
     try:
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        from vaibify.reproducibility import scheduledReverify
+        if sService not in scheduledReverify.flistSelectDeclaredServices(
+                dictWorkflow, filesRepo):
+            return ""
         await _fnRunPostPushVerifyBlocking(
             sContainerId, dictWorkflow, sService, filesRepo, requestHttp,
         )
@@ -782,8 +788,18 @@ def _fsPostPushVerifyWarning(sService, error):
 
     Never embeds the raw exception text: verify errors can carry
     remote URLs, and URLs can carry credentials. Known causes get a
-    specific remedy; everything else points at the hub log.
+    specific remedy; everything else points at the hub log. A refusal
+    the verify's own configuration raised is relayed in its own words:
+    those sentences are vaibify's, name no URL or credential, and carry
+    the remedy (e.g. an unbound GitHub remote), which the agent lane
+    could otherwise read nowhere.
     """
+    from vaibify.reproducibility.scheduledReverify import ReverifyConfigError
+    if isinstance(error, ReverifyConfigError):
+        return (
+            "Pushed, but the " + sService + " comparison did not run: "
+            + str(error)
+        )
     if (isinstance(error, FileNotFoundError)
             and "manifest" in str(error).lower()):
         return (

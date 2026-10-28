@@ -39,6 +39,11 @@ the project has no manuscript configured. Then:
 - Otherwise, tell the researcher the manuscript is Overleaf-side and
   not bound, rather than inventing its content.
 
+A 409 saying the Overleaf mirror lists no manuscript sources means the
+project IS bound but the local mirror is empty or stale: run
+`vaibify-do refresh-overleaf-mirror`, then pull again. If it still
+lists none, ask the researcher to check the project's Overleaf binding.
+
 ## Honesty requirements
 
 - Never state what the manuscript says without having pulled and read

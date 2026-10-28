@@ -66,12 +66,18 @@ server-minted lease (`containerOwnership.fsMintLease`), recorded in the
 in-process owner-of-record map `app.state.dictContainerOwners`, keyed by
 container **name** (the host flock and the caffeinate keep-alive are both
 name-keyed, so the owner map must be too; the WebSocket routes resolve
-the Docker container id to a name before the lease lookup). Claim
-(`registryRoutes`), the connect handler, and the pipeline WebSocket must
-all authorize through the single shared guard
-`webSocketAuthorization.fbAuthorizeContainerSession` /
-`fiContainerSessionRejectionCode` — never an inlined container-id
-membership check. Never reintroduce `setAllowedContainers` (the old
+the Docker container id to a name before the lease lookup). Every gate
+authorizes through a shared authority, never an inlined container-id
+membership check: claim (`registryRoutes`, committing through
+`sessionLifecycle.ftClaimWithCardinality` and so
+`containerOwnership.ftClaim`) and the connect handler (`workflowRoutes`,
+reading the `X-Vaibify-Lease` header into
+`containerOwnership.fbBrowserSessionOwnsLease`) consult
+`containerOwnership`, and the pipeline and terminal WebSockets consult
+`webSocketAuthorization.fiContainerSessionRejectionCode`, which checks
+the lease through the same `containerOwnership` predicate. (Its
+boolean wrapper `fbAuthorizeContainerSession` has no production
+caller.) Never reintroduce `setAllowedContainers` (the old
 append-only, process-global allow set that leaked authorization for the
 whole process lifetime) or treat the shared session token as the browser
 *principal* — the shared token is only the trust/CSRF boundary, not the
@@ -126,8 +132,12 @@ remainder is deliberate and named, never a silent claim of coverage.
 
 **A typed read is exempt only inside its adapter.** Reading a file
 means running a program in the container, so guarding the exec would
-refuse reads too. Exactly one private method,
-`DockerConnection._ftRunTypedRead`, grants the exemption. It takes
+refuse reads too. Exactly one private method per connection grants the
+exemption: `DockerConnection._ftRunTypedRead` in container mode, and
+its host-mode analogue `HostConnection._ftRunTypedReadProgram`
+(`vaibify/host/hostConnection.py`), which skips only the command
+admission and is still gated and journaled through
+`_ftLaunchGatedAndStream`. Each takes
 an operation NAME from a fixed table, plus a path **or a flat sequence
 of paths**, and builds the command itself; it never accepts one. The
 sequence form was added on 2026-08-05 for the batched file-existence
@@ -137,8 +147,12 @@ what it may be *told to run* — `repr()` of a validated list of strings
 is as inert as `repr()` of one. An adapter that forwarded a caller's string would
 turn the read carve-out into a general bypass —
 `tests/testMutationBoundary.py` fails the build on one that does, and
-on a second grant point anywhere, pinning the name through
-`S_EXEMPTION_METHOD`.
+on a second grant point, pinning the name through
+`S_EXEMPTION_METHOD`. Know what it can see: it finds grant points by
+the STRING `ftokenEnterAuditedRead` and checks call sites in
+`dockerConnection.py` only, so the host grant point, which grants by
+omitting the admission assertion rather than by entering that token,
+is outside it.
 
 (This paragraph named `_texecRunAuditedRead` until 2026-08-04, a symbol
 that exists nowhere in the repository. The enforcement was always
@@ -156,14 +170,15 @@ tools/generateMutationInventory.py --write`; drift-check with
   `exec*` / `spawn*` / `popen`, `asyncio.create_subprocess_*`,
   `pty.spawn`, multiprocessing and process pools, Docker client
   constructors and low-level `APIClient` methods, direct Unix-socket
-  access, process signalling (`os.kill` / `os.killpg`), and reflection
+  access, process signaling (`os.kill` / `os.killpg`), and reflection
   (`eval`, `exec`, `sys.modules[...]`, `importlib`, `__import__`,
   dynamic `getattr`). **This is the completeness boundary and it fails
   closed.** Importing `os` is not acquisition; `from os import system`
-  is — 33 GUI modules import `os`, so a module-level reading would be
-  useless.
+  is — most GUI modules import `os` (`grep -rlE --include='*.py'
+  '^import os$' vaibify/gui | wc -l` counts them), so a module-level
+  reading would be useless.
 
-  Signalling joined the vocabulary on 2026-08-10 and is worth a
+  Signaling joined the vocabulary on 2026-08-10 and is worth a
   sentence, because it is the one member that is not command
   authority: a signal cannot make a process do anything new, only stop
   one. It went unrecorded for as long as every signal vaibify sent went
@@ -179,7 +194,7 @@ tools/generateMutationInventory.py --write`; drift-check with
 - **Use sites** — decoded calls and commands. **Metadata,
   best-effort.** A launch whose argv the scan cannot read becomes a row
   with an UNKNOWN command, never a site that disappears.
-- **Dispositions** — the reviewed judgement per module or named
+- **Dispositions** — the reviewed judgment per module or named
   function: forbidden, guarded, or separately authorized.
 
 Completeness rests on the ACQUISITION, not on decoding the command,
@@ -193,8 +208,8 @@ The drift check fails on an added, removed, duplicated, edited, or
 hand-altered row, on acquisition drift, and on blind-spot drift. Three
 ratchets may only fall: `I_UNCLASSIFIED_ROW_BUDGET`,
 `I_UNDISPOSED_ACQUISITION_BUDGET`, and `DICT_UNRESOLVED_BUDGET`. **The
-scanner never decides reachability** — a human judgement recorded
-against a fingerprint is honest about being a judgement, where a
+scanner never decides reachability** — a human judgment recorded
+against a fingerprint is honest about being a judgment, where a
 scanner's reachability verdict would pretend to be a proof. And a
 fingerprint is an identity, never a warrant: for an opaque site the
 expression is `subprocess.run(listCommand)` both before and after the
@@ -219,17 +234,17 @@ stayed green, and the next `--write` reformatted ten thousand lines.
 **When a ledger conflicts on merge: resolve per record, then
 regenerate.** Each side of a conflict is now a set of whole records,
 one per line, so choosing between them is a reading task rather than a
-JSON-repair task. Keep every record either side recorded a judgement
+JSON-repair task. Keep every record either side recorded a judgment
 on, then rebuild:
 
 ```bash
 $EDITOR tests/mutationInventory.json          # keep BOTH sides' records
 python tools/generateMutationInventory.py --write
-python tools/generateMutationInventory.py --check   # must print {}
+python tools/generateMutationInventory.py --check   # every list empty, exit 0
 ```
 
 **Do not resolve by taking one side wholesale.** Regeneration carries a
-reviewer's judgement forward from *the file on disk* — verified by
+reviewer's judgment forward from *the file on disk* — verified by
 stamping a disposition, regenerating, and finding it intact — so
 `git checkout --theirs` silently discards every disposition your branch
 recorded, and the drift check cannot tell you, because a row reverted
@@ -238,12 +253,14 @@ to `UNCLASSIFIED` is a legal row. The ratchets in
 and only if the count crosses a budget.
 
 Regeneration then normalizes ordering and drops anything the scan no
-longer finds, so `--check` printing `{}` means the rebuilt file agrees
-with the source. Read its `removed` keys before assuming a clean
+longer finds, so `--check` printing a JSON object whose every list is
+empty (`listAdded`, `listRemoved`, and every other drift key), and
+exiting 0, means the rebuilt file agrees with the source. Read
+`listRemoved` before assuming a clean
 rebuild: a row your branch deleted takes its recorded review with it. A
 row whose enclosing scope moved keeps its review but gets a new
 `sScopeFingerprint` — that is the mechanism asking you to re-read the
-judgement, not to re-stamp it.
+judgment, not to re-stamp it.
 
 **A route declares its carrier mode, and the declaration authorizes
 NOTHING.** `routeScope.ffnDeclareCarrierMode` stamps one or more of

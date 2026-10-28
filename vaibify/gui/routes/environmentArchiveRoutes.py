@@ -539,6 +539,10 @@ async def _fnRunDepositWorker(
     background task, and the researcher would see an unexplained
     deposit failure.
     """
+    logger.info(
+        "Environment-archive deposit started: container=%s site=%r",
+        sContainerId, dictDestination.get("sZenodoService", ""),
+    )
     try:
         dictRecord = await asyncio.to_thread(
             _fdictDepositSynchronously,
@@ -549,6 +553,7 @@ async def _fnRunDepositWorker(
             _fdictStampArchiveRecord, filesRepo, dictWorkflow, dictRecord,
         )
         archiveProgress.fnSettleDeposit(sContainerId)
+        _fnLogArchiveSucceeded("deposit", sContainerId, dictRecord)
     except archiveProgress.DepositStoppedError:
         # A decision, not a failure: nothing was published, and the
         # upload's own handler has already discarded the draft.
@@ -565,6 +570,19 @@ async def _fnRunDepositWorker(
             sContainerId, fsRepoRootOf(filesRepo),
             _fsDescribeDepositFailure(errorDeposit),
         )
+
+
+def _fnLogArchiveSucceeded(sOperation, sContainerId, dictRecord):
+    """Log a settled deposit or promotion by its public DOI and site.
+
+    Failures were already logged; a success left no trace on the host,
+    so nothing there said which version a project's image went to.
+    """
+    logger.info(
+        "Environment-archive %s succeeded: container=%s doi=%r site=%r",
+        sOperation, sContainerId, (dictRecord or {}).get("sVersionDoi", ""),
+        (dictRecord or {}).get("sZenodoService", ""),
+    )
 
 
 def _fsDescribeDepositFailure(errorDeposit):
@@ -860,6 +878,9 @@ async def _fnRunPromotionWorker(
 ):
     """Re-deposit on production, then stamp the record and settle."""
     from ...reproducibility import syncBookkeeping
+    logger.info(
+        "Environment-archive promotion started: container=%s", sContainerId,
+    )
     try:
         from ...reproducibility import archivePromotion
         dictRecord, sPromotionId = await asyncio.to_thread(
@@ -886,6 +907,7 @@ async def _fnRunPromotionWorker(
                 filesRepo, sSidecarKey, dictWorkflow,
             )
         archiveProgress.fnSettleDeposit(sContainerId)
+        _fnLogArchiveSucceeded("promotion", sContainerId, dictRecord)
     except Exception as errorPromotion:  # noqa: BLE001 — reported
         # The mirror is refreshed on the failure path too: the whole
         # point of the record is that it survives an interruption, and

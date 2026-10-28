@@ -431,7 +431,7 @@ reordered by dragging. **+** above the step list adds a step.
 
 **How a run proceeds.** Steps run one at a time, in order. Within a
 step, vaibify runs the data analysis commands (skipped for a plot-only
-step), then the step's tests, then the plot commands, each from the
+step), then the plot commands, then the step's tests, each from the
 step's directory. A failed step does not stop the steps after it, but
 a step whose referenced input file is missing is skipped, with the
 missing path named in the log.

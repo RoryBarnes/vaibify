@@ -171,6 +171,9 @@ skill with its own name.
   Level 3, with the known audit traps.
 - **diagnose-failed-run** — triage a run that died or hung with the
   read-only `get-pipeline-state` and `get-host-log-tail` actions.
+- **graceful-exits** — find places where a project's scripts could
+  fail silently or unclearly, with a shipped checker, and fix them one
+  at a time with the researcher reviewing each change.
 - **read-manuscript** — pull the project's Overleaf manuscript (the
   `pull-manuscript` action) into a git-ignored copy and read it, rather
   than answering from memory.
@@ -182,6 +185,10 @@ skill with its own name.
 - **vaibify-doc-map** — point the agent at the right section of
   vaibify's documentation, staged in the container under
   `/usr/share/vaibify/docs`, instead of a whole file.
+- **dashboard-map** — every dashboard menu, section, row and button by
+  its exact label, with the path to each, so the agent sends the
+  researcher to controls that exist and walks them through one step at
+  a time.
 
 ## Developing vaibify with agents
 

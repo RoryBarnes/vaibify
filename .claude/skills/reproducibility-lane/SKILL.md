@@ -7,8 +7,19 @@ description: Contracts for vaibify's reproducibility machinery: PROOF levels and
 
 These are the contracts the attestation machinery rests on. Every one
 of them was established by a defect that reached a researcher, and
-every one has a kill-confirmed test named beside it. Read the sections
-that cover the lane you are touching before you edit it.
+most name the test that guards them. A test is kill-confirmed only
+when `tests/falsificationRegistry.py` carries its node id (grep it
+there before calling it so), and several named here have no entry:
+the live legs `tests/testRerunVerifiesWhatItRan.py`,
+`tests/testDisposableContainerLive.py` and
+`tests/testReproductionLive.py`; `testBothLanesGradeOneTreeAlike`,
+`testReproductionSourceNamesNoForgeHostname`,
+`test_no_reader_of_the_record_fetches_a_url_on_trust` and
+`testFnWriteFileDefaultsToContainerUserOwnership`; and the files
+`tests/testRegistryIsNotAnL3Requirement.py`,
+`tests/testDaemonCapacity.py` and
+`tests/browser/testVerifyWarnsBeforeCopyingTheProject.py`. Read the
+sections that cover the lane you are touching before you edit it.
 
 The repository-wide rules in `AGENTS.md` still apply; this file is
 the detail for this subsystem.
@@ -42,11 +53,48 @@ not to undo:
   the current attestation, which stays on file as history
   (`testChangingTheAnswerRetiresTheAttestationAndKeepsIt`).
 
+**The answer is ordered (2026-10-27).** `levelOrdering` has edges from
+the Project block's `determinism-repeatability` row to the manifest,
+the rebuild attestation and both published envelopes, judged by the
+gate's own unanswered list, as the poll's row is. Each reason is
+CONDITIONAL, because an unanswered project already runs, records and
+verifies under the speed settings: answering "Prioritize speed"
+afterwards undoes nothing, so no reason may claim an undo for it
+(`test_an_unanswered_determinism_question_is_named_before_the_envelope`).
+The arrow is an endgame device, so the costliest order of all --
+answering before the run that makes the outputs -- is said by the
+in-container proof-ladder skill, not by the arrow.
+
+**Only the GitHub sync push records where a push landed (2026-10-27).**
+The GitHub verify is bound to that host-side record, and the sync push
+writes it only after checking that the researcher's token owns the
+remote. The Repos panel runs no such check, and a push's real
+destination can differ from the `origin` url the container wrote, so
+it deliberately records nothing: a binding recorded there would let a
+container agent steer the agent-safe verify, and the researcher's
+token, at a repository of its choosing
+(`testARepoPanelPushOfTheProjectRepoRecordsNoGithubBinding`). The
+verify's binding check is asserted at the shared call site,
+`fdictVerifyRemoteService`, with the fetch rigged to fail if reached
+(`testAnUnboundRemoteIsRefusedBeforeAnyFetchAndTheRefusalIsRelayed`).
+
+**Two level readings that must not be widened back (2026-10-27).**
+The step save and the test-execution routes detect a crossing of
+Level 1, so they read `fiComputeProofLevelUpToOne` (the marker rule
+plus the Level 1 gate), never `fiProofLevel`: the full ladder hashed
+every published file through the container on each click of a
+researcher's badge (`testASignOffNeverEvaluatesTheLevelTwoOrThreeGate`,
+and `testTheLevelOneReadingEqualsTheLadderCappedAtOne` pins the two
+equal). And `fdictLevel2Gaps["bAtLeastLevel2"]` is the gate's own
+verdict, with keys for the basename-collision and Overleaf conjuncts,
+so every false verdict has a false key beside it
+(`testABasenameCollisionReadsBelowLevelTwoInTheGapsDict`).
+
 **`reproduce.sh` carries the SAME determinism guarantees the runner
 does, and it reads the epoch from the ENVELOPE.** The runner prefixes
 every step with `SOURCE_DATE_EPOCH` and a matplotlib `svg.hashsalt`
 derived from it; the generated script exported neither until
-2026-09-05, so the artefact vaibify hands the world rendered every PDF,
+2026-09-05, so the artifact vaibify hands the world rendered every PDF,
 EPS, PS and SVG with the reproducer's wall clock and a fresh per-process
 salt, and its own closing `sha256sum -c MANIFEST.sha256` could not pass
 for any workflow with a vector figure. The shadow rerun was
@@ -93,7 +141,9 @@ sufficient — it passes against a script exporting the wrong value.
 **Since 2026-10-17 `reproduce.sh` runs the same PROCEDURE the shadow
 lane does, and ends in the same assessor.** It no longer closes with
 `sha256sum -c`. Inside the container it runs, in this order:
-the assessor's `prepare` (checks every published input, sets the
+`pip install --require-hashes -r requirements.lock` (a lock that does
+not install is "Could not run", exit 4), the assessor's `prepare`
+(checks every published input, sets the
 published figures aside), `clear` (deletes the declared outputs through
 `rerunPreparation`, after listing them and how to restore them, because
 it regenerates in the reader's own directory), `capabilities`, then
@@ -101,8 +151,18 @@ the case-checked unsets of the floor keys Stage A dropped, `probe`, then
 each step as the runner runs it — data, plot, then each test group,
 every command under its invocation ID with its JUnit report, and the
 next step regardless of a failure in this one — and finally
-`assess --machine`, whose exit code becomes the script's. Five things
-not to undo:
+`assess`, whose exit code becomes the script's once the assessor has
+written its report (no report is "Could not run"). The shadow
+lane passes `--machine`, which adds the report as one machine-readable
+line; the script does not. The lock install is why the shadow, which
+stays HERMETIC and installs nothing (the 2026-09-01 ruling), refuses
+before any step when the pinned image does not satisfy
+`requirements.lock`
+(`shadowRerun._fdictRefusalIfImageLacksLockedPackages`,
+`S_DIVERGENCE_LOCK_UNSATISFIED`): the two procedures converge only
+where that install is a no-op. The diff is
+`lockSatisfaction.flistDescribeLockMismatch`, the one derivation the
+row and the pre-flight also read. Five things not to undo:
 
 - **The execution profile is REPLAYED from the envelope's
   `dictExecutionProfile`**, never looked up from the answer, and the
@@ -153,11 +213,28 @@ author can take that path. The image's only rung is the environment
 archive (`image-not-archived`, below), because Zenodo is the one of
 these with a preservation commitment. The shadow lane still translates
 the SDK's bare `404 ... No such image` into a refusal naming which kind
-of reference it is and what to do — recognised by the SDK's exception
+of reference it is and what to do — recognized by the SDK's exception
 CLASS, never by matching "404" in a message, because an unreachable
 daemon carries 404s from other causes — and the remedy it names for a
 vanished local-only image is rebuild-or-load-the-deposit, never
 publish. `tests/testRegistryIsNotAnL3Requirement.py`.
+
+**The workflow-scope Level 3 criteria are the keys of
+`levelGates._fdictL3WorkflowChecks`; read them there, not from a list
+here.** Several ask about PUBLISHED copies rather than local files: the
+envelope must match the GitHub mirror (`envelope-not-in-github-mirror`)
+AND the Zenodo archive (`envelope-not-in-zenodo-archive`, every
+declared record consulted); the archive must carry a rebuild
+attestation that truthfully describes the archived manifest
+(`attestation-not-in-zenodo-archive`, a semantic check, never byte
+equality with the local file); no archive may be KNOWN to be a Zenodo
+sandbox deposit (`an-archive-is-a-sandbox-deposit`, where unknown
+passes); and `reproduce.sh` with its assessor must be exactly what
+vaibify would render now (`reproduce-script-stale`, apart from
+`reproduce-script-missing`, which owns absence). Because a deposit or a
+regeneration writes files these and the Level 2 criteria compare,
+`tests/testAdvancingALevelNeverLowersOne.py` guards that an action
+offered to reach one rung never moves the bytes another rung compares.
 
 **"Reproduce a published project" is an input adapter to the shadow
 lane, and its honest boundary is the source table.** `vaibify
@@ -190,7 +267,7 @@ submodule. `--from` never enters the tier sequence and never runs
 tier 2's host `pip install`. A report reads source facts from
 `fdictDescribeStagedSource` ONLY — kind, commit, remote with userinfo
 stripped, workflow name, never a host path — because a reproduction
-report is the reproducer's own artefact, never an attestation, never
+report is the reproducer's own artifact, never an attestation, never
 written into a repository, and never read by `levelGates`. And the
 platform is THREE facts kept apart by name (the envelope's required
 platform, the obtained image's platform, the daemon's architecture);
@@ -230,10 +307,12 @@ whole repository — plus a concurrency cap, and dismissing the
 confirmation card DELETES the snapshot (`fnDiscardJob`, the
 `/discard` route) rather than merely releasing it. Before that, stage
 and close left a repository per attempt until the hub restarted. A
-RUNNING job is never discarded out from under its shadow. The three
-routes are catalog entries with `bAgentSafe: False` AND their own
-agent-lane rejection, because a host-filesystem capability is not
-something the catalog can express. The run is NOT in the durable-task
+RUNNING job is never discarded out from under its shadow. The
+routes — stage, run, `/retry` and `/discard` — are catalog entries
+(the `reproduction` category of `LIST_AGENT_ACTIONS`) with
+`bAgentSafe: False` AND their own agent-lane rejection, because a
+host-filesystem capability is not something the catalog can express.
+The run is NOT in the durable-task
 registry: that registry is keyed on a container with an owner lane
 tuple, and a reproduction has neither — its shadow is created inside
 the worker and destroyed at the end. What "durable" was wanted FOR is
@@ -256,7 +335,7 @@ http-only spelling left every ssh remote unredacted (it also captures
 the scheme and writes it back, so redacting does not silently rename
 the transport). A cap whose count and insert are two critical sections
 is not a cap; twelve registrations released into the gap all pass, and
-the guard for it is STRUCTURAL — a racy test serialises often enough to
+the guard for it is STRUCTURAL — a racy test serializes often enough to
 pass against the bug. `fbClaimJobForRun` moves the job into a live
 phase in the SAME acquisition that consumes it, because a job claimed
 but still reading `staged` is one a Discard deletes the snapshot out
@@ -272,9 +351,18 @@ has returned and the container is already destroyed.
 **The image is obtained through the chain `reproduce.sh` runs, and
 the two lanes are pinned to agree.** `imageAcquisition` walks registry
 pull, then the archived deposit (hash from the ENVELOPE, checked
-before any load; tarball removed on every exit path), then a copy on
+before any load), then a copy on
 this daemon (author-only, and it says so) — the order is a ruling and
-is never reordered or extended. The three links that touch the daemon
+is never reordered or extended. The download RESUMES: a verified
+tarball is removed once the daemon has loaded it, bytes a failure left
+behind are KEPT when another attempt can continue from them (a spent
+retry budget, a full disk, a daemon that would not load), and deleted
+only when nothing could (the deposit changed, the researcher
+canceled); every refusal's `dictFailure` says which. A verified load
+is noted under `~/.vaibify/depositLoads`, so a daemon still holding
+that image ID is served without a second download. `reproduce.sh`
+keeps nothing: it removes its temporary tarball whatever the outcome.
+The three links that touch the daemon
 are SDK calls in `disposableContainer` (`fdictPullImage`,
 `fsLoadImageFromStream`, `fdictInspectImage`,
 `fsReadDaemonArchitecture`), the SDK authority for disposable work;
@@ -296,7 +384,7 @@ second seed: image and platform from the acquisition's answer (a
 deposit-loaded image answers to its ID alone), platform requested on
 the create, the loaded-from-archive marker written under the shadow's
 own admission before any step. `reproductionReport` is the
-reproducer's artefact under `~/.vaibify/reproductions/reports/`, apart
+reproducer's artifact under `~/.vaibify/reproductions/reports/`, apart
 from staging, never read by `levelGates`; its verdicts are
 "reproduced", "reproduced under emulation", "diverged", "no verdict",
 never "attested". `tests/testReproductionLive.py` drives the whole
@@ -308,10 +396,12 @@ reads need a `python3` in the image.
 
 **The dashboard's reproduction is a one-shot JOB with no project
 container, and its record is its own.** `POST /api/reproductions/stage`
-and `POST /api/reproductions/{sJobId}/run` (`reproductionRoutes`) are
-browser-hub control-plane routes, excluded from the agent catalog AND
-rejecting the agent lane by name, declared `separate-authority`
-because the only container they touch is the shadow `shadowRerun`
+and `POST /api/reproductions/{sJobId}/run` (`reproductionRoutes`),
+like `/retry` and `/discard`, are browser-hub control-plane routes,
+registered in the agent catalog with `bAgentSafe: False` (none is
+excluded) AND rejecting the agent lane by name, declared
+`separate-authority` because the only container they touch is the
+shadow `shadowRerun`
 creates, admits and destroys itself — `tests/testCarrierMigratedRoutes.py`
 pins that they reach no project primitive. The job record
 (`reproductionProgress`) is keyed by job, NOT by container: it holds
@@ -345,7 +435,11 @@ depositing opens L3 with nothing to undo. The one sound direction is
 the other one — `fbImageArchiveQuestionSettled` reads the deposit
 record, because having deposited is having decided, and the deposit
 finishes in a durable task holding no commit lane to persist an answer
-through. Five things not to "simplify", each already pinned by a
+through. It reads the LINEAGE note too (`fdictArchiveLineageOf`,
+2026-09-28): a changed image drops the deposit record but keeps a note
+of the record it was archived under, and a rebuild does not unanswer a
+researcher who deposited; whether the NEW image is archived stays
+Level 3's question. Five things not to "simplify", each already pinned by a
 kill-confirmed test in `tests/testEnvironmentArchive.py`:
 
 - **The version DOI, never the concept DOI.** Zenodo's concept DOI
@@ -373,8 +467,9 @@ kill-confirmed test in `tests/testEnvironmentArchive.py`:
   `reproduce.sh`'s fallback writes
   `.vaibify/image_loaded_from_archive` — a file beside the envelope,
   never a field inside it, because the envelope is pinned in
-  `MANIFEST.sha256` and that script ends by verifying it — and the
-  check reports vacuous rather than passed.
+  `MANIFEST.sha256` and the script's assessor checks every pinned input
+  unchanged (until 2026-10-17 the script ended in `sha256sum -c`) — and
+  the check reports vacuous rather than passed.
 
 Two hashes ride in the record and neither substitutes for the other:
 `sTarballSha256` binds the bytes UPLOADED (what a downloader verifies)
@@ -429,7 +524,7 @@ as derived, never as the pin; the origin record
 (`config/imageOrigins`) is written LAST and the launch guard in
 `containerManager.flistBuildRunArgs` refuses a start without a good
 one — a STALE record (tag moved, or running image neither the base
-nor labelled derived) reads as absent, so a `docker build` outside
+nor labeled derived) reads as absent, so a `docker build` outside
 vaibify cannot inherit the archive's provenance — and requests the
 recorded platform, refusing a switched daemon's silent emulation; the
 record ends only on switch-to-building (one locked mutation with the
@@ -487,6 +582,19 @@ agents. Currency reads a pin on the environment below the live image
 as `sRelation: "derived"`, the note obtained images already use.
 `tests/testAgentLayerSeparation.py`,
 `tests/testEnvironmentSnapshot.py`, `tests/testDockerfileProvenance.py`.
+
+The pin is agent-FREE, not agent-guidance-free, and that is a known,
+DEFERRED design question with its own plan. The in-container agent
+guidance — the skills, the staged docs, `entrypoint.sh` with the
+instructions it generates, and `vaibify-do` — is `COPY`'d by the base
+`vaibify/containerImage/Dockerfile`, which `imageBuilder.fnBuildImage`
+builds before any overlay, so it lies inside the agent-free stage
+`environmentSnapshot.fsResolveEnvironmentImageId` names. A guidance
+edit therefore changes the environment image ID the envelope pins once
+the image is rebuilt, and the recipe fingerprint, which hashes only the
+Dockerfile texts, does not move with it. Do not answer it here by
+moving the guidance above the pin: that changes every project's pin
+once, which is the deferred plan's decision to make.
 
 
 ## A human step's outputs are GIVEN, not reproduced
@@ -609,24 +717,32 @@ each is a way to turn a verdict back into a claim nobody earned:
   (`testAnOrdinaryRunCarriesNoEvidenceExportAndNoInvocationIdentity`).
 
 **A verification produces a FILE, and the per-file outcomes are the
-authority (2026-09-11).** The rerun keeps every observed hash in
-`listFileOutcomes` (one `{sPath, sExpected, sObserved, sStatus}` per
-FROZEN manifest entry, in the manifest's order) and renders them into
+authority for it (2026-09-11).** The rerun keeps every observed hash in
+`listFileOutcomes` (one `{sPath, sExpected, sObserved, sStatus, sRole}`
+per FROZEN manifest entry, in the manifest's order; the assessed rerun
+keeps `sStatus` and attaches each entry's graded `sOutcome` and
+`sOutcomeReason` from the assessor's report) and renders them into
 `REPRODUCED.sha256` at the repository root in `MANIFEST.sha256`'s own
 format — ONE header line, same paths, same order, a `# MISSING  <path>`
 comment at the same position for a file the shadow did not produce —
 so a person compares the two with their own eyes and `diff` works.
-Every count, path list and the rendered file derive from that list;
-nothing re-hashes after the shadow is destroyed or re-reads a manifest
-the rerun may have mutated. Three things not to undo: the write ORDER
-(timestamped copy under `.vaibify/reproducedManifests/`, then the root
-file, THEN the record naming it, shared by both lanes in
+Every count, path list and the rendered file derive from that list,
+while the pass or fail VERDICT is the assessor's report
+(`dictAssessmentReport`, its `iExitCode` and `sVerdict`), never
+re-derived from the hash statuses; nothing re-hashes after the shadow
+is destroyed or re-reads a manifest the rerun may have mutated. Three
+things not to undo: the write ORDER (timestamped copy under
+`.vaibify/reproducedManifests/`, then the root file, THEN the record
+naming it — a foreign clone's reproduction writes and names the
+timestamped copy alone and never the root file, which in that clone is
+the author's committed one — shared by both lanes in
 `reproductionRecord.flistWriteVerificationOutcome`, so a record never
 points at a manifest that was not written); the manifest NEVER pins
 `REPRODUCED.sha256`, the history directory or `.vaibify/reproductions/`
 (`fbIsReproductionRecordPath`; a reproduced manifest inside the manifest
-grades itself); and the viewers' line colours come from the record's
-verdict, never from JavaScript comparing hashes. A clone whose
+grades itself); and the viewers' line colors come from the record's
+per-file `sOutcome` (its `sStatus` in a record written before the
+assessment), never from JavaScript comparing hashes. A clone whose
 attestation was last COMMITTED by another identity (tracked at HEAD,
 `%ce` differs from the receiving repository's `user.email`; an
 unconfigured identity is foreign) records a REPRODUCTION under
@@ -681,7 +797,7 @@ both lanes persist it as `dictRerunFailure`. Three properties are
 load-bearing: the FIRST failure (later steps fail because the first
 did), a BOUNDED tail (this record is committed and published to Zenodo
 — an unbounded log would put a researcher's whole console into a public
-artefact), and unconditional FORWARDING (the CLI prints the same
+artifact), and unconditional FORWARDING (the CLI prints the same
 stream; an observer that swallowed events would break the caller it was
 added beside).
 
@@ -848,7 +964,7 @@ Linux they agree and the bug is invisible; on macOS the daemon is a VM
 with its own allocation (measured: 16 GB host over an 8.3 GB daemon), so
 a container sized from host RAM is over-provisioned and the kill arrives
 mid-workflow. `daemonCapacity` keeps the two figures apart by name —
-`iHostMemoryBytes` bounds what the hub materialises in its own address
+`iHostMemoryBytes` bounds what the hub materializes in its own address
 space, `iDaemonMemoryBytes` bounds the container — and
 `tests/testDaemonCapacity.py` drives them 16x apart so a test cannot
 pass while reading the wrong one.

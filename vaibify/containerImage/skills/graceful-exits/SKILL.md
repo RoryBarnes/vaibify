@@ -11,7 +11,10 @@ Run the checker first; do not guess where failures hide:
 
 It finds KNOWN patterns. It cannot show that a script exits gracefully
 on every failure, and a language it reports as NOT CHECKED was not
-checked. Say both when you report.
+checked. Say both when you report. Without `shellcheck`, which the
+base image does not install, every shell file comes back PARTLY
+CHECKED (only strict mode was checked), and that does not change the
+exit status: 0 means only that nothing was found in what was checked.
 
 For each finding, one at a time:
 
