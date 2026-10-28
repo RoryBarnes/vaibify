@@ -37324,4 +37324,42 @@ LIST_FALSIFICATIONS = [
             '        or dictIncident.get("sMessage", ""))\n'
         ),
     ),
+    # --- 2026-10-28: the PROOF level color has one home ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLevelColorHasOneHome.py::'
+            'testEveryLevelAccentFollowsTheLevelAndNothingElseDoes'
+        ),
+        # The toolbar label goes back to the fixed Level 1 purple.
+        source='vaibify/gui/static/styleMain.css',
+        old='.toolbar-value {\n',
+        new=(
+            'body.proof-level-1 .toolbar-label,\n'
+            'body.proof-level-2 .toolbar-label,\n'
+            'body.proof-level-3 .toolbar-label {\n'
+            '    color: #b39ddb;\n'
+            '}\n'
+            '.toolbar-value {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLevelMarksRenderTheLevelsHue.py::'
+            'testFilteredMarksAndTheCursorRenderTheLevelsHue'
+        ),
+        # The checkmark keeps the fixed Level 1 purple filter.
+        source='vaibify/gui/static/styleMain.css',
+        old=(
+            '.vaibify-checkmark img {\n'
+            '    width: 18px;\n'
+            '    height: 18px;\n'
+        ),
+        new=(
+            '.vaibify-checkmark img {\n'
+            '    width: 18px;\n'
+            '    height: 18px;\n'
+            '    filter: sepia(1) hue-rotate(220deg) saturate(2)'
+            ' brightness(0.85);\n'
+        ),
+    ),
 ]

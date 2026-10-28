@@ -74,7 +74,7 @@ var VaibifyMonitor = (function () {
         return (
             '<div style="display: flex; justify-content: space-between; ' +
             'align-items: center; margin-bottom: 12px;">' +
-            '<span style="font-weight: 600; color: #13aed5; ' +
+            '<span style="font-weight: 600; color: var(--highlight-color); ' +
             'font-size: 13px; letter-spacing: 0.5px;">MONITOR</span>' +
             '<button id="btnMonitorClose" style="border: none; ' +
             'background: transparent; color: #8080a0; cursor: pointer; ' +

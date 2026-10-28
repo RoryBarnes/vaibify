@@ -1883,7 +1883,7 @@ var VaibifyWorkflowManager = (function () {
                 var sActive =
                     sName === _dictWizardData.sTemplateName
                         ? " style=\"border-color:" +
-                          "var(--color-pale-blue);\""
+                          "var(--highlight-color);\""
                         : "";
                 return '<div class="add-choice-card" ' +
                     'data-template="' +
@@ -1913,7 +1913,7 @@ var VaibifyWorkflowManager = (function () {
             function (el) {
                 el.style.borderColor =
                     el === elSelected
-                        ? "var(--color-pale-blue)" : "";
+                        ? "var(--highlight-color)" : "";
             }
         );
     }
@@ -1933,7 +1933,7 @@ var VaibifyWorkflowManager = (function () {
                 var sActive =
                     dictChoice.sKey === _dictWizardData.sConvertDestination
                         ? " style=\"border-color:" +
-                          "var(--color-pale-blue);\""
+                          "var(--highlight-color);\""
                         : "";
                 return '<div class="add-choice-card" ' +
                     'data-destination="' +

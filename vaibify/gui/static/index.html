@@ -64,7 +64,7 @@
      reports the job live. -->
 <div class="modal-overlay" id="modalReproducePublished" style="display: none;">
     <div class="modal modal-medium">
-        <h2 style="color: var(--color-pale-blue);">Reproduce a published project</h2>
+        <h2>Reproduce a published project</h2>
         <div id="reproduceStageSource">
             <p class="reproduce-lead">
                 A clone URL (<code>https://</code>, <code>ssh://</code> or
@@ -151,7 +151,7 @@
 <!-- Add Container Modal (Directory Browser) -->
 <div class="modal-overlay" id="modalAddContainer" style="display: none;">
     <div class="modal modal-directory-browser">
-        <h2 style="color: var(--color-pale-blue);">Select Directory</h2>
+        <h2>Select Directory</h2>
         <p id="directoryBrowserSubtitle"
            style="font-size: 13px; color: var(--text-secondary);
                   margin-bottom: 12px;">
@@ -191,7 +191,7 @@
          title was clipped at the modal's right edge. -->
     <div class="modal modal-medium">
         <div class="wizard-title-row">
-            <h2 style="color: var(--color-pale-blue);"
+            <h2
                 id="addChoiceTitle">Add Environment</h2>
             <button type="button" id="btnAddChoiceHelp"
                     class="wizard-help-button"
@@ -264,7 +264,7 @@
 <div class="modal-overlay" id="modalCreateWizard" style="display: none;">
     <div class="modal">
         <div class="wizard-title-row">
-            <h2 id="wizardStepTitle" style="color: var(--color-pale-blue);">
+            <h2 id="wizardStepTitle">
                 Create Project</h2>
             <button type="button" id="btnWizardHelp" class="wizard-help-button"
                     title="What does this step do?"
@@ -292,7 +292,7 @@
 <!-- Build Progress Overlay -->
 <div class="modal-overlay" id="modalBuildProgress" style="display: none;">
     <div class="modal">
-        <h2 style="color: var(--color-pale-blue);">Building Container</h2>
+        <h2>Building Container</h2>
         <p id="buildProgressMessage" style="font-size: 13px;
            color: var(--text-secondary); text-align: center;">
             Building image, please wait...
@@ -320,7 +320,7 @@
      Rendered by scriptRuntimeSetup.js from GET /api/runtime/setup. -->
 <div class="modal-overlay" id="modalRuntimeSetup" style="display: none;">
     <div class="modal runtime-setup-modal">
-        <h2 style="color: var(--color-pale-blue);">Set up Docker</h2>
+        <h2>Set up Docker</h2>
         <p class="runtime-setup-message"></p>
         <div class="runtime-setup-body"></div>
         <pre class="runtime-setup-tail" style="display: none;"></pre>
@@ -333,7 +333,7 @@
      it stays until dismissed, never a toast. -->
 <div class="modal-overlay" id="modalAcquisition" style="display: none;">
     <div class="modal">
-        <h2 class="acquisition-title" style="color: var(--color-pale-blue);"></h2>
+        <h2 class="acquisition-title"></h2>
         <div class="acquisition-body"></div>
         <div class="acquisition-buttons" style="text-align: right;
                     margin-top: 12px; display: flex; gap: 8px;
@@ -369,7 +369,7 @@
 <!-- Container Initializing Overlay -->
 <div class="modal-overlay" id="modalInitializing" style="display: none;">
     <div class="modal modal-small">
-        <h2 style="color: var(--color-pale-blue);">Initializing Container</h2>
+        <h2>Initializing Container</h2>
         <p style="font-size: 13px; color: var(--text-secondary);
            text-align: center;">
             Cloning repositories and installing packages...
@@ -1036,7 +1036,7 @@
      role="dialog" aria-modal="true"
      aria-labelledby="modalConnectionTitle">
     <div class="modal modal-small">
-        <h2 id="modalConnectionTitle" style="color: var(--color-pale-blue);">
+        <h2 id="modalConnectionTitle">
             Setup Connection</h2>
         <div class="form-group" id="groupSetupProjectId"
              style="display: none;">
@@ -1092,8 +1092,7 @@
      role="dialog" aria-modal="true"
      aria-labelledby="modalGitIdentityTitle">
     <div class="modal modal-small">
-        <h2 id="modalGitIdentityTitle"
-            style="color: var(--color-pale-blue);">
+        <h2 id="modalGitIdentityTitle">
             Set Git Identity</h2>
         <p class="muted-text">
             This container has no git author configured, so commits
@@ -1128,8 +1127,7 @@
      role="dialog" aria-modal="true"
      aria-labelledby="modalArxivConfigTitle">
     <div class="modal modal-small">
-        <h2 id="modalArxivConfigTitle"
-            style="color: var(--color-pale-blue);">
+        <h2 id="modalArxivConfigTitle">
             Configure arXiv</h2>
         <p class="muted-text">
             Vaibify will download the paper's e-print source tarball
@@ -1172,8 +1170,7 @@
      role="dialog" aria-modal="true"
      aria-labelledby="modalAiModelViewTitle">
     <div class="modal modal-small">
-        <h2 id="modalAiModelViewTitle"
-            style="color: var(--color-pale-blue);">
+        <h2 id="modalAiModelViewTitle">
             AI model declaration</h2>
         <div id="aiModelViewBody"></div>
         <div class="modal-actions">
@@ -1188,8 +1185,7 @@
      role="dialog" aria-modal="true"
      aria-labelledby="modalAiModelConfigTitle">
     <div class="modal modal-medium">
-        <h2 id="modalAiModelConfigTitle"
-            style="color: var(--color-pale-blue);">
+        <h2 id="modalAiModelConfigTitle">
             Edit AI model declaration</h2>
         <p class="muted-text">
             Declare every AI model used on this project, one model per
@@ -1211,8 +1207,7 @@
      role="dialog" aria-modal="true"
      aria-labelledby="modalContextImportTitle">
     <div class="modal modal-small">
-        <h2 id="modalContextImportTitle"
-            style="color: var(--color-pale-blue);">
+        <h2 id="modalContextImportTitle">
             Import project context</h2>
         <p class="muted-text">
             Pick a markdown file from your home directory (for
@@ -1234,8 +1229,7 @@
      role="dialog" aria-modal="true"
      aria-labelledby="modalPromptRecordTitle">
     <div class="modal modal-medium">
-        <h2 id="modalPromptRecordTitle"
-            style="color: var(--color-pale-blue);">
+        <h2 id="modalPromptRecordTitle">
             Recording settings</h2>
         <div id="promptRecordBody"></div>
         <div class="modal-actions">
@@ -1250,8 +1244,7 @@
      style="display: none;" role="dialog" aria-modal="true"
      aria-labelledby="modalPromptRecordViewerTitle">
     <div class="modal modal-large prompt-record-viewer">
-        <h2 id="modalPromptRecordViewerTitle"
-            style="color: var(--color-pale-blue);">
+        <h2 id="modalPromptRecordViewerTitle">
             Prompt Record</h2>
         <p class="muted-text">
             The in-container agent's sessions as they were captured into
@@ -1286,7 +1279,7 @@
 <!-- Zenodo Metadata Modal -->
 <div class="modal-overlay" id="modalZenodoMetadata" style="display: none;">
     <div class="modal modal-medium">
-        <h2 style="color: var(--color-pale-blue);">
+        <h2>
             Zenodo deposit metadata
             <span class="help-icon" title="Zenodo requires a title, description, creators, and a license before a deposit can be published. These fields are saved in your project.json and reused on every Zenodo push. You can edit them anytime.">?</span>
         </h2>
@@ -1342,7 +1335,7 @@
 <!-- Zenodo Status Modal -->
 <div class="modal-overlay" id="modalZenodoStatus" style="display: none;">
     <div class="modal modal-small">
-        <h2 style="color: var(--color-pale-blue);">
+        <h2>
             Zenodo Status
             <span class="help-icon" title="Shows the latest Zenodo deposit published from this project: its DOI, concept DOI (shared across all versions), and a link to the Zenodo record. Empty until you publish for the first time.">?</span>
         </h2>
@@ -1359,8 +1352,7 @@
      style="display: none;">
     <div class="modal">
         <div class="wizard-title-row">
-            <h2 id="newWorkflowWizardTitle"
-                style="color: var(--color-pale-blue);">
+            <h2 id="newWorkflowWizardTitle">
                 Create Project</h2>
         </div>
         <div class="wizard-progress" id="newWorkflowWizardProgress">
