@@ -170,7 +170,7 @@ tools/generateMutationInventory.py --write`; drift-check with
   `exec*` / `spawn*` / `popen`, `asyncio.create_subprocess_*`,
   `pty.spawn`, multiprocessing and process pools, Docker client
   constructors and low-level `APIClient` methods, direct Unix-socket
-  access, process signalling (`os.kill` / `os.killpg`), and reflection
+  access, process signaling (`os.kill` / `os.killpg`), and reflection
   (`eval`, `exec`, `sys.modules[...]`, `importlib`, `__import__`,
   dynamic `getattr`). **This is the completeness boundary and it fails
   closed.** Importing `os` is not acquisition; `from os import system`
@@ -178,7 +178,7 @@ tools/generateMutationInventory.py --write`; drift-check with
   '^import os$' vaibify/gui | wc -l` counts them), so a module-level
   reading would be useless.
 
-  Signalling joined the vocabulary on 2026-08-10 and is worth a
+  Signaling joined the vocabulary on 2026-08-10 and is worth a
   sentence, because it is the one member that is not command
   authority: a signal cannot make a process do anything new, only stop
   one. It went unrecorded for as long as every signal vaibify sent went
@@ -194,7 +194,7 @@ tools/generateMutationInventory.py --write`; drift-check with
 - **Use sites** — decoded calls and commands. **Metadata,
   best-effort.** A launch whose argv the scan cannot read becomes a row
   with an UNKNOWN command, never a site that disappears.
-- **Dispositions** — the reviewed judgement per module or named
+- **Dispositions** — the reviewed judgment per module or named
   function: forbidden, guarded, or separately authorized.
 
 Completeness rests on the ACQUISITION, not on decoding the command,
@@ -208,8 +208,8 @@ The drift check fails on an added, removed, duplicated, edited, or
 hand-altered row, on acquisition drift, and on blind-spot drift. Three
 ratchets may only fall: `I_UNCLASSIFIED_ROW_BUDGET`,
 `I_UNDISPOSED_ACQUISITION_BUDGET`, and `DICT_UNRESOLVED_BUDGET`. **The
-scanner never decides reachability** — a human judgement recorded
-against a fingerprint is honest about being a judgement, where a
+scanner never decides reachability** — a human judgment recorded
+against a fingerprint is honest about being a judgment, where a
 scanner's reachability verdict would pretend to be a proof. And a
 fingerprint is an identity, never a warrant: for an opaque site the
 expression is `subprocess.run(listCommand)` both before and after the
@@ -234,7 +234,7 @@ stayed green, and the next `--write` reformatted ten thousand lines.
 **When a ledger conflicts on merge: resolve per record, then
 regenerate.** Each side of a conflict is now a set of whole records,
 one per line, so choosing between them is a reading task rather than a
-JSON-repair task. Keep every record either side recorded a judgement
+JSON-repair task. Keep every record either side recorded a judgment
 on, then rebuild:
 
 ```bash
@@ -244,7 +244,7 @@ python tools/generateMutationInventory.py --check   # every list empty, exit 0
 ```
 
 **Do not resolve by taking one side wholesale.** Regeneration carries a
-reviewer's judgement forward from *the file on disk* — verified by
+reviewer's judgment forward from *the file on disk* — verified by
 stamping a disposition, regenerating, and finding it intact — so
 `git checkout --theirs` silently discards every disposition your branch
 recorded, and the drift check cannot tell you, because a row reverted
@@ -260,7 +260,7 @@ exiting 0, means the rebuilt file agrees with the source. Read
 rebuild: a row your branch deleted takes its recorded review with it. A
 row whose enclosing scope moved keeps its review but gets a new
 `sScopeFingerprint` — that is the mechanism asking you to re-read the
-judgement, not to re-stamp it.
+judgment, not to re-stamp it.
 
 **A route declares its carrier mode, and the declaration authorizes
 NOTHING.** `routeScope.ffnDeclareCarrierMode` stamps one or more of

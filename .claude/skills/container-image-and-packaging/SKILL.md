@@ -107,7 +107,7 @@ researcher's own `vaibify.yml` -- but only the fields the BUILD
 consumes. Together they answer "was this image built from these texts
 and this configuration", and the dashboard reads the second one on
 every container entry so an edit that needs a rebuild says so instead
-of being met by the old behaviour a restart later.
+of being met by the old behavior a restart later.
 
 Two things not to undo. `T_BAKED_CONFIGURATION_FIELDS` is a claim about
 what requires a rebuild: adding a field says changing it does, leaving

@@ -94,7 +94,7 @@ so every false verdict has a false key beside it
 does, and it reads the epoch from the ENVELOPE.** The runner prefixes
 every step with `SOURCE_DATE_EPOCH` and a matplotlib `svg.hashsalt`
 derived from it; the generated script exported neither until
-2026-09-05, so the artefact vaibify hands the world rendered every PDF,
+2026-09-05, so the artifact vaibify hands the world rendered every PDF,
 EPS, PS and SVG with the reproducer's wall clock and a fresh per-process
 salt, and its own closing `sha256sum -c MANIFEST.sha256` could not pass
 for any workflow with a vector figure. The shadow rerun was
@@ -213,7 +213,7 @@ author can take that path. The image's only rung is the environment
 archive (`image-not-archived`, below), because Zenodo is the one of
 these with a preservation commitment. The shadow lane still translates
 the SDK's bare `404 ... No such image` into a refusal naming which kind
-of reference it is and what to do — recognised by the SDK's exception
+of reference it is and what to do — recognized by the SDK's exception
 CLASS, never by matching "404" in a message, because an unreachable
 daemon carries 404s from other causes — and the remedy it names for a
 vanished local-only image is rebuild-or-load-the-deposit, never
@@ -267,7 +267,7 @@ submodule. `--from` never enters the tier sequence and never runs
 tier 2's host `pip install`. A report reads source facts from
 `fdictDescribeStagedSource` ONLY — kind, commit, remote with userinfo
 stripped, workflow name, never a host path — because a reproduction
-report is the reproducer's own artefact, never an attestation, never
+report is the reproducer's own artifact, never an attestation, never
 written into a repository, and never read by `levelGates`. And the
 platform is THREE facts kept apart by name (the envelope's required
 platform, the obtained image's platform, the daemon's architecture);
@@ -335,7 +335,7 @@ http-only spelling left every ssh remote unredacted (it also captures
 the scheme and writes it back, so redacting does not silently rename
 the transport). A cap whose count and insert are two critical sections
 is not a cap; twelve registrations released into the gap all pass, and
-the guard for it is STRUCTURAL — a racy test serialises often enough to
+the guard for it is STRUCTURAL — a racy test serializes often enough to
 pass against the bug. `fbClaimJobForRun` moves the job into a live
 phase in the SAME acquisition that consumes it, because a job claimed
 but still reading `staged` is one a Discard deletes the snapshot out
@@ -384,7 +384,7 @@ second seed: image and platform from the acquisition's answer (a
 deposit-loaded image answers to its ID alone), platform requested on
 the create, the loaded-from-archive marker written under the shadow's
 own admission before any step. `reproductionReport` is the
-reproducer's artefact under `~/.vaibify/reproductions/reports/`, apart
+reproducer's artifact under `~/.vaibify/reproductions/reports/`, apart
 from staging, never read by `levelGates`; its verdicts are
 "reproduced", "reproduced under emulation", "diverged", "no verdict",
 never "attested". `tests/testReproductionLive.py` drives the whole
@@ -524,7 +524,7 @@ as derived, never as the pin; the origin record
 (`config/imageOrigins`) is written LAST and the launch guard in
 `containerManager.flistBuildRunArgs` refuses a start without a good
 one — a STALE record (tag moved, or running image neither the base
-nor labelled derived) reads as absent, so a `docker build` outside
+nor labeled derived) reads as absent, so a `docker build` outside
 vaibify cannot inherit the archive's provenance — and requests the
 recorded platform, refusing a switched daemon's silent emulation; the
 record ends only on switch-to-building (one locked mutation with the
@@ -740,7 +740,7 @@ the author's committed one — shared by both lanes in
 points at a manifest that was not written); the manifest NEVER pins
 `REPRODUCED.sha256`, the history directory or `.vaibify/reproductions/`
 (`fbIsReproductionRecordPath`; a reproduced manifest inside the manifest
-grades itself); and the viewers' line colours come from the record's
+grades itself); and the viewers' line colors come from the record's
 per-file `sOutcome` (its `sStatus` in a record written before the
 assessment), never from JavaScript comparing hashes. A clone whose
 attestation was last COMMITTED by another identity (tracked at HEAD,
@@ -797,7 +797,7 @@ both lanes persist it as `dictRerunFailure`. Three properties are
 load-bearing: the FIRST failure (later steps fail because the first
 did), a BOUNDED tail (this record is committed and published to Zenodo
 — an unbounded log would put a researcher's whole console into a public
-artefact), and unconditional FORWARDING (the CLI prints the same
+artifact), and unconditional FORWARDING (the CLI prints the same
 stream; an observer that swallowed events would break the caller it was
 added beside).
 
@@ -964,7 +964,7 @@ Linux they agree and the bug is invisible; on macOS the daemon is a VM
 with its own allocation (measured: 16 GB host over an 8.3 GB daemon), so
 a container sized from host RAM is over-provisioned and the kill arrives
 mid-workflow. `daemonCapacity` keeps the two figures apart by name —
-`iHostMemoryBytes` bounds what the hub materialises in its own address
+`iHostMemoryBytes` bounds what the hub materializes in its own address
 space, `iDaemonMemoryBytes` bounds the container — and
 `tests/testDaemonCapacity.py` drives them 16x apart so a test cannot
 pass while reading the wrong one.

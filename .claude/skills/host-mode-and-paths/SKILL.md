@@ -92,7 +92,7 @@ markers live at `<sProjectRepoPath>/.vaibify/test_markers/`). Step
 `sDirectory` values and all `saOutputDataFiles` /
 `saPlotFiles` paths are repo-relative; absolute or `..`-escaping
 values are rejected at load time. A silent fallback to the
-`/workspace` default reintroduces the all-grey-badges bug and
+`/workspace` default reintroduces the all-gray-badges bug and
 desynchronizes marker writes from marker reads. See
 [docs/architecture.md](docs/architecture.md) — the "Project = git
 repo" section — for the full rationale. A container may host
