@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>For Agents &mdash; Vaibify 0.1.4.dev124 documentation</title>
+  <title>For Agents &mdash; Vaibify 0.2.2.dev12 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=02c14838"></script>
+      <script src="_static/documentation_options.js?v=0d397edb"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -282,6 +282,9 @@ saved script structured so it can become a step.</p></li>
 Level 3, with the known audit traps.</p></li>
 <li><p><strong>diagnose-failed-run</strong> — triage a run that died or hung with the
 read-only <code class="docutils literal notranslate"><span class="pre">get-pipeline-state</span></code> and <code class="docutils literal notranslate"><span class="pre">get-host-log-tail</span></code> actions.</p></li>
+<li><p><strong>graceful-exits</strong> — find places where a project’s scripts could
+fail silently or unclearly, with a shipped checker, and fix them one
+at a time with the researcher reviewing each change.</p></li>
 <li><p><strong>read-manuscript</strong> — pull the project’s Overleaf manuscript (the
 <code class="docutils literal notranslate"><span class="pre">pull-manuscript</span></code> action) into a git-ignored copy and read it, rather
 than answering from memory.</p></li>
@@ -293,6 +296,10 @@ usage window resets (at 95% by default, adjustable in the prompt).</p></li>
 <li><p><strong>vaibify-doc-map</strong> — point the agent at the right section of
 vaibify’s documentation, staged in the container under
 <code class="docutils literal notranslate"><span class="pre">/usr/share/vaibify/docs</span></code>, instead of a whole file.</p></li>
+<li><p><strong>dashboard-map</strong> — every dashboard menu, section, row and button by
+its exact label, with the path to each, so the agent sends the
+researcher to controls that exist and walks them through one step at
+a time.</p></li>
 </ul>
 </section>
 <section id="developing-vaibify-with-agents">

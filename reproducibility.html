@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.1.4.dev124 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.2.2.dev12 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=02c14838"></script>
+      <script src="_static/documentation_options.js?v=0d397edb"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -384,10 +384,12 @@ version and fingerprint. If you use none, say so.</p>
 </section>
 <section id="the-order-of-the-final-steps">
 <h2>The order of the final steps<a class="headerlink" href="#the-order-of-the-final-steps" title="Link to this heading"></a></h2>
-<p>Most Level 3 requirements can be met in any order. The last few cannot,
-because some of them rewrite files that others have already
-fingerprinted, and a published Zenodo version cannot be fixed. Do them
-in this order:</p>
+<p>Most Level 3 requirements can be met in any order. Two cannot. Answer
+the determinism question before the run that makes the results you will
+publish: the answer chooses the settings every run uses, so changing it
+afterwards means running every step again. And the last few steps rewrite
+files that others have already fingerprinted, while a published Zenodo
+version cannot be fixed. Do them in this order:</p>
 <ol class="arabic simple">
 <li><p><strong>Make the container match the package lock</strong> by regenerating the
 envelope. A reproduction refuses to start in a container that does

@@ -2473,11 +2473,12 @@ def fbMaybeAutoArchive(
 ):
     """Push step's tracked files to Overleaf/Zenodo on L1 transition.
 
-    SYNCHRONOUS by carrier requirement: it reads the PROOF level (a
-    general exec via ``fdictHashFiles`` once a workflow is L2) then
-    writes the L3 envelope and pushes, so an enforced-branch caller
-    must run it inside a carrier admission, and mode (b)'s worker runs
-    in a thread that cannot await.
+    SYNCHRONOUS by carrier requirement: it reads whether the project
+    is at Level 1 (``fiComputeProofLevelUpToOne`` -- the full ladder
+    hashed every published file for an answer only the crossing of 1
+    reads) then writes the L3 envelope and pushes, so an
+    enforced-branch caller must run it inside a carrier admission, and
+    mode (b)'s worker runs in a thread that cannot await.
 
     Fires only when this step's transition promoted the workflow to
     ``iProofLevel >= 1`` (was below 1, is now at or above) AND the
@@ -2492,15 +2493,13 @@ def fbMaybeAutoArchive(
     independently of bAutoArchive so the local repo's manifest always
     reflects the latest fully-verified state.
     """
-    from vaibify.reproducibility.levelGates import fiProofLevel
+    from vaibify.reproducibility.levelGates import (
+        fiComputeProofLevelUpToOne,
+    )
     filesRepo = _ffilesForWorkflowRepo(
         dictWorkflow, connectionDocker, sContainerId,
     )
-    from vaibify.config.registryManager import fbIsHostProject
-    iLevelNow = fiProofLevel(
-        dictWorkflow, filesRepo,
-        bHostProject=fbIsHostProject(sContainerId),
-    )
+    iLevelNow = fiComputeProofLevelUpToOne(dictWorkflow, filesRepo)
     bPromoted = iProofLevelBefore < 1 <= iLevelNow
     _fnDispatchEnvelopeRefreshIfPromoted(
         dictWorkflow, sContainerId, bPromoted, connectionDocker,
