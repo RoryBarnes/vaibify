@@ -984,10 +984,26 @@ pre.quarantine-remedy {
     gap: 8px;
 }
 
+/* The wordmark is painted in the level color through an alpha mask,
+   so it carries no backdrop of its own: a filter over the opaque PNG
+   tinted the PNG's background too, which drew a box around the logo
+   (a maroon one at Level 3). The mask is derived from
+   vaibify_logo_paleblue.png; the commit that added it records how. */
 #toolbar .toolbar-logo {
+    display: inline-block;
+    flex-shrink: 0;
     height: 24px;
-    width: auto;
-    transition: filter 0.5s ease;
+    aspect-ratio: 1447 / 705;
+    background-color: var(--highlight-color);
+    -webkit-mask-image: url("/static/vaibify_logo_mask.png");
+    mask-image: url("/static/vaibify_logo_mask.png");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    transition: background-color 0.5s ease;
 }
 
 .vaibify-logo-large {
@@ -5212,15 +5228,14 @@ body.proof-level-3 {
     animation: projectBirthTrace 1.2s ease-out forwards;
 }
 
-/* Every favicon-based mark follows the ladder theme: the toolbar
-   logo, the verified badge, and the level-strip "attained" favicons
+/* Every favicon-based mark follows the ladder theme: the verified
+   badge, and the level-strip "attained" favicons
    (step rows, Steps and Project banners, requirement rows, Help
    samples). The raw favicon.png is pale blue, matching the pre-L1
    theme, so untinted marks read as off-theme once the ladder
    recolors the rest of the UI. The sepia recipes shift the hue across
    promotions without a per-level icon swap; each level's recipe is
    its --proof-icon-filter. */
-.toolbar-logo,
 .vaib-verified-badge,
 .level-cell-favicon,
 .vaibify-checkmark img {
