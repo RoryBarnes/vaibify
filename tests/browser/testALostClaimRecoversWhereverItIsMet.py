@@ -536,7 +536,10 @@ def test_a_recovery_connect_never_outlasts_the_researchers_next_choice(
     container runs through one queue, so the switch waits its turn and
     the hub ends on the second project. A recovery connect sent outside
     the queue lands AFTER the switch and leaves the hub on the first
-    while the page shows the second.
+    while the page shows the second. The hub is read only once the
+    held connect has been answered, because the hub records the path
+    late in a connect: read at once, the mutant's late connect had not
+    been recorded yet and survived on that race.
 
     Kills: sending the recovery's connect outside the connect queue.
     """
@@ -554,7 +557,11 @@ def test_a_recovery_connect_never_outlasts_the_researchers_next_choice(
         _fnAwaitHeld(pageDashboard, listHeld)
         _fnStartSwitchToSecond(pageDashboard)
         pageDashboard.wait_for_timeout(1500)
-        listHeld[0].continue_()
+        requestRecovery = listHeld[0].request
+        with pageDashboard.expect_response(
+                lambda response: response.request is requestRecovery,
+                timeout=20000):
+            listHeld[0].continue_()
         pageDashboard.wait_for_selector(
             f"text={S_SECOND_STEP_NAME}", timeout=20000)
         pageDashboard.unroute_all(behavior="ignoreErrors")
