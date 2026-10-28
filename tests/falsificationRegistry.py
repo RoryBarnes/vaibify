@@ -37376,4 +37376,64 @@ LIST_FALSIFICATIONS = [
         ),
         new='    dictHeld = {"lockRelease": threading.Lock()}\n',
     ),
+    # --- 2026-10-28: the volume copier's manifest sees every field ---
+    Falsification(
+        nodeid=(
+            'tests/testVolumeCopy.py::'
+            'testOneByteFlippedWithoutChangingTheLengthChangesTheManifest'
+        ),
+        # The manifest reduced to the file count and the total bytes.
+        source='vaibify/docker/volumeCopy.py',
+        old=(
+            '        hashManifest.update(\n'
+            '            json.dumps(dictEntry, sort_keys=True).encode()'
+            ' + b"\\n")\n'
+        ),
+        new='        hashManifest.update(str(dictEntry["iSize"]).encode())\n',
+    ),
+    Falsification(
+        nodeid='tests/testVolumeCopy.py::testAChangedModeChangesTheManifest',
+        # The manifest drops the permission bits.
+        source='vaibify/docker/volumeCopy.py',
+        old='        "iMode": stat.S_IMODE(statEntry.st_mode),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVolumeCopy.py::'
+            'testAChangedSymlinkTargetChangesTheManifest'
+        ),
+        # The manifest drops a symlink's target.
+        source='vaibify/docker/volumeCopy.py',
+        old='        dictEntry["sTarget"] = os.readlink(sAbsolute)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testVolumeCopy.py::testAChangedOwnerChangesTheManifest',
+        # The manifest drops the numeric owner.
+        source='vaibify/docker/volumeCopy.py',
+        old='"sPath": sRelative, "sType": sType, "iUid": statEntry.st_uid,',
+        new='"sPath": sRelative, "sType": sType,',
+    ),
+    # --- 2026-10-28: only the volume copier execs as root ---
+    Falsification(
+        nodeid=(
+            'tests/testVolumeCopyLive.py::'
+            'testOnlyTheVolumeCopierExecsAsRootWithItsFourCapabilities'
+        ),
+        # Every disposable exec runs as root.
+        source='vaibify/docker/disposableContainer.py',
+        old='        user=dictHandle["sExecUser"],\n',
+        new='        user="0:0",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVolumeCopyLive.py::'
+            'testAVolumeOfMixedOwnershipArrivesIntact'
+        ),
+        # The volume copier's execs stay the unprivileged user.
+        source='vaibify/docker/disposableSpecification.py',
+        old='    dictSpecification["sExecUser"] = S_VOLUME_COPIER_USER\n',
+        new='',
+    ),
 ]

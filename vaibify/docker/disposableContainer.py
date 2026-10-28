@@ -73,6 +73,7 @@ __all__ = [
     "fsLoadImageFromStream",
     "fdictInspectImage",
     "fnRemoveImageTag",
+    "fdictReserveAndCreateVolumeCopier",
     "fnTagImage",
     "fsReadDaemonArchitecture",
     "fnCopyArchiveIntoContainer",
@@ -339,15 +340,46 @@ def fdictReserveAndCreateContainer(
     reserve the reservation is settled honestly before the exception
     propagates. Returns the handle plus the container's name and role.
     """
+    return _fdictReserveAndCreateFromSpecification(
+        dictGateway, sRole, sImageReference,
+        lambda sReservationId: (
+            disposableSpecification.fdictComposeCreateSpecification(
+                sImageReference, sReservationId, sRole, dictLimits,
+                sNetworkName, dictGateway.get("sResourceName", ""),
+                bReadOnlyRootFilesystem, sPlatform)),
+        bReadOnlyRootFilesystem,
+    )
+
+
+def fdictReserveAndCreateVolumeCopier(
+    dictGateway, sImageId, sSourceVolume, sDestinationVolume,
+):
+    """Reserve, then create and start the volume copier (ruling D13).
+
+    The one disposable that runs as root, with the profile
+    ``disposableSpecification`` fixes; the caller names the image ID
+    and the two volumes and nothing else.
+    """
+    return _fdictReserveAndCreateFromSpecification(
+        dictGateway, disposableSpecification.S_ROLE_VOLUME_COPIER, sImageId,
+        lambda sReservationId: (
+            disposableSpecification.fdictComposeVolumeCopierSpecification(
+                sImageId, sReservationId, sSourceVolume, sDestinationVolume,
+                dictGateway.get("sResourceName", ""))),
+        True,
+    )
+
+
+def _fdictReserveAndCreateFromSpecification(
+    dictGateway, sRole, sImageReference, fdictCompose,
+    bReadOnlyRootFilesystem,
+):
+    """The reserve, create, start and mint shared by every profile."""
     sReservationId = f"disposable-{sRole}-{secrets.token_hex(6)}"
     iEpoch = _fiReserve(dictGateway, sReservationId, sRole)
     containerDisposable = None
     try:
-        dictSpecification = (
-            disposableSpecification.fdictComposeCreateSpecification(
-                sImageReference, sReservationId, sRole, dictLimits,
-                sNetworkName, dictGateway.get("sResourceName", ""),
-                bReadOnlyRootFilesystem, sPlatform))
+        dictSpecification = fdictCompose(sReservationId)
         containerDisposable = (
             dictGateway["dockerDisposable"].containers.create(
                 sImageReference,
@@ -368,6 +400,7 @@ def fdictReserveAndCreateContainer(
         "sContainerName": dictSpecification["sContainerName"],
         "sRole": sRole,
         "bReadOnlyRootFilesystem": bool(bReadOnlyRootFilesystem),
+        "sExecUser": dictSpecification["sExecUser"],
         "iEpoch": iEpoch,
     }
     return {"bCreated": True, "sHandle": sHandle,
@@ -435,13 +468,19 @@ def _fnSettleFailedCreation(dictGateway, sReservationId, iEpoch,
 # ----- handle-keyed container operations --------------------------------
 
 
-def _ftStartExecStream(dockerDisposable, sContainerId, listCommand,
+def _ftStartExecStream(dockerDisposable, dictHandle, listCommand,
                        bStdin, sWorkingDirectory=None):
-    """Create an exec as the unprivileged user; return (execId, rawSocket)."""
+    """Create an exec in a handle's container; return (execId, rawSocket).
+
+    The ONE place an exec's user is chosen, and it is read from the
+    profile recorded with the handle's reservation -- the unprivileged
+    container user for every profile but the volume copier. A handle
+    minted any other way has no recorded user and is refused.
+    """
     dictExecCreated = dockerDisposable.api.exec_create(
-        sContainerId, listCommand,
+        dictHandle["sContainerId"], listCommand,
         stdin=bStdin, stdout=True, stderr=True,
-        user=disposableSpecification.S_DISPOSABLE_CONTAINER_USER,
+        user=dictHandle["sExecUser"],
         workdir=sWorkingDirectory,
     )
     socketExec = dockerDisposable.api.exec_start(
@@ -452,7 +491,7 @@ def _ftStartExecStream(dockerDisposable, sContainerId, listCommand,
     return (dictExecCreated["Id"], socketRaw)
 
 
-def _fiReadOomKillCount(dockerDisposable, sContainerId):
+def _fiReadOomKillCount(dockerDisposable, dictHandle):
     """Read the container cgroup's oom_kill counter; None if unreadable.
 
     Runs through the same exec-stream helpers as every other command,
@@ -462,7 +501,7 @@ def _fiReadOomKillCount(dockerDisposable, sContainerId):
     """
     try:
         tExecStarted = _ftStartExecStream(
-            dockerDisposable, sContainerId,
+            dockerDisposable, dictHandle,
             disposableSpecification.LIST_OOM_COUNTER_COMMAND,
             bStdin=False,
         )
@@ -478,7 +517,7 @@ def _fiReadOomKillCount(dockerDisposable, sContainerId):
         return None
 
 
-def _fbConcludeOomKilledForContainer(dockerDisposable, sContainerId,
+def _fbConcludeOomKilledForContainer(dockerDisposable, dictHandle,
                                      iOomKillsBefore):
     """Combine the cgroup counter and the daemon flag into one verdict.
 
@@ -486,10 +525,11 @@ def _fbConcludeOomKilledForContainer(dockerDisposable, sContainerId,
     the inspect below works either way. The rationale for the two
     halves lives on ``disposableSpecification.fbConcludeOomKilled``.
     """
-    iOomKillsAfter = _fiReadOomKillCount(dockerDisposable, sContainerId)
+    iOomKillsAfter = _fiReadOomKillCount(dockerDisposable, dictHandle)
     bStateOomKilled = False
     try:
-        dictInspected = dockerDisposable.api.inspect_container(sContainerId)
+        dictInspected = dockerDisposable.api.inspect_container(
+            dictHandle["sContainerId"])
         bStateOomKilled = bool(dictInspected["State"]["OOMKilled"])
     except Exception:
         pass
@@ -549,7 +589,7 @@ def _fnStreamArchiveThroughExec(dictGateway, dictHandle, baRepacked,
     fDeadlineMonotonic = (
         time.monotonic() + F_ARCHIVE_COPY_BUDGET_SECONDS)
     sExecId, socketRaw = _ftStartExecStream(
-        dockerDisposable, dictHandle["sContainerId"],
+        dockerDisposable, dictHandle,
         ["tar", "-xf", "-", "-C", sDestinationDirectory],
         bStdin=True,
     )
@@ -637,10 +677,9 @@ def fdictExecuteBoundedCommand(
             disposableSpecification.F_DEFAULT_WALL_CLOCK_SECONDS)
     fStartedMonotonic = time.monotonic()
     fDeadlineMonotonic = fStartedMonotonic + fWallClockSeconds
-    iOomKillsBefore = _fiReadOomKillCount(
-        dockerDisposable, dictHandle["sContainerId"])
+    iOomKillsBefore = _fiReadOomKillCount(dockerDisposable, dictHandle)
     sExecId, socketRaw = _ftStartExecStream(
-        dockerDisposable, dictHandle["sContainerId"], listCommand,
+        dockerDisposable, dictHandle, listCommand,
         bStdin=baStdinPayload is not None,
         sWorkingDirectory=sWorkingDirectory,
     )
@@ -693,7 +732,7 @@ def _fdictDescribeCommandOutcome(dockerDisposable, dictHandle, sExecId,
         except Exception:
             pass
     bOomKilled = _fbConcludeOomKilledForContainer(
-        dockerDisposable, dictHandle["sContainerId"], iOomKillsBefore)
+        dockerDisposable, dictHandle, iOomKillsBefore)
     return {
         "iExitCode": iExitCode,
         "sOutput": dictPumped["baCaptured"].decode(
