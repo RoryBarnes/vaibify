@@ -236,7 +236,9 @@ def testCliDestroyRefusesWhileAnotherProcessHoldsTheName(monkeypatch):
     assert listRemoved == []
 
 
+@pytest.mark.falsification
 def testGuiStartRefusesWhileAnotherProcessHoldsTheName(clientHub, monkeypatch):
+    """Kills: the start route's early lifecycle refusal doing nothing."""
     from vaibify.gui import startReservation
     listBegun = []
 
@@ -281,7 +283,9 @@ def testGuiStopRefusesWhileAnotherProcessHoldsTheName(clientHub, monkeypatch):
     assert listStopped == []
 
 
+@pytest.mark.falsification
 def testGuiClaimRefusesWhileAnotherProcessHoldsTheName(clientHub):
+    """Kills: the lifecycle probe answering "free" without asking."""
     with fcontextHoldLifecycleLockInAnotherProcess(S_NAME, "renamed"):
         response = clientHub.post(f"/api/registry/{S_NAME}/claim")
     assert response.status_code == 409

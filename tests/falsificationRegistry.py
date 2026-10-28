@@ -37436,4 +37436,38 @@ LIST_FALSIFICATIONS = [
         old='    dictSpecification["sExecUser"] = S_VOLUME_COPIER_USER\n',
         new='',
     ),
+    # --- 2026-10-28: the lifecycle refusals and the copier's own ---
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleLock.py::'
+            'testGuiStartRefusesWhileAnotherProcessHoldsTheName'
+        ),
+        # The start route's early refusal asks nothing.
+        source='vaibify/gui/registryRoutes.py',
+        old='        fnRefuseWhileLifecycleLockHeld(sName)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleLock.py::'
+            'testGuiClaimRefusesWhileAnotherProcessHoldsTheName'
+        ),
+        # The lifecycle probe answers "free" without taking the lock.
+        source='vaibify/config/containerLock.py',
+        old=(
+            '    fnReleaseLifecycleLock(ffileTakeLifecycleLock('
+            'sProjectName, "checked"))\n'
+        ),
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVolumeCopy.py::'
+            'testACapabilityAttributeRefusesTheCopyBeforeAnythingIsWritten'
+        ),
+        # A security.capability attribute no longer refuses the copy.
+        source='vaibify/docker/volumeCopy.py',
+        old='    if dictManifest["bCapabilityAttribute"]:\n',
+        new='    if False:\n',
+    ),
 ]

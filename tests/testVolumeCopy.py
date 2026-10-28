@@ -298,3 +298,46 @@ def testTheCopyRefusesADestinationThatIsNotEmpty(tmp_path):
     dictReport = _fdictRunProgram(
         volumeCopy.S_COPY_PROGRAM, sSource, sDestination)
     assert dictReport == {"sRefusal": "the destination volume is not empty"}
+
+
+def _fnScriptTheCopier(monkeypatch, dictSourceManifest):
+    """Replace the gateway with a script; return the commands it ran."""
+    listRan = []
+
+    def fdictExecute(dictGateway, sHandle, listCommand, **dictKeywords):
+        listRan.append(listCommand)
+        if listCommand[-1] == "import os":
+            return {"iExitCode": 0, "sOutput": ""}
+        return {"iExitCode": 0, "sOutput": json.dumps(dictSourceManifest)}
+    monkeypatch.setattr(
+        disposableContainer, "fdictReserveAndCreateVolumeCopier",
+        lambda *aArgs: {"sHandle": "copier"})
+    monkeypatch.setattr(
+        disposableContainer, "fdictExecuteBoundedCommand", fdictExecute)
+    monkeypatch.setattr(
+        disposableContainer, "fdictDestroyAndSettle",
+        lambda dictGateway, sHandle: listRan.append(["destroyed", sHandle]))
+    return listRan
+
+
+@pytest.mark.falsification
+def testACapabilityAttributeRefusesTheCopyBeforeAnythingIsWritten(
+    monkeypatch,
+):
+    """Kills: copying a volume whose files carry security.capability.
+
+    The copier is not granted SETFCAP, so such a copy could only drop
+    the attribute; it is refused before the copy program runs, and the
+    copier is still destroyed.
+    """
+    listRan = _fnScriptTheCopier(monkeypatch, {
+        "sDigest": "d", "iEntries": 3, "iUnsupported": 0,
+        "bCapabilityAttribute": True,
+    })
+    with pytest.raises(volumeCopy.VolumeCopyError, match="security.capability"):
+        volumeCopy.fdictCopyVolumeAndVerify(
+            {}, S_IMAGE_ID, "old-workspace", "new-workspace", "workspace")
+    assert not any(volumeCopy.S_COPY_PROGRAM in listCommand
+                   for listCommand in listRan)
+    assert listRan[-1] == ["destroyed", "copier"]
+
