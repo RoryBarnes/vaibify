@@ -965,6 +965,34 @@ pre.quarantine-remedy {
     font-size: 12px;
 }
 
+/* A Project card's ⋮ menu. Opening it holds the 3-second poll's
+   repaint until it closes, so the menu and the click inside it survive
+   a tick. */
+.container-card.project-card {
+    position: relative;
+}
+
+.project-card .project-card-actions {
+    margin-left: auto;
+}
+
+.project-card-menu {
+    display: none;
+    position: absolute;
+    right: 10px;
+    top: 100%;
+    z-index: 100;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.project-card-menu.is-open {
+    display: block;
+}
+
 #mainLayout {
     display: none;
     height: 100%;

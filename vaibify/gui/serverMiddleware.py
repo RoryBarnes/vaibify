@@ -105,9 +105,7 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
         if _fbAgentRequestAuthorized(request, dictContainerOwners):
             if not _fbAgentLanePermitsRequest(request):
                 response = _fresponseJsonError(
-                    403,
-                    "User-only action: ask the researcher to run it "
-                    "from the dashboard",
+                    403, _fsDescribeUserOnlyRefusal(request),
                 )
             else:
                 response = await _fresponseServeAgentRequestInItsProject(
@@ -252,6 +250,24 @@ def _fbAgentLanePermitsRequest(request):
     return actionCatalog.fbAgentLanePermitsRoute(
         request.method, _fsRouteTemplateForRequest(request),
     )
+
+
+def _fsDescribeUserOnlyRefusal(request):
+    """Return the agent's refusal, naming the host command when one exists.
+
+    A catalog action the agent may not run is still one the researcher
+    can run without the dashboard, so the sentence names both routes.
+    """
+    sTemplate = _fsRouteTemplateForRequest(request)
+    listNames = [
+        dictEntry["sName"] for dictEntry in actionCatalog.LIST_AGENT_ACTIONS
+        if dictEntry["sMethod"] == request.method
+        and dictEntry["sPath"] == sTemplate
+    ]
+    sDetail = "User-only action: ask the researcher to run it from the dashboard"
+    if listNames:
+        sDetail += f", or on the host with `vaibify do {listNames[0]}`"
+    return sDetail
 
 
 def _fsRouteTemplateForRequest(request):

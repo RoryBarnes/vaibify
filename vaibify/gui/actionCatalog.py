@@ -249,6 +249,17 @@ LIST_AGENT_ACTIONS = [
                      "researcher reviews and confirms there; once "
                      "the project exists, populate it with "
                      "create-step."},
+    {"sName": "rename-project", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/workflows/{sContainerId}/rename",
+     "bAgentSafe": False,
+     "sDescription": "Researcher-only: rename a project. Args: "
+                     "{sWorkflowPath, sNewName, bDryRun}; bDryRun "
+                     "defaults to true and returns the PROOF "
+                     "requirements and labels the new bytes would "
+                     "invalidate. An agent asks the researcher to "
+                     "rename from the Project hub's menu, or on the "
+                     "host with `vaibify do rename-project`."},
     {"sName": "create-step", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/create",

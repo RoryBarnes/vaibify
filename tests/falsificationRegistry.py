@@ -37608,4 +37608,104 @@ LIST_FALSIFICATIONS = [
         old='    if dockerContext.fbEndpointIsOnThisMachine(sEndpoint):\n        return\n',
         new='    return\n',
     ),
+    # --- 2026-10-28: renaming a project (D4, D5, D11) ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectRename.py::'
+            'testRenamingAnotherProjectLeavesTheLoadedOneUntouched'
+        ),
+        # The rename saves through the loaded project's save.
+        source='vaibify/gui/projectRename.py',
+        old=(
+            '    workflowManager.fnSaveWorkflowToContainer(\n'
+            '        connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,\n'
+            '        dictWriteKeywords={\n'
+            '            "sAuthorizedRoot": posixpath.normpath(\n'
+            '                dictProject.get("sProjectRepoPath") or ""),\n'
+            '            "tForbiddenNames": (".git",),\n'
+            '        },\n'
+            '    )\n'
+        ),
+        new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectRename.py::'
+            'testAnUnlistedWritableFileIsNotFoundAndKeepsItsBytes'
+        ),
+        # Any requested path is accepted, listed or not.
+        source='vaibify/gui/projectRename.py',
+        old='    raise HTTPException(404, "No such project in this environment.")\n',
+        new=(
+            '    return {"sPath": sWorkflowPath,\n'
+            '            "sProjectRepoPath": posixpath.dirname(sWorkflowPath)}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectRename.py::'
+            'testTheDryRunNamesAManifestThatWouldNoLongerMatch'
+        ),
+        # The second evaluation sees today's bytes, not the save's.
+        source='vaibify/gui/projectRename.py',
+        old=(
+            '    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles\n'
+            '    baNew = sNewText.encode("utf-8")\n'
+        ),
+        new='    return filesSnapshot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLaneEnforcement.py::'
+            'testOnlyTheResearcherMayRenameAProject'
+        ),
+        # The rename becomes agent-safe.
+        source='vaibify/gui/actionCatalog.py',
+        old=(
+            '     "sPath": "/api/workflows/{sContainerId}/rename",\n'
+            '     "bAgentSafe": False,\n'
+        ),
+        new=(
+            '     "sPath": "/api/workflows/{sContainerId}/rename",\n'
+            '     "bAgentSafe": True,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProjectIsRenamedFromItsCard.py::'
+            'test_a_project_is_renamed_from_its_card_menu'
+        ),
+        # A changed listing repaints the cards under an open menu.
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old='        if (elList.querySelector(_S_OPEN_PROJECT_MENU_SELECTOR)) {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectRename.py::'
+            'testAProjectUsingTheNameTokenIsRefusedNamingStepAndField'
+        ),
+        # A project naming {sWorkflowName} is renamed anyway.
+        source='vaibify/gui/projectRename.py',
+        old=(
+            '    listUses = flistDescribeWorkflowNameTokenUses(dictWorkflow)\n'
+            '    if not listUses:\n'
+            '        return\n'
+        ),
+        new='    return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectRename.py::'
+            'testANameWithAControlCharacterIsRefused'
+        ),
+        # A name carrying a control character is accepted.
+        source='vaibify/gui/projectRename.py',
+        old=(
+            '        raise HTTPException(\n'
+            '            400, "A project name may not contain control characters.",\n'
+            '        )\n'
+        ),
+        new='        pass\n',
+    ),
 ]

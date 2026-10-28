@@ -5923,7 +5923,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the create-step builder also takes bNoInputData from the request.
     # 2954 -> 2967 (2026-10-27): one helper attaches the host push
     # record, so a push can refresh the open workflow's copy too.
-    "workflowManager.py": 2967,
+    # 2967 -> 2994 (2026-10-28): the save's in-memory preparation is
+    # its own function, so the project rename's dry run previews the
+    # exact bytes a save writes; the save gains a write-keyword pass-through.
+    "workflowManager.py": 2994,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -6336,7 +6339,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3772 -> 3782 (2026-10-15): re-exports the ten public
     # fileStatusManager symbols, required by the orchestrator re-export
     # invariant.
-    "pipelineServer.py": 3782,
+    # 3782 -> 3787 (2026-10-28): the post-save self-write bookkeeping
+    # is one function, shared by the save and the project rename.
+    "pipelineServer.py": 3787,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -7527,7 +7532,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # tests, and the L2/L3 readiness descriptions name their criteria.
     # 1553 -> 1557 (2026-10-28): the environment rename is excluded from
     # the agent catalog, with why.
-    "actionCatalog.py": 1557,
+    # 1557 -> 1568 (2026-10-28): the researcher-only rename-project entry.
+    "actionCatalog.py": 1568,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

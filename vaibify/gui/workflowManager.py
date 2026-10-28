@@ -123,6 +123,7 @@ __all__ = [
     "fnRenumberAllReferences",
     "fnReorderStep",
     "fnSaveWorkflowToContainer",
+    "ftPrepareWorkflowForSave",
     "fnSetServiceTracking",
     "fnSetZenodoMetadata",
     "fnUpdateOverleafDigests",
@@ -1636,7 +1637,8 @@ def _fdictStripStepTransientKeys(dictStep):
 
 
 def fnSaveWorkflowToContainer(
-    connectionDocker, sContainerId, dictWorkflow, sWorkflowPath=None
+    connectionDocker, sContainerId, dictWorkflow, sWorkflowPath=None,
+    dictWriteKeywords=None,
 ):
     """Serialize the merged workflow dict and persist it.
 
@@ -1647,6 +1649,48 @@ def fnSaveWorkflowToContainer(
     out of the definition so the archived copy of ``project.json`` can
     byte-match the local one forever). Callers continue to mutate one
     merged dict; the split is invisible upstream.
+
+    ``dictWriteKeywords`` is passed to the project file's write, so a
+    caller that chose the path from a request can confine it (the
+    project rename passes ``sAuthorizedRoot`` and ``tForbiddenNames``).
+    Absent, the write is exactly what it always was.
+    """
+    sJson, dictState, dictBookkeeping, sRepoPath = (
+        ftPrepareWorkflowForSave(
+            connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+        )
+    )
+    _fnWriteSidecarBookkeeping(
+        connectionDocker, sContainerId, sRepoPath, sWorkflowPath,
+        dictBookkeeping,
+    )
+    connectionDocker.fnWriteFile(
+        sContainerId, sWorkflowPath, sJson.encode("utf-8"),
+        **(dictWriteKeywords or {}),
+    )
+    sStatePath = stateManager.fsStatePathFromRepo(sRepoPath)
+    if sStatePath:
+        stateManager.fnSaveStateToContainer(
+            connectionDocker, sContainerId, sStatePath, dictState,
+            sWorkflowKey=stateManager.fsWorkflowKeyFromPath(
+                sWorkflowPath, sRepoPath,
+            ),
+        )
+        stateManager.fnEnsureVaibifyGitignore(
+            connectionDocker, sContainerId, sRepoPath,
+        )
+
+
+def ftPrepareWorkflowForSave(
+    connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+):
+    """Return ``(sJson, dictState, dictBookkeeping, sRepoPath)``, writing nothing.
+
+    Everything the save does to the dict before it writes: step ids,
+    symbolic tokens, labels, remote migration, the derived PROOF level,
+    the schema stamp, and the split serialization. The project rename's
+    dry run calls it to learn the exact bytes a save would write, so its
+    preview and the save cannot disagree about them.
     """
     from .pipelineUtils import (
         fnAttachStepLabels, fsDescribeRemoteDataPathConflict,
@@ -1686,24 +1730,7 @@ def fnSaveWorkflowToContainer(
     sJson, dictState, dictBookkeeping = _ftSplitAndSerializeWorkflow(
         dictWorkflow,
     )
-    _fnWriteSidecarBookkeeping(
-        connectionDocker, sContainerId, sRepoPath, sWorkflowPath,
-        dictBookkeeping,
-    )
-    connectionDocker.fnWriteFile(
-        sContainerId, sWorkflowPath, sJson.encode("utf-8")
-    )
-    sStatePath = stateManager.fsStatePathFromRepo(sRepoPath)
-    if sStatePath:
-        stateManager.fnSaveStateToContainer(
-            connectionDocker, sContainerId, sStatePath, dictState,
-            sWorkflowKey=stateManager.fsWorkflowKeyFromPath(
-                sWorkflowPath, sRepoPath,
-            ),
-        )
-        stateManager.fnEnsureVaibifyGitignore(
-            connectionDocker, sContainerId, sRepoPath,
-        )
+    return sJson, dictState, dictBookkeeping, sRepoPath
 
 
 def _ftSplitAndSerializeWorkflow(dictWorkflow):

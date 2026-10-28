@@ -40,6 +40,7 @@ __all__ = [
     "fnRejectNotConnected",
     "fnRejectTerminalStart",
     "fdictConfinedWriteKeywords",
+    "fnRecordSelfWriteOfLoadedWorkflow",
     "fnRejectWriteDenylistedPath",
     "fnRunTerminalSession",
     "fnSignalTerminalAbnormalExit",
@@ -3507,6 +3508,27 @@ def fdictResolveVariables(dictWorkflows, dictPaths, sContainerId):
     return workflowManager.fdictBuildGlobalVariables(dictWorkflow, sPath)
 
 
+def fnRecordSelfWriteOfLoadedWorkflow(dictCtx, sContainerId, dictSaved):
+    """Record that the LOADED project's file now holds ``dictSaved``'s bytes.
+
+    A self-write moves the session record and the exact-source
+    fingerprint ATOMICALLY: the file's bytes are now exactly the
+    serializer's output, so the canonical and exact-source fingerprints
+    coincide until the next out-of-band edit. This is why vaibify's own
+    step edit never trips the dispatch freshness gate — the record moved
+    with the file, not because any baseline suppresses the check. Only
+    the project loaded for ``sContainerId`` may be recorded: the record
+    is keyed by the container, so a save of another project file must
+    never call this.
+    """
+    from .workflowReloadDetector import fnRecordSelfWriteFingerprint
+    sSavedFingerprint = workflowManager.fsComputeWorkflowFingerprint(
+        dictSaved,
+    )
+    dictSaved["_sSourceFingerprint"] = sSavedFingerprint
+    fnRecordSelfWriteFingerprint(dictCtx, sContainerId, sSavedFingerprint)
+
+
 def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
     """Build closure-based helper functions for the context.
 
@@ -3525,23 +3547,7 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
         fnRefuseSaveIntoAnotherProject(dictPaths, sContainerId, dictWorkflow)
         workflowManager.fnSaveWorkflowToContainer(
             dictRaw["docker"], sContainerId, dictWorkflow, sPath)
-        from .workflowReloadDetector import (
-            fnRecordSelfWriteFingerprint,
-        )
-        sSavedFingerprint = workflowManager.fsComputeWorkflowFingerprint(
-            dictWorkflow,
-        )
-        # A self-write moves the session record and the exact-source
-        # fingerprint ATOMICALLY: the file's bytes are now exactly the
-        # serializer's output, so the canonical and exact-source
-        # fingerprints coincide until the next out-of-band edit. This
-        # is why vaibify's own step edit never trips the dispatch
-        # freshness gate — the record moved with the file, not because
-        # any baseline suppresses the check.
-        dictWorkflow["_sSourceFingerprint"] = sSavedFingerprint
-        fnRecordSelfWriteFingerprint(
-            dictRaw, sContainerId, sSavedFingerprint,
-        )
+        fnRecordSelfWriteOfLoadedWorkflow(dictRaw, sContainerId, dictWorkflow)
 
     def fdictBuildVariables(sContainerId):
         return fdictResolveVariables(dictWorkflows, dictPaths, sContainerId)
