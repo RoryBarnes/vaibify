@@ -37470,4 +37470,15 @@ LIST_FALSIFICATIONS = [
         old='    if dictManifest["bCapabilityAttribute"]:\n',
         new='    if False:\n',
     ),
+    # --- 2026-10-28: the banner names the environment as it is now ---
+    Falsification(
+        nodeid=(
+            'tests/testContainerManager.py::'
+            'test_flistBuildRunArgs_passes_the_current_name_to_the_banner'
+        ),
+        # The start no longer passes the current name.
+        source='vaibify/docker/containerManager.py',
+        old='    saRunArgs.extend(["-e", f"VC_PROJECT_NAME={config.sProjectName}"])\n',
+        new='',
+    ),
 ]

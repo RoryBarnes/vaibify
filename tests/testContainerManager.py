@@ -670,3 +670,24 @@ def test_the_connect_shell_carries_the_classic_renderer_switch():
     assert listArgv[iContainerIndex:] == [
         "projectBox", "/bin/sh", "-c", "exec sh",
     ]
+
+
+@pytest.mark.falsification
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_passes_the_current_name_to_the_banner(mockX11):
+    """Every start names the environment as it is called NOW.
+
+    The image bakes VC_PROJECT_NAME at build time, so a renamed
+    environment's banner would name its old self until a rebuild; the
+    start passes the registry's current name instead.
+
+    Kills: dropping the VC_PROJECT_NAME pair from ``flistBuildRunArgs``.
+    """
+    config = _fConfigMinimal()
+    config.sProjectName = "renamed-environment"
+    saArgs = flistBuildRunArgs(config)
+    assert _fbArgumentsCarryEnvironmentPair(
+        saArgs, "VC_PROJECT_NAME=renamed-environment")
