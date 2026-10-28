@@ -788,8 +788,18 @@ def _fsPostPushVerifyWarning(sService, error):
 
     Never embeds the raw exception text: verify errors can carry
     remote URLs, and URLs can carry credentials. Known causes get a
-    specific remedy; everything else points at the hub log.
+    specific remedy; everything else points at the hub log. A refusal
+    the verify's own configuration raised is relayed in its own words:
+    those sentences are vaibify's, name no URL or credential, and carry
+    the remedy (e.g. an unbound GitHub remote), which the agent lane
+    could otherwise read nowhere.
     """
+    from vaibify.reproducibility.scheduledReverify import ReverifyConfigError
+    if isinstance(error, ReverifyConfigError):
+        return (
+            "Pushed, but the " + sService + " comparison did not run: "
+            + str(error)
+        )
     if (isinstance(error, FileNotFoundError)
             and "manifest" in str(error).lower()):
         return (

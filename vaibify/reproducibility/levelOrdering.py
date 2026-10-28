@@ -199,6 +199,13 @@ T_LEVEL3_ORDERING_EDGES = (
     # "Prioritize speed" afterwards undoes nothing, and each reason says
     # so rather than claiming an undo that may not happen.
     (
+        S_DETERMINISM_ROW_KEY, "dependencyLock",
+        "The lock's remedy is regenerating the envelope, which also "
+        "records the settings your determinism answer chooses. Answer "
+        "first: choosing “Repeatable across computers” afterwards "
+        "means regenerating it again.",
+    ),
+    (
         S_DETERMINISM_ROW_KEY, "manifest",
         "The envelope records the settings your determinism answer "
         "chooses. Answer first: choosing “Repeatable across "

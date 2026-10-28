@@ -562,11 +562,11 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/workflow/{sContainerId}/level2/readiness",
      "bAgentSafe": True,
      "sDescription": "Return iProofLevel, the L1 blockers and the L2 "
-                     "Publication gaps (dictLevel2Gaps: published "
-                     "copies on GitHub and Zenodo, AI Declaration "
-                     "signed, AI models declared, Personal AI "
-                     "Configuration and environment-archive questions "
-                     "answered); every false key is one criterion."},
+                     "Publication gaps (dictLevel2Gaps). bAtLeastLevel2 "
+                     "is the gate's verdict and a false criterion key "
+                     "names one remaining criterion; bPromptRecordCurrent, "
+                     "bSupervisionClean and bProjectContextFileExists are "
+                     "informational and gate nothing."},
     {"sName": "report-l2-gaps", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level2/readiness",

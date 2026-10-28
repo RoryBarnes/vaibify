@@ -1644,8 +1644,24 @@ var VaibifyWorkflowRequirements = (function () {
         if (!dictArchive.bOfferVerify) return "";
         return '<div class="detail-note">Run this before you publish: ' +
             'publishing first costs a second Zenodo version.</div>' +
-            _fsRenderActionButton(
-                "verify-l3", "", "Verify Level 3 reproducibility");
+            _fsRenderButtonForAnotherRow(
+                "rebuildAttestation", "verify-l3",
+                "Verify Level 3 reproducibility");
+    }
+
+    function _fsRenderButtonForAnotherRow(sRowKey, sAction, sLabel) {
+        /* A button that acts on ANOTHER row, so it waits only when that
+           row does. Rendered inside the Zenodo row, the Verify control
+           inherited the Zenodo row's wait -- "do this later, attest
+           first" -- and was disabled by the very ordering it exists to
+           satisfy (found in review, 2026-10-27). */
+        var sOwnWait = _sBlockedActionReason;
+        _sBlockedActionReason = _fsReasonThisRowMustWait({sKey: sRowKey});
+        try {
+            return _fsRenderActionButton(sAction, "", sLabel);
+        } finally {
+            _sBlockedActionReason = sOwnWait;
+        }
     }
 
     function _fsZenodoSitePhrase(sService) {
@@ -2166,7 +2182,8 @@ var VaibifyWorkflowRequirements = (function () {
                 sKey: "github", sTitle: "GitHub mirror",
                 sBadgeKey: "sGithub",
                 dictSync: dictSyncs.github,
-                sHowto: "Push and re-verify from the Repos panel.",
+                sHowto: "Push with Sync → Push to GitHub, then " +
+                    "Verify now.",
                 sInformationalHtml: _fsRenderInformationalFileBlock(
                     listNotRequired, "sGithub"),
                 listEnvelope: listEnvelope,
@@ -2191,7 +2208,8 @@ var VaibifyWorkflowRequirements = (function () {
                 sKey: "zenodo", sTitle: "Zenodo archive",
                 sBadgeKey: "sZenodo",
                 dictSync: dictSyncs.zenodo,
-                sHowto: "Publish or re-verify from the Repos panel.",
+                sHowto: "Publish with Sync → Archive to Zenodo, " +
+                    "then Verify now.",
                 sInformationalHtml: _fsRenderInformationalFileBlock(
                     listNotRequired, "sZenodo"),
                 listEnvelope: listEnvelope,

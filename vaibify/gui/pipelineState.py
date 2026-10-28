@@ -528,10 +528,15 @@ def fsSummarizeHostIncident(dictIncident):
     )
     sRaw = str(dictIncident.get("sExceptionRepr", "")
                or dictIncident.get("sMessage", ""))
-    sSummary = fsRedactCredentials(" ".join(sRaw.split()))
+    # Redacted BEFORE the whitespace is collapsed: the redactor blanks a
+    # whole line that names a credential, and one collapsed line would
+    # lose the entire diagnosis to a single mention of "token".
+    sSummary = " ".join(fsRedactCredentials(sRaw).split())
     sHome = os.path.expanduser("~").rstrip("/")
-    if len(sHome) > 1:
-        sSummary = sSummary.replace(sHome, "~")
+    for sSpelling in sorted({sHome, os.path.realpath(sHome)}, key=len,
+                            reverse=True):
+        if len(sSpelling) > 1:
+            sSummary = sSummary.replace(sSpelling, "~")
     if len(sSummary) > I_FAILURE_CAUSE_MAX_CHARACTERS:
         sSummary = sSummary[:I_FAILURE_CAUSE_MAX_CHARACTERS] + "…"
     return sSummary

@@ -838,7 +838,7 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         _fnLogPublishRequested(
             "Zenodo", sContainerId,
             f"files={len(request.listFilePaths)} site="
-            f"{dictWorkflow.get('sZenodoService') or 'sandbox'}",
+            f"{_fsLoggableZenodoSite(dictWorkflow.get('sZenodoService'))}",
         )
         dictResult, sZenodoService = await _ftPerformZenodoArchive(
             syncDispatcher, dictCtx, sContainerId, dictWorkflow,
@@ -1691,6 +1691,18 @@ def _fnLogPublishRequested(sService, sContainerId, sDetail):
     )
 
 
+def _fsLoggableZenodoSite(sService):
+    """Return a Zenodo site name fit for the log, or "unrecognized".
+
+    The declared site lives in project.json, which the container can
+    write; only a name the client's own table knows is written, so a
+    crafted value cannot forge log lines.
+    """
+    from vaibify.reproducibility.zenodoClient import fdictZenodoServiceTable
+    sService = sService or "sandbox"
+    return sService if sService in fdictZenodoServiceTable() else "unrecognized"
+
+
 def _fnLogPublishOutcome(sService, sContainerId, dictResult, sIdentifier=""):
     """Log a publish's outcome by its public identifier, never raw text.
 
@@ -1703,7 +1715,7 @@ def _fnLogPublishOutcome(sService, sContainerId, dictResult, sIdentifier=""):
     if dictResult.get("bSuccess"):
         logger.info(
             "%s publish succeeded: container=%s%s", sService, sContainerId,
-            f" id={sIdentifier}" if sIdentifier else "",
+            f" id={sIdentifier!r}" if sIdentifier else "",
         )
         return
     from vaibify.reproducibility.credentialRedactor import (

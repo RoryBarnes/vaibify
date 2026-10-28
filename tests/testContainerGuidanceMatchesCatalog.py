@@ -40,6 +40,12 @@ _RE_SAFETY_CLAIM = re.compile(
     r"\b(not agent-safe|user-only|agent-safe)\b",
     re.IGNORECASE,
 )
+# "`name` via vaibify-do" names an action as surely as "vaibify-do name".
+_RE_ACTION_VIA_VAIBIFY_DO = re.compile(r"`([a-z][a-z0-9-]+)`\s+via\s+vaibify-do")
+# A plural claim: every backticked name in the clause shares one safety.
+_RE_PLURAL_SAFETY_CLAUSE = re.compile(
+    r"\bare\s+(not agent-safe|user-only|agent-safe)\b", re.IGNORECASE)
+_RE_KEBAB_NAME = re.compile(r"`([a-z][a-z0-9]*(?:-[a-z0-9]+)+)`")
 
 
 def _fsReadText(sPath):
@@ -88,7 +94,10 @@ def testEveryVaibifyDoActionInContainerGuidanceExists():
     setKnown = set(_fdictAgentSafetyByAction())
     listUnknown = []
     for sName, sText in _flistContainerGuidance():
-        for sAction in _RE_VAIBIFY_DO_ACTION.findall(sText):
+        listNamed = (
+            _RE_VAIBIFY_DO_ACTION.findall(sText)
+            + _RE_ACTION_VIA_VAIBIFY_DO.findall(_fsCollapseWhitespace(sText)))
+        for sAction in listNamed:
             if sAction not in setKnown:
                 listUnknown.append(f"{sName}: vaibify-do {sAction}")
     assert listUnknown == [], (
@@ -107,15 +116,29 @@ def testContainerGuidanceAgreesWithAgentSafety():
     dictSafety = _fdictAgentSafetyByAction()
     listWrong = []
     for sName, sText in _flistContainerGuidance():
-        for sAction, sClaim in _RE_SAFETY_CLAIM.findall(
-                _fsCollapseWhitespace(sText)):
+        sFlat = _fsCollapseWhitespace(sText)
+        listClaims = _RE_SAFETY_CLAIM.findall(sFlat) + _flistPluralClaims(sFlat)
+        for sAction, sClaim in listClaims:
             if sAction not in dictSafety:
+                listWrong.append(f"{sName}: `{sAction}` (not an action) "
+                                 f"called {sClaim}")
                 continue
             bClaimedSafe = sClaim.lower() == "agent-safe"
             if bClaimedSafe != dictSafety[sAction]:
                 listWrong.append(f"{sName}: `{sAction}` called {sClaim}")
     assert listWrong == [], (
         "container guidance contradicts bAgentSafe: " + ", ".join(listWrong))
+
+
+def _flistPluralClaims(sFlat):
+    """Return ``(name, claim)`` for every name in a clause saying "are <claim>"."""
+    listClaims = []
+    for sClause in re.split(r"[.;]", sFlat):
+        matchPlural = _RE_PLURAL_SAFETY_CLAUSE.search(sClause)
+        if matchPlural:
+            for sAction in _RE_KEBAB_NAME.findall(sClause[:matchPlural.start()]):
+                listClaims.append((sAction, matchPlural.group(1)))
+    return listClaims
 
 
 _S_REPO_ROOT = os.path.dirname(os.path.dirname(_S_CONTAINER_IMAGE_DIR))

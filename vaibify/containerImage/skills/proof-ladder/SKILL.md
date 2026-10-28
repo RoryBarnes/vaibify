@@ -93,9 +93,12 @@ EVERY run uses, so ask for it before the first run, not after Level 2:
   current attestation.
 
 The answer is the researcher's — `declare-determinism` is USER-ONLY.
-Relay the question with both choices; never pick one for them, and do
-not hunt for a seed to "fix" the row: it asks what they choose, not
-what the scripts do.
+Relay the question with both choices; never pick one for them. A
+project whose scripts draw no random numbers still needs the answer:
+the question asks what they choose, not what the scripts do. The Level
+3 readiness part ALSO fails while any step carries an
+unseeded-randomness warning, and there seeding that step's generator
+is the fix, with the researcher's agreement.
 
 ## L1 — Self-Consistent
 
@@ -169,12 +172,16 @@ reports `iProofLevel` and the backend derivation is the ground truth.
 Every published file's hash matches an immutable public authority
 (GitHub commit, Zenodo DOI; Overleaf/arXiv when configured), AND the
 researcher has answered the publication questions. Read
-`dictLevel2Gaps` from `vaibify-do check-l2-readiness`: every `false`
-key is one remaining criterion. They are:
+`dictLevel2Gaps` from `vaibify-do check-l2-readiness`: `bAtLeastLevel2`
+is the gate's verdict, and each criterion key below that reads `false`
+is one remaining criterion. `bPromptRecordCurrent`, `bSupervisionClean`
+and `bProjectContextFileExists` are informational and gate nothing;
+never report them as gaps. The criteria:
 
 - **Published copies** match: GitHub (`bGithubFullySynced`) and
-  Zenodo (`bZenodoFullySynced`); Overleaf and arXiv only when bound
-  or recorded. No two compared files may share a basename.
+  Zenodo (`bZenodoFullySynced`); Overleaf (`bOverleafFullySynced`) and
+  arXiv (`bArxivFullySynced`) only when bound or recorded. No two
+  compared files may share a basename (`bNoBasenameCollisions`).
 - **AI Declaration** signed and still current
   (`bAiDeclarationAttested`). A sign-off the files have moved past
   reads as stale.
@@ -238,7 +245,8 @@ Read `vaibify-do check-l3-readiness`. Readiness has eight parts, each
 its own row: the manifest is complete; the manifest matches the files;
 the dependency lock is hash-pinned; the environment snapshot exists;
 the Dockerfile is pinned; `reproduce.sh` exists; Determinism is
-answered; standalone binaries are declared or waived
+answered and no step carries an unseeded-randomness warning;
+standalone binaries are declared or waived
 (`declare-standalone-binaries`, USER-ONLY). Level 3 itself also needs
 a current rebuild attestation, the envelope on GitHub, the envelope
 AND the attestation in the Zenodo archive, the environment image

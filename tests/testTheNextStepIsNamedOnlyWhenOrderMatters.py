@@ -235,6 +235,25 @@ def test_an_unanswered_determinism_question_is_named_before_the_envelope(
     assert "Repeatable across computers" in dictNext["sReason"]
 
 
+def test_an_unanswered_question_is_named_before_a_lock_that_blocks(
+    monkeypatch,
+):
+    """One regeneration settles both, so the answer comes first, not silence.
+
+    Without this edge the two were independent roots and the arrow went
+    silent, where it had named the lock before determinism joined the
+    ordering (found in review, 2026-10-27).
+    """
+    dictNext = _fdictNextFrom(
+        _fdictAllSatisfiedExcept(
+            levelOrdering.S_DETERMINISM_ROW_KEY, "dependencyLock",
+            "rebuildAttestation",
+        ),
+        monkeypatch,
+    )
+    assert dictNext["sRowKey"] == levelOrdering.S_DETERMINISM_ROW_KEY
+
+
 def test_an_answered_determinism_question_is_never_named(sProjectRepo):
     """The row's verdict is the gate's: an answered question is satisfied."""
     from vaibify.reproducibility.executionProfiles import (

@@ -2358,40 +2358,31 @@ def testThePostPushVerifyRewritesTheSyncCacheUnderItsOwnDrain():
 
 
 @pytest.mark.falsification
-def testARepoPanelPushOfTheProjectRepoRecordsWhereItLanded():
-    """A Repos-panel push binds the GitHub verify as the sync push does.
+def testARepoPanelPushOfTheProjectRepoRecordsNoGithubBinding():
+    """A Repos-panel push never binds the GitHub verify.
 
-    Only the GitHub sync push recorded the remote a push reached, so a
-    project pushed from the Repos panel stayed unbound and its verify
-    answered "has not pushed to GitHub from this hub" while the
-    dashboard told the researcher to push from the Repos panel
-    (researcher-reported, 2026-10-27). The remote is read inside the
-    push's own worker, where the exec is admitted, and the key that
-    carries it never reaches the response.
+    The GitHub sync push records where a push landed only after checking
+    that the researcher's token owns the remote. The Repos panel runs no
+    such check, and a push's real destination can differ from the
+    ``origin`` url the container wrote (``pushurl``), so a binding
+    recorded here would let a container agent steer the agent-safe
+    verify, and the researcher's token, at a repository of its choosing
+    (found in review, 2026-10-27).
 
-    Kills: dropping the record call from ``_fdictFinishRepoPush``.
+    Kills: recording the reached remote after a Repos-panel push.
     """
     from vaibify.config import registryManager
     from vaibify.gui import routeContext
-
-    listReadAdmissions = []
-
-    def fdictRecordTheRead(connectionDocker, sContainerId, sRepoPath):
-        admission = mutationAdmission.fadmissionActiveForContainerId(
-            S_CONTAINER_ID,
-        )
-        listReadAdmissions.append(
-            "" if admission is None else admission.sMode,
-        )
-        return {"sOwner": "example-owner", "sRepo": "example-repo",
-                "sBranch": "main"}
+    from vaibify.gui.routes import syncRoutes
 
     client, _connectionDocker = _tConnectGatedClient(
         DockerDoubleWhereThePushedRepoIsTheProjectRepo(),
     )
-    from vaibify.gui.routes import syncRoutes
     with patch.object(
-        syncRoutes, "_fdictReadReachedRemote", fdictRecordTheRead,
+        syncRoutes, "_fdictReadReachedRemote",
+        lambda connectionDocker, sContainerId, sRepoPath: {
+            "sOwner": "example-owner", "sRepo": "example-repo",
+            "sBranch": "main"},
     ), patch.object(
         registryManager, "fnRecordPushedGithubRemote",
     ) as mockRecord, patch.object(
@@ -2403,12 +2394,7 @@ def testARepoPanelPushOfTheProjectRepoRecordsWhereItLanded():
             json={"sCommitMessage": "[vaibify] Update repository"},
         )
     assert response.status_code == 200, response.text
-    assert "_dictReachedRemote" not in response.json()
-    assert listReadAdmissions == [
-        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD]
-    assert mockRecord.call_count == 1
-    assert mockRecord.call_args.args[2:] == (
-        "example-owner", "example-repo", "main")
+    assert mockRecord.call_count == 0
 
 
 class DockerDoubleThatBlocksTheRepoPush(

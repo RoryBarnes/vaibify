@@ -4436,7 +4436,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # holds the logic).
     # 940 -> 946 (2026-10-27): the post-push verify asks the resolver
     # whether the project has the remote, never a dictRemotes key.
-    "routeContext.py": 946,
+    # 946 -> 956 (2026-10-27, review): a refusal the verify's own
+    # configuration raised is relayed in the push's warning.
+    "routeContext.py": 956,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -5678,7 +5680,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # is its twin -- same flow, same bookkeeping, same module.
     # 3688 -> 3743 (2026-10-27): Zenodo and Overleaf publishes are
     # logged, requested and outcome, by public identifiers only.
-    "routes/syncRoutes.py": 3743,
+    # 3743 -> 3755 (2026-10-27, review): a logged Zenodo site is
+    # one the client's table knows, so it cannot forge log lines.
+    "routes/syncRoutes.py": 3755,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -6995,7 +6999,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1063 -> 1068 (2026-10-01): the writer's stop accepts a join bound.
     # 1068 -> 1097 (2026-10-27): a host incident reaches the
     # container-readable state as a redacted, bounded summary.
-    "pipelineState.py": 1097,
+    # 1097 -> 1102 (2026-10-27, review): the incident is redacted
+    # before its whitespace collapses, and the real home path too.
+    "pipelineState.py": 1102,
     # 1222 -> 1229 (2026-10-01): a TFRecord feature is read from the decoded example.
     # 1229 -> 1240 (2026-10-01): the module says where its loaders run.
     "dataLoaders.py": 1240,
@@ -7625,7 +7631,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # records where it landed, as the GitHub sync push does.
     # 890 -> 899 (2026-10-27): a Repos-panel push is logged as the
     # GitHub sync push is.
-    "routes/repoRoutes.py": 899,
+    # 899 -> 865 (2026-10-27, review): the Repos panel records no
+    # GitHub binding after all, since it runs no token-owner check.
+    "routes/repoRoutes.py": 865,
     # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
     # when its last three routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Two of the three could not stay inline:

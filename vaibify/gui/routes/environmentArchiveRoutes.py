@@ -540,7 +540,7 @@ async def _fnRunDepositWorker(
     deposit failure.
     """
     logger.info(
-        "Environment-archive deposit started: container=%s site=%s",
+        "Environment-archive deposit started: container=%s site=%r",
         sContainerId, dictDestination.get("sZenodoService", ""),
     )
     try:
@@ -579,7 +579,7 @@ def _fnLogArchiveSucceeded(sOperation, sContainerId, dictRecord):
     so nothing there said which version a project's image went to.
     """
     logger.info(
-        "Environment-archive %s succeeded: container=%s doi=%s site=%s",
+        "Environment-archive %s succeeded: container=%s doi=%r site=%r",
         sOperation, sContainerId, (dictRecord or {}).get("sVersionDoi", ""),
         (dictRecord or {}).get("sZenodoService", ""),
     )

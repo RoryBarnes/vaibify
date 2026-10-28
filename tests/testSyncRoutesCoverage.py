@@ -2219,7 +2219,7 @@ def test_zenodo_archive_writes_its_request_and_outcome_to_the_log(
         "Zenodo publish requested:" in s and "files=1 site=sandbox" in s
         for s in listLines)
     assert any(
-        "Zenodo publish succeeded:" in s and "id=10.5072/zenodo.999" in s
+        "Zenodo publish succeeded:" in s and "id='10.5072/zenodo.999'" in s
         for s in listLines)
 
 

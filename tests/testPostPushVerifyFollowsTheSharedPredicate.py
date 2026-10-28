@@ -101,6 +101,42 @@ def testAnUnboundGithubRemoteIsStillVerifiedSoItsRefusalIsReported(
         monkeypatch, str(tmp_path), dictWorkflow) == ["github"]
 
 
+@pytest.mark.falsification
+def testAnUnboundRemoteIsRefusedBeforeAnyFetchAndTheRefusalIsRelayed(
+    tmp_path, monkeypatch,
+):
+    """Through the REAL verify: refused at the binding, and the reason relayed.
+
+    Drives ``fdictVerifyRemoteService`` -- the one call site every verify
+    lane shares -- rather than the config helper, so the binding check is
+    asserted where it protects the researcher's token: the GitHub fetch
+    is rigged to fail the test if it is ever reached. And the push's
+    warning carries the refusal's own sentence, because an agent cannot
+    read the hub log it used to point at (found in review, 2026-10-27).
+
+    Kills: resolving the verify's config without the binding check at
+    ``fdictVerifyRemoteService``, which then queries the remote the
+    container's ``origin`` names with the researcher's token.
+    """
+    from vaibify.reproducibility import scheduledReverify
+    _fnWriteCheckout(str(tmp_path), _S_ORIGIN_CONFIG)
+
+    def fnFailIfFetched(*args, **kwargs):
+        raise AssertionError("the remote was queried without a binding")
+
+    monkeypatch.setattr(
+        scheduledReverify, "_fdictFetchGithubHashes", fnFailIfFetched)
+    monkeypatch.setattr(
+        routeContext, "ffilesForWorkflow",
+        lambda dictCtx, sContainerId, dictWorkflowArg: HostRepoFiles(
+            str(tmp_path)))
+    dictWorkflow = dict(_fdictWorkflowPushedFromThisHub())
+    dictWorkflow[S_HOST_GITHUB_BINDING_KEY] = {}
+    sWarning = asyncio.run(routeContext.fsRefreshVerifyCacheAfterPush(
+        {}, "container-id", dictWorkflow, "github"))
+    assert scheduledReverify.S_GITHUB_NOT_BOUND in sWarning, sWarning
+
+
 def testAProjectWithNoRemoteIsSkippedSilently(tmp_path, monkeypatch):
     """With nothing to verify against, a push verifies nothing and warns of nothing."""
     _fnWriteCheckout(str(tmp_path), "[core]\n\tbare = false\n")

@@ -65,6 +65,19 @@ The arrow is an endgame device, so the costliest order of all --
 answering before the run that makes the outputs -- is said by the
 in-container proof-ladder skill, not by the arrow.
 
+**Only the GitHub sync push records where a push landed (2026-10-27).**
+The GitHub verify is bound to that host-side record, and the sync push
+writes it only after checking that the researcher's token owns the
+remote. The Repos panel runs no such check, and a push's real
+destination can differ from the `origin` url the container wrote, so
+it deliberately records nothing: a binding recorded there would let a
+container agent steer the agent-safe verify, and the researcher's
+token, at a repository of its choosing
+(`testARepoPanelPushOfTheProjectRepoRecordsNoGithubBinding`). The
+verify's binding check is asserted at the shared call site,
+`fdictVerifyRemoteService`, with the fetch rigged to fail if reached
+(`testAnUnboundRemoteIsRefusedBeforeAnyFetchAndTheRefusalIsRelayed`).
+
 **Two level readings that must not be widened back (2026-10-27).**
 The step save and the test-execution routes detect a crossing of
 Level 1, so they read `fiComputeProofLevelUpToOne` (the marker rule

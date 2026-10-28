@@ -1180,8 +1180,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         bPassed = tExecResult.iExitCode == 0
         _fnRecordTestResult(dictStep, bPassed, dictWorkflow, iStepIndex)
         _fnRegisterTestCommand(
-            dictStep, bPassed, sFilePath,
-            dictWorkflow.get("sProjectRepoPath", ""),
+            dictStep, bPassed, sFilePath, sProjectRepoPath or sProjectRoot,
         )
         fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,

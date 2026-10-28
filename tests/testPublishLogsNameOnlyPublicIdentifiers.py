@@ -52,5 +52,5 @@ def testASuccessfulPublishLogsItsPublicIdentifier(caplog):
             sIdentifier="10.5281/zenodo.1")
     assert _flistMessages(caplog) == [
         "Zenodo publish requested: container=cid files=3",
-        "Zenodo publish succeeded: container=cid id=10.5281/zenodo.1",
+        "Zenodo publish succeeded: container=cid id='10.5281/zenodo.1'",
     ]

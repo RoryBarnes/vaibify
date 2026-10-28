@@ -37098,6 +37098,26 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testPostPushVerifyFollowsTheSharedPredicate.py::'
+            'testAnUnboundRemoteIsRefusedBeforeAnyFetchAndTheRefusalIsRelayed'
+        ),
+        source='vaibify/reproducibility/scheduledReverify.py',
+        # the shared verify resolves the remote without the binding check
+        old=(
+            '    dictConfig = _fdictRequireServiceConfig(\n'
+            '        dictWorkflow, sService, filesRepo,\n'
+            '    )\n'
+            '    dictExpected = fdictComputeLiveExpectedHashes(\n'
+        ),
+        new=(
+            '    dictConfig = _fdictResolveServiceConfig(\n'
+            '        dictWorkflow, sService, filesRepo,\n'
+            '    )\n'
+            '    dictExpected = fdictComputeLiveExpectedHashes(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPostPushVerifyFollowsTheSharedPredicate.py::'
             'testAnUnboundGithubRemoteIsStillVerifiedSoItsRefusalIsReported'
         ),
         source='vaibify/gui/routeContext.py',
@@ -37121,17 +37141,24 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
-            'testARepoPanelPushOfTheProjectRepoRecordsWhereItLanded'
+            'testARepoPanelPushOfTheProjectRepoRecordsNoGithubBinding'
         ),
         source='vaibify/gui/routes/repoRoutes.py',
-        # a Repos-panel push of the project repo records nothing
+        # a Repos-panel push records the remote it read, unchecked
         old=(
-            '    if dictWorkflow is not None:\n'
-            '        syncRoutes._fnRecordPushedRemoteHostSide('
+            '    syncRoutes._fnLogPublishOutcome(\n'
+            '        _S_REPO_PANEL_SERVICE, sContainerId, dictResult,\n'
+            '    )\n'
         ),
         new=(
-            '    if False:\n'
-            '        syncRoutes._fnRecordPushedRemoteHostSide('
+            '    syncRoutes._fnLogPublishOutcome(\n'
+            '        _S_REPO_PANEL_SERVICE, sContainerId, dictResult,\n'
+            '    )\n'
+            '    sRepoPath = _fsRepositoryPathFor(sContainerId, sRepoName)\n'
+            '    syncRoutes._fnRecordPushedRemoteHostSide(\n'
+            '        dictCtx, sContainerId, {}, sRepoPath,\n'
+            '        syncRoutes._fdictReadReachedRemote(\n'
+            '            dictCtx["docker"], sContainerId, sRepoPath))\n'
         ),
     ),
     # --- 2026-10-27: the Level 2 gaps dict reports the gate's verdict ---
@@ -37148,6 +37175,19 @@ LIST_FALSIFICATIONS = [
             '            bL1 and bGithub and bZenodo and bArxiv and bDecl\n'
             '            and bModels and bPersonal and bArchiveAnswered),\n'
         ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheZenodoRowOffersVerifyFirst.py::'
+            'test_verify_stays_live_while_the_endgame_holds_the_zenodo_row'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # the Verify control keeps the Zenodo row's own wait
+        old=(
+            '        _sBlockedActionReason = _fsReasonThisRowMustWait('
+            '{sKey: sRowKey});\n'
+        ),
+        new='',
     ),
     # --- 2026-10-27: the dashboard map quotes only real labels ---
     Falsification(

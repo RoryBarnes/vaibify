@@ -185,8 +185,8 @@ S_HOST_GITHUB_BINDING_KEY = "_dictHostGithubBinding"
 
 S_GITHUB_NOT_BOUND = (
     "This project has not pushed to GitHub from this hub, so there is no "
-    "recorded remote to verify against. Push once from the Repos or Sync "
-    "panel; verification then compares your files to that remote."
+    "recorded remote to verify against. Push once with Sync → Push to "
+    "GitHub; verification then compares your files to that remote."
 )
 
 
