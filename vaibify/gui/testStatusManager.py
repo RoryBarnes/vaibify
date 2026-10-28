@@ -29,20 +29,43 @@ def _fsBuildPytestCommand(sDirectory, sFilePath):
     )
 
 
-def _fnRegisterTestCommand(dictStep, bPassed, sFilePath):
+def _fnRegisterTestCommand(dictStep, bPassed, sFilePath, sProjectRepoPath=""):
     """Add the pytest run command to the step if the test passed.
 
     The path is shell-quoted because this command string is persisted
     into ``saTestCommands`` and re-executed on every later test run: an
     unquoted path carrying shell metacharacters would become a stored,
     repeatedly-executed injection.
+
+    A file a declared test category already runs is not registered
+    again: the category spells it ``tests/<file>`` from the step
+    directory and this command spells it by its full path, so the
+    exact-string de-duplication downstream could not see they were one
+    test, and every later run executed it twice.
     """
-    if not bPassed:
+    if not bPassed or _fbACategoryRunsTheFile(
+            dictStep, sFilePath, sProjectRepoPath):
         return
     dictStep.setdefault("saTestCommands", [])
     sRunCmd = f"python -m pytest {fsShellQuote(sFilePath)} -v"
     if sRunCmd not in dictStep["saTestCommands"]:
         dictStep["saTestCommands"].append(sRunCmd)
+
+
+def _fbACategoryRunsTheFile(dictStep, sFilePath, sProjectRepoPath):
+    """Return True when a declared test category's file is ``sFilePath``."""
+    sTarget = posixpath.normpath(sFilePath)
+    for dictCategory in (dictStep.get("dictTests") or {}).values():
+        if not isinstance(dictCategory, dict):
+            continue
+        sCategoryFile = dictCategory.get("sFilePath") or ""
+        if not sCategoryFile:
+            continue
+        if not sCategoryFile.startswith("/"):
+            sCategoryFile = posixpath.join(sProjectRepoPath, sCategoryFile)
+        if posixpath.normpath(sCategoryFile) == sTarget:
+            return True
+    return False
 
 
 def _flistResolveTestCommands(dictStep):

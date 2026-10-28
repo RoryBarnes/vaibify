@@ -37147,6 +37147,61 @@ LIST_FALSIFICATIONS = [
             '            and bModels and bPersonal and bArchiveAnswered),\n'
         ),
     ),
+    # --- 2026-10-27: every external publish is logged, redacted ---
+    Falsification(
+        nodeid=(
+            'tests/testPublishLogsNameOnlyPublicIdentifiers.py::'
+            'testAFailedPublishLogsNoCredential'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # only the URL-userinfo redaction stands between a query token
+        # and the hub log
+        old=(
+            '        _fsPushOutputSnippet(fsRedactCredentials(\n'
+            '            dictResult.get("sMessage") or dictResult.get('
+            '"sOutput") or "")),\n'
+        ),
+        new=(
+            '        _fsPushOutputSnippet(\n'
+            '            dictResult.get("sMessage") or dictResult.get('
+            '"sOutput") or ""),\n'
+        ),
+    ),
+    # --- 2026-10-27: a saved test runs once ---
+    Falsification(
+        nodeid=(
+            'tests/testASavedTestRunsOnce.py::'
+            'testAFileACategoryRunsIsNotRegisteredASecondTime'
+        ),
+        source='vaibify/gui/testStatusManager.py',
+        # a category's file is registered again under a second spelling
+        old=(
+            '    if not bPassed or _fbACategoryRunsTheFile(\n'
+            '            dictStep, sFilePath, sProjectRepoPath):\n'
+        ),
+        new='    if not bPassed:\n',
+    ),
+    # --- 2026-10-27: the determinism answer joins the Level 3 order ---
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_an_unanswered_determinism_question_is_named_before_the_'
+            'envelope'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # the answer orders nothing, so the manifest becomes a second root
+        old=(
+            '    (\n'
+            '        S_DETERMINISM_ROW_KEY, "manifest",\n'
+            '        "The envelope records the settings your determinism '
+            'answer "\n'
+            '        "chooses. Answer first: choosing “Repeatable across "\n'
+            '        "computers” afterwards means regenerating the envelope "\n'
+            '        "and settling the manifest again.",\n'
+            '    ),\n'
+        ),
+        new='',
+    ),
     # --- 2026-10-27: a sign-off reads only the Level 1 crossing ---
     Falsification(
         nodeid=(

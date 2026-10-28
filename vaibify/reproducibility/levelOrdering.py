@@ -1,9 +1,14 @@
 """Which blocked Level 3 requirement has to be fixed FIRST.
 
 Most of the ladder is order-free: a researcher can declare their
-binaries, answer the determinism questions and pin a Dockerfile in any
-sequence, and nothing they do undoes anything else. A handful of
-remedies are not like that. Publishing to Zenodo before attesting puts
+binaries and pin a Dockerfile in any sequence, and nothing they do
+undoes anything else. A handful of remedies are not like that. The
+determinism answer is one: it chooses the execution settings every run
+uses and the envelope records, so a researcher who answers "Repeatable
+across computers" after the envelope, the verification or a publication
+redoes them (and reruns every step). Its costliest ordering, answering
+before the run that makes the outputs, comes before the endgame this
+arrow speaks in, so the in-container guidance says it instead. Publishing to Zenodo before attesting puts
 an attestation in the archive that does not cover the archived
 manifest, and Zenodo deposits are immutable, so that mistake costs a
 whole new version. Regenerating ``MANIFEST.sha256`` before
@@ -81,6 +86,7 @@ disappears exactly when order stops mattering.
 """
 
 __all__ = [
+    "S_DETERMINISM_ROW_KEY",
     "T_LEVEL3_ORDERING_EDGES",
     "fdictDescribeNextOrderedStep",
     "fdictDescribeOrderedEndgame",
@@ -88,11 +94,15 @@ __all__ = [
 ]
 
 from vaibify.reproducibility import (
-    archivePermanence, levelGates, lockSatisfaction,
+    archivePermanence, determinismGate, levelGates, lockSatisfaction,
 )
 from vaibify.reproducibility.l3Attestation import fbL3AttestationCurrent
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 
+
+# The Project block's row for the one determinism question: its key is
+# "determinism-" + the question's sKey (scriptWorkflowRequirements.js).
+S_DETERMINISM_ROW_KEY = "determinism-repeatability"
 
 # ``(sEarlierRow, sLaterRow, sReason)``, keyed by the requirement-row
 # names the Project block already renders. The reason is shown to the
@@ -183,6 +193,37 @@ T_LEVEL3_ORDERING_EDGES = (
         "the manifest in the archive, and Zenodo versions are "
         "immutable -- publishing before you attest costs a whole new "
         "version.",
+    ),
+    # The determinism answer, conditionally: an unanswered project
+    # runs, records and verifies under the speed settings, so answering
+    # "Prioritize speed" afterwards undoes nothing, and each reason says
+    # so rather than claiming an undo that may not happen.
+    (
+        S_DETERMINISM_ROW_KEY, "manifest",
+        "The envelope records the settings your determinism answer "
+        "chooses. Answer first: choosing “Repeatable across "
+        "computers” afterwards means regenerating the envelope "
+        "and settling the manifest again.",
+    ),
+    (
+        S_DETERMINISM_ROW_KEY, "rebuildAttestation",
+        "A verification runs under the settings your determinism "
+        "answer chooses. Answer first: choosing “Repeatable "
+        "across computers” afterwards retires the verification, "
+        "and the steps should be run again under it.",
+    ),
+    (
+        S_DETERMINISM_ROW_KEY, "envelopeMirror",
+        "The envelope records the settings your determinism answer "
+        "chooses, so choosing “Repeatable across computers” "
+        "after a push means pushing a regenerated envelope again.",
+    ),
+    (
+        S_DETERMINISM_ROW_KEY, "envelopeArchive",
+        "The envelope records the settings your determinism answer "
+        "chooses, and Zenodo versions are immutable -- choosing "
+        "“Repeatable across computers” after publishing "
+        "costs a second version.",
     ),
 )
 
@@ -276,6 +317,12 @@ def fdictJudgeOrderedRequirements(
             and not _fbIsSandbox(
                 dictPermanence["sProjectArchivePermanence"],
             )
+        ),
+        # The row's own verdict: green exactly when the poll's
+        # listDeterminismQuestions marks the question answered.
+        S_DETERMINISM_ROW_KEY: "repeatability" not in (
+            determinismGate.flistUnansweredDeterminismQuestions(
+                dictWorkflow)
         ),
     }
 

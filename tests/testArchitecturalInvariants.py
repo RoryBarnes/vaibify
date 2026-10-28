@@ -5452,7 +5452,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # route, and the checkpoint every progress report now passes
     # through. Still one lane (this project's image archive); the stop
     # state and its lock live in gui/archiveProgress.py.
-    "routes/environmentArchiveRoutes.py": 1019,
+    # 1019 -> 1041 (2026-10-27): a settled deposit or promotion is
+    # logged by its version DOI, as its failure already was.
+    "routes/environmentArchiveRoutes.py": 1041,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5522,7 +5524,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # N/A or error axis; returns the step as saved; and a run reads a
     # tier's standards file first, reporting a malformed one by name.
     # One concern -- what the test routes may do -- so not split.
-    "routes/testRoutes.py": 1325,
+    # 1325 -> 1328 (2026-10-27): a saved test is registered against
+    # the project repo, so a category's file is not run twice.
+    "routes/testRoutes.py": 1328,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5672,7 +5676,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +43 (2026-09-29): publish-where-the-record-is, the cross-instance
     # refusal's OTHER remedy, beside the start-new-concept route that
     # is its twin -- same flow, same bookkeeping, same module.
-    "routes/syncRoutes.py": 3688,
+    # 3688 -> 3743 (2026-10-27): Zenodo and Overleaf publishes are
+    # logged, requested and outcome, by public identifiers only.
+    "routes/syncRoutes.py": 3743,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -7617,7 +7623,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # only new code is naming the repo and reusing the shared merge.
     # 849 -> 890 (2026-10-27): a Repos-panel push of the project repo
     # records where it landed, as the GitHub sync push does.
-    "routes/repoRoutes.py": 890,
+    # 890 -> 899 (2026-10-27): a Repos-panel push is logged as the
+    # GitHub sync push is.
+    "routes/repoRoutes.py": 899,
     # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
     # when its last three routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Two of the three could not stay inline:

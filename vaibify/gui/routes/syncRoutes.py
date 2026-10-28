@@ -751,10 +751,16 @@ def _fnRegisterOverleafPush(app, dictCtx):
         sContainerId: str, request: SyncPushRequest,
         requestHttp: Request,
     ):
-        return await _fdictHandleOverleafPushRequest(
+        _fnLogPublishRequested(
+            "Overleaf", sContainerId,
+            f"files={len(request.listFilePaths or [])}",
+        )
+        dictResult = await _fdictHandleOverleafPushRequest(
             syncDispatcher, dictCtx, sContainerId, request,
             requestHttp=requestHttp,
         )
+        _fnLogPublishOutcome("Overleaf", sContainerId, dictResult)
+        return dictResult
 
 
 def _fdictComputePostArchiveZenodoDigests(
@@ -829,15 +835,25 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         )
         _fnRefuseBasenameCollisions(request.listFilePaths)
         _fnRefuseCrossInstanceParent(dictWorkflow)
+        _fnLogPublishRequested(
+            "Zenodo", sContainerId,
+            f"files={len(request.listFilePaths)} site="
+            f"{dictWorkflow.get('sZenodoService') or 'sandbox'}",
+        )
         dictResult, sZenodoService = await _ftPerformZenodoArchive(
             syncDispatcher, dictCtx, sContainerId, dictWorkflow,
             request, requestHttp,
         )
         if not dictResult["bSuccess"]:
+            _fnLogPublishOutcome("Zenodo", sContainerId, dictResult)
             return dictResult
         await _fnPersistZenodoArchiveSuccess(
             dictCtx, sContainerId, dictWorkflow, request,
             dictResult, sZenodoService, requestHttp,
+        )
+        _fnLogPublishOutcome(
+            "Zenodo", sContainerId, dictResult,
+            sIdentifier=dictWorkflow.get("sZenodoLatestDoi", ""),
         )
         return dictResult
 
@@ -1661,6 +1677,45 @@ def _fdictProbeAfterRaisedPushExec(
 _I_PUSH_LOG_SNIPPET_LENGTH = 300
 
 _RE_URL_USERINFO_SERVER = re.compile(r"(https?://)[^/\s@]+@")
+
+
+def _fnLogPublishRequested(sService, sContainerId, sDetail):
+    """Log that a publish to an external service is starting.
+
+    ``sDetail`` names what is being published by count or by a
+    validated repository name, never by a path, URL or token.
+    """
+    logger.info(
+        "%s publish requested: container=%s %s",
+        sService, sContainerId, sDetail,
+    )
+
+
+def _fnLogPublishOutcome(sService, sContainerId, dictResult, sIdentifier=""):
+    """Log a publish's outcome by its public identifier, never raw text.
+
+    Only GitHub pushes were logged, so a Zenodo version, an Overleaf
+    push or a Repos-panel push left no trace on the host
+    (researcher-reported, 2026-10-27). A failure's output is redacted
+    of every credential shape the shared redactor knows, then cut to
+    the same bounded excerpt the GitHub lines use.
+    """
+    if dictResult.get("bSuccess"):
+        logger.info(
+            "%s publish succeeded: container=%s%s", sService, sContainerId,
+            f" id={sIdentifier}" if sIdentifier else "",
+        )
+        return
+    from vaibify.reproducibility.credentialRedactor import (
+        fsRedactCredentials,
+    )
+    logger.info(
+        "%s publish did not complete: container=%s sErrorType=%s "
+        "sOutput=%r", sService, sContainerId,
+        dictResult.get("sErrorType", ""),
+        _fsPushOutputSnippet(fsRedactCredentials(
+            dictResult.get("sMessage") or dictResult.get("sOutput") or "")),
+    )
 
 
 def _fsPushOutputSnippet(sOutput):

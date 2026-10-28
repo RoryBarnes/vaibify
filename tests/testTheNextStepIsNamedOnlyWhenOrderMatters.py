@@ -32,6 +32,9 @@ _T_ROWS = (
     "dependencyLock", "environmentArchive", "manifest",
     "reproduceScript", "rebuildAttestation", "envelopeMirror",
     "envelopeArchive",
+    # The determinism question joined on 2026-10-27: a changed answer
+    # retires the attestation and asks for the envelope again.
+    levelOrdering.S_DETERMINISM_ROW_KEY,
 )
 
 
@@ -204,6 +207,49 @@ def test_the_attestation_comes_before_the_immutable_archive(monkeypatch):
     )
     assert dictNext["sRowKey"] == "rebuildAttestation"
     assert "immutable" in dictNext["sReason"]
+
+
+@pytest.mark.falsification
+def test_an_unanswered_determinism_question_is_named_before_the_envelope(
+    monkeypatch,
+):
+    """The answer chooses the settings the envelope and the rerun record.
+
+    Its own docstring said the determinism questions could be answered
+    in any order and nothing would be undone, which stopped being true
+    when a changed answer began retiring the attestation and asking for
+    the envelope again (2026-10-17).
+
+    Kills: dropping the determinism edges, which leaves the arrow on the
+    manifest and sends the researcher to settle an envelope the answer
+    may make them regenerate.
+    """
+    dictNext = _fdictNextFrom(
+        _fdictAllSatisfiedExcept(
+            levelOrdering.S_DETERMINISM_ROW_KEY, "manifest",
+            "rebuildAttestation", "envelopeMirror", "envelopeArchive",
+        ),
+        monkeypatch,
+    )
+    assert dictNext["sRowKey"] == levelOrdering.S_DETERMINISM_ROW_KEY
+    assert "Repeatable across computers" in dictNext["sReason"]
+
+
+def test_an_answered_determinism_question_is_never_named(sProjectRepo):
+    """The row's verdict is the gate's: an answered question is satisfied."""
+    from vaibify.reproducibility.executionProfiles import (
+        fsNewestProfileForAnswer,
+    )
+    dictWorkflow = {"listSteps": [], "dictDeterminism": {
+        "sRepeatabilityAnswer": "across",
+        "sExecutionProfile": fsNewestProfileForAnswer("across"),
+    }}
+    dictJudged = levelOrdering.fdictJudgeOrderedRequirements(
+        dictWorkflow, sProjectRepo)
+    assert dictJudged[levelOrdering.S_DETERMINISM_ROW_KEY] is True
+    dictJudged = levelOrdering.fdictJudgeOrderedRequirements(
+        {"listSteps": []}, sProjectRepo)
+    assert dictJudged[levelOrdering.S_DETERMINISM_ROW_KEY] is False
 
 
 @pytest.mark.falsification

@@ -1786,11 +1786,11 @@ def fbVerifyReproduceScriptCurrent(filesRepo, dictWorkflow):
 
 
 def fbVerifyDeterminismDeclared(filesRepo, dictWorkflow):
-    """Return True iff no step warns about unseeded RNG and BLAS is declared.
+    """Return True iff no step warns about unseeded RNG and the question is answered.
 
     The check rejects any step carrying ``bUnseededRandomnessWarning``
-    in addition to requiring the workflow-level
-    ``dictDeterminism`` block (or its waiver). ``filesRepo`` is
+    in addition to requiring an answer to the one determinism question
+    in the workflow-level ``dictDeterminism`` block. ``filesRepo`` is
     accepted for symmetry with the other verifiers; the audit is
     workflow-level so the repo is only used by future per-script
     extensions.

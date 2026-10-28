@@ -693,6 +693,9 @@ def _fdictResolveRemoteThenPush(
 # this key and is removed before the response leaves the route.
 _S_REACHED_REMOTE_KEY = "_dictReachedRemote"
 
+# How the hub log names a push made from the Repos panel.
+_S_REPO_PANEL_SERVICE = "GitHub (Repos panel)"
+
 
 def _fdictProjectWorkflowFor(dictCtx, sContainerId, sRepoName):
     """Return the open workflow when ``sRepoName`` is its project repo, else None."""
@@ -741,6 +744,9 @@ async def _fdictPushRepositoryUnderTheDrain(
     dictLaneTuple = fdictRequireLaneTupleForCommit(
         requestHttp, sContainerId, f"The push of '{sRepoName}'",
     )
+    syncRoutes._fnLogPublishRequested(
+        _S_REPO_PANEL_SERVICE, sContainerId, f"repo={sRepoName}",
+    )
 
     def fdictPushUnderTheSupervisor(supervisor=None):
         return _fdictResolveRemoteThenPush(
@@ -768,6 +774,9 @@ async def _fdictFinishRepoPush(
     to the post-commit truth.
     """
     dictReachedRemote = dictResult.pop(_S_REACHED_REMOTE_KEY, None) or {}
+    syncRoutes._fnLogPublishOutcome(
+        _S_REPO_PANEL_SERVICE, sContainerId, dictResult,
+    )
     fnBumpSyncEpoch(dictCtx, sContainerId)
     if not dictResult.get("bSuccess"):
         return dictResult
