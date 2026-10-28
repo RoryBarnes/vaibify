@@ -2,18 +2,19 @@
 
 __all__ = ["fnRegisterAll"]
 
+import logging
 import posixpath
 import re
+import time
 
 from fastapi import HTTPException, Request
 
-from ...config.registryManager import fbIsHostProject
 from .. import stepRename, workflowManager
 from ..actionCatalog import ffnAgentAction
 from ..fileStatusManager import (
     S_USER_VERIFIED_HASHES_KEY, fbMaybeAutoArchive, ftCaptureStepPlotHashes,
 )
-from vaibify.reproducibility.levelGates import fiProofLevel
+from vaibify.reproducibility.levelGates import fiComputeProofLevelUpToOne
 from vaibify.reproducibility.declarationFreshness import (
     DeclarationEvidenceUnreadableError,
     fnApplySignOffBaseline,
@@ -53,6 +54,8 @@ from ..pipelineUtils import (
 
 
 _I_STEP_COUNT_WARNING = 100
+logger = logging.getLogger(__name__)
+
 _RE_CONTAINER_CLOCK = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC$")
 # The step-definition fields the in-container agent lane may write
 # through update-step. Everything else in StepUpdateRequest -- above
@@ -295,10 +298,12 @@ async def _fnUpdateThenArchiveUnderTheDrain(
     """Read the level, apply the edit, save, and auto-archive as one.
 
     Three container-reaching operations that only mean anything
-    together. ``fiProofLevel`` runs the L1/L2/L3 gates, which hash the
-    repo through the container once a workflow is L2, so the
-    level-BEFORE read is itself a guarded operation and not a free
-    lookup. ``fbMaybeAutoArchive`` then reads the level AGAIN and
+    together. The level-BEFORE read asks only whether the project was
+    at Level 1 (``fiComputeProofLevelUpToOne``): the full ladder hashed
+    every published file through the container on each click of a
+    researcher's badge, for an answer nothing here reads. It can still
+    hash outputs, so it is a guarded operation and not a free lookup.
+    ``fbMaybeAutoArchive`` then reads the level AGAIN and
     archives only on the before/after transition across 1 — so the two
     readings must see the same world apart from this edit. Dropping the
     drain between them lets another session's write move the level in
@@ -315,15 +320,18 @@ async def _fnUpdateThenArchiveUnderTheDrain(
     """
     def fnUpdateSaveAndArchive(supervisor=None):
         del supervisor
-        iLevelBefore = fiProofLevel(
+        dictElapsed = {}
+        fStart = time.monotonic()
+        iLevelBefore = fiComputeProofLevelUpToOne(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
-            bHostProject=fbIsHostProject(sContainerId),
         )
+        fStart = ffRecordPhaseElapsed(dictElapsed, "levelBefore", fStart)
         _fnStampServerSideUserUpdate(
             dictCtx["docker"], sContainerId, dictWorkflow, iStepIndex,
             dictUpdates,
         )
+        fStart = ffRecordPhaseElapsed(dictElapsed, "stamp", fStart)
         _fnRecordUserVerifiedHashes(
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
             dictWorkflow, iStepIndex, dictUpdates,
@@ -332,6 +340,7 @@ async def _fnUpdateThenArchiveUnderTheDrain(
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
             dictWorkflow, iStepIndex, dictUpdates,
         )
+        fStart = ffRecordPhaseElapsed(dictElapsed, "hashes", fStart)
         try:
             workflowManager.fnUpdateStep(
                 dictWorkflow, iStepIndex, dictUpdates,
@@ -342,10 +351,13 @@ async def _fnUpdateThenArchiveUnderTheDrain(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The step update",
         )
+        fStart = ffRecordPhaseElapsed(dictElapsed, "save", fStart)
         fbMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
+        ffRecordPhaseElapsed(dictElapsed, "levelAfter", fStart)
+        _fnLogStepSaveTimings(sContainerId, iStepIndex, dictElapsed)
 
     def fdictRunTheUpdate(supervisor=None):
         del supervisor
@@ -355,6 +367,26 @@ async def _fnUpdateThenArchiveUnderTheDrain(
 
     await fgenericRunWorkerUnderTheDrain(
         sContainerId, fdictRunTheUpdate, "update-step", requestHttp,
+    )
+
+
+def ffRecordPhaseElapsed(dictElapsed, sPhase, fStart):
+    """Record the seconds since ``fStart`` under ``sPhase``; return now."""
+    fNow = time.monotonic()
+    dictElapsed[sPhase] = fNow - fStart
+    return fNow
+
+
+def _fnLogStepSaveTimings(sContainerId, iStepIndex, dictElapsed):
+    """Log where a step save spent its time, so a slow badge is measured."""
+    logger.info(
+        "Step save for container=%s step=%d took %.2fs (level before "
+        "%.2fs, sign-off stamp %.2fs, hashes %.2fs, save %.2fs, level "
+        "after and archive %.2fs)",
+        sContainerId, iStepIndex, sum(dictElapsed.values()),
+        dictElapsed.get("levelBefore", 0.0), dictElapsed.get("stamp", 0.0),
+        dictElapsed.get("hashes", 0.0), dictElapsed.get("save", 0.0),
+        dictElapsed.get("levelAfter", 0.0),
     )
 
 

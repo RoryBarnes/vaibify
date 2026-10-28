@@ -7659,7 +7659,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1035 -> 1044 (2026-10-24): rename and directory alignment save
     # inside their own workers, so they announce an agent's change
     # after the worker returns, as fdictCommitWorkflowSave does.
-    "routes/stepRoutes.py": 1044,
+    # 1044 -> 1076 (2026-10-27): the step save logs where its time
+    # goes, phase by phase, so a slow sign-off is measured.
+    "routes/stepRoutes.py": 1076,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write

@@ -115,6 +115,7 @@ __all__ = [
     "fdictComputeWorkflowScopeLevelStates",
     "fdictL3ReadinessGaps",
     "fdictLevel2Gaps",
+    "fiComputeProofLevelUpToOne",
     "fiProofLevel",
     "fiLowestNonAttainedLevel",
     "fiStepProofLevel",
@@ -362,13 +363,7 @@ def fiProofLevel(
     of work, and a caller that forgot to ask must meet a TypeError
     rather than hand a host project a Level 3 it can never hold.
     """
-    # Unresolved pull markers gate the whole ladder (spec §4.5
-    # condition 2, ruling R2, approved 2026-08-15): a set marker means
-    # remote data may sit on disk with no committed record of its
-    # origin, and a workflow that cannot account for its inputs is not
-    # Self-Consistent. Reconciliation — the next successful run of the
-    # marked step — clears it; nothing else may.
-    if dictWorkflow.get("listUnresolvedRemoteDataMarkers"):
+    if _fbRemoteDataMarkersHoldLevelZero(dictWorkflow):
         return 0
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     with fcontextLevelComputation():
@@ -382,6 +377,37 @@ def fiProofLevel(
         if not fbAtLeastLevel3(dictWorkflow, filesRepo, bHostProject):
             return 2
         return 3
+
+
+def fiComputeProofLevelUpToOne(dictWorkflow, filesRepo):
+    """Return ``min(fiProofLevel(...), 1)`` without running the L2 or L3 gates.
+
+    For a caller that asks only whether a change crossed Level 1 -- the
+    step save's auto-archive, which used to compute the whole ladder
+    twice per click. Once a project is at Level 2 those gates hash every
+    published file through the container, so a researcher's sign-off
+    waited seconds for a comparison whose answer it never read. Same
+    remote-data-marker rule and same Level 1 gate as ``fiProofLevel``;
+    a test pins the two equal.
+    """
+    if _fbRemoteDataMarkersHoldLevelZero(dictWorkflow):
+        return 0
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    with fcontextLevelComputation():
+        return 1 if fbAtLeastLevel1(dictWorkflow, filesRepo) else 0
+
+
+def _fbRemoteDataMarkersHoldLevelZero(dictWorkflow):
+    """Return True while an unresolved pull marker holds the project at 0.
+
+    Unresolved pull markers gate the whole ladder (spec §4.5 condition
+    2, ruling R2, approved 2026-08-15): a set marker means remote data
+    may sit on disk with no committed record of its origin, and a
+    workflow that cannot account for its inputs is not Self-Consistent.
+    Reconciliation — the next successful run of the marked step —
+    clears it; nothing else may. One rule for both level readings.
+    """
+    return bool(dictWorkflow.get("listUnresolvedRemoteDataMarkers"))
 
 
 def fbAtLeastLevel1(

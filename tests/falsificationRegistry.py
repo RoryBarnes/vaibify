@@ -13277,12 +13277,11 @@ LIST_FALSIFICATIONS = [
         # a workflow whose pulled data has no committed record still
         # reports Self-Consistent (ruling R2, condition 2).
         old=(
-            '    if dictWorkflow.get('
-            '"listUnresolvedRemoteDataMarkers"):\n'
-            '        return 0\n'
+            '    return bool(dictWorkflow.get('
+            '"listUnresolvedRemoteDataMarkers"))\n'
         ),
         new=(
-            '\n'
+            '    return False\n'
         ),
     ),
     Falsification(
@@ -37146,6 +37145,44 @@ LIST_FALSIFICATIONS = [
             '        "bAtLeastLevel2": (\n'
             '            bL1 and bGithub and bZenodo and bArxiv and bDecl\n'
             '            and bModels and bPersonal and bArchiveAnswered),\n'
+        ),
+    ),
+    # --- 2026-10-27: a sign-off reads only the Level 1 crossing ---
+    Falsification(
+        nodeid=(
+            'tests/testTheSignOffSaveReadsOnlyLevelOne.py::'
+            'testASignOffNeverEvaluatesTheLevelTwoOrThreeGate'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # the Level 1 reading computes the whole ladder again
+        old=(
+            '    with fcontextLevelComputation():\n'
+            '        return 1 if fbAtLeastLevel1(dictWorkflow, filesRepo) '
+            'else 0\n'
+        ),
+        new=(
+            '    return min(fiProofLevel(\n'
+            '        dictWorkflow, filesRepo, bHostProject=False), 1)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheSignOffSaveReadsOnlyLevelOne.py::'
+            'testTheLevelOneReadingEqualsTheLadderCappedAtOne'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # the remote-data-marker rule is dropped from the Level 1 reading
+        old=(
+            '    if _fbRemoteDataMarkersHoldLevelZero(dictWorkflow):\n'
+            '        return 0\n'
+            '    filesRepo = ffilesEnsureRepoFiles(filesRepo)\n'
+            '    with fcontextLevelComputation():\n'
+            '        return 1 if'
+        ),
+        new=(
+            '    filesRepo = ffilesEnsureRepoFiles(filesRepo)\n'
+            '    with fcontextLevelComputation():\n'
+            '        return 1 if'
         ),
     ),
     # --- 2026-10-27: a host incident reaches the container redacted ---

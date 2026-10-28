@@ -8,14 +8,13 @@ import posixpath
 
 from fastapi import HTTPException, Request
 
-from vaibify.config.registryManager import fbIsHostProject
 from ..actionCatalog import ffnAgentAction
 from ...docker.confinedWrite import ContainerWriteRefusedError
 from ..fileStatusManager import (
     fbMaybeAutoArchive,
     fsWorkflowSlugFromPath,
 )
-from vaibify.reproducibility.levelGates import fiProofLevel
+from vaibify.reproducibility.levelGates import fiComputeProofLevelUpToOne
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
@@ -526,15 +525,17 @@ async def _ftProbeLevelThenRunUnderTheDrain(
 
     The PROOF level probe runs INSIDE the worker, beside the run it
     brackets, rather than on the request coroutine before it — and that
-    placement is the point of this helper rather than tidiness.
-    ``fiProofLevel`` reaches the general exec primitive as soon as a
-    workflow is L2: ``fbWorkflowFullySyncedWithArxiv`` hashes every
-    Overleaf-pushed figure through ``filesRepo.fdictHashFiles``, which
-    the container adapter answers with one ``python3 -c`` exec, and
-    ``fbAtLeastLevel3`` evaluates L2 first, so L3 inherits it. A probe
-    left outside the carrier is therefore admitted on every fixture
-    whose workflow sits below L2 and REFUSED in the field, for exactly
-    the researchers furthest along the reproducibility ladder.
+    placement is the point of this helper rather than tidiness. The
+    probe asks only whether the project is at Level 1
+    (``fiComputeProofLevelUpToOne``), because the archive it feeds acts
+    only on a crossing of 1; it brackets the run, so the before and
+    after readings must see the same world. It was once the full
+    ladder, which reached the general exec primitive as soon as a
+    workflow was L2 (``fbWorkflowFullySyncedWithArxiv`` hashes every
+    Overleaf-pushed figure through ``filesRepo.fdictHashFiles``) -- a
+    probe left outside the carrier was then admitted on every fixture
+    below L2 and REFUSED in the field, for exactly the researchers
+    furthest along the ladder. Keep any level read here inside.
 
     Running the test commands under the drain is the ordinary mode-(b)
     reason: they are project-authored, can run for minutes, and cross a
@@ -557,10 +558,9 @@ async def _ftProbeLevelThenRunUnderTheDrain(
 
     def ftProbeThenRun(supervisor=None):
         del supervisor
-        iLevelBefore = fiProofLevel(
+        iLevelBefore = fiComputeProofLevelUpToOne(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
-            bHostProject=fbIsHostProject(sContainerId),
         )
 
         def ftRunUnlessUnrecordable():
