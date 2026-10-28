@@ -66,7 +66,9 @@ import secrets
 import threading
 from collections import deque
 
-from vaibify.config import imageOrigins, pendingConversions, registryManager
+from vaibify.config import (
+    containerLock, imageOrigins, pendingConversions, registryManager,
+)
 from vaibify.config.durableFile import fnSyncDescriptor, fnSyncDirectory, fnWriteFileDurably
 from vaibify.docker import disposableContainer
 from vaibify.gui import acquisitionFailure
@@ -494,8 +496,10 @@ def fnCommitConversion(sHostName):
     dictRecord = _fdictRequireRecord(sHostName)
     fileSource = pendingConversions.ffileTakeSourceLock(sHostName)
     fileDestination = None
+    fileLifecycle = None
     try:
         fileDestination = pendingConversions.ffileTakeDestinationLock(dictRecord["sNewName"])
+        fileLifecycle = _ffileTakeDestinationLifecycleLock(dictRecord["sNewName"])
         dictRecord = _fdictRequireRecord(sHostName)
         if dictRecord.get("dictJournal"):
             _fnRecoverJournalLocked(dictRecord)
@@ -512,8 +516,22 @@ def fnCommitConversion(sHostName):
         _fnRefuseIfBusy(sHostName)
         _fnWriteInOrder(dictRecord, dockerDisposable)
     finally:
+        if fileLifecycle is not None:
+            containerLock.fnReleaseLifecycleLock(fileLifecycle)
         pendingConversions.fnReleaseLock(fileDestination)
         pendingConversions.fnReleaseLock(fileSource)
+
+
+def _ffileTakeDestinationLifecycleLock(sNewName):
+    """Hold the destination name against a start, rename or deletion.
+
+    A busy name is a busy conversion: the staged image is kept and
+    Finish retries, exactly as for an open project.
+    """
+    try:
+        return containerLock.ffileTakeLifecycleLock(sNewName, "containerized")
+    except containerLock.LifecycleLockedError as error:
+        raise ConversionBusyError(str(error)) from None
 
 
 def _fnRecheckBeforeCommit(dictRecord, dockerDisposable):
@@ -706,9 +724,18 @@ def _fnRecoverOneRecord(dictRecord):
     fileDestination = None
     try:
         fileDestination = pendingConversions.ffileTakeDestinationLock(dictRecord["sNewName"])
-        dictFresh = pendingConversions.fdictReadConversionRecord(dictRecord["sHostName"])
-        if dictFresh is not None and dictFresh.get("dictJournal"):
-            _fnRecoverJournalLocked(dictFresh)
+        with containerLock.fcontextHoldLifecycleLock(
+            dictRecord["sNewName"], "containerized",
+        ):
+            dictFresh = pendingConversions.fdictReadConversionRecord(
+                dictRecord["sHostName"])
+            if dictFresh is not None and dictFresh.get("dictJournal"):
+                _fnRecoverJournalLocked(dictFresh)
+    except containerLock.LifecycleLockedError:
+        logger.info(
+            "The name %r is held by another operation; its containerization "
+            "is left for the next recovery", dictRecord["sNewName"],
+        )
     finally:
         pendingConversions.fnReleaseLock(fileDestination)
         pendingConversions.fnReleaseLock(fileSource)

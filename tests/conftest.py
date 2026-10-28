@@ -238,6 +238,9 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
 
     fnRedirectDirectory(containerLock, "_S_LOCK_DIRECTORY", "locks")
     fnRedirectDirectory(
+        containerLock, "_S_LIFECYCLE_LOCK_DIRECTORY", "lifecycleLocks",
+    )
+    fnRedirectDirectory(
         stateWriteLock, "S_STATE_LOCK_DIRECTORY", "stateLocks",
     )
     fnRedirectDirectory(hubPortRegistry, "_S_VAIBIFY_DIRECTORY")

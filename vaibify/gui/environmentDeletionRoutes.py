@@ -20,6 +20,7 @@ import asyncio
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
+from vaibify.config.containerLock import LifecycleLockedError
 from vaibify.gui.routeScope import (
     S_CARRIER_LIFECYCLE_TRANSACTION,
     ffnDeclareCarrierMode,
@@ -109,9 +110,12 @@ def _fnRegisterDeleteEnvironment(app, dictCtx):
         await _fnRefuseBusyProject(
             app, sName, dictCtx, sVerb="delete",
         )
-        dictReport = await asyncio.to_thread(
-            environmentDeletion.fdictDeleteEnvironment, dictProject,
-        )
+        try:
+            dictReport = await asyncio.to_thread(
+                environmentDeletion.fdictDeleteEnvironment, dictProject,
+            )
+        except LifecycleLockedError as error:
+            raise HTTPException(409, detail={"sMessage": str(error)})
         if dictReport["listFailures"]:
             # 500, and the registry entry is still there. The tile
             # stays on screen because the environment is still partly

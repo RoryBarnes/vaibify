@@ -21,6 +21,7 @@ a thin wrapper that owns only the lock's divergent holder schema
 policy.
 """
 
+import contextlib
 import fcntl
 import os
 
@@ -33,6 +34,11 @@ from vaibify.config.processLiveness import (
 _S_LOCK_DIRECTORY = os.path.expanduser("~/.vaibify/locks")
 _S_LOCK_SUFFIX = ".lock"
 _I_MAX_ACQUIRE_ATTEMPTS = 3
+# The lifecycle locks live in a directory of their own, never as a
+# suffix beside the session locks: "<name>.lifecycle.lock" would be the
+# session lock of a valid environment named "<name>.lifecycle", and the
+# session-lock scanners and reapers must never see a lifecycle lock.
+_S_LIFECYCLE_LOCK_DIRECTORY = os.path.expanduser("~/.vaibify/lifecycleLocks")
 
 
 class ContainerLockedError(RuntimeError):
@@ -128,6 +134,19 @@ class ContainerBusyOperationError(ContainerLockedError):
 
 class InvalidProjectNameError(ValueError):
     """Raised when a project name fails validation for lock operations."""
+
+
+class LifecycleLockedError(RuntimeError):
+    """Raised when another operation holds a name's lifecycle lock."""
+
+    def __init__(self, sProjectName, sOperation, iHolderPid):
+        self.sProjectName = sProjectName
+        self.sOperation = sOperation
+        self.iHolderPid = iHolderPid
+        super().__init__(
+            f"'{sProjectName}' is being {sOperation} by another vaibify "
+            "process; try again when it finishes."
+        )
 
 
 def fbIsValidProjectName(sProjectName):
@@ -573,3 +592,124 @@ def fbContainerLockIsHeld(sProjectName):
         return False
     finally:
         fileHandle.close()
+
+
+# ---------------------------------------------------------------------
+# The per-name lifecycle lock.
+#
+# The session lock above says which hub is USING an environment. The
+# lifecycle lock says that an operation is changing what the name owns
+# -- creating or removing its container, its volumes or its image tags,
+# or rewriting its registry entry -- so that two such operations, or a
+# rename and a start, can never interleave. It is taken non-blocking, so
+# it cannot deadlock, and its files are never unlinked: unlinking a
+# file whose flock is held lets another process lock a new inode at the
+# same path, which is the race the lock exists to close.
+# ---------------------------------------------------------------------
+
+
+def fsGetLifecycleLockDirectory():
+    """Return the lifecycle-lock directory, read at call time."""
+    return _S_LIFECYCLE_LOCK_DIRECTORY
+
+
+def fsLifecycleLockPathFor(sProjectName):
+    """Return the lifecycle-lock file path for a given name."""
+    _fnValidateProjectName(sProjectName)
+    return os.path.join(
+        fsGetLifecycleLockDirectory(), f"{sProjectName}{_S_LOCK_SUFFIX}",
+    )
+
+
+def ffileTakeLifecycleLock(sProjectName, sOperation):
+    """Take the name's lifecycle lock without waiting; return its handle.
+
+    ``sOperation`` is the past participle a refusal reads back to the
+    researcher ("started", "renamed"). Raises ``LifecycleLockedError``
+    naming the operation in progress when any open file description --
+    in another process or in this one -- holds the lock.
+    """
+    sPath = fsLifecycleLockPathFor(sProjectName)
+    pidFileRegistry.fnEnsureDirectory(fsGetLifecycleLockDirectory())
+    fileHandle = pidFileRegistry.ffileOpenNoFollow(sPath)
+    try:
+        fcntl.flock(fileHandle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        dictHolder = pidFileRegistry.fdictReadPayloadFromHandle(fileHandle)
+        fileHandle.close()
+        raise LifecycleLockedError(
+            sProjectName, dictHolder.get("sOperation") or "changed",
+            dictHolder.get("iPid", 0),
+        )
+    pidFileRegistry.fnWritePayload(fileHandle, {
+        "iPid": os.getpid(),
+        "sOperation": sOperation,
+        "sStartedIso": fsNowClaimIso(),
+        "sProjectName": sProjectName,
+    })
+    return fileHandle
+
+
+def fnReleaseLifecycleLock(fileHandle):
+    """Release a lifecycle lock; the file itself is left in place."""
+    try:
+        fcntl.flock(fileHandle, fcntl.LOCK_UN)
+    finally:
+        fileHandle.close()
+
+
+@contextlib.contextmanager
+def fcontextHoldLifecycleLock(sProjectName, sOperation):
+    """Hold the name's lifecycle lock for the body of a ``with``."""
+    fileHandle = ffileTakeLifecycleLock(sProjectName, sOperation)
+    try:
+        yield fileHandle
+    finally:
+        fnReleaseLifecycleLock(fileHandle)
+
+
+def flistTakeLifecycleLocks(listProjectNames, sOperation):
+    """Take several names' lifecycle locks in the order given; return them.
+
+    A transaction over two names (a rename, a promotion) takes the OLD
+    name's lock and then the NEW name's, always in that order; with
+    non-blocking acquisition no order can deadlock, and a fixed one
+    makes a refusal name the same operation every time. A name listed
+    twice is taken once. When one is refused, those already taken are
+    released before ``LifecycleLockedError`` propagates.
+    """
+    listHandles = []
+    try:
+        for sProjectName in dict.fromkeys(listProjectNames):
+            listHandles.append(
+                ffileTakeLifecycleLock(sProjectName, sOperation))
+    except LifecycleLockedError:
+        fnReleaseLifecycleLocks(listHandles)
+        raise
+    return listHandles
+
+
+def fnReleaseLifecycleLocks(listHandles):
+    """Release locks from ``flistTakeLifecycleLocks``, newest first."""
+    for fileHandle in reversed(listHandles):
+        fnReleaseLifecycleLock(fileHandle)
+
+
+@contextlib.contextmanager
+def fcontextHoldLifecycleLocks(listProjectNames, sOperation):
+    """Hold several names' lifecycle locks for the body of a ``with``."""
+    listHandles = flistTakeLifecycleLocks(listProjectNames, sOperation)
+    try:
+        yield listHandles
+    finally:
+        fnReleaseLifecycleLocks(listHandles)
+
+
+def fnRefuseWhileLifecycleLockHeld(sProjectName):
+    """Raise ``LifecycleLockedError`` if an operation holds the name now.
+
+    For an entry point that changes nothing the name owns but must not
+    begin while something else does (a claim): the lock is taken and
+    released at once, so nothing waits and nothing is kept.
+    """
+    fnReleaseLifecycleLock(ffileTakeLifecycleLock(sProjectName, "checked"))

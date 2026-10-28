@@ -63,7 +63,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from vaibify.config import operationJournal
+from vaibify.config import containerLock, operationJournal
 from vaibify.docker import containerManager
 from vaibify.docker.dockerConnection import (
     S_IMAGE_STATE_BUILT, S_IMAGE_STATE_MISSING, S_IMAGE_STATE_UNANSWERED,
@@ -541,35 +541,40 @@ def _fsExecuteReservedStart(sName, reservation, configProject):
 
     Runs on a worker thread. Every step is bounded by its own primitive
     (``Popen`` plus TERM/KILL), never by a wrapper ``await`` that would
-    stop waiting while the thread kept working.
+    stop waiting while the thread kept working. The name's lifecycle
+    lock is held from the clear to the confirmation, so a rename, a
+    deletion or a CLI start of the same name cannot land between them;
+    a refusal raises before anything is created, and settles as an
+    ordinary failed start.
     """
-    recordTask = reservation.recordStartTask
-    operationJournal.fnPromoteOperationToInFlight(
-        sName, recordTask.sJournalOperationId, {
-            "iHolderPid": os.getpid(),
-            "sReservationLabel": reservation.sReservationId,
-        },
-    )
-    _fnRefuseIfCancelled(recordTask)
-    _fnClearStoppedIncarnation(sName, recordTask)
-    _fnStampHeartbeat(reservation)
-    sContainerId = containerManager.fsCreateContainerForReservation(
-        configProject, reservation.sReservationId,
-        fnRegisterProcess=recordTask.fnAdoptProcess,
-    )
-    recordTask.sCreatedContainerId = sContainerId
-    operationJournal.fnAmendInFlightHolderIdentity(
-        sName, recordTask.sJournalOperationId,
-        {"sDockerContainerId": sContainerId},
-    )
-    _fnStampHeartbeat(reservation)
-    _fnRefuseIfCancelled(recordTask)
-    containerManager.fnStartCreatedContainer(
-        sContainerId, fnRegisterProcess=recordTask.fnAdoptProcess,
-    )
-    _fnStampHeartbeat(reservation)
-    _fnConfirmIncarnationIsRunning(sName, sContainerId)
-    return sContainerId
+    with containerLock.fcontextHoldLifecycleLock(sName, "started"):
+        recordTask = reservation.recordStartTask
+        operationJournal.fnPromoteOperationToInFlight(
+            sName, recordTask.sJournalOperationId, {
+                "iHolderPid": os.getpid(),
+                "sReservationLabel": reservation.sReservationId,
+            },
+        )
+        _fnRefuseIfCancelled(recordTask)
+        _fnClearStoppedIncarnation(sName, recordTask)
+        _fnStampHeartbeat(reservation)
+        sContainerId = containerManager.fsCreateContainerForReservation(
+            configProject, reservation.sReservationId,
+            fnRegisterProcess=recordTask.fnAdoptProcess,
+        )
+        recordTask.sCreatedContainerId = sContainerId
+        operationJournal.fnAmendInFlightHolderIdentity(
+            sName, recordTask.sJournalOperationId,
+            {"sDockerContainerId": sContainerId},
+        )
+        _fnStampHeartbeat(reservation)
+        _fnRefuseIfCancelled(recordTask)
+        containerManager.fnStartCreatedContainer(
+            sContainerId, fnRegisterProcess=recordTask.fnAdoptProcess,
+        )
+        _fnStampHeartbeat(reservation)
+        _fnConfirmIncarnationIsRunning(sName, sContainerId)
+        return sContainerId
 
 
 def _fnConfirmIncarnationIsRunning(sName, sContainerId):

@@ -4438,7 +4438,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # whether the project has the remote, never a dictRemotes key.
     # 946 -> 956 (2026-10-27, review): a refusal the verify's own
     # configuration raised is relayed in the push's warning.
-    "routeContext.py": 956,
+    # 956 -> 978 (2026-10-28): the shared 409 for a lifecycle lock that
+    # another operation holds, used by every route module that takes it.
+    "routeContext.py": 978,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -6449,7 +6451,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # workflow cache and file paths are all keyed by the old one. The
     # refusal and its reasoning live here because this is the module
     # that knows a hub holds the container.
-    "hostControlChannel.py": 1070,
+    # 1070 -> 1078 (2026-10-28): the reconcile stop holds the name's
+    # lifecycle lock, so it cannot interleave with a rename or a start.
+    "hostControlChannel.py": 1078,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one
@@ -6782,7 +6786,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # container it removes ended, BEFORE removing it, and records an
     # out-of-memory kill when the start settles; the worker thread has
     # no app state, so the evidence rides the start task record.
-    "startReservation.py": 1136,
+    # 1136 -> 1141 (2026-10-28): the reserved create-and-start holds the
+    # name's lifecycle lock, so a rename or a CLI start cannot land
+    # between the clear, the create and the start.
+    "startReservation.py": 1141,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -7289,7 +7296,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2533 -> 2544 (2026-10-14): that cancel runs BEFORE the entry goes,
     # so a commit in flight refuses the removal by name (409) instead of
     # losing its journal under a vanished entry.
-    "registryRoutes.py": 2544,
+    # 2544 -> 2584 (2026-10-28): the per-name lifecycle lock. Start,
+    # stop, claim, un-register, create, convert and promote each hold
+    # (or refuse on) the name's lock, and the bodies they wrap gained a
+    # level of indentation; the routes stay where the operations are.
+    "registryRoutes.py": 2584,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

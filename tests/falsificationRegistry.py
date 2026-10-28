@@ -14506,9 +14506,9 @@ LIST_FALSIFICATIONS = [
         # re-entry strands the researcher on an empty picker (the
         # 2026-08-20 live incident).
         old=(
-            '        _fnScaffoldWorkflowIfAbsent(\n'
-            '            dictProject["sDirectory"], request.sProjectName,\n'
-            '        )\n'
+            '            _fnScaffoldWorkflowIfAbsent(\n'
+            '                dictProject["sDirectory"], request.sProjectName,\n'
+            '            )\n'
         ),
         new='',
     ),
@@ -33714,13 +33714,13 @@ LIST_FALSIFICATIONS = [
             '    try:\n'
             '        fileDestination = pendingConversions.ffileTakeDestinationLock('
             'dictRecord["sNewName"])\n'
-            '        dictFresh ='
+            '        with containerLock.fcontextHoldLifecycleLock(\n'
         ),
         new=(
             '    fileSource = None\n'
             '    fileDestination = None\n'
             '    try:\n'
-            '        dictFresh ='
+            '        with containerLock.fcontextHoldLifecycleLock(\n'
         ),
     ),
     Falsification(
@@ -37361,5 +37361,19 @@ LIST_FALSIFICATIONS = [
             '    filter: sepia(1) hue-rotate(220deg) saturate(2)'
             ' brightness(0.85);\n'
         ),
+    ),
+    # --- 2026-10-28: a CLI start holds the name's lifecycle lock ---
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleLock.py::'
+            'testCliStartRefusesWhileAnotherProcessHoldsTheName'
+        ),
+        # CLI start creates and starts with no lifecycle lock again.
+        source='vaibify/cli/commandStart.py',
+        old=(
+            '    dictHeld = fdictTakeLifecycleLockOrExit('
+            'config.sProjectName, "started")\n'
+        ),
+        new='    dictHeld = {"lockRelease": threading.Lock()}\n',
     ),
 ]

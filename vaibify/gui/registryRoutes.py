@@ -25,11 +25,17 @@ from pydantic import BaseModel
 import yaml
 from typing import List, Optional
 
+from vaibify.config.containerLock import (
+    LifecycleLockedError,
+    fcontextHoldLifecycleLock,
+    fnRefuseWhileLifecycleLockHeld,
+)
 from vaibify.gui import buildRoutes
 from vaibify.gui import environmentDeletionRoutes
 from vaibify.gui import pinnedEnvironmentConversion
 from vaibify.gui.actionCatalog import ffnAgentAction
 from vaibify.gui.routeContext import (
+    fcontextHoldLifecycleLocksOrConflict,
     fnRefuseUnusableContainerFields,
     fnRefuseContainerOnlyForHostProject,
     fnRefuseHostOnlyForContainerProject,
@@ -520,6 +526,7 @@ def _fnRegisterClaimContainer(app, dictCtx):
     async def fdictClaimContainer(request: Request, sName: str):
         from vaibify.gui import browserSession, sessionLifecycle
         _fnRejectInvalidProjectName(sName)
+        _fnRefuseWhileLifecycleOperation(sName)
         # The re-claim lease rides the X-Vaibify-Lease header so a reloaded
         # tab re-asserting its sessionStorage lease is idempotent without the
         # lease ever appearing in a query string.
@@ -733,17 +740,22 @@ def _fnRegisterRemoveProject(app, dictCtx):
         # one automatic deletion an interrupted download has. They go
         # FIRST, so a commit in flight refuses the removal by name
         # instead of losing its journal under a vanished entry.
-        try:
-            await asyncio.to_thread(conversionLifecycle.fnCancelConversion, sName)
-        except (
-            conversionLifecycle.ConversionRefusedError,
-            pendingConversions.ConversionLockHeldError,
-        ) as error:
-            raise HTTPException(409, detail={"sMessage": str(error)}) from None
-        try:
-            fnRemoveProject(sName)
-        except KeyError as error:
-            raise HTTPException(404, str(error))
+        with fcontextHoldLifecycleLocksOrConflict([sName], "removed"):
+            try:
+                await asyncio.to_thread(
+                    conversionLifecycle.fnCancelConversion, sName,
+                )
+            except (
+                conversionLifecycle.ConversionRefusedError,
+                pendingConversions.ConversionLockHeldError,
+            ) as error:
+                raise HTTPException(
+                    409, detail={"sMessage": str(error)},
+                ) from None
+            try:
+                fnRemoveProject(sName)
+            except KeyError as error:
+                raise HTTPException(404, str(error))
         return {"bSuccess": True}
 
 
@@ -784,6 +796,7 @@ def _fnRegisterStartContainer(app, dictCtx):
         dictCtx["require"]()
         _fnRejectInvalidProjectName(sName)
         dictProject = _fdictRequireProject(sName)
+        _fnRefuseWhileLifecycleOperation(sName)
         iStatusCode, dictBody = await startReservation.ftBeginStart(
             app.state, sName, _fsBrowserSessionFor(app, request),
             _fconfigLoadForProject(dictProject),
@@ -844,6 +857,19 @@ def _fnRegisterStartContainer(app, dictCtx):
                 dictBody, detail={"sMessage": dictBody.get("sMessage", "")},
             ))
         return dictBody
+
+
+def _fnRefuseWhileLifecycleOperation(sName):
+    """Answer 409 at once while another operation holds the name.
+
+    A courtesy for an entry point whose real work runs later: the work
+    itself takes the lifecycle lock, so this only spares the researcher
+    a start that would be refused a moment afterwards.
+    """
+    try:
+        fnRefuseWhileLifecycleLockHeld(sName)
+    except LifecycleLockedError as error:
+        raise HTTPException(409, detail={"sMessage": str(error)})
 
 
 def _fsBrowserSessionFor(app, request):
@@ -924,6 +950,8 @@ def _fnRegisterStopContainer(app, dictCtx):
             await asyncio.to_thread(
                 _fnExecuteStop, sContainerName,
             )
+        except LifecycleLockedError as error:
+            raise HTTPException(409, detail={"sMessage": str(error)})
         except Exception as error:
             logger.error("Stop failed for %s: %s", sName, error)
             from vaibify.docker.dockerErrorDiagnosis import (
@@ -950,15 +978,16 @@ def _fnExecuteStop(sContainerName):
     """
     from vaibify.docker import containerManager
     from vaibify.config.keepAliveManager import fnStopKeepAlive
-    dictStatus = containerManager.fdictGetContainerStatus(sContainerName)
-    if not dictStatus["bExists"]:
+    with fcontextHoldLifecycleLock(sContainerName, "stopped"):
+        dictStatus = containerManager.fdictGetContainerStatus(sContainerName)
+        if not dictStatus["bExists"]:
+            fnStopKeepAlive(sContainerName)
+            return
+        if dictStatus["bRunning"]:
+            containerManager.fnStopContainer(sContainerName)
+        else:
+            containerManager.fnRemoveStopped(sContainerName)
         fnStopKeepAlive(sContainerName)
-        return
-    if dictStatus["bRunning"]:
-        containerManager.fnStopContainer(sContainerName)
-    else:
-        containerManager.fnRemoveStopped(sContainerName)
-    fnStopKeepAlive(sContainerName)
 
 
 def _fnRegisterContainerSettings(app, dictCtx):
@@ -1762,9 +1791,12 @@ def _fnRegisterCreateProject(app, dictCtx):
         )
         _fnRejectUninstallablePackages(request.listCondaPackages)
         _fnRejectDuplicateProjectName(request.sProjectName)
-        _fnScaffoldProject(request)
-        _fnWriteProjectConfig(request)
-        _fnRegisterNewProject(request.sDirectory, request.sMode)
+        with fcontextHoldLifecycleLocksOrConflict(
+            [request.sProjectName], "created",
+        ):
+            _fnScaffoldProject(request)
+            _fnWriteProjectConfig(request)
+            _fnRegisterNewProject(request.sDirectory, request.sMode)
         return {"bSuccess": True, "sDirectory": request.sDirectory}
 
 
@@ -1846,23 +1878,28 @@ def _fnRegisterConvertToContainer(app, dictCtx):
             app, sName, requestHttp,
         )
         await _fnRefuseBusyProject(app, sName, dictCtx)
-        _fnScaffoldWorkflowIfAbsent(dictProject["sDirectory"], sWorkflowName)
-        # Config file FIRST, registry entry SECOND. If the registry write
-        # then fails, the config names a container but the entry is still
-        # host, so re-running is safe; the reverse order would drift
-        # sName from the config's projectName.
-        _fnRewriteConfigForConversion(
-            dictProject["sConfigPath"], request,
-        )
-        try:
-            registryManager.fnConvertProjectToContainer(
-                sName, request.sProjectName, None, None,
-                _fdictPendingSeedOf(request),
+        with fcontextHoldLifecycleLocksOrConflict(
+            [sName, request.sProjectName], "containerized",
+        ):
+            _fnScaffoldWorkflowIfAbsent(
+                dictProject["sDirectory"], sWorkflowName,
             )
-        except KeyError as error:
-            raise HTTPException(404, str(error))
-        except ValueError as error:
-            raise HTTPException(409, str(error))
+            # Config file FIRST, registry entry SECOND. If the registry
+            # write then fails, the config names a container but the
+            # entry is still host, so re-running is safe; the reverse
+            # order would drift sName from the config's projectName.
+            _fnRewriteConfigForConversion(
+                dictProject["sConfigPath"], request,
+            )
+            try:
+                registryManager.fnConvertProjectToContainer(
+                    sName, request.sProjectName, None, None,
+                    _fdictPendingSeedOf(request),
+                )
+            except KeyError as error:
+                raise HTTPException(404, str(error))
+            except ValueError as error:
+                raise HTTPException(409, str(error))
         return _fdictConversionResult(request.sProjectName, False)
 
 
@@ -2190,24 +2227,27 @@ def _fnRegisterPromoteToHostProject(app, dictCtx):
         # renamed and the sandbox is untouched; if a later write fails,
         # a sandbox carrying a workflow file re-runs safely because the
         # scaffold steps aside for an existing one.
-        _fnScaffoldWorkflowIfAbsent(
-            dictProject["sDirectory"], request.sProjectName,
-        )
-        # Config file next, registry entry LAST (the convert route's
-        # ordering rationale): a failed registry write then leaves a host
-        # sandbox whose config names the new name but whose entry is
-        # unchanged, and re-running is safe.
-        _fnRewriteConfigForPromotion(
-            dictProject["sConfigPath"], request.sProjectName,
-        )
-        try:
-            registryManager.fnPromoteHostProject(
-                sName, request.sProjectName,
+        with fcontextHoldLifecycleLocksOrConflict(
+            [sName, request.sProjectName], "promoted",
+        ):
+            _fnScaffoldWorkflowIfAbsent(
+                dictProject["sDirectory"], request.sProjectName,
             )
-        except KeyError as error:
-            raise HTTPException(404, str(error))
-        except ValueError as error:
-            raise HTTPException(409, str(error))
+            # Config file next, registry entry LAST (the convert route's
+            # ordering rationale): a failed registry write then leaves a
+            # host sandbox whose config names the new name but whose
+            # entry is unchanged, and re-running is safe.
+            _fnRewriteConfigForPromotion(
+                dictProject["sConfigPath"], request.sProjectName,
+            )
+            try:
+                registryManager.fnPromoteHostProject(
+                    sName, request.sProjectName,
+                )
+            except KeyError as error:
+                raise HTTPException(404, str(error))
+            except ValueError as error:
+                raise HTTPException(409, str(error))
         return _fdictPromotionResult(request.sProjectName)
 
 

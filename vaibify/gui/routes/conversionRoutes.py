@@ -21,7 +21,9 @@ from pydantic import BaseModel
 
 from ...config import pendingConversions
 from .. import conversionLifecycle
-from ..routeContext import fnRejectAgentTokenLane
+from ..routeContext import (
+    fcontextHoldLifecycleLocksOrConflict, fnRejectAgentTokenLane,
+)
 from ..routeScope import S_CARRIER_SEPARATE_AUTHORITY, ffnDeclareCarrierMode
 
 
@@ -161,17 +163,21 @@ def _fnRegisterReturnToHostMode(app, dictCtx):
                 "sWorkingConfig": dictJudgement["sWorkingConfig"],
                 "sCommittedConfig": dictJudgement["sCommittedConfig"],
             }
-        await asyncio.to_thread(
-            fnRestoreCommittedConfig, dictProject, dictJudgement["sCommittedConfig"],
-        )
-        try:
-            sHostName = await asyncio.to_thread(
-                registryManager.fsReturnProjectToHost, sName,
+        with fcontextHoldLifecycleLocksOrConflict(
+            [sName], "returned to host mode",
+        ):
+            await asyncio.to_thread(
+                fnRestoreCommittedConfig, dictProject,
+                dictJudgement["sCommittedConfig"],
             )
-        except KeyError as error:
-            raise HTTPException(404, str(error)) from None
-        except ValueError as error:
-            raise HTTPException(409, str(error)) from None
+            try:
+                sHostName = await asyncio.to_thread(
+                    registryManager.fsReturnProjectToHost, sName,
+                )
+            except KeyError as error:
+                raise HTTPException(404, str(error)) from None
+            except ValueError as error:
+                raise HTTPException(409, str(error)) from None
         return {"bReturned": True, "sHostName": sHostName}
 
 

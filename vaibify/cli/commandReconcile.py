@@ -266,8 +266,16 @@ def _fbStopContainerByName(sContainerName):
     on anything else rather than deleting a marker whose writer may
     still be running.
     """
+    from vaibify.config.containerLock import (
+        LifecycleLockedError, fcontextHoldLifecycleLock,
+    )
     from vaibify.docker.containerManager import fbStopContainerProvenSettled
-    return fbStopContainerProvenSettled(sContainerName)
+    try:
+        with fcontextHoldLifecycleLock(sContainerName, "reconciled"):
+            return fbStopContainerProvenSettled(sContainerName)
+    except LifecycleLockedError as error:
+        click.echo(f"Error: {error}", err=True)
+        return False
 
 
 def _fiRouteToLiveHub(

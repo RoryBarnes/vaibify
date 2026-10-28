@@ -723,8 +723,16 @@ def _fbStopContainerByNameProven(sContainerName):
     break-glass refuses on anything unproven rather than deleting a
     marker whose writer may still be running.
     """
+    from vaibify.config.containerLock import (
+        LifecycleLockedError, fcontextHoldLifecycleLock,
+    )
     from vaibify.docker.containerManager import fbStopContainerProvenSettled
-    return fbStopContainerProvenSettled(sContainerName)
+    try:
+        with fcontextHoldLifecycleLock(sContainerName, "reconciled"):
+            return fbStopContainerProvenSettled(sContainerName)
+    except LifecycleLockedError as error:
+        logger.warning("Reconcile could not stop %s: %s", sContainerName, error)
+        return False
 
 
 async def _fdictHandleMintTransfer(app, dictCtx, dictRequest):

@@ -334,6 +334,52 @@ def test_control_socket_directory_mount_is_rejected_in_every_direction(
         fnValidateBindMount({"host": sSymlinkPath, "container": "/mnt"})
 
 
+# The lock and recovery state a rename's safety rests on. A container
+# that could mount one of these could delete a lifecycle or session
+# lock file, edit a rename or containerization journal, or rewrite the
+# registry entry that decides whether a rename committed.
+T_LIFECYCLE_STATE_DIRECTORIES = (
+    (".vaibify/lifecycleLocks", "example.lock"),
+    (".vaibify/pendingRenames", "example.json"),
+    (".vaibify/locks", "example.lock"),
+    (".vaibify/pendingConversions", "example.json"),
+)
+
+
+@pytest.mark.parametrize(
+    "sRelativeDirectory,sChild", T_LIFECYCLE_STATE_DIRECTORIES,
+)
+def test_lifecycle_state_directory_mount_is_rejected_in_every_direction(
+    monkeypatch, tmp_path, sRelativeDirectory, sChild,
+):
+    """The directory, its parent and a child of it are each refused."""
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    sDirectory = str(sHome / sRelativeDirectory)
+    os.makedirs(sDirectory)
+    for sHostPath in (
+        sDirectory, os.path.dirname(sDirectory),
+        os.path.join(sDirectory, sChild),
+    ):
+        with pytest.raises(BindMountValidationError):
+            fnValidateBindMount({"host": sHostPath, "container": "/mnt"})
+
+
+def test_registry_file_mount_is_rejected_in_every_direction(
+    monkeypatch, tmp_path,
+):
+    """The registry, its directory and a symlink to it are each refused."""
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    os.makedirs(str(sHome / ".vaibify"))
+    sRegistry = str(sHome / ".vaibify" / "registry.json")
+    with open(sRegistry, "w") as fileRegistry:
+        fileRegistry.write("{}")
+    sSymlinkPath = str(sHome / "innocuousRegistry.json")
+    os.symlink(sRegistry, sSymlinkPath)
+    for sHostPath in (sRegistry, os.path.dirname(sRegistry), sSymlinkPath):
+        with pytest.raises(BindMountValidationError):
+            fnValidateBindMount({"host": sHostPath, "container": "/mnt"})
+
+
 # ---------------------------------------------------------------------
 # The daemon endpoint. Denying the string "/var/run/docker.sock" was
 # never enough: on Colima, Rancher and rootless installs the live
