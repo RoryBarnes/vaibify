@@ -28905,7 +28905,9 @@ LIST_FALSIFICATIONS = [
         old=(
             '            _fsRenderActionButton(\n'
             '                "publish-where-the-zenodo-record-is", "",\n'
-            '                "Deposit a new version\\u2026") +\n'
+            '                "Publish to " + _fsZenodoSitePhrase(\n'
+            '                    dictCrossInstance.sRecordedService) +\n'
+            '                " from now on\\u2026") +\n'
         ),
         new='',
     ),
@@ -37146,6 +37148,29 @@ LIST_FALSIFICATIONS = [
             '            bL1 and bGithub and bZenodo and bArxiv and bDecl\n'
             '            and bModels and bPersonal and bArchiveAnswered),\n'
         ),
+    ),
+    # --- 2026-10-27: the dashboard map quotes only real labels ---
+    Falsification(
+        nodeid=(
+            'tests/testContainerGuidanceMatchesCatalog.py::'
+            'testEveryLabelTheDashboardMapQuotesIsOnTheDashboard'
+        ),
+        source='vaibify/containerImage/skills/dashboard-map/SKILL.md',
+        # the label an agent invented for the Environment snapshot row
+        old='  → **Environment snapshot** → **Regenerate now**.\n',
+        new='  → **Environment record** → **Regenerate now**.\n',
+    ),
+    # --- 2026-10-27: the Zenodo row offers Verify before publishing ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheZenodoRowOffersVerifyFirst.py::'
+            'test_the_zenodo_row_offers_verify_while_the_attestation_is_'
+            'not_current'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # the archive block offers no verification again
+        old='            _fsRenderVerifyBeforePublishing(dictArchive) +\n',
+        new='',
     ),
     # --- 2026-10-27: every external publish is logged, redacted ---
     Falsification(

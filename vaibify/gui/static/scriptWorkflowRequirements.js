@@ -1348,7 +1348,7 @@ var VaibifyWorkflowRequirements = (function () {
            place, so the four cannot disagree about where it goes. */
         var sService = dictOffered.sZenodoService;
         var bPermanent = sService === "zenodo";
-        var sWhere = bPermanent ? "zenodo.org" : "the Zenodo sandbox";
+        var sWhere = _fsZenodoSitePhrase(sService);
         var sConsequence = bPermanent
             ? "Deleting a zenodo.org deposit later requires contacting " +
               "Zenodo, and the DOI is tombstoned rather than removed."
@@ -1617,6 +1617,10 @@ var VaibifyWorkflowRequirements = (function () {
                 .sProjectArchivePermanence || "",
             sArchivedDoi: dictZenodo.sZenodoDoiVerified || "",
             dictCrossInstance: dictDetail.dictZenodoCrossInstance || {},
+            /* Whether to offer Verify here, read from the same two
+               flags the Rebuild attestation row reads. */
+            bOfferVerify: dictDetail.bRebuildAttestationCurrent !== true &&
+                dictDetail.bRebuildAttestationRunning !== true,
             /* The gate's own tri-state verdict, not a re-derivation:
                "the archive carries an attestation covering its own
                manifest" is a Level 3 conjunct of THIS row, and the
@@ -1629,23 +1633,47 @@ var VaibifyWorkflowRequirements = (function () {
         };
     }
 
+    function _fsRenderVerifyBeforePublishing(dictArchive) {
+        /* The Zenodo half asks for an attestation IN the archive, and a
+           version cannot be changed, so the verification belongs here
+           too, where the researcher is about to publish: it lived only
+           in the Run menu and the Attestation row, and was reported as
+           hard to find (researcher-reported, 2026-10-27). The same
+           "verify-l3" action, so the one confirmation opener still
+           warns before anything is copied. */
+        if (!dictArchive.bOfferVerify) return "";
+        return '<div class="detail-note">Run this before you publish: ' +
+            'publishing first costs a second Zenodo version.</div>' +
+            _fsRenderActionButton(
+                "verify-l3", "", "Verify Level 3 reproducibility");
+    }
+
+    function _fsZenodoSitePhrase(sService) {
+        return sService === "zenodo" ? "zenodo.org" : "the Zenodo sandbox";
+    }
+
     function _fsRenderCrossInstanceRemedy(dictCrossInstance) {
         /* Both remedies the refusal names, each a button. Setting the
            instance back used to have no control at all -- it lived in
            a settings dialog a researcher could not find -- and the one
            button offered, "Start a new concept", was Zenodo jargon for
            giving up the version chain (researcher-reported,
-           2026-09-29). The labels are short and the researcher's own
-           (ruled 2026-09-29): the backend's sentence directly above
-           them names both sites, so the buttons need not. */
+           2026-09-29). Each label says what the click DOES, and names
+           the site it acts on (ruled 2026-10-27, superseding the short
+           labels of 2026-09-29): "Deposit a new version" deposited
+           nothing, it only changed where the next publish goes. */
         if (!dictCrossInstance || !dictCrossInstance.sMessage) return "";
         return '<div class="permanence-warning">\u26a0 ' +
             fnEscapeHtml(dictCrossInstance.sMessage) + '</div>' +
             _fsRenderActionButton(
                 "publish-where-the-zenodo-record-is", "",
-                "Deposit a new version\u2026") +
+                "Publish to " + _fsZenodoSitePhrase(
+                    dictCrossInstance.sRecordedService) +
+                " from now on\u2026") +
             _fsRenderActionButton("start-new-zenodo-concept", "",
-                "Start a new deposit\u2026", false, true);
+                "Start a separate record on " + _fsZenodoSitePhrase(
+                    dictCrossInstance.sTargetService) + "\u2026",
+                false, true);
     }
 
     function _fsRenderArchivedDoiRow(sDoi) {
@@ -1772,6 +1800,7 @@ var VaibifyWorkflowRequirements = (function () {
                 dictHealth.sState === "green", sState,
                 dictArchiveInfo) +
             _fsRenderArchivedDoiRow(dictArchive.sArchivedDoi) +
+            _fsRenderVerifyBeforePublishing(dictArchive) +
             _fsRenderCrossInstanceRemedy(
                 dictArchive.dictCrossInstance) +
             _fsRenderPermanenceNote(

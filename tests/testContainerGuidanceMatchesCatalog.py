@@ -118,6 +118,55 @@ def testContainerGuidanceAgreesWithAgentSafety():
         "container guidance contradicts bAgentSafe: " + ", ".join(listWrong))
 
 
+_S_REPO_ROOT = os.path.dirname(os.path.dirname(_S_CONTAINER_IMAGE_DIR))
+_RE_BOLD_LABEL = re.compile(r"\*\*([^*]+)\*\*")
+_RE_JS_UNICODE_ESCAPE = re.compile(r"\\u([0-9a-fA-F]{4})")
+
+
+def _fsReadDashboardLabelCorpus():
+    """Return every string the dashboard can show, as one searchable text.
+
+    The frontend source, with HTML entities and JavaScript ``\\uXXXX``
+    escapes decoded, plus the determinism question, whose wording the
+    server ships to the page rather than the page holding a copy.
+    """
+    import html
+    sStaticDir = os.path.join(_S_REPO_ROOT, "vaibify", "gui", "static")
+    listTexts = []
+    for sName in sorted(os.listdir(sStaticDir)):
+        if sName.endswith((".js", ".html")):
+            listTexts.append(_fsReadText(os.path.join(sStaticDir, sName)))
+    listTexts.append(_fsReadText(os.path.join(
+        _S_REPO_ROOT, "vaibify", "reproducibility", "determinismGate.py")))
+    sCorpus = html.unescape("\n".join(listTexts))
+    return _RE_JS_UNICODE_ESCAPE.sub(
+        lambda match: chr(int(match.group(1), 16)), sCorpus)
+
+
+@pytest.mark.falsification
+def testEveryLabelTheDashboardMapQuotesIsOnTheDashboard():
+    """A bold label in the dashboard-map skill is one the page really shows.
+
+    Agents invented labels ("Environment record", a button named after
+    an action ID) and sent a researcher looking for controls that did
+    not exist (2026-10-27). The map is the one place agents copy labels
+    from, so every label it quotes must be found in the dashboard.
+
+    Kills: quoting a label the dashboard does not have, such as the
+    invented "Environment record".
+    """
+    sCorpus = _fsReadDashboardLabelCorpus()
+    sMap = _fsReadText(os.path.join(_S_SKILLS_DIR, "dashboard-map", "SKILL.md"))
+    listMissing = [
+        sLabel for sLabel in (
+            _fsCollapseWhitespace(s) for s in _RE_BOLD_LABEL.findall(sMap))
+        if sLabel not in sCorpus
+    ]
+    assert listMissing == [], (
+        "the dashboard-map skill quotes labels the dashboard does not "
+        "show: " + ", ".join(listMissing))
+
+
 @pytest.mark.falsification
 def testProofLadderQuotesTheLiveDeterminismQuestion():
     """The proof-ladder skill quotes each determinism question as the gate asks it.

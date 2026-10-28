@@ -334,7 +334,8 @@ the button they would click.
 
 Quote a dashboard label ONLY as the dashboard spells it, and give the
 whole path to it (section, row, then control), e.g. Project block →
-Published copies → GitHub mirror → Verify now. An action name is never
+Published copies → GitHub mirror → Verify now; the dashboard-map
+skill lists every label and its path. An action name is never
 a label: `publish-where-the-zenodo-record-is` is not a button anyone
 can find. When you do not know a control's label, say so and describe
 where to look, rather than inventing a name.

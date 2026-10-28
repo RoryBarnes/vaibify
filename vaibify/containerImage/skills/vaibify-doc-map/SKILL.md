@@ -16,6 +16,7 @@ All paths are under `/usr/share/vaibify/docs/`.
 
 | You need to know… | Doc | Section |
 |---|---|---|
+| Where a control is and what it is called (labels, paths) | the **dashboard-map** skill, not a doc | — |
 | What a dashboard panel/badge/row means | environmentsAndProjects.md | `## Status lights and colors`, `### The Main tab` |
 | Environments, steps, dependencies, staleness | environmentsAndProjects.md | `## Environments`, `### The parts of a step`, `### Dependencies`, `### Polling` |
 | The agent-action catalog and shipped skills | forAgents.md | `## Agent actions`, `## Shipped agent skills` |

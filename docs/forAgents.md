@@ -185,6 +185,10 @@ skill with its own name.
 - **vaibify-doc-map** — point the agent at the right section of
   vaibify's documentation, staged in the container under
   `/usr/share/vaibify/docs`, instead of a whole file.
+- **dashboard-map** — every dashboard menu, section, row and button by
+  its exact label, with the path to each, so the agent sends the
+  researcher to controls that exist and walks them through one step at
+  a time.
 
 ## Developing vaibify with agents
 
