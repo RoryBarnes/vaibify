@@ -63,12 +63,13 @@ correspond to the variable type or cast, i.e. Hungarian notation. Use the follow
 - Tuple = "t"
 - Generator/iterator = "iter"
 - A `@contextmanager`/`@asynccontextmanager` function = "context" (its return annotation, if any, describes the undecorated generator: `Iterator[T]`, never `ContextManager[T]`)
-- An asyncio event loop = "loop"
-- A DOM `Element`/`HTMLElement` = "element" (not any DOM `Node`)
+- An asyncio event loop = "loop" (a domain prefix; see below)
+- A DOM `Element`/`HTMLElement` = "element" (not any DOM `Node`; a domain prefix; see below)
 
 If a cast is not listed above, ask me. Beyond these core casts, a
 closed registry of domain prefixes (e.g. `set`, `path`, `config`,
-`connection`) maps each to its concrete type family; it lives in two
+`connection`, and the `loop` and `element` listed above) maps each to
+its concrete type family; it lives in two
 independently edited copies in `tools/generateStyleInventory.py` and
 `tests/testStyleInvariants.py`, and growing either tier takes both
 edits plus my approval. This rule governs EVERY binding site —
@@ -91,9 +92,10 @@ source. Existing violations are grandfathered in a frozen seed with
 exact per-class budgets that may only fall; fixing one lowers the
 matching budget constant in the same commit
 (`python tools/generateStyleInventory.py --write`). Honesty of scope:
-prefix/type consistency is checked where prefixes and annotations
-exist — unannotated, unprefixed names are not governed, and the
-action-verb rule in rule 6 is not machine-enforced.
+prefix/type *agreement* is checked only where an annotation or a
+literal return states the type — an unannotated binding is checked for
+carrying a vocabulary prefix (rule 2), not for holding what its prefix
+claims — and the action-verb rule in rule 6 is not machine-enforced.
 
 4. Prefer functions under ~20–30 lines, because a single-purpose function usually fits there and stays easy to navigate. This is a guideline, not a hard limit. When a long function contains a block that is of broader use or marks a real conceptual boundary, extract it. When the function is long but irreducibly one purpose — its only "helpers" would be single-call pass-throughs sharing threaded state — leave it whole; that is clearer than artificial fragmentation, which also costs an agent navigability by smearing one behavior across many call hops.
 
@@ -145,7 +147,9 @@ that has accreted a second major concern should be split along that seam.
 *smell-to-justify*, not a mandate: it ratchets current module sizes so a
 new god module cannot appear and an existing large one cannot grow, but
 it forces a conversation (split, or justify in the allow-list), never a
-mechanical split.
+mechanical split. It scans `vaibify/gui/` only; a module elsewhere (in
+`vaibify/reproducibility/` or `vaibify/docker/`, say) is bounded by
+nothing but this discipline.
 
 ## Epistemics for an AI-written codebase
 
@@ -163,6 +167,19 @@ exercised. Concretely:
   what caught the name-vs-id bug. For any guarantee that crosses an
   HTTP / WebSocket / container boundary, assert it with the keys made
   distinct (name ≠ id) and a real connection, never a unit stub.
+- **A falsification test is kill-confirmed**: proven to FAIL when the
+  guard it defends is broken, not merely to pass. It carries the
+  `falsification` pytest marker (per test, or a module-level
+  `pytestmark`), records the mutation it kills on a `Kills:` docstring
+  line, and has exactly one entry in `tests/falsificationRegistry.py`
+  stating that mutation as exact `old` → `new` text in a named source
+  file. `testFalsificationMarkedTestsAreRegistered` and
+  `testFalsificationRegistryIsWellFormed` enforce that shape;
+  `tools/reconfirmFalsification.py` re-applies each mutation to prove
+  the kill still holds (see "Required after edits"). A kill proves the
+  test is sensitive, not that its expected value is right: derive that
+  value independently of the code under test (the independent-oracle
+  rule in the registry's docstring).
 - **Separate "verified" from "asserted."** Say "I confirmed X by running
   Y" or "I believe X but have not checked" — never let the second masquerade
   as the first. A confident, unverified claim about a diff is the same
@@ -187,8 +204,14 @@ tests-of-record, or docs. When a specific example helps during
 development, keep it in a scratch branch or a user-owned workflow
 repo, never in vaibify itself.
 `tests/testArchitecturalInvariants.py::testNoScienceSpecificIdentifiersInSource`
-enforces this with a seed list; extend the list when new
-science-specific terms need to be forbidden. A researcher's project
+enforces this with a seed list for `*.py`, `*.html`, `*.js` and `*.css`
+under `vaibify/`, skipping any `tests/`, `templates/` or `docs/`
+directory; `testNoScienceSpecificIdentifiersInShippedTemplates` scans
+every file of every template except the one shipped example workflow
+(`vaibify/templates/workflow/`). Markdown outside the templates,
+repo-root `docs/` and `tests/` are not scanned: there the rule holds by
+review alone. Extend the seed list when new science-specific terms
+need to be forbidden. A researcher's project
 *state* leaks more easily than their science does: a comment
 containing a number, path, or timestamp you learned from the session
 rather than from the code is the tell. Write the general shape.
@@ -205,9 +228,16 @@ Overleaf, GitHub, and Zenodo. Failure modes to audit against:
   mounts. Any path that originated from a user-facing source (HTTP
   request body, project.json, config file) must be validated
   against its intended root before being opened, read, written, or
-  listed. The existing helper `fsValidatePathWithinRoot(sAbsPath,
-  WORKSPACE_ROOT)` in `pipelineServer.py` does this — do not remove
-  or weaken it.
+  listed. The existing helper `fsValidatePathWithinRoot(sResolvedPath,
+  sAllowedRoot)` in `pipelineServer.py` does this; pass the root the
+  path is meant for (the project root, a writable root, a drafts or
+  logs directory), never a broader one such as the whole workspace.
+  A route that writes caller-supplied content into the project repo
+  must also apply `fnRejectWriteDenylistedPath` (refuses `.git/`,
+  `.vaibify/` and `project.json`) and pass
+  `**fdictConfinedWriteKeywords(<root>)` to the container write, which
+  re-applies the boundary without following symlinks. Do not remove or
+  weaken any of the three.
 - Credential leakage through logs, error messages, or generated test
   code
 - Mounting host paths outside the workspace volume
@@ -229,7 +259,7 @@ ugly, show it. This applies to `fileStatusManager.py`,
 path. The detail is in the `dashboard-state-honesty` skill.
 
 **Do not delete or silence a test to make a failure go away.** A
-failing test is signalling one of three things: a bug in the code
+failing test is signaling one of three things: a bug in the code
 under test, a bug in the test's assertion, or a legitimate behavior
 change that the test predates. The fix is to investigate and address
 the right one, not to remove the test. Deleting or disabling a test to
@@ -263,25 +293,39 @@ out on every pull request at once.
 
 ## Contracts enforced by a test
 
-Each of these is a real rule whose violation fails CI. The test is the
-control; this line is the signpost. The reasoning lives in
-`docs/architecture.md` or the subsystem skill.
+Each of these is a real rule. Where a bullet names a test, a violation
+of what that test checks fails CI; where a bullet says enforcement is
+partial or absent, the rule holds all the same and review is the only
+control. The test is the control where one exists; this line is the
+signpost. The reasoning lives in `docs/architecture.md` or the
+subsystem skill.
 
 - **Step labels are per-type sequential, not positional.** `A09` is
   the 9th *automated* step. Use `fsLabelFromStepIndex` /
   `fiStepIndexFromLabel` from `vaibify/gui/pipelineUtils.py`; never
   inline the translation. Users speak labels; internal code paths keep
-  0-based indices.
+  0-based indices. Enforcement is partial:
+  `testStepPayloadsCarrySLabel` checks that the step routes emit
+  through the label decorators and
+  `testGeneratedConftestTranscribesTheHostStepLabeller` that the
+  container's copy agrees; no test catches an inline translation
+  elsewhere.
 - **A step's directory basename is a function of its name.** The single
   implementation is `fsSlugFromStepName` / `fsValidateStepName` /
   `fbStepDirectoryConforms` in `vaibify/gui/pipelineUtils.py` (with a
   display-only JS mirror in `scriptUtilities.js` — the backend is the
   authority). Never write a second derivation, and never let a name
-  change bypass the rename cascade in `stepRename.py`.
-- **`pipelineUtils.py` is a deliberate leaf module.** Zero
-  intra-package imports, to break dependency cycles. Do not add
-  `from vaibify.gui` or `import vaibify.gui` to it.
-  `testLeafModuleHasNoIntraPackageImports` enforces it.
+  change bypass the rename cascade in `stepRename.py`. Enforcement is
+  partial: `tests/testStepSlugContract.py` and
+  `tests/testStepSlugMirrorEquivalence.py` pin the formula and the JS
+  mirror, and `tests/testStepRenameCascadeReachesEverything.py` pins
+  the cascade's reach; no test detects a new derivation written
+  elsewhere or a code path that changes a name without the cascade.
+- **`pipelineUtils.py` and `truthDerivation.py` are deliberate leaf
+  modules.** No import from the vaibify package at all — no
+  `vaibify.*` and no relative import, anywhere in the file — to break
+  dependency cycles. `testLeafModuleHasNoIntraPackageImports`
+  enforces it.
 - **Every cross-step file reference must be a `{step:<sStepId>.<stem>}`
   token in the step's command**, not a hardcoded path. The workflow
   JSON, parsed mechanically, is the complete dependency graph; the
@@ -289,25 +333,44 @@ control; this line is the signpost. The reasoning lives in
   literal means the edge does not exist and the workflow cannot
   honestly reach PROOF Level 1. `saDependencies` is the escape hatch.
   `testTemplateCommandsUseStepTokens` and
-  `testTemplateCommandsUseSymbolicNotPositionalTokens` enforce it;
+  `testTemplateCommandsUseSymbolicNotPositionalTokens` enforce it for
+  the shipped templates under `vaibify/templates/` only;
   `vaibify/docs/scriptAuthoring.md` has the worked examples.
 - **Every state-mutating route a researcher can invoke must be
   registered with the agent-action catalog** — `LIST_AGENT_ACTIONS`
   plus `@ffnAgentAction("name")`, or an explicit entry in
-  `SET_INTENTIONALLY_EXCLUDED_PATHS`. `bAgentSafe` is enforced
+  `SET_INTENTIONALLY_EXCLUDED_PATHS` (both in
+  `vaibify/gui/actionCatalog.py`). `bAgentSafe` is enforced
   server-side and fails closed, so getting it wrong is a security
-  decision, not a documentation one. `testAgentActionRegistered` and
-  `tests/testAgentLaneEnforcement.py` enforce it; the
-  `add-route-module` skill has the recipe. **And every one the GUI
-  invokes must have a CLI equivalent**: `LIST_AGENT_ACTIONS`,
-  `LIST_RESEARCHER_ACTIONS`, a host command in
-  `DICT_ROUTE_TO_HOST_COMMAND`, or `SET_GUI_ONLY_ROUTES` with a reason.
-  `testEveryGuiInvokedMutationHasCliEquivalent` enforces it, so Level 3
-  stays reachable from the command line alone.
+  decision, not a documentation one. `testAgentActionRegistered`
+  builds the workflow-viewer app (`fappCreateApplication`) and checks
+  its POST, PUT and DELETE routes, including that each handler's
+  decorator name matches its catalog entry;
+  `tests/testSecurityBoundaryInvariants.py::testHubAppStateMutatingRoutesAreGoverned`
+  applies the same membership rule to the hub app; and
+  `tests/testAgentLaneEnforcement.py` drives the server-side refusals
+  with an agent token. No test covers PATCH, which the server's own
+  `SET_STATE_MUTATING_METHODS` counts as mutating. The
+  `add-route-module` skill has the recipe. **And every mutating route
+  must have a CLI equivalent**: a route outside `LIST_AGENT_ACTIONS`
+  needs exactly one home among `LIST_RESEARCHER_ACTIONS`,
+  `DICT_ROUTE_TO_HOST_COMMAND` (a host command), and
+  `SET_GUI_ONLY_ROUTES` (with a reason), and a pipeline-socket action
+  the page sends needs a `WS` entry in `LIST_AGENT_ACTIONS` or an entry
+  in `DICT_WS_ACTION_TO_HOST_COMMAND`; every one of those homes but
+  `LIST_AGENT_ACTIONS` lives in `vaibify/gui/researcherActions.py`.
+  `testEveryGuiInvokedMutationHasCliEquivalent` enforces it over every
+  POST, PUT and DELETE route of both apps, not only those the page
+  calls, and fails a stale entry too, so Level 3 stays reachable from
+  the command line alone.
 - **`introspectionScript.py` is an f-string executed inside
   containers.** Editing it as ordinary Python loses escape sequences
   silently, and its duplication with `dataLoaders.py` is deliberate —
-  container scripts cannot import from the host.
+  container scripts cannot import from the host. No test enforces the
+  duplication: nothing binds the script's `_DICT_FORMAT_MAP` to
+  `dataLoaders.DICT_FORMAT_MAP` (the module docstring says so), and
+  `tests/testDeterministicTestGenerator.py` checks only that the
+  generated script parses and names its format handlers.
 - **A coroutine is never built and discarded.** Turning a `def` into
   an `async def` is the one signature change Python does not report at
   the call site: an un-awaited coroutine is truthy, runs no body, and
@@ -324,7 +387,8 @@ control; this line is the signpost. The reasoning lives in
   live instance of the bug).
 - **JavaScript IIFE state objects share mutable collections by
   reference.** Reassigning a Set breaks rendering; use `.clear()` and
-  mutate in place. See `vaibify/gui/static/AGENTS.md`.
+  mutate in place. See `vaibify/gui/static/AGENTS.md`. No test
+  enforces this one; it is held by review.
 
 ## Personal AI Configuration is a QUESTION, not an artifact
 
@@ -345,23 +409,35 @@ answered.
 
 ## Required after edits
 
-- After any Python change:
-  `python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py`
+- After any Python change, the suite CI's matrix runs (the `-m`
+  expression is the one in `.github/workflows/tests-linux.yml`):
+  `python -m pytest tests/ -q -m "not docker and not docker_live and not browser"`
 - After changes that touch structural invariants (adding a route,
   adjusting import graphs, or touching `workflowManager.py`):
   `python -m pytest tests/testArchitecturalInvariants.py -v`
 - After editing documentation: `python tools/checkAmericanSpelling.py`
-  (`--write` fixes). `tests/testAmericanSpelling.py` is the
-  enforcement; `.githooks/pre-commit` is the fast local copy, enabled
-  with `git config core.hooksPath .githooks`.
+  (`--write` fixes). Its default scope is `docs/*.md` and `README.md`,
+  and only that scope is enforced: `tests/testAmericanSpelling.py` is
+  the enforcement; `.githooks/pre-commit` is the fast local copy,
+  enabled with `git config core.hooksPath .githooks`. For an
+  `AGENTS.md` or a `SKILL.md`, pass the path explicitly
+  (`python tools/checkAmericanSpelling.py AGENTS.md`); nothing checks
+  those files otherwise.
 - After editing any `.claude/skills/*/SKILL.md`:
   `python -m pytest tests/testSkillIntegrity.py -v`, then the trigger
   and outcome harnesses in `tools/` — see `docs/skillTesting.md`.
 - Before pushing a falsification test, run
-  `python tools/reconfirmFalsification.py --only <substring>`. It
-  applies each recorded mutation in a disposable worktree and reports
-  KILLED or SURVIVED in about a minute, against ~20 minutes for a
-  suite and far longer for a CI round trip.
+  `python tools/reconfirmFalsification.py --only <substring>` (add
+  `--include-local-diff` on a dirty checkout; without it the harness
+  refuses, because it checks out HEAD). It applies each recorded
+  mutation in a disposable worktree and reports KILLED or SURVIVED in
+  about a minute, against ~20 minutes for a suite and far longer for a
+  CI round trip. A narrowed run is not the standing negative control
+  and does not judge registry completeness, so also run
+  `python tools/reconfirmFalsification.py --completeness-only`: it
+  collects every falsification-marked test pytest finds, the browser
+  lane's included (the in-suite registry test scans only top-level
+  `tests/test*.py`), and fails on any without a registry entry.
 
 ### Required after JS changes
 
@@ -372,8 +448,13 @@ frontend entirely unexecuted.
 
 ```bash
 pip install -e '.[browser]' && python -m playwright install chromium
-python -m pytest tests/browser -m browser
+VAIBIFY_REQUIRE_BROWSER=1 python -m pytest tests/browser -m browser -n 6 --dist loadfile
 ```
+
+`VAIBIFY_REQUIRE_BROWSER=1` turns a missing Playwright into a failure
+instead of a green skip. Pick a worker count below your core count;
+`docs/developers.md` explains `--dist loadfile` and gives the serial
+command to fall back on when diagnosing.
 
 **Do not read a green browser lane as "the frontend is verified."** It
 drives a fail-closed fake Docker adapter, so it says nothing about
@@ -402,7 +483,11 @@ user confirmation before execution:
 
 - Changing the verification state machine semantics (`fileStatusManager.py`).
 - Modifying Docker security capabilities, user namespace, or network
-  isolation.
+  isolation. These are set in more than `containerManager.py`: the
+  disposable-container specification and the Agent Council runner,
+  proxy and egress network set them too, and
+  `grep -rlE "cap_drop|cap-drop|security_opt|network_mode|internal=True" vaibify/`
+  lists every file that does.
 - Touching the reproducibility pipeline (`vaibify/reproducibility/`,
   Zenodo, Overleaf, LaTeX integration).
 - Force-pushing, rewriting shared git history, or changing CI
@@ -411,14 +496,24 @@ user confirmation before execution:
 
 ### Enforced by harness hooks
 
-Some of the above are enforced by Claude Code PreToolUse hooks
-configured in `.claude/settings.json`:
+Claude Code PreToolUse hooks configured in `.claude/settings.json`
+back a few of the rules above, and also gate some files the list does
+not name. They are a convenience, not the control: a rule binds
+whether or not a hook fires.
 
 - **`askSensitiveEdit.py`** pauses `Edit`, `Write`, and `NotebookEdit`
-  on: `vaibify/containerImage/*`, `vaibify/docker/containerManager.py`,
-  `vaibify/config/secretManager.py`, any `AGENTS.md`, and any
-  `.claude/skills/*/SKILL.md`. The hook returns an "ask" decision so
-  the user sees a confirmation prompt.
+  when the path the tool was given matches: anything under
+  `vaibify/containerImage/`, `vaibify/docker/containerManager.py`,
+  `vaibify/config/secretManager.py`, any file named `AGENTS.md`, or a
+  `SKILL.md` directly inside `.claude/skills/<name>/`. The hook
+  returns an "ask" decision so the user sees a confirmation prompt.
+  It matches the path string as given and resolves no symlinks, so an
+  edit addressed to `CLAUDE.md` (the symlink to the root `AGENTS.md`)
+  is not intercepted, and it never sees an edit made with `Bash`
+  (`sed -i`, a heredoc, a script). Nothing gates `fileStatusManager.py`,
+  `vaibify/reproducibility/`, the CI workflows, the other files that
+  set Docker security options, or the hook scripts and
+  `.claude/settings.json` themselves.
 - **`blockDestructiveGit.py`** denies `Bash` commands matching
   `git push --force` (except `--force-with-lease`) and
   `git rebase -i`. These are hard-blocked; run manually if genuinely
@@ -427,21 +522,27 @@ configured in `.claude/settings.json`:
 If a hook fires during your work, read the reason and either confirm
 with the user (for "ask") or escalate the need (for "deny"). Do not
 edit the hook scripts or `.claude/settings.json` to bypass a block —
-that itself is an edit to a sensitive file and an ask-first action.
-Temporary bypass is available via `--disable-hooks` at the CLI level
-if a human is driving.
+no hook prompts for those files, but editing them is still an
+ask-first action by this rule. Likewise, reaching a gated file through
+the `CLAUDE.md` path or through `Bash` does not lift its ask. Claude
+Code has no `--disable-hooks` flag; a human who genuinely needs the
+hooks off can disable them in their own settings, or start a session
+with `claude --bare`, which per `claude --help` skips settings-defined
+hooks — and CLAUDE.md auto-discovery with them, so this guide is not
+loaded.
 
 ## Discovery commands
 
 Rather than memorizing structural facts, run these when you need them:
 
 - `ls vaibify/gui/routes/*Routes.py` — current route modules
-- `grep -rh "^__all__" vaibify/gui/ | sort -u` — public symbol exports
-- `python tools/listModules.py vaibify/gui` — Python module map with
-  docstring purposes
+- `python tools/listModules.py vaibify/gui` — Python module map: each
+  module's public symbols (its `__all__`, parsed, so a multi-line list
+  counts — a `grep "^__all__"` does not see one) and docstring purpose
 - `python tools/listModules.py vaibify/gui/static --format json` — JS
   IIFE modules, machine-readable
-- `find . -name AGENTS.md -not -path './.git/*'` — all agent docs
+- `git ls-files '*AGENTS.md'` — all agent docs (a `find` also lists the
+  copies inside `.claude/worktrees/`)
 - `python -m pytest tests/testArchitecturalInvariants.py -v` —
   current enforced invariants (tests are documentation)
 

@@ -21,11 +21,15 @@ un-run lane look exactly like a passing one.
 gh pr view <PR> --json number,baseRefName,mergeable,mergeStateStatus,isDraft,headRefName
 ```
 
-- **A PR whose base is not `main` runs no CI at all.** Every workflow is
-  `on: pull_request: branches: [main]`, so a PR stacked on another open
-  branch shows a clean, empty check list. Retargeting the base does
-  **not** trigger the workflows either — `gh pr close <PR> && gh pr
-  reopen <PR>` does.
+- **A PR's lanes run whatever its base.** The `pull_request` workflows
+  carry NO base-branch filter, deliberately: they once said
+  `branches: [main]`, and a stacked PR then showed a clean, empty check
+  list (2026-08-18). The one exception is `runtimeSetup.yml`, which runs
+  only for a PR into `main` that touches its `paths:`;
+  `freshImageBuild.yml` also runs only when its `paths:` match. Read
+  each workflow's `on:` block rather than trusting this list.
+  Retargeting the base does **not** re-trigger the workflows —
+  `gh pr close <PR> && gh pr reopen <PR>` does.
 - **An empty check list is never a pass.** If `gh pr checks` reports no
   checks, say so explicitly and stop; do not report the PR as green.
 
@@ -33,8 +37,8 @@ gh pr view <PR> --json number,baseRefName,mergeable,mergeStateStatus,isDraft,hea
 gh pr checks <PR> --json name,state,bucket,link
 ```
 
-If the list is empty and the base is `main`, the run has not been
-created yet — wait for the next pass rather than concluding anything.
+If the list is empty, the run has not been created yet — wait for the
+next pass rather than concluding anything.
 
 ## Phase 1 — Wait for the lanes, event-driven
 
@@ -71,8 +75,8 @@ gh run view <RUN_ID> --log-failed | tail -100
 
 | Signal | Meaning | Action |
 |---|---|---|
-| `fresh-image-build`, exit **1**, "pinned compiler toolchain is no longer available" | A real Ubuntu pin rotation | **Maintainer decision — do not fix.** Report it and stop. |
-| `fresh-image-build`, exit **100**, `Hash Sum mismatch` | Transient Ubuntu mirror hiccup | `gh run rerun <RUN_ID> --failed` |
+| `image build from scratch` or `image build from scratch (arm64)` (the `fresh-image-build` workflow), exit **1**, "the pinned compiler toolchain is no longer available" | NOT an Ubuntu pin rotation: the build reads a frozen snapshot (`APT_SNAPSHOT_DATE`), so the Dockerfile disagrees with its own snapshot, or `snapshot.ubuntu.com` was unreachable | Run `python tools/checkToolchainEpoch.py --verify`. If it fails and this branch edited the pins or the date, make them agree; if it passes, rerun the lane. Choosing NEW versions is an epoch bump: **maintainer decision — do not make it.** Report it and stop. |
+| Either image-build check, exit **100**, `Hash Sum mismatch` | Transient Ubuntu mirror hiccup | `gh run rerun <RUN_ID> --failed` |
 | Google Fonts / DNS error in a browser test | Known flake — `styleMain.css` `@import`s a font | Re-run the lane before diagnosing the frontend |
 | The same lane fails twice on the same commit | Real | Fix it |
 | A lane that passed on the previous commit | Likely real, caused by this push | Fix it |
@@ -99,9 +103,13 @@ python -m pytest tests/browser -m browser          # needs the browser extra
 python tools/carrierIntentAudit.py
 ```
 
-`tools/deriveLaneSelection.py <workflow file>` prints the exact pytest
-arguments a lane runs, so a local reproduction can match CI's selection
-instead of guessing at it.
+To match CI's selection instead of guessing at it, read the failing
+lane's own `pytest` line in its workflow file. `tools/deriveLaneSelection.py
+<workflow file>` is the count badges' tool, not a reproduction recipe:
+it prints only the test FILES a workflow's pytest steps name, plus a
+step's `-m` marker, so a step that runs `tests/` whole is invisible to
+it (for `tests-linux.yml` it omits the unit suite and its marker), and
+it refuses a workflow that names no file.
 
 Four rules govern the fix itself:
 
@@ -121,6 +129,14 @@ Four rules govern the fix itself:
   hook; `--force-with-lease` is permitted but is almost never what a
   shared PR branch wants.
 
+Before pushing anything that adds or edits a
+`@pytest.mark.falsification` test, also run
+`python tools/reconfirmFalsification.py --completeness-only`. The
+`falsification:summary` check runs exactly that whole-registry check,
+and `--only <substring>` skips it (its output says so). A browser test
+that is not collected locally, for want of playwright, can make a
+laptop look complete where a runner is not.
+
 Then push and go back to Phase 1:
 
 ```bash
@@ -133,9 +149,14 @@ A merge into a *different* branch is what usually conflicts this one,
 and it happens silently while the lanes run. `mergeStateStatus` from
 Phase 0 carries it:
 
-- `DIRTY` / `mergeable: CONFLICTING` — resolve now.
-- `BEHIND` — the base moved; merge it forward so the lanes test what
-  will actually land.
+- `DIRTY` / `mergeable: CONFLICTING` — resolve now. This is the ONLY
+  state that merges `main` forward.
+- `BEHIND` — the base moved, but the branch still merges cleanly. Do
+  NOT merge it forward (ruled 2026-10-06, superseding this skill's old
+  "merge it forward" line): every push restarts the whole CI matrix,
+  and the maintainer would rather wait on one run than pay for a fresh
+  one to test an up-to-date base. A watcher wakes on `CONFLICTING` /
+  `DIRTY`, a failure, or completion, never on `BEHIND`.
 - `BLOCKED` — a required check has not passed, or a review is pending.
   Not a conflict.
 
@@ -157,7 +178,7 @@ every disposition this branch recorded:
 ```bash
 $EDITOR tests/mutationInventory.json          # keep BOTH sides' records
 python tools/generateMutationInventory.py --write
-python tools/generateMutationInventory.py --check   # must print {}
+python tools/generateMutationInventory.py --check   # every list empty, exit 0
 ```
 
 The same applies to `tests/hostCapabilityInventory.json` and

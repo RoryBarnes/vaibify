@@ -66,12 +66,18 @@ server-minted lease (`containerOwnership.fsMintLease`), recorded in the
 in-process owner-of-record map `app.state.dictContainerOwners`, keyed by
 container **name** (the host flock and the caffeinate keep-alive are both
 name-keyed, so the owner map must be too; the WebSocket routes resolve
-the Docker container id to a name before the lease lookup). Claim
-(`registryRoutes`), the connect handler, and the pipeline WebSocket must
-all authorize through the single shared guard
-`webSocketAuthorization.fbAuthorizeContainerSession` /
-`fiContainerSessionRejectionCode` — never an inlined container-id
-membership check. Never reintroduce `setAllowedContainers` (the old
+the Docker container id to a name before the lease lookup). Every gate
+authorizes through a shared authority, never an inlined container-id
+membership check: claim (`registryRoutes`, committing through
+`sessionLifecycle.ftClaimWithCardinality` and so
+`containerOwnership.ftClaim`) and the connect handler (`workflowRoutes`,
+reading the `X-Vaibify-Lease` header into
+`containerOwnership.fbBrowserSessionOwnsLease`) consult
+`containerOwnership`, and the pipeline and terminal WebSockets consult
+`webSocketAuthorization.fiContainerSessionRejectionCode`, which checks
+the lease through the same `containerOwnership` predicate. (Its
+boolean wrapper `fbAuthorizeContainerSession` has no production
+caller.) Never reintroduce `setAllowedContainers` (the old
 append-only, process-global allow set that leaked authorization for the
 whole process lifetime) or treat the shared session token as the browser
 *principal* — the shared token is only the trust/CSRF boundary, not the
@@ -126,8 +132,12 @@ remainder is deliberate and named, never a silent claim of coverage.
 
 **A typed read is exempt only inside its adapter.** Reading a file
 means running a program in the container, so guarding the exec would
-refuse reads too. Exactly one private method,
-`DockerConnection._ftRunTypedRead`, grants the exemption. It takes
+refuse reads too. Exactly one private method per connection grants the
+exemption: `DockerConnection._ftRunTypedRead` in container mode, and
+its host-mode analogue `HostConnection._ftRunTypedReadProgram`
+(`vaibify/host/hostConnection.py`), which skips only the command
+admission and is still gated and journaled through
+`_ftLaunchGatedAndStream`. Each takes
 an operation NAME from a fixed table, plus a path **or a flat sequence
 of paths**, and builds the command itself; it never accepts one. The
 sequence form was added on 2026-08-05 for the batched file-existence
@@ -137,8 +147,12 @@ what it may be *told to run* — `repr()` of a validated list of strings
 is as inert as `repr()` of one. An adapter that forwarded a caller's string would
 turn the read carve-out into a general bypass —
 `tests/testMutationBoundary.py` fails the build on one that does, and
-on a second grant point anywhere, pinning the name through
-`S_EXEMPTION_METHOD`.
+on a second grant point, pinning the name through
+`S_EXEMPTION_METHOD`. Know what it can see: it finds grant points by
+the STRING `ftokenEnterAuditedRead` and checks call sites in
+`dockerConnection.py` only, so the host grant point, which grants by
+omitting the admission assertion rather than by entering that token,
+is outside it.
 
 (This paragraph named `_texecRunAuditedRead` until 2026-08-04, a symbol
 that exists nowhere in the repository. The enforcement was always
@@ -160,8 +174,9 @@ tools/generateMutationInventory.py --write`; drift-check with
   (`eval`, `exec`, `sys.modules[...]`, `importlib`, `__import__`,
   dynamic `getattr`). **This is the completeness boundary and it fails
   closed.** Importing `os` is not acquisition; `from os import system`
-  is — 33 GUI modules import `os`, so a module-level reading would be
-  useless.
+  is — most GUI modules import `os` (`grep -rlE --include='*.py'
+  '^import os$' vaibify/gui | wc -l` counts them), so a module-level
+  reading would be useless.
 
   Signalling joined the vocabulary on 2026-08-10 and is worth a
   sentence, because it is the one member that is not command
@@ -225,7 +240,7 @@ on, then rebuild:
 ```bash
 $EDITOR tests/mutationInventory.json          # keep BOTH sides' records
 python tools/generateMutationInventory.py --write
-python tools/generateMutationInventory.py --check   # must print {}
+python tools/generateMutationInventory.py --check   # every list empty, exit 0
 ```
 
 **Do not resolve by taking one side wholesale.** Regeneration carries a
@@ -238,8 +253,10 @@ to `UNCLASSIFIED` is a legal row. The ratchets in
 and only if the count crosses a budget.
 
 Regeneration then normalizes ordering and drops anything the scan no
-longer finds, so `--check` printing `{}` means the rebuilt file agrees
-with the source. Read its `removed` keys before assuming a clean
+longer finds, so `--check` printing a JSON object whose every list is
+empty (`listAdded`, `listRemoved`, and every other drift key), and
+exiting 0, means the rebuilt file agrees with the source. Read
+`listRemoved` before assuming a clean
 rebuild: a row your branch deleted takes its recorded review with it. A
 row whose enclosing scope moved keeps its review but gets a new
 `sScopeFingerprint` — that is the mechanism asking you to re-read the

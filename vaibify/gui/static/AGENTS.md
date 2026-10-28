@@ -91,14 +91,21 @@ verification indicator. If you add a new render path, call it.
   raw `socket.onmessage` handlers in feature modules; register via
   `fnOnEvent(sType, fnHandler)`.
 - **Polling cadences are invariants.** File-status polls every 5
-  seconds; pipeline-state polls every 10 seconds. Do not change these
+  seconds by default (the researcher's Poll Interval setting, 1 to 60
+  seconds, changes it through `VaibifyPolling.fnSetPollInterval`);
+  pipeline-state polls every 10 seconds. Do not change these defaults
   without discussion — they affect the server's computed-state load.
 - **Per-container exclusivity is a server-minted lease (`sLeaseId`).**
   The claim response carries it; store it per-tab in `sessionStorage`
   (so a reload re-asserts the same ownership instead of locking the user
   out) and present it as the `sLeaseId` query param on the pipeline and
-  terminal WebSocket URLs and on the claim / release / registry REST
-  calls. The lease — not the shared session token — is what says *which*
+  terminal WebSocket URLs, and as the `X-Vaibify-Lease` header on REST
+  calls (claim / release / registry and every container-scoped route),
+  which the authenticated-fetch shim adds to every request. The one REST
+  exception is the browser-performed file download (`scriptFilePull.js`):
+  an anchor click carries no header, so it rides the query string
+  (`routeScope.fsLeaseFromRequest`). The lease — not the shared
+  session token — is what says *which*
   browser session owns a container; a 409 from claim surfaces an "In use
   in another browser session" toast and the tile renders locked from
   `bOwnedByOtherSession`. The `pagehide` handler deliberately sends NO
@@ -176,10 +183,17 @@ pattern wholesale.
   `not-in-github-mirror`, `not-in-zenodo-deposit`, `figure-not-frozen`,
   `ai-declaration-unattested` (per-step); `github-verify-stale`,
   `zenodo-verify-stale`, `missing-ai-declaration-step`,
+  `ai-models-undeclared`, `personal-layer-unanswered`,
+  `image-archive-unanswered`, `basename-collision`,
+  `overleaf-verify-stale`, `not-in-overleaf`,
   `arxiv-mismatch`, `arxiv-version-stale` (workflow-scope,
-  `iStepIndex=-1`; the arXiv pair fires only when an arXiv
-  submission is recorded — the claim is opt-in, so an untracked
-  submission emits no blocker). Workflow-scope blockers render
+  `iStepIndex=-1`; the Overleaf pair fires only while an Overleaf
+  project is bound, and the arXiv pair only when an arXiv submission
+  is recorded — both claims are opt-in, so an untracked one emits no
+  blocker). The header cell counts these from the tuples in
+  `levelGates` (`_T_WORKFLOW_LEVEL2_BASE_CRITERIA` and its Overleaf and
+  arXiv siblings); a criterion a gate emits but no tuple lists is
+  invisible to the header. Workflow-scope blockers render
   as banner rows above the step list, not as per-step glyphs. The AI
   declaration's sign-off is a LEVEL 2 requirement (ruling
   2026-07-02: the declaration only has meaning at publication) —
@@ -190,14 +204,16 @@ pattern wholesale.
   (populated from `listLevel3Blockers`). Per-step criteria:
   `missing-from-manifest`, `script-not-pinned`,
   `nondeterminism-undeclared`, `binary-not-declared`,
-  `binary-not-captured`. Workflow-scope criteria mirror the backend's
-  `_fdictL3WorkflowChecks` dict: `dockerfile-not-pinned`,
-  `dependency-lock-missing`, `environment-snapshot-missing`,
-  `reproduce-script-missing`,
+  `binary-not-captured`, `binary-drifted`. Workflow-scope criteria
+  mirror the backend's `_fdictL3WorkflowChecks` dict:
+  `dockerfile-not-pinned`, `dependency-lock-missing`,
+  `environment-snapshot-missing`, `reproduce-script-missing`,
   `l3-attestation-stale`, `binaries-not-declared-or-waived`,
   `envelope-not-in-github-mirror`, `envelope-not-in-zenodo-archive`
   (the published-envelope pair; the Zenodo remediation is "publish a
-  new deposit version", never "push").
+  new deposit version", never "push"),
+  `attestation-not-in-zenodo-archive`, `image-not-archived`,
+  `an-archive-is-a-sandbox-deposit`, `reproduce-script-stale`.
 - Every blocker entry carries `iLevel`, `iStepIndex`, `sStepLabel`,
   `sScope`, `sCriterion`, `listOffendingFiles`,
   `listOffendingUpstreamSteps`, `sRemediationHint`. Per-step L3
@@ -238,15 +254,20 @@ pattern wholesale.
   entry point; agents edit via the action catalog).
   Each level is computed INDEPENDENTLY (no upward propagation) and
   arrives as a CELL dict (`sState`, `iSatisfied`, `iTotal`,
-  `bRegression`). Visual vocabulary: grey filled circle =
-  "not-started" (the step has no activity), red circle = "none"
-  (activity, nothing satisfied), orange circle = "partial", the
-  vaibify favicon image = "attained", hollow outlined grey circle =
-  "unknown" (sync verify cache stale — a stale cache must NEVER
+  `bRegression`). Visual vocabulary (one builder,
+  `VaibifyUtilities.fsBuildLevelCell`): hollow outlined circle =
+  "not-started" (no activity and no declared output on disk), gray
+  filled circle = "unassessed" (outputs exist, never assessed), red
+  circle = "none" (activity, nothing satisfied), orange circle =
+  "partial", the vaibify favicon image = "attained", muted question
+  mark = "unknown" (sync verify cache stale — a stale cache must NEVER
   render attained), muted dash = "not-applicable" (per-step L3 only:
   no criterion has a domain on the step — nothing to reproduce must
-  NEVER render as a vacuous attained). First-attainment dates persist
-  in `dictLevelHighWater` in state.json and are never erased.
+  NEVER render as a vacuous attained). Project-block requirement rows
+  add three states the same builder draws: "running" (pulsing orange
+  circle), "diverged" (red ⚠) and "closed" (red ✗). First-attainment
+  dates persist in `dictLevelHighWater` in state.json and are never
+  erased.
 - The expanded step detail is HIERARCHICAL (2026-07-18): an
   optional expandable Description block (`sDescription`, inline
   editor saving through the ordinary step-edit PUT; NO Directory
@@ -279,27 +300,48 @@ pattern wholesale.
   precisely so it does not read as a summary of the steps) is an
   expandable step-like row. Its cells are NOT an aggregate or summary of the
   step rows: they cover only the requirements that attach to the
-  workflow as a whole (L1: project repo present; L2: sync-verify
-  freshness + arXiv; L3: the envelope artifacts). The all-steps
-  aggregate is the scalar `iProofLevel` rendered by the PROOF chip, so
-  a Workflow-row L1 check above red step rows is a consistent
-  display, and the cell tooltips say so. Collapsed the row shows the
-  same columns at workflow scope; expanded it renders
-  `dictWorkflowEnvelopeDetail` as four independently expandable
-  sections — Software, Artifacts, Determinism, Syncs — each with a
-  summary mark on its header. Passing items render the theme-tinted
-  vaibify check (`envelope-check`, colored by `--highlight-color` so
-  it climbs the ladder); failures render warning glyphs; a
-  never-verified cache renders the hollow grey circle, never a
-  passing mark. Repository status has ONE home — the Repos panel —
-  and the Software section links there rather than duplicating it.
-  The AI-declaration criterion is excluded from the header; its home
-  is the AI Declaration interactive step (or the ghost row offering
-  to add one).
-- NO ✗/X status glyphs anywhere — failures and missing items use the
-  red warning glyph ⚠; staleness uses orange ⚠ or (per-file) the
-  pencil ✎. X-shaped characters are permitted only as close/delete
-  BUTTON chrome. `axis-not-green` carries `sSubState`
+  workflow as a whole (L1: project repo present; L2: the GitHub and
+  Zenodo published-copy checks, the AI-model and Personal AI
+  Configuration declarations and the environment-archive question,
+  plus arXiv and Overleaf while each is connected; L3: the
+  workflow-scope envelope checks — the backend's tuples in
+  `levelGates.py` are the authority, see `vaibify/gui/AGENTS.md`).
+  The all-steps aggregate is the scalar `iProofLevel` (`levelGates.fiProofLevel`)
+  rendered by the PROOF chip, so a Project-row L1 check above red step
+  rows is a consistent display, and the cell tooltips say so.
+  Collapsed the row shows the same columns at workflow scope; expanded
+  it renders independently expandable sections — Repository, Software,
+  Artifacts, Determinism, Published copies, AI, Attestation, and
+  Interrupted promotions only while one is pending — each with a
+  summary mark on its header (`fsRenderProjectBlock`, drawing mostly on
+  `dictWorkflowEnvelopeDetail`). Passing items render the vaibify
+  favicon (`fsBuildAttainedFavicon`, tinted per PROOF level by the
+  `body.proof-level-N` filters so it climbs the ladder); failures
+  render warning glyphs; a never-verified cache renders the hollow
+  gray circle, never a passing mark. Repository status has ONE home —
+  the Repos panel: the Repository section shows only the "Git enabled"
+  and "Input data declared" requirements, and each Published copies
+  row links to the panel ("Open the Repos panel") rather than
+  duplicating it. The AI Declaration step's criterion
+  (`missing-ai-declaration-step`) is excluded from the header; its
+  home is the AI Declaration interactive step (or the ghost row
+  offering to add one).
+- NO ✗/X glyphs for blockers, file marks or the step rows' level
+  cells — failures and missing items use the red warning glyph ⚠;
+  staleness uses orange ⚠ or (per-file) the pencil ✎. Two status marks
+  are still X-shaped: the "closed" cell above (✗, written `&#10007;` in
+  `fsBuildLevelCell`), an archiving opportunity that can no longer be
+  taken, told apart from "diverged" by shape; and the verification
+  badges, whose `fsVerificationStateIcon` draws ✗ for failed, error
+  and outputs-missing (written as a JavaScript `\u` escape). Otherwise
+  X-shaped characters are permitted only as close/delete BUTTON
+  chrome. The guards,
+  `testNoXGlyphInAnyGlyphDict` and
+  `testNoXStatusGlyphInLevelCellRenderers`, scan for the literal
+  characters ✗ ✕ × only — in the glyph dicts of `scriptApplication.js`
+  and in the source of `scriptStepRenderer.js`, `scriptLegendPanel.js`
+  and `scriptUtilities.js` — so an HTML entity or a `\u` escape passes
+  them. `axis-not-green` carries `sSubState`
   (failed/outputs-missing/outputs-changed/untested) mapped through
   `_DICT_AXIS_SUBSTATE_GLYPHS` — failed/missing carry red severity,
   outputs-changed orange, and untested maps to null (no warning
@@ -328,8 +370,9 @@ pattern wholesale.
 - `ls vaibify/gui/static/*.js` — current JS modules
 - `python tools/listModules.py vaibify/gui/static` — module name + first
   comment line per module
-- `grep -l "var .* = (function" vaibify/gui/static/*.js` — confirm IIFE
-  compliance
+- `grep -LE "^(var|const) [A-Za-z]+ = \(function" vaibify/gui/static/*.js`
+  — list any module that is NOT an IIFE (empty output means every
+  module complies; several modules declare theirs with `const`)
 
 ## Required after frontend edits
 
@@ -338,7 +381,9 @@ pattern wholesale.
   `python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py`.
   A green Python suite says nothing about the frontend; it does not
   execute this directory at all.
-- Run the browser lane. It loads the real dashboard in real Chromium
+- Run the browser lane. It loads the real dashboard in a real browser
+  engine — Chromium by default; `VAIBIFY_BROWSER=firefox` or `webkit`
+  selects another, and CI runs all three on every pull request —
   against a real uvicorn hub and fails on any console error, uncaught
   rejection, or failed asset, so pushing a branch is a genuine
   verification path:

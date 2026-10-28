@@ -94,7 +94,7 @@ markers live at `<sProjectRepoPath>/.vaibify/test_markers/`). Step
 values are rejected at load time. A silent fallback to the
 `/workspace` default reintroduces the all-grey-badges bug and
 desynchronizes marker writes from marker reads. See
-[docs/architecture.md](docs/architecture.md) — the "Workflow = git
+[docs/architecture.md](docs/architecture.md) — the "Project = git
 repo" section — for the full rationale. A container may host
 multiple workflows in different project-repo subdirectories; the
 active workflow determines the badge scope.
