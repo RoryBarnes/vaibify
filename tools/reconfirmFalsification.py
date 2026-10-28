@@ -166,9 +166,10 @@ S_VERDICT_NO_FAILURE = "no-failure"
 S_VERDICT_UNREADABLE = "unreadable"
 
 
-# The first modification time a source write is stamped with. Python
-# and pytest both judge a cached compilation by the source's mtime in
-# whole seconds plus its size, so a same-size mutation written within
+# The first modification time a source write is stamped with. Python,
+# and pytest before 9.2 (which checks a source hash since), judge a
+# cached compilation by the source's mtime in whole seconds plus its
+# size, so a same-size mutation written within
 # the same second as the previous version was served the PREVIOUS
 # bytecode: the test passed against code it never ran, and a genuine
 # kill read SURVIVED (macOS/py3.14, 2026-07-03). Every write the harness

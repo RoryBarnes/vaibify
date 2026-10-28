@@ -482,6 +482,25 @@ def testEverySourceWriteIsStampedWithATimeNoCacheHasSeen(
     assert max(listStamps) < 2 ** 32, "both caches compare 32 bits"
 
 
+def _fbRewriterCachedTheTestByHash(sPycachePrefix):
+    """Return whether pytest cached ``testGuard.py`` as a checked-hash pyc.
+
+    pytest before 9.2 stamps its rewritten-test cache with the source's
+    mtime and size; from 9.2 it writes checked-hash pycs (PEP 552),
+    which recompile any rewrite whose bytes differ. The flags word of
+    the pyc the shared cache holds says which, so the premise follows
+    the pytest that ran rather than a version number. A shared cache
+    holding no such pyc was never used.
+    """
+    listPycFiles = sorted(
+        pathlib.Path(sPycachePrefix).rglob("testGuard.*-pytest-*.pyc"))
+    assert listPycFiles, (
+        "the shared cache holds no rewritten-test pyc, so pytest never "
+        "used it")
+    baFlags = listPycFiles[0].read_bytes()[4:8]
+    return bool(int.from_bytes(baFlags, "little") & 0b1)
+
+
 @pytest.mark.falsification
 @pytest.mark.parametrize("sTarget", ["guarded.py", "testGuard.py"])
 def testASharedCacheNeverServesAStampedWriteStaleBytecode(
@@ -489,12 +508,15 @@ def testASharedCacheNeverServesAStampedWriteStaleBytecode(
 ):
     """One warm cache per run, and a mutation is still what runs.
 
-    ``guarded.py`` is compiled by Python's import system and
-    ``testGuard.py`` by pytest's assertion rewriter; both judge a
-    cached compilation by the source's mtime and size. The premise
+    ``guarded.py`` is compiled by Python's import system, which judges
+    a cached compilation by the source's mtime and size. ``testGuard.py``
+    is compiled by pytest's assertion rewriter, which judged the same
+    way before pytest 9.2 and checks a source hash since. The premise
     step writes a same-size mutation WITHOUT a fresh stamp and shows
     the shared cache serving the old compilation, which is both the
-    hazard and the proof that the cache really is shared. The harness's
+    hazard and the proof that the cache really is shared; under a
+    hash-checking rewriter the rewrite is recompiled instead, and the
+    rewritten test's pyc in the shared cache is the proof. The harness's
     own write must then be seen.
 
     Kills: giving every pytest run a private cache again, which makes
@@ -516,15 +538,19 @@ def testASharedCacheNeverServesAStampedWriteStaleBytecode(
                 if sTarget == "guarded.py"
                 else sOriginal.replace("1 == 1", "1 == 2"))
     assert len(sMutated) == len(sOriginal) and sMutated != sOriginal
-    with moduleTool._contextShareOneBytecodeCache():
+    with moduleTool._contextShareOneBytecodeCache() as sPycachePrefix:
         moduleTool._fnWriteSourceWithFreshStamp(pathTarget, sOriginal)
         iStamp = int(pathTarget.stat().st_mtime)
         assert moduleTool._ftRunPytest(["testGuard.py"])[0] == 0
+        bRecompiledByHash = sTarget == "testGuard.py" and (
+            _fbRewriterCachedTheTestByHash(sPycachePrefix))
         pathTarget.write_text(sMutated, encoding="utf-8")
         os.utime(pathTarget, (iStamp, iStamp))
-        assert moduleTool._ftRunPytest(["testGuard.py"])[0] == 0, (
+        iExpectedExitCode = 1 if bRecompiledByHash else 0
+        assert moduleTool._ftRunPytest(["testGuard.py"])[0] == (
+            iExpectedExitCode), (
             "premise: an unstamped same-size rewrite in the same second "
-            "is served the cached compilation")
+            "is served the cached compilation unless its hash is checked")
         moduleTool._fnWriteSourceWithFreshStamp(pathTarget, sMutated)
         assert moduleTool._ftRunPytest(["testGuard.py"])[0] == 1, (
             "a freshly stamped mutation ran stale bytecode")
