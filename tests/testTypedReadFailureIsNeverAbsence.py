@@ -62,7 +62,7 @@ def _fconnectionAnswering(listExitCodes, baContent=b"{}"):
     connection.listCommands = []
     iterExitCodes = iter(listExitCodes)
 
-    def ftRunScripted(sContainerId, sCommand, sWorkdir=None, sUser=None):
+    def ftRunScripted(sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None):
         connection.listCommands.append(sCommand)
         iExitCode = next(iterExitCodes, 0)
         sStdout = (base64.b64encode(baContent).decode()

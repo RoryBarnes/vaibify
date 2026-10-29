@@ -22,6 +22,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+
+from vaibify.docker.execLane import S_EXEC_LANE_RESEARCHER_COMMAND
 from pathlib import Path
 
 from vaibify.reproducibility.credentialRedactor import (
@@ -220,6 +222,7 @@ def _fdictProbeInstalledEnvironment(filesRepo):
     """
     iExitCode, sVersionLine, sError = filesRepo.ftRunCommand(
         ["python3", "-c", _S_PROBE_INTERPRETER], _F_PROBE_TIMEOUT_SECONDS,
+        sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     listFields = (sVersionLine or "").split()
     if iExitCode != 0 or len(listFields) != 3:
@@ -231,7 +234,7 @@ def _fdictProbeInstalledEnvironment(filesRepo):
         )
     iExitCode, sFreeze, sError = filesRepo.ftRunCommand(
         ["python3", "-m", "pip", "freeze", "--exclude-editable"],
-        _F_PROBE_TIMEOUT_SECONDS,
+        _F_PROBE_TIMEOUT_SECONDS, sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     if iExitCode != 0:
         raise subprocess.CalledProcessError(

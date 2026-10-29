@@ -33,11 +33,11 @@ LIST_CATEGORIES = ("integrity", "qualitative", "quantitative")
 class LocalProjectConnection(LocalSnapshotConnection):
     """Answers every question the poll asks from a real local directory."""
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         with open(sPath, "rb") as fileIn:
             return fileIn.read()
 
-    def fdictFetchSmallFiles(self, sContainerId, listPaths):
+    def fdictFetchSmallFiles(self, sContainerId, listPaths, sLane=None):
         dictFiles = {}
         for sPath in listPaths:
             try:
@@ -58,7 +58,7 @@ class LocalProjectConnection(LocalSnapshotConnection):
         except OSError:
             return ""
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None, sLane=None):
         processRun = subprocess.run(
             ["bash", "-c", sCommand], capture_output=True, text=True)
         return (processRun.returncode, processRun.stdout)

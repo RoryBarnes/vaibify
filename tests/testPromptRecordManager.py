@@ -64,7 +64,7 @@ class _StubDockerTranscripts:
         self.dictLaunchDirectories = dictLaunchDirectories or {}
         self.dictProviders = {}
 
-    def ftRunInContainerStreamed(self, sContainerId, sCommand):
+    def ftRunInContainerStreamed(self, sContainerId, sCommand, sLane=None):
         dictListing = {
             sPath: {
                 "iSizeBytes": len(baContent),
@@ -81,7 +81,7 @@ class _StubDockerTranscripts:
         }
         return _ResultExec(0, json.dumps(dictListing), "")
 
-    def fbaFetchFile(self, sContainerId, sFilePath):
+    def fbaFetchFile(self, sContainerId, sFilePath, sLane=None):
         return self.dictTranscripts[sFilePath]
 
 

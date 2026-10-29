@@ -33,7 +33,7 @@ def _fMockDockerSlow(fSleepSeconds, iExitCode=0, sOutput=""):
 
     def fnSlowStream(
         sContainerId, sCommand, fnEmitChunk,
-        sWorkdir=None, sUser=None,
+        sWorkdir=None, sUser=None, sLane=None
     ):
         time.sleep(fSleepSeconds)
         for sLine in sOutput.splitlines():
@@ -113,7 +113,7 @@ def test_run_single_command_drains_pending_batch_on_teardown():
 
     def fnStreaming(
         sContainerId, sCommand, fnEmitChunk,
-        sWorkdir=None, sUser=None,
+        sWorkdir=None, sUser=None, sLane=None
     ):
         fnEmitChunk("stdout", "first")
         fnEmitChunk("stdout", "second")
@@ -163,7 +163,7 @@ def test_heartbeat_callback_exception_does_not_break_command(monkeypatch):
 
     def ftWaitForSecondBeat(
         sContainerId, sCommand, fnEmitChunk,
-        sWorkdir=None, sUser=None,
+        sWorkdir=None, sUser=None, sLane=None
     ):
         if not eventTwoBeatsObserved.wait(timeout=2.0):
             raise AssertionError(

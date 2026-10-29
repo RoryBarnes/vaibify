@@ -89,7 +89,7 @@ class ContainerLikeRepoFiles:
     def fnWriteTextAtomic(self, sRelPath, sText):
         self.dictWritten[sRelPath] = sText
 
-    def ftRunCommand(self, saCommand, fTimeoutSeconds):
+    def ftRunCommand(self, saCommand, fTimeoutSeconds, sLane=None):
         """Answer the container probes from THIS host's interpreter.
 
         The staging compile asks the container what it runs; here the

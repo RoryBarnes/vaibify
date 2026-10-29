@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from vaibify.docker.execLane import LIST_HUB_PYTHON_ARGV
 from vaibify.reproducibility.repoFiles import (
     ffilesEnsureRepoFiles,
     fsRepoRootOf,
@@ -806,7 +807,8 @@ def fdictCaptureSystemTools(filesRepo=None):
 def _fdictCaptureContainerSystemTools(filesRepo):
     """Probe python/gcc/os-release through the adapter's command runner."""
     _iCode, sPython, _sErr = filesRepo.ftRunCommand(
-        ["python3", "-c", "import sys;print(' '.join(sys.version.split()))"],
+        LIST_HUB_PYTHON_ARGV
+        + ["-c", "import sys;print(' '.join(sys.version.split()))"],
         5.0,
     )
     iGccCode, sGcc, _sGccErr = filesRepo.ftRunCommand(

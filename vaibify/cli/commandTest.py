@@ -4,6 +4,8 @@ import sys
 
 import click
 
+from vaibify.docker.execLane import S_EXEC_LANE_RESEARCHER_COMMAND
+
 from .configLoader import fconfigResolveProject
 from .commandUtilsDocker import (
     fconnectionRequireDocker,
@@ -63,7 +65,8 @@ def _fiRunTestCommandList(
     """Run a list of test commands, returning first non-zero exit code."""
     for sCommand in listCommands:
         iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-            sContainerName, sCommand, sWorkdir=sWorkdir
+            sContainerName, sCommand, sWorkdir=sWorkdir,
+            sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
         )
         click.echo(sOutput.rstrip())
         if iExitCode != 0:

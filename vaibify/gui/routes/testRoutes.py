@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 
 from ..actionCatalog import ffnAgentAction
 from ...docker.confinedWrite import ContainerWriteRefusedError
+from ...docker.execLane import S_EXEC_LANE_RESEARCHER_COMMAND
 from ..fileStatusManager import (
     fbMaybeAutoArchive,
     fsWorkflowSlugFromPath,
@@ -506,7 +507,7 @@ def _fdictRunOneTestCategory(
         dictCtx["workflows"].get(sContainerId),
     ) + _fsPrefixWithWorkflowEnv(sCatCmd, sWorkflowSlug)
     tExecResult = dictCtx["docker"].ftRunInContainerStreamed(
-        sContainerId, sCatCmd,
+        sContainerId, sCatCmd, sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     return {
         "bPassed": tExecResult.iExitCode == 0,
@@ -1002,7 +1003,7 @@ def _ftRunSaveAndRunTest(
             workflowManager.fsWorkflowLoadedFromPath(dictWorkflow)),
     )
     return connectionDocker.ftRunInContainerStreamed(
-        sContainerId, sTestCmd,
+        sContainerId, sTestCmd, sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
 
 
@@ -1097,7 +1098,7 @@ def _ftRunCategoryCommands(
         connectionDocker, sContainerId, dictWorkflow,
     ) + _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds, sCategory)
     tExecResult = connectionDocker.ftRunInContainerStreamed(
-        sContainerId, sFullCmd,
+        sContainerId, sFullCmd, sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     bPassed = tExecResult.iExitCode == 0
     sOutput = tExecResult.sStdout + tExecResult.sStderr

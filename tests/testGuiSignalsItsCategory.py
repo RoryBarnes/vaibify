@@ -63,7 +63,7 @@ def test_the_run_all_lane_signals_each_group_and_not_the_legacy_one():
     listCommands = []
 
     class DockerRecorder:
-        def ftRunInContainerStreamed(self, sContainerId, sCommand):
+        def ftRunInContainerStreamed(self, sContainerId, sCommand, sLane=None):
             listCommands.append(sCommand)
             from types import SimpleNamespace
             return SimpleNamespace(iExitCode=0, sStdout="", sStderr="")

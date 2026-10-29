@@ -23,7 +23,7 @@ class MockDockerConnection:
     def fnWriteFile(self, sContainerId, sPath, baContent):
         self.dictFiles[(sContainerId, sPath)] = baContent
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         self.listCommands.append(sCommand)
         if sCommand.startswith("mv "):
             return self._ftHandleRename(sContainerId, sCommand)
@@ -34,7 +34,7 @@ class MockDockerConnection:
             return (0, "")
         return (1, "")
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         """Fetch a file the way the typed-read adapter does.
 
         ``fdictReadState`` reads through this rather than assembling a

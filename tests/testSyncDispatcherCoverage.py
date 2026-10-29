@@ -25,7 +25,7 @@ class _FakeDockerConnection:
         self._tResult = tResult
         self.listCommands = []
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         self.listCommands.append((sContainerId, sCommand))
         return self._tResult
 
@@ -228,7 +228,7 @@ class TestFsBuildTestMarkerCheckCommand:
     def test_produces_python_command(self):
         sCmd = fsBuildTestMarkerCheckCommand(
             ["/workspace/step01"], "/workspace/DemoRepo", "demo")
-        assert sCmd.startswith("python3 -c ")
+        assert sCmd.startswith("python3 -I -c ")
 
     def test_unsafe_dirs_filtered(self):
         sCmd = fsBuildTestMarkerCheckCommand(
@@ -240,7 +240,7 @@ class TestFsBuildTestMarkerCheckCommand:
     def test_empty_dirs(self):
         sCmd = fsBuildTestMarkerCheckCommand(
             [], "/workspace/DemoRepo", "demo")
-        assert "python3 -c" in sCmd
+        assert "python3 -I -c" in sCmd
 
     def test_multiple_safe_dirs(self):
         sCmd = fsBuildTestMarkerCheckCommand(

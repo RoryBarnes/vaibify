@@ -50,7 +50,7 @@ class _StubContainmentConnection:
 
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None,
-        listCommand=None, dictEnvironment=None,
+        listCommand=None, dictEnvironment=None, sLane=None
     ):
         self.dictExecEnvironment = dictEnvironment
         if listCommand is not None:

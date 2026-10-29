@@ -133,12 +133,12 @@ class _FakeConnection:
         del sContainerId
         return sAbsPath in self.dictShadowFiles
 
-    def fbaFetchFile(self, sContainerId, sAbsPath):
+    def fbaFetchFile(self, sContainerId, sAbsPath, sLane=None):
         del sContainerId
         return self.dictShadowFiles[sAbsPath]
 
     def ftRunInContainerStreamed(self, sContainerId, sCommand,
-                                 sWorkdir=None, sUser=None):
+                                 sWorkdir=None, sUser=None, sLane=None):
         del sContainerId, sCommand, sWorkdir, sUser
         import types
         return types.SimpleNamespace(

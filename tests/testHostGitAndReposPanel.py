@@ -778,14 +778,16 @@ def testAContainerProjectsHelperProgramStillRunsOnPython3(
     ``sys.executable`` is a path on the HOST. Inside a container it
     names nothing, so a container handed it would fail to start every
     helper program vaibify has — the keyring probes, the archive
-    build, the introspection pass.
+    build, the introspection pass. The container's interpreter runs
+    isolated (``-I``), so the agent's user site cannot load into a hub
+    program (``vaibify/docker/execLane.py``).
 
     Kills: the resolver stuck on the host answer.
     """
     from vaibify.gui.helperPrograms import fsResolveHelperInterpreter
     assert fsResolveHelperInterpreter(
         "credentialContainerProject",
-    ) == "python3"
+    ) == "python3 -I"
 
 
 def testTheStepRunnerNeverAsksWhichInterpreterToUse():

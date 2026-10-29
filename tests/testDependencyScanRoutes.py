@@ -82,7 +82,7 @@ class MockDockerConnection:
             },
         ]
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         if "find" in sCommand and ".vaibify/workflows" in sCommand:
             return (0, S_WORKFLOW_PATH + "\n")
         if "test -d" in sCommand:
@@ -93,7 +93,7 @@ class MockDockerConnection:
             return (0, "0\n")
         return (0, "")
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         sBasename = sPath.rsplit("/", 1)[-1] if "/" in sPath else sPath
         if sBasename in self._dictFiles:
             return self._dictFiles[sBasename]
@@ -115,7 +115,7 @@ class MockDockerConnection:
     ):
         self._dictFiles[sPath] = baContent
 
-    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
+    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None, sLane=None):
         return "exec-id-mock"
 
     def fsocketExecStart(self, sExecId):

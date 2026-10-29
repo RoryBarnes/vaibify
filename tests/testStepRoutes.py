@@ -402,7 +402,7 @@ def testFingerprintMismatchConflictsRegardlessOfSortOrder():
 class _FakeAlignDocker:
     """Exec results for the align cascade's directory move."""
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         if "test -e" in sCommand:
             return (1, "")   # destination absent
         if "test -d" in sCommand:

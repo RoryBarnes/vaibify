@@ -146,9 +146,9 @@ def test_badges_hydrates_when_project_repo_is_set(
     def _fExec(sContainerId, sCommand, **_kw):
         if "status --porcelain=v2" in sCommand:
             return (0, sCombinedStatus)
-        if "python3 -c" in sCommand and "glob" in sCommand:
+        if "python3 -I -c" in sCommand and "glob" in sCommand:
             return (0, sTrackedJson)
-        if "python3 -c" in sCommand and "hashlib" in sCommand:
+        if "python3 -I -c" in sCommand and "hashlib" in sCommand:
             return (0, sHashesJson)
         return (0, "")
 
@@ -169,7 +169,7 @@ def test_badges_hydrates_when_project_repo_is_set(
     # Every containerGit call ran against the project repo, not /workspace.
     listContainerGitCalls = [
         c for c in mockDocker.ftResultExecuteCommand.call_args_list
-        if "git" in str(c) or "python3 -c" in str(c)
+        if "git" in str(c) or "python3 -I -c" in str(c)
     ]
     assert listContainerGitCalls, "expected at least one containerGit call"
     for call in listContainerGitCalls:
@@ -253,7 +253,7 @@ def test_commit_canonical_restricts_commit_to_curated_pathspec(
         listIssued.append(sCommand)
         if "status --porcelain=v2" in sCommand:
             return (0, sCombinedStatus)
-        if "python3 -c" in sCommand and "glob" in sCommand:
+        if "python3 -I -c" in sCommand and "glob" in sCommand:
             return (0, sTrackedJson)
         return (0, "")
 
@@ -317,7 +317,7 @@ def test_commit_canonical_listOnlyPaths_narrows_never_widens(
         listIssued.append(sCommand)
         if "status --porcelain=v2" in sCommand:
             return (0, sCombinedStatus)
-        if "python3 -c" in sCommand and "glob" in sCommand:
+        if "python3 -I -c" in sCommand and "glob" in sCommand:
             return (0, sTrackedJson)
         return (0, "")
 

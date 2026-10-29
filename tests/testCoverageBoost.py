@@ -138,7 +138,7 @@ class MockDockerBoost(TypedHashFromServedBytes):
         return ""
 
     def ftResultExecuteCommand(self, sContainerId, sCommand,
-                                sWorkdir=None):
+                                sWorkdir=None, sLane=None):
         if "test -d" in sCommand and ".vaibify" in sCommand:
             return (0, "")
         if "find" in sCommand and "workflows" in sCommand:
@@ -168,7 +168,7 @@ class MockDockerBoost(TypedHashFromServedBytes):
         return (0, "")
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         """Mirror legacy mock through ExecResult for migrated routes."""
         from vaibify.docker.dockerConnection import ExecResult
@@ -179,7 +179,7 @@ class MockDockerBoost(TypedHashFromServedBytes):
             iExitCode=iExitCode, sStdout=sOutput, sStderr="",
         )
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath.endswith(".json"):
@@ -205,7 +205,7 @@ class MockDockerBoost(TypedHashFromServedBytes):
         self._dictFiles[sPath] = baContent
 
     def fsExecCreate(self, sContainerId, sCommand=None,
-                     sUser=None):
+                     sUser=None, sLane=None):
         return "exec-id-boost"
 
     def fsocketExecStart(self, sExecId):

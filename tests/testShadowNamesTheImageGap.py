@@ -33,7 +33,7 @@ from vaibify.reproducibility.shadowRerun import (
 class _ConnectionFindingNothing:
     """Answers every command probe with "not found"."""
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         del sContainerId, sCommand
         return 1, ""
 

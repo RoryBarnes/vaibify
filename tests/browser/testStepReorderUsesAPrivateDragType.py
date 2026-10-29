@@ -47,7 +47,7 @@ def listReorderRequests(pageDashboard, serverHub):
     """Open the workflow and record every reorder request, refusing each."""
     listBodies = []
 
-    def fnRecord(route):
+    def fnRecord(route, sLane=None):
         listBodies.append(json.loads(route.request.post_data or "{}"))
         route.fulfill(
             status=500, content_type="application/json",

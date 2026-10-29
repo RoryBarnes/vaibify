@@ -112,7 +112,7 @@ class MockDockerSync(TypedHashFromServedBytes):
         )
         return ExecResult(iExitCode=iExitCode, sStdout=sOutput, sStderr="")
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         if "test -d" in sCommand and ".vaibify" in sCommand:
             return (0, "")
         if "find" in sCommand and ".vaibify/workflows" in sCommand:
@@ -133,7 +133,7 @@ class MockDockerSync(TypedHashFromServedBytes):
             return (0, "")
         return (self._iSyncExitCode, self._sSyncOutput)
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath.endswith(".json"):
@@ -165,7 +165,7 @@ class MockDockerSync(TypedHashFromServedBytes):
         # so the sidecar bookkeeping starts absent like a fresh repo.
         return sPath in self._dictFiles
 
-    def ftRunInContainerStreamed(self, sContainerId, sCommand):
+    def ftRunInContainerStreamed(self, sContainerId, sCommand, sLane=None):
         import shlex
         from collections import namedtuple
         TExecResult = namedtuple("TExecResult", "iExitCode sStdout")
@@ -182,7 +182,7 @@ class MockDockerSync(TypedHashFromServedBytes):
         )
         return TExecResult(iExitCode, sStdout)
 
-    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
+    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None, sLane=None):
         return "exec-id-sync"
 
     def fsocketExecStart(self, sExecId):

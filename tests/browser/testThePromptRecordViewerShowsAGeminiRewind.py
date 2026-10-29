@@ -32,7 +32,7 @@ class _StubTranscriptSource:
     def __init__(self, baTranscript):
         self.baTranscript = baTranscript
 
-    def fbaFetchFile(self, sContainerId, sFilePath):
+    def fbaFetchFile(self, sContainerId, sFilePath, sLane=None):
         return self.baTranscript
 
 

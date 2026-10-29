@@ -1073,14 +1073,18 @@ LIST_FALSIFICATIONS = [
         )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
-            sUser = _fsResolveContainerUser(container)
+            sUser = _fsResolveExecUser(container, sLane)
         dictKwargs = self._fdictBuildExecKwargs(
-            sCommand, sWorkdir, sUser)""",
+            sCommand, sWorkdir, sUser,
+            _fdictResolveLaneEnvironment(container, sLane),
+        )""",
         new="""        container = self.fcontainerGetById(sContainerId)
         if sUser is None:
-            sUser = _fsResolveContainerUser(container)
+            sUser = _fsResolveExecUser(container, sLane)
         dictKwargs = self._fdictBuildExecKwargs(
-            sCommand, sWorkdir, sUser)""",
+            sCommand, sWorkdir, sUser,
+            _fdictResolveLaneEnvironment(container, sLane),
+        )""",
     ),
 
     Falsification(
@@ -2562,8 +2566,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testDataPreviewInjection.py::test_npy_preview_quotes_the_whole_program',
         source='vaibify/gui/dataPreview.py',
-        old='    sCommand = "python3 -c " + fsShellQuote(sProgram)\n    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(\n        sContainerId, sCommand\n    )\n    return sOutput.strip() if iExitCode == 0 else "(unreadable)"\n\n\ndef _fsPreviewHdf5',
-        new='    sCommand = "python3 -c \\"" + sProgram + "\\""\n    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(\n        sContainerId, sCommand\n    )\n    return sOutput.strip() if iExitCode == 0 else "(unreadable)"\n\n\ndef _fsPreviewHdf5',
+        old='    sCommand = S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sProgram)\n    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(\n        sContainerId, sCommand\n    )\n    return sOutput.strip() if iExitCode == 0 else "(unreadable)"\n\n\ndef _fsPreviewHdf5',
+        new='    sCommand = S_HUB_PYTHON_COMMAND + " -c \\"" + sProgram + "\\""\n    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(\n        sContainerId, sCommand\n    )\n    return sOutput.strip() if iExitCode == 0 else "(unreadable)"\n\n\ndef _fsPreviewHdf5',
     ),
     Falsification(
         nodeid='tests/testDataPreviewInjection.py::test_file_fetch_does_not_execute_injected_payload',
@@ -2574,13 +2578,13 @@ LIST_FALSIFICATIONS = [
         # for the batched existence probe. The mutation is unchanged in
         # meaning -- drop the literal-ization and the shell quoting, so
         # a path becomes program text.
-        old="""        sCommand = "python3 -c " + shlex.quote(
+        old="""        sCommand = S_HUB_PYTHON_COMMAND + " -c " + shlex.quote(
             sTemplate.replace(
                 _S_TYPED_READ_PATH_SLOT,
                 _fsTypedReadPathLiteral(objPaths),
             ),
         )""",
-        new="""        sCommand = "python3 -c \\"" + sTemplate.replace(
+        new="""        sCommand = S_HUB_PYTHON_COMMAND + " -c \\"" + sTemplate.replace(
             _S_TYPED_READ_PATH_SLOT, objPaths,
         ) + "\\"" """,
     ),
@@ -27476,7 +27480,7 @@ LIST_FALSIFICATIONS = [
             'tests/testConfinedTreeWrite.py::testTheTreeWriteRunsTheConfinedProgramAndNeverPutsAnArchive'
         ),
         source='vaibify/docker/dockerConnection.py',
-        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],\n                fileStdin=fileTar,\n            )\n',
         new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
     ),
     Falsification(
@@ -27508,7 +27512,7 @@ LIST_FALSIFICATIONS = [
             'tests/testConfinedTreeWriteLive.py::testAPlantedSymlinkAtTheDestinationDoesNotRedirectOrChangeOwnership'
         ),
         source='vaibify/docker/dockerConnection.py',
-        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],\n                fileStdin=fileTar,\n            )\n',
         new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
     ),
     Falsification(
@@ -27516,7 +27520,7 @@ LIST_FALSIFICATIONS = [
             'tests/testConfinedTreeWriteLive.py::testAPlantedSymlinkAtAnIntermediateComponentDoesNotRedirect'
         ),
         source='vaibify/docker/dockerConnection.py',
-        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],\n                fileStdin=fileTar,\n            )\n',
         new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
     ),
     Falsification(
@@ -27524,7 +27528,7 @@ LIST_FALSIFICATIONS = [
             'tests/testConfinedTreeWriteLive.py::testAMemberDirectoryThatIsASymlinkIsRefusedAndKeptNotDeleted'
         ),
         source='vaibify/docker/dockerConnection.py',
-        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],\n                fileStdin=fileTar,\n            )\n',
         new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
     ),
     Falsification(
@@ -36516,10 +36520,67 @@ LIST_FALSIFICATIONS = [
         source='vaibify/docker/dockerConnection.py',
         # an exec's own variables never reach the daemon
         old=(
+            '            container, sLane, dictEnvironment,\n'
+            '        )\n'
             '        if dictEnvironment:\n'
             '            dictKwargs["environment"] = dictEnvironment\n'
         ),
-        new='',
+        new=(
+            '            container, sLane, dictEnvironment,\n'
+            '        )\n'
+        ),
+    ),
+    # --- 2026-10-28: hub programs on a fixed PATH; integrity reads as a read-only user ---
+    Falsification(
+        nodeid=(
+            'tests/testExecLane.py::'
+            'testTheRootProbeNeverResolvesThroughTheImagePath'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # the root /bin/sh probe inherits the image PATH again
+        old=(
+            '            ["/bin/sh", "-c", sScript], user=sUser, demux=False,\n'
+            '            environment=_fdictResolveLaneEnvironment(\n'
+            '                container, S_EXEC_LANE_HUB_INTERNAL,\n'
+            '            ),\n'
+        ),
+        new=(
+            '            ["/bin/sh", "-c", sScript], user=sUser, demux=False,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecLane.py::'
+            'testEveryHubRunPythonProgramIsIsolated'
+        ),
+        source='vaibify/docker/execLane.py',
+        # the hub's Python loads the agent's user site again
+        old='LIST_HUB_PYTHON_ARGV = ["python3", "-I"]\n',
+        new='LIST_HUB_PYTHON_ARGV = ["python3"]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecLane.py::'
+            'testTheHasherRunsAsTheReadOnlyUser'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # every typed read runs as the container user again
+        old=(
+            '        if sOperation in T_TYPED_READS_AS_CONTAINER_USER:\n'
+            '            return S_EXEC_LANE_HUB_INTERNAL\n'
+            '        return S_EXEC_LANE_INTEGRITY_READ\n'
+        ),
+        new=(
+            '        if sOperation in T_TYPED_READS_AS_CONTAINER_USER:\n'
+            '            return S_EXEC_LANE_HUB_INTERNAL\n'
+            '        return S_EXEC_LANE_HUB_INTERNAL\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testExecLane.py::testAnUndeclaredLaneIsRefused',
+        source='vaibify/docker/execLane.py',
+        old='    if sLane not in T_EXEC_LANES:\n',
+        new='    if False:\n',
     ),
     Falsification(
         nodeid=(

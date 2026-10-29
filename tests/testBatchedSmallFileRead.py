@@ -32,7 +32,7 @@ def _fconnectionRunningLocally(listCommands=None):
     """
     connectionDocker = object.__new__(DockerConnection)
 
-    def ftRunHere(sContainerId, sCommand, sWorkdir=None, sUser=None):
+    def ftRunHere(sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None):
         if listCommands is not None:
             listCommands.append(sCommand)
         processResult = subprocess.run(

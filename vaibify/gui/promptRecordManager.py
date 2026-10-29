@@ -80,6 +80,10 @@ import posixpath
 import secrets
 import shlex
 import tempfile
+
+from vaibify.docker.execLane import (
+    S_EXEC_LANE_HUB_INTERNAL, S_HUB_PYTHON_COMMAND,
+)
 from datetime import datetime, timezone
 
 from vaibify.gui.transcriptSanitizer import flistSanitizeTextsInParallel
@@ -179,7 +183,7 @@ for dictSource in listSources:
         }
 sys.stdout.write(json.dumps(dictListing))
 """
-_S_LIST_SCRIPT = "python3 -c " + shlex.quote(_S_LIST_PROGRAM)
+_S_LIST_SCRIPT = S_HUB_PYTHON_COMMAND + " -c " + shlex.quote(_S_LIST_PROGRAM)
 
 
 def fdictListContainerTranscripts(connectionDocker, sContainerId):
@@ -424,7 +428,11 @@ def _fdictPlanOneSession(
     which :func:`_fnCompletePendingSession` turns into the sanitized
     session once the batch has been scanned.
     """
-    baRaw = connectionDocker.fbaFetchFile(sContainerId, sContainerPath)
+    # The agent's own transcript, under its own home: read as that
+    # user, since the read-only identity may not enter the directory.
+    baRaw = connectionDocker.fbaFetchFile(
+        sContainerId, sContainerPath, sLane=S_EXEC_LANE_HUB_INTERNAL,
+    )
     iCompleteBytes = baRaw.rfind(b"\n") + 1
     sProvider = dictEntry.get("sProvider") or S_PROVIDER_CLAUDE
     sFileName = _fsSessionFileName(sContainerPath, sProvider)

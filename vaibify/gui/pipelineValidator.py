@@ -2,6 +2,8 @@
 
 __all__ = ["fbStepExecutesAnything"]
 
+from vaibify.docker.execLane import S_EXEC_LANE_RESEARCHER_COMMAND
+
 from . import workflowManager
 from .commandUtilities import fsExtractScriptPath
 from .pipelineUtils import T_EXECUTED_COMMAND_KEYS, fsShellQuote
@@ -98,7 +100,7 @@ def _fnValidateSingleCommand(
         f"which {fsShellQuote(sScript)} >/dev/null 2>&1"
     )
     iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCheckCommand
+        sContainerId, sCheckCommand, sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     if iExitCode != 0:
         listErrors.append(

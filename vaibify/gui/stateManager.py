@@ -1188,7 +1188,9 @@ def _flistFetchMarkers(
     except OSError:
         dictContents = {}
     return [
-        (dictStep, _fdictParseMarker(dictContents.get(sMarkerPath)))
+        (dictStep, _fdictParseMarker(
+            dictContents.get(sMarkerPath), sMarkerPath,
+        ))
         for dictStep, sMarkerPath in listStepsWithPaths
     ]
 
@@ -1221,10 +1223,22 @@ def _fdictFetchMarkersOneByOne(connectionDocker, sContainerId, listPaths):
     return dictContents
 
 
-def _fdictParseMarker(baContent):
-    """Parse one marker's bytes; return None when missing or malformed."""
+def _fdictParseMarker(baContent, sMarkerPath=""):
+    """Parse one marker's bytes; return None when missing or malformed.
+
+    A marker the reader could not open is not missing: it comes back as
+    the unreadable sentinel the freshness lane reports as unknown, the
+    same shape the oversized case takes, so a permission refusal never
+    reads as "never tested".
+    """
+    from vaibify.docker.dockerConnection import UnreadableSmallFile
     if baContent is None:
         return None
+    if isinstance(baContent, UnreadableSmallFile):
+        return {
+            "bMarkerUnreadable": True, "sMarkerPath": sMarkerPath,
+            "sReason": baContent.sReason,
+        }
     try:
         return json.loads(baContent.decode("utf-8"))
     except (ValueError, UnicodeDecodeError):

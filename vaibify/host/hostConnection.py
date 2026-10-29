@@ -283,8 +283,14 @@ class HostConnection:
 
     def fbaFetchFile(
         self, sContainerId, sFilePath, iMaxBytes=I_MAX_FETCH_FILE_BYTES,
+        sLane=None,
     ):
-        """Return a small file's bytes; ``ValueError`` beyond the cap."""
+        """Return a small file's bytes; ``ValueError`` beyond the cap.
+
+        ``sLane`` is the Docker leg's exec lane, meaningless on the host
+        where the hub already runs as the researcher.
+        """
+        del sLane
         sRealPath = self._fsValidateHostPath(sContainerId, sFilePath)
         try:
             with open(sRealPath, "rb") as fileHandle:
@@ -350,8 +356,11 @@ class HostConnection:
             list(listRelPaths),
         )
 
-    def fdictFetchSmallFiles(self, sContainerId, listPaths):
+    def fdictFetchSmallFiles(self, sContainerId, listPaths, sLane=None):
         """Return ``{sPath: bytes or None}`` for small host files.
+
+        ``sLane`` is accepted for the duck type shared with the Docker
+        leg and ignored.
 
         The host twin of the container leg's batched read, on its terms:
         ``None`` for a file that cannot be opened, ``ValueError`` for one
@@ -717,7 +726,7 @@ class HostConnection:
     def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
         fTimeoutSeconds=F_DEFAULT_HOST_EXEC_TIMEOUT_SECONDS,
-        sOperationLabel="exec", fnPhaseCallback=None,
+        sOperationLabel="exec", fnPhaseCallback=None, sLane=None,
     ):
         """Run a command on the host; return an :class:`ExecResult`.
 
@@ -727,7 +736,12 @@ class HostConnection:
         convention) with a stderr note. Long-running pipeline steps
         belong on :meth:`ftRunInContainerStreamedWithChunks`, which is
         durable-task-guarded and cancellable instead of wall-clocked.
+        ``sLane`` is accepted for the duck type shared with the Docker
+        leg and ignored: the exec lane separates the hub's programs
+        from an in-container agent's PATH, and on the host the program
+        and the researcher share one machine already.
         """
+        del sLane
         mutationAdmission.fnAssertContainerCommandAdmitted(
             sContainerId, "ftRunInContainerStreamed",
         )
@@ -740,7 +754,7 @@ class HostConnection:
     def ftRunInContainerStreamedWithChunks(
         self, sContainerId, sCommand, fnEmitChunk,
         sWorkdir=None, sUser=None, sOperationLabel="pipeline-exec",
-        fnPhaseCallback=None, dictEnvironmentOverlay=None,
+        fnPhaseCallback=None, dictEnvironmentOverlay=None, sLane=None,
     ):
         """Run a durable command, invoking ``fnEmitChunk`` per line.
 
@@ -756,6 +770,7 @@ class HostConnection:
         carries its environment as shell text, and the runner passes
         the argument on the host branch alone.
         """
+        del sLane
         mutationAdmission.fnAssertDurableExecAdmitted(
             sContainerId, "ftRunInContainerStreamedWithChunks",
         )
@@ -1003,8 +1018,10 @@ class HostConnection:
 
     def ftResultExecuteCommand(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        sLane=None,
     ):
         """Backward-compat wrapper returning ``(iExitCode, sOutput)``."""
+        del sLane
         tExecResult = self.ftRunInContainerStreamed(
             sContainerId, sCommand, sWorkdir=sWorkdir, sUser=sUser,
         )

@@ -306,7 +306,7 @@ def test_ftResultArchiveToZenodo_passes_empty_paths_list():
         {"sTitle": "T", "listCreators": [{"sName": "X"}]},
     )
     sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "python3 -c" in sCommand
+    assert "python3 -I -c" in sCommand
 
 
 def test_ftResultArchiveToZenodo_missing_metadata_uses_defaults():

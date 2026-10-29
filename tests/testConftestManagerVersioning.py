@@ -56,7 +56,7 @@ class _FakeDocker:
         self.listStreamWrites.append((sPath, baContent, dictKeywords))
         self.dictFiles[sPath] = baContent
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         if sPath in self.dictFiles:
             return self.dictFiles[sPath]
         raise FileNotFoundError(sPath)
@@ -65,7 +65,7 @@ class _FakeDocker:
         self.listWrites.append((sPath, baContent))
         self.dictFiles[sPath] = baContent
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         # NOTE: the probe/write discrimination below is intentionally
         # fragile against drift in the production-side helper scripts:
         # if ``_fsBuildVersionsProbeCommand`` ever stops embedding the
@@ -422,7 +422,7 @@ def test_migrate_flat_markers_invokes_python_with_paths():
     )
     assert len(fakeDocker.listCommands) == 1
     sCommand = fakeDocker.listCommands[0]
-    assert sCommand.startswith("python3 -c ")
+    assert sCommand.startswith("python3 -I -c ")
     assert "'/workspace/myrepo'" in sCommand
     assert "'demo-slug'" in sCommand
 

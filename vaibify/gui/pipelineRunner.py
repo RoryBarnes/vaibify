@@ -9,6 +9,10 @@ import posixpath
 import threading
 import time
 
+from vaibify.docker.execLane import (
+    S_EXEC_LANE_INTEGRITY_READ, S_EXEC_LANE_RESEARCHER_COMMAND,
+)
+
 from vaibify.config.registryManager import fbIsHostProject
 from . import outputProvenance
 from . import pipelineState
@@ -419,6 +423,7 @@ async def _ftRunSingleCommand(
             tExecResult = await asyncio.to_thread(
                 connectionDocker.ftRunInContainerStreamedWithChunks,
                 sContainerId, sTimedCmd, fnEmitChunk,
+                sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
                 **dictExecKeywords,
             )
         finally:
@@ -1499,7 +1504,7 @@ def _fdictHashRemoteDataFiles(
         "sha256sum -- " + " ".join(listQuoted) + " 2>/dev/null || true"
     )
     _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand,
+        sContainerId, sCommand, sLane=S_EXEC_LANE_INTEGRITY_READ,
     )
     dictResult = {}
     sPrefix = sRepoRoot.rstrip("/") + "/"

@@ -76,12 +76,12 @@ class ContainerDouble:
                               **dictKeywords):
         self.fnWriteFile(sContainerId, sPath, fileSource.read())
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         if sPath in self.dictFiles:
             return self.dictFiles[sPath]
         raise FileNotFoundError(sPath)
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None, sLane=None):
         if sCommand == "which claude":
             return (0 if self.bHasClaude else 1), ""
         if "_vaibify_introspect_" in sCommand and not sCommand.startswith(
@@ -276,14 +276,14 @@ class DockerDoubleWithUnloadableOutputs(DockerDoubleForTestGeneration):
         super().__init__()
         self.setExistingPaths.add(S_GATED_STEP_DIRECTORY + "/blob.bin")
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
             dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
             dictWorkflow["listSteps"][0]["saOutputDataFiles"] = ["blob.bin"]
             self._dictFiles[sPath] = json.dumps(dictWorkflow).encode("utf-8")
         return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None, sLane=None):
         tExec = super().ftResultExecuteCommand(
             sContainerId, sCommand, sWorkdir)
         if sCommand == "which claude":

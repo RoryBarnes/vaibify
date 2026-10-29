@@ -87,7 +87,7 @@ class _MockDocker:
             },
         ]
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         if sPath in self.dictFiles:
             return self.dictFiles[sPath]
         raise FileNotFoundError(sPath)
@@ -136,7 +136,7 @@ class _MockDocker:
             return ""
         return hashlib.sha256(baContent).hexdigest()
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         if sCommand.startswith("test -e ") and "exists:" in sCommand:
             return (0, self._fsBuildExistsLine(sCommand))
         if "find" in sCommand and ".vaibify/workflows" in sCommand:
@@ -160,7 +160,7 @@ class _MockDocker:
                 return "exists:1"
         return "exists:0"
 
-    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
+    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None, sLane=None):
         return "exec-id-mock"
 
     def fsocketExecStart(self, sExecId):

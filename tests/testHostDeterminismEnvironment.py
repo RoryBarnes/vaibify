@@ -158,7 +158,7 @@ def testTheRunnerHandsTheOverlayToTheExecPrimitive(fixtureHostRegistry):
 
     def fnStreamingSideEffect(
         sContainerId, sCommand, fnEmitChunk,
-        sWorkdir=None, sUser=None, dictEnvironmentOverlay=None,
+        sWorkdir=None, sUser=None, dictEnvironmentOverlay=None, sLane=None
     ):
         dictSeen["dictOverlay"] = dictEnvironmentOverlay
         return ExecResult(iExitCode=0, sStdout="", sStderr="")

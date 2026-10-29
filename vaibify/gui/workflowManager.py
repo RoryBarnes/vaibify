@@ -9,6 +9,7 @@ import shlex
 from collections import OrderedDict
 
 from vaibify.config.registryManager import fbIsHostProject
+from vaibify.docker.execLane import S_HUB_PYTHON_COMMAND
 from . import stateManager, workflowMigrations
 from .workflowFieldTypes import fsDescribeUntypedField
 from .workflowMigrations import (
@@ -331,7 +332,7 @@ def _fdictDetectReposForCandidates(
         "print(json.dumps(out))\n"
     )
     sCommand = (
-        "python3 -c " + shlex.quote(sScript) +
+        S_HUB_PYTHON_COMMAND + " -c " + shlex.quote(sScript) +
         " <<< " + shlex.quote(sPathsJson)
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(

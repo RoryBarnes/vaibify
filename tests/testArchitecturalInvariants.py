@@ -1312,6 +1312,7 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     """
     import inspect
 
+    from vaibify.docker import dockerConnection as dockerConnectionModule
     from vaibify.docker.dockerConnection import DockerConnection
     sBytesEntrySource = inspect.getsource(DockerConnection.fnWriteFileViaTar)
     assert "self.fnWriteFileFromStream(" in sBytesEntrySource, (
@@ -1337,8 +1338,11 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
         "the confined write must take the exec-creation default, which "
         "is the resolved unprivileged container user, never a chosen one"
     )
-    assert "_fsResolveContainerUser" in inspect.getsource(
+    assert "_fsResolveExecUser" in inspect.getsource(
         DockerConnection.fsExecCreate
+    )
+    assert "_fsResolveContainerUser" in inspect.getsource(
+        dockerConnectionModule._fsResolveExecUser
     )
     listTarBuilders = []
     for pathFile in PACKAGE_DIR.rglob("*.py"):
@@ -2879,10 +2883,10 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
     from vaibify.gui.fileStatusManager import _fdictDetectAndInvalidate
 
     class _FakeDocker:
-        def ftResultExecuteCommand(self, sId, sCmd):
+        def ftResultExecuteCommand(self, sId, sCmd, sLane=None):
             return (1, "")
 
-        def fbaFetchFile(self, sId, sPath, iMaxBytes=None):
+        def fbaFetchFile(self, sId, sPath, iMaxBytes=None, sLane=None):
             # The pipeline-state read is a typed read, and the typed-read
             # adapter spells "absent" as FileNotFoundError rather than a
             # non-zero exit code.
@@ -4492,7 +4496,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # {sFigureType} as the host does, so a templated plot is hashed;
     # the plugin cannot import the host resolver, so its mirror lives
     # in the template it belongs to.
-    "conftestManager.py": 1487,
+    # 1487 -> 1488 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    "conftestManager.py": 1488,
     # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
     # when the ownership IDENTITY joined it — the recorded
     # (prior-owner, lease, generation, session) tuple an in-flight
@@ -5418,7 +5425,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4345 -> 4353 (2026-10-24): the file-status poll carries the
     # researcher notices the tab has not acknowledged and what last
     # advanced the workflow epoch (researcherNotices holds the logic).
-    "routes/pipelineRoutes.py": 4353,
+    # 4353 -> 4355 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    # 4355 -> 4357 (2026-10-28): the integrity-read lane on the test-marker
+    # read.
+    "routes/pipelineRoutes.py": 4357,
+    # NEW at 820 (2026-10-28): systemRoutes.py crossed the cap with the
+    # bind-mount mode drift finding beside the X11 and limit findings it
+    # already renders; one more comparison of the running container
+    # with vaibify.yml, in the module that owns that comparison.
+    "routes/systemRoutes.py": 820,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5916,7 +5933,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the create-step builder also takes bNoInputData from the request.
     # 2954 -> 2967 (2026-10-27): one helper attaches the host push
     # record, so a push can refresh the open workflow's copy too.
-    "workflowManager.py": 2967,
+    # 2967 -> 2968 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    "workflowManager.py": 2968,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5986,7 +6006,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # temporary join the auto-managed .gitignore body, and a marker over
     # the batched read's ceiling is read alone, so one large marker
     # makes its own step unknown instead of failing the poll for all.
-    "stateManager.py": 1302,
+    # 1302 -> 1316 (2026-10-28): a marker the read-only user cannot
+    # open is reported unknown, never missing (the UnreadableSmallFile
+    # sentinel).
+    "stateManager.py": 1316,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -6329,7 +6352,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3772 -> 3782 (2026-10-15): re-exports the ten public
     # fileStatusManager symbols, required by the orchestrator re-export
     # invariant.
-    "pipelineServer.py": 3782,
+    # 3782 -> 3783 (2026-10-28): the agent-token comparison is constant-time.
+    "pipelineServer.py": 3783,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6874,7 +6898,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # token.
     # 2140 -> 2141 (2026-10-12): the poll's discovery script counts the
     # conftest loader as an installed conftest.
-    "syncDispatcher.py": 2141,
+    # 2141 -> 2142 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    # 2142 -> 2144 (2026-10-28): the integrity-read lane on the digest read.
+    "syncDispatcher.py": 2144,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -6968,7 +6996,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # each output was produced (design I7), and the run-context set-up
     # beside the execution settings. The record lives in
     # outputProvenance; the runner says only WHEN a section completed.
-    "pipelineRunner.py": 1955,
+    # 1955 -> 1958 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    # 1958 -> 1960 (2026-10-28): the integrity-read lane import for the
+    # remote-data hasher.
+    "pipelineRunner.py": 1960,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -7936,7 +7969,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the analysis stack every image carries.
     # 2400 -> 2404 (2026-10-27): the image-origin facts are named as
     # facts, not readiness gaps.
-    "routes/reproducibilityRoutes.py": 2404,
+    # 2404 -> 2406 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    "routes/reproducibilityRoutes.py": 2406,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

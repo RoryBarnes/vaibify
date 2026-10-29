@@ -53,7 +53,7 @@ class LocalRunnerContainer(LocalShellContainer):
 
     def ftRunInContainerStreamedWithChunks(
         self, sContainerId, sCommand, fnEmitChunk, sWorkdir=None,
-        sUser=None,
+        sUser=None, sLane=None
     ):
         """Run one command in bash from ``sWorkdir``; stream its lines."""
         del sContainerId, sUser
@@ -73,7 +73,7 @@ class LocalRunnerContainer(LocalShellContainer):
             iExitCode=completed.returncode, sStdout=completed.stdout,
             sStderr=completed.stderr)
 
-    def fdictFetchSmallFiles(self, sContainerId, listPaths):
+    def fdictFetchSmallFiles(self, sContainerId, listPaths, sLane=None):
         """Return ``{sPath: bytes or None}`` from the real filesystem."""
         del sContainerId
         dictFiles = {}

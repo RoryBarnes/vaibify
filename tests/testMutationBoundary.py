@@ -231,9 +231,13 @@ def testTheExemptionCannotCarryACommandAtAll():
         f"the exemption must take a container and an operation NAME "
         f"before anything else; it takes {listParameters}"
     )
-    assert listParameters[2:] in (["sPath"], ["objPaths"]), (
+    assert listParameters[2:] in (
+        ["sPath"], ["objPaths"], ["objPaths", "sLane"],
+    ), (
         f"the exemption's third parameter must be the path, or the "
-        f"paths, and nothing else; it takes {listParameters}"
+        f"paths, followed at most by the exec LANE (an identity and an "
+        f"environment from a closed set, never text); it takes "
+        f"{listParameters}"
     )
     for sName in listParameters:
         assert "command" not in sName.lower(), (

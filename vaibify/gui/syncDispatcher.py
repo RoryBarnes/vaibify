@@ -8,6 +8,9 @@ import subprocess
 import uuid
 
 from vaibify.reproducibility import zenodoClient
+from vaibify.docker.execLane import (
+    S_EXEC_LANE_INTEGRITY_READ, S_HUB_PYTHON_COMMAND,
+)
 from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
 from vaibify.reproducibility.manifestPaths import (
     flistStepScriptRepoPaths,
@@ -1577,11 +1580,11 @@ def fdictComputeContainerDigests(
     sScript = _S_DIGEST_SCRIPT
     listArgs = [fsShellQuote(p) for p in listAbsPaths]
     sCommand = (
-        "python3 -c " + fsShellQuote(sScript)
+        S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sScript)
         + " " + " ".join(listArgs)
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand,
+        sContainerId, sCommand, sLane=S_EXEC_LANE_INTEGRITY_READ,
     )
     dictDigests = {}
     if iExit != 0:
@@ -1669,7 +1672,7 @@ def fsBuildTestMarkerCheckCommand(
     sScript = _fsBuildTestMarkerScript(
         sJsonDirs, sProjectRepoPath, sWorkflowSlug,
     )
-    return "python3 -c " + fsShellQuote(sScript)
+    return S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sScript)
 
 
 def _fsBuildTestMarkerScript(

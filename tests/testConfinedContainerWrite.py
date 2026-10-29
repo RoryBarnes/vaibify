@@ -320,8 +320,8 @@ def testTheBackendWriteExecsAsTheContainerUserNeverRoot(tmp_path):
     dictKeywords = daemon.listExecCreateKeywords[0]
     assert dictKeywords["user"] == "researcher"
     assert dictKeywords["stdin"] is True
-    assert dictKeywords["cmd"][:2] == ["python3", "-c"]
-    assert dictKeywords["cmd"][2].count(repr(sTarget)) >= 1
+    assert dictKeywords["cmd"][:3] == ["python3", "-I", "-c"]
+    assert dictKeywords["cmd"][3].count(repr(sTarget)) >= 1
     assert daemon.listReceivedStdin == [b"data"]
     with open(sTarget, "rb") as fileTarget:
         assert fileTarget.read() == b"data"

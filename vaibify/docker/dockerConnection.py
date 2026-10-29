@@ -31,9 +31,21 @@ from vaibify.docker.execArgumentBudget import (
     I_EXEC_ARGUMENT_BUDGET_BYTES,
     flistBatchPathsForOneExec,
 )
+from vaibify.docker.execLane import (
+    LIST_HUB_PYTHON_ARGV,
+    S_EXEC_LANE_HUB_INTERNAL,
+    S_EXEC_LANE_INTEGRITY_READ,
+    S_EXEC_LANE_RESEARCHER_COMMAND,
+    S_HUB_PYTHON_COMMAND,
+    fdictResolveExecEnvironment,
+    fnValidateExecLane,
+    fsImagePathFromEnvironmentList,
+    fsIntegrityReadUser,
+)
 
 
 _CACHED_CONTAINER_USER = {}
+_CACHED_IMAGE_PATH = {}
 
 # docker-py defaults to a 60-second read timeout, which a slow
 # ``git push`` over docker exec routinely exceeds: the host raises
@@ -192,6 +204,59 @@ def _fsResolveContainerUser(container):
     if isinstance(sContainerId, str):
         return _CACHED_CONTAINER_USER.setdefault(sContainerId, sUser)
     return sUser
+
+
+def _fsResolveImagePath(container):
+    """Return the PATH the container was created with, cached per id.
+
+    Read from ``Config.Env``, which is fixed at creation and which no
+    in-container process can change; it tells the hub-internal lane
+    whether the image installs conda at ``/opt/conda/bin``. A container
+    whose attributes cannot be read answers ``""``, which yields the
+    fixed system PATH alone.
+    """
+    sContainerId = getattr(container, "id", None) or ""
+    if isinstance(sContainerId, str) and sContainerId in _CACHED_IMAGE_PATH:
+        return _CACHED_IMAGE_PATH[sContainerId]
+    try:
+        listEnvironment = container.attrs["Config"]["Env"]
+    except (AttributeError, KeyError, TypeError):
+        listEnvironment = None
+    sImagePath = fsImagePathFromEnvironmentList(listEnvironment)
+    if isinstance(sContainerId, str):
+        return _CACHED_IMAGE_PATH.setdefault(sContainerId, sImagePath)
+    return sImagePath
+
+
+def _fdictResolveLaneEnvironment(container, sLane, dictEnvironment=None):
+    """Return the exec environment one lane gives a container's exec."""
+    return fdictResolveExecEnvironment(
+        sLane, _fsResolveImagePath(container), dictEnvironment,
+    )
+
+
+def _fsResolveExecUser(container, sLane):
+    """Return the user an exec runs as when its caller named none.
+
+    The container user for every lane but the integrity read, which
+    runs as the separate read-only identity in that user's group.
+    """
+    fnValidateExecLane(sLane)
+    sContainerUser = _fsResolveContainerUser(container)
+    if sLane == S_EXEC_LANE_INTEGRITY_READ:
+        return fsIntegrityReadUser(sContainerUser)
+    return sContainerUser
+
+
+@dataclass(frozen=True)
+class UnreadableSmallFile:
+    """A batched-read answer for a file that exists but could not be opened.
+
+    Distinct from ``None`` (absent) so a caller never reads a permission
+    refusal as a deletion: the marker lane shows it as unknown.
+    """
+
+    sReason: str
 
 
 @dataclass
@@ -612,6 +677,39 @@ S_TYPED_READ_TMP_SIZE = "tmpSize"
 # never for a crash or a refusal: see ``_fnRaiseWhenTypedReadFailed``.
 _I_TYPED_READ_NOT_FOUND_EXIT_CODE = 5
 _I_TYPED_READ_ATTEMPTS = 2
+
+
+# Typed reads that must run as the container user because what they
+# read is that user's private material: the keyring file and an agent
+# login document are mode 600, and ``/tmp`` holds that user's own
+# scratch directories. Every other typed read is an integrity read.
+T_TYPED_READS_AS_CONTAINER_USER = (
+    S_TYPED_READ_KEYRING_SECRET,
+    S_TYPED_READ_CREDENTIAL_FILE,
+    S_TYPED_READ_TMP_SIZE,
+)
+
+
+def _fsResolveTypedReadLane(sOperation, sLane):
+    """Return the lane a typed read runs in; never the researcher's.
+
+    A caller may name the hub-internal lane for a read of the agent's
+    own files (a transcript under its home); otherwise the operation
+    decides. A typed read is a hub program by definition, so the
+    researcher-command lane, which keeps the agent's PATH, is refused.
+    """
+    if sLane is None:
+        if sOperation in T_TYPED_READS_AS_CONTAINER_USER:
+            return S_EXEC_LANE_HUB_INTERNAL
+        return S_EXEC_LANE_INTEGRITY_READ
+    fnValidateExecLane(sLane)
+    if sLane == S_EXEC_LANE_RESEARCHER_COMMAND:
+        raise ValueError(
+            "a typed read is the hub's own program and cannot run in the "
+            "researcher-command lane"
+        )
+    return sLane
+
 _S_TYPED_READ_ABSENCE_HANDLER = (
     "except (FileNotFoundError,NotADirectoryError):\n"
     "    sys.exit(" + str(_I_TYPED_READ_NOT_FOUND_EXIT_CODE) + ")\n"
@@ -1146,8 +1244,11 @@ _DICT_TYPED_READ_PROGRAMS = {
         "        with open(sPath,'rb') as fileIn:\n"
         "            baHead=fileIn.read(" + str(I_MAX_SMALL_FILE_BYTES + 1)
         + ")\n"
-        "    except OSError:\n"
+        "    except (FileNotFoundError,NotADirectoryError):\n"
         "        dictFiles[sPath]=None\n"
+        "        continue\n"
+        "    except OSError as errorOpen:\n"
+        "        dictFiles[sPath]={'sError':type(errorOpen).__name__}\n"
         "        continue\n"
         "    dictFiles[sPath]=base64.b64encode(baHead).decode('ascii')\n"
         "sys.stdout.write(json.dumps(dictFiles))\n"
@@ -1809,6 +1910,11 @@ def _fdictDecodeSmallFilesBatch(tExecResult, listPaths):
         if sEncoded is None:
             dictFiles[sPath] = None
             continue
+        if isinstance(sEncoded, dict):
+            dictFiles[sPath] = UnreadableSmallFile(
+                str(sEncoded.get("sError") or "unreadable"),
+            )
+            continue
         baContent = base64.b64decode(sEncoded)
         if len(baContent) > I_MAX_SMALL_FILE_BYTES:
             raise ValueError(
@@ -2026,7 +2132,8 @@ class DockerConnection:
         return bool(self.fdictInspectExec(sExecId).get("Running"))
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        sLane=S_EXEC_LANE_HUB_INTERNAL,
     ):
         """Run a command, capturing stdout and stderr separately.
 
@@ -2034,6 +2141,8 @@ class DockerConnection:
         unprivileged container user resolved from the image's
         ``Config.User`` field. Callers that genuinely need root must
         opt in explicitly with ``sUser="root"`` (or ``"0"``).
+        ``sLane`` is the hub-internal lane unless the caller runs the
+        researcher's own command (:mod:`vaibify.docker.execLane`).
 
         Returns
         -------
@@ -2048,9 +2157,11 @@ class DockerConnection:
         )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
-            sUser = _fsResolveContainerUser(container)
+            sUser = _fsResolveExecUser(container, sLane)
         dictKwargs = self._fdictBuildExecKwargs(
-            sCommand, sWorkdir, sUser)
+            sCommand, sWorkdir, sUser,
+            _fdictResolveLaneEnvironment(container, sLane),
+        )
         iExitCode, tOutput = container.exec_run(**dictKwargs)
         baStdout, baStderr = self._ftSplitDemuxedOutput(tOutput)
         return ExecResult(
@@ -2060,7 +2171,9 @@ class DockerConnection:
         )
 
     @staticmethod
-    def _fdictBuildExecKwargs(sCommand, sWorkdir, sUser):
+    def _fdictBuildExecKwargs(
+        sCommand, sWorkdir, sUser, dictEnvironment=None,
+    ):
         """Assemble keyword arguments for docker-py's ``exec_run``."""
         dictKwargs = {
             "cmd": ["/bin/bash", "-c", sCommand],
@@ -2070,6 +2183,8 @@ class DockerConnection:
             dictKwargs["workdir"] = sWorkdir
         if sUser:
             dictKwargs["user"] = sUser
+        if dictEnvironment:
+            dictKwargs["environment"] = dictEnvironment
         return dictKwargs
 
     @staticmethod
@@ -2090,7 +2205,7 @@ class DockerConnection:
 
     def ftRunInContainerStreamedWithChunks(
         self, sContainerId, sCommand, fnEmitChunk,
-        sWorkdir=None, sUser=None,
+        sWorkdir=None, sUser=None, sLane=S_EXEC_LANE_HUB_INTERNAL,
     ):
         """Run a command, invoking ``fnEmitChunk(sStream, sLine)`` per line.
 
@@ -2114,9 +2229,10 @@ class DockerConnection:
         )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
-            sUser = _fsResolveContainerUser(container)
+            sUser = _fsResolveExecUser(container, sLane)
         dictKwargs = self._fdictBuildExecCreateKwargs(
             sCommand, sWorkdir, sUser,
+            _fdictResolveLaneEnvironment(container, sLane),
         )
         dictExecHandle = mutationAdmission.fdictBeginJournaledExec(
             sContainerId,
@@ -2134,13 +2250,17 @@ class DockerConnection:
         )
 
     @staticmethod
-    def _fdictBuildExecCreateKwargs(sCommand, sWorkdir, sUser):
+    def _fdictBuildExecCreateKwargs(
+        sCommand, sWorkdir, sUser, dictEnvironment=None,
+    ):
         """Assemble keyword arguments for docker-py's ``exec_create``."""
         dictKwargs = {"cmd": ["/bin/bash", "-c", sCommand]}
         if sWorkdir:
             dictKwargs["workdir"] = sWorkdir
         if sUser:
             dictKwargs["user"] = sUser
+        if dictEnvironment:
+            dictKwargs["environment"] = dictEnvironment
         return dictKwargs
 
     def _ftStreamExecLines(self, sExecId, fnEmitChunk):
@@ -2214,7 +2334,8 @@ class DockerConnection:
         )
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        sLane=S_EXEC_LANE_HUB_INTERNAL,
     ):
         """Backward-compat wrapper returning ``(iExitCode, sOutput)``.
 
@@ -2231,11 +2352,12 @@ class DockerConnection:
         )
         tExecResult = self.ftRunInContainerStreamed(
             sContainerId, sCommand, sWorkdir=sWorkdir, sUser=sUser,
+            sLane=sLane,
         )
         sOutput = tExecResult.sStdout + tExecResult.sStderr
         return (tExecResult.iExitCode, sOutput)
 
-    def _ftRunTypedRead(self, sContainerId, sOperation, objPaths):
+    def _ftRunTypedRead(self, sContainerId, sOperation, objPaths, sLane=None):
         """Run one NAMED read operation against a path or paths, as a read.
 
         The single place the audited-read exemption is granted, and it
@@ -2270,8 +2392,15 @@ class DockerConnection:
         anything (about one start in four hundred), and a read changes
         nothing, so the second answer is the one the first would have
         given.
+
+        ``sLane`` is an exec lane or ``None`` for the operation's own:
+        the integrity-read identity for every read the dashboard
+        trusts, the container user for the few that read that user's
+        private files (:data:`T_TYPED_READS_AS_CONTAINER_USER`). It
+        selects an identity and an environment, never a command.
         """
         import logging
+        sLane = _fsResolveTypedReadLane(sOperation, sLane)
         sTemplate = _DICT_TYPED_READ_PROGRAMS.get(sOperation)
         if sTemplate is None:
             raise ValueError(
@@ -2279,7 +2408,7 @@ class DockerConnection:
                 f"operation; the audited-read exemption runs only "
                 f"{sorted(_DICT_TYPED_READ_PROGRAMS)}"
             )
-        sCommand = "python3 -c " + shlex.quote(
+        sCommand = S_HUB_PYTHON_COMMAND + " -c " + shlex.quote(
             sTemplate.replace(
                 _S_TYPED_READ_PATH_SLOT,
                 _fsTypedReadPathLiteral(objPaths),
@@ -2289,7 +2418,7 @@ class DockerConnection:
         try:
             for _ in range(_I_TYPED_READ_ATTEMPTS):
                 tExecResult = self.ftRunInContainerStreamed(
-                    sContainerId, sCommand,
+                    sContainerId, sCommand, sLane=sLane,
                 )
                 iSignal = confinedWrite.fiSignalThatKilledProgram(tExecResult)
                 if not iSignal:
@@ -2456,6 +2585,7 @@ class DockerConnection:
 
     def fbaFetchFile(
         self, sContainerId, sFilePath, iMaxBytes=I_MAX_FETCH_FILE_BYTES,
+        sLane=None,
     ):
         """Fetch a small file from the container and return its bytes.
 
@@ -2479,7 +2609,7 @@ class DockerConnection:
         read the first as "absent" (see :func:`_fnRaiseWhenTypedReadFailed`).
         """
         tExecResult = self._ftRunTypedRead(
-            sContainerId, S_TYPED_READ_FILE_BASE64, sFilePath,
+            sContainerId, S_TYPED_READ_FILE_BASE64, sFilePath, sLane=sLane,
         )
         _fnRaiseWhenTypedReadFailed(
             tExecResult, f"Cannot read file from container: {sFilePath}",
@@ -2821,14 +2951,15 @@ class DockerConnection:
                 f"{errorParse}"
             )
 
-    def fdictFetchSmallFiles(self, sContainerId, listPaths):
-        """Return ``{sPath: bytes or None}`` for small files, batched.
+    def fdictFetchSmallFiles(self, sContainerId, listPaths, sLane=None):
+        """Return ``{sPath: bytes, None or UnreadableSmallFile}``, batched.
 
         The many-file sibling of :meth:`fbaFetchFile`, for documents
         bounded by design (test markers, state JSON). ``None`` means the
-        file could not be opened -- absent or unreadable -- where
-        :meth:`fbaFetchFile` raises ``FileNotFoundError`` for absence and
-        ``OSError`` otherwise.
+        file is ABSENT; an :class:`UnreadableSmallFile` means it exists
+        and the reader could not open it, which a caller shows as
+        unknown and never as deleted. :meth:`fbaFetchFile` raises
+        ``FileNotFoundError`` and ``OSError`` for the same two cases.
         A file over :data:`I_MAX_SMALL_FILE_BYTES` raises ``ValueError``
         naming it, and a failed batch raises ``OSError``: a partial map
         would read as "these files are absent" for the ones it omits.
@@ -2838,7 +2969,7 @@ class DockerConnection:
             dictFiles.update(_fdictDecodeSmallFilesBatch(
                 self._ftRunTypedRead(
                     sContainerId, S_TYPED_READ_SMALL_FILES_BASE64,
-                    listBatch,
+                    listBatch, sLane=sLane,
                 ),
                 listBatch,
             ))
@@ -3119,7 +3250,7 @@ class DockerConnection:
             sAuthorizedRoot,
         )
         yield from self._fiterRunProgramStdout(
-            sContainerId, ["python3", "-c", sProgram], sFilePath,
+            sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram], sFilePath,
         )
 
     def fiterReadDirectoryAsTar(
@@ -3137,7 +3268,8 @@ class DockerConnection:
             sAuthorizedRoot,
         )
         yield from self._fiterRunProgramStdout(
-            sContainerId, ["python3", "-c", sProgram], sDirectoryPath,
+            sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],
+            sDirectoryPath,
         )
 
     @staticmethod
@@ -3324,7 +3456,7 @@ class DockerConnection:
         rerun refuse its own file as already existing.
         """
         import logging
-        listCommand = ["python3", "-c", sProgram]
+        listCommand = LIST_HUB_PYTHON_ARGV + ["-c", sProgram]
         fbSeekable = getattr(fileSource, "seekable", None)
         bRewindable = bRetryAllowed and callable(fbSeekable) and fbSeekable()
         iStartOffset = fileSource.tell() if bRewindable else 0
@@ -3445,7 +3577,8 @@ class DockerConnection:
         fileTar = self._ffileBuildTreeTar(listHostPaths, sArchiveName)
         try:
             tExecResult = self._ftRunProgramWithStdin(
-                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,
+                sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],
+                fileStdin=fileTar,
             )
         finally:
             fileTar.close()
@@ -3559,6 +3692,7 @@ class DockerConnection:
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None,
         listCommand=None, bTty=True, dictEnvironment=None,
+        sLane=S_EXEC_LANE_HUB_INTERNAL,
     ):
         """Create an interactive exec instance, return exec id.
 
@@ -3571,11 +3705,13 @@ class DockerConnection:
         multiplexed stream, which the stdin-fed program write needs so
         its standard error stays separate from its standard output.
         ``dictEnvironment`` adds variables to this exec alone, over the
-        container's own environment.
+        container's own environment; the hub-internal lane lays the
+        fixed PATH over them, the researcher-command lane (the
+        terminal) passes them as they are.
         """
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
-            sUser = _fsResolveContainerUser(container)
+            sUser = _fsResolveExecUser(container, sLane)
         dictKwargs = {
             "cmd": listCommand if listCommand is not None else sCommand,
             "tty": bTty,
@@ -3584,6 +3720,9 @@ class DockerConnection:
             "stderr": True,
             "user": sUser,
         }
+        dictEnvironment = _fdictResolveLaneEnvironment(
+            container, sLane, dictEnvironment,
+        )
         if dictEnvironment:
             dictKwargs["environment"] = dictEnvironment
         sExecId = self._clientDocker.api.exec_create(
@@ -3629,11 +3768,18 @@ class DockerConnection:
         the record quarantined. A signal caller therefore passes the
         target's OWN user, whose same-uid signals need no capability.
         Probes are part of the authority machinery, not route-reachable
-        mutations, so they carry no journal record.
+        mutations, so they carry no journal record. The script's
+        ``cat`` and ``rm`` resolve through the hub-internal PATH, never
+        the image PATH whose first entry the agent owns: a probe that
+        runs as root must not pick up a program the container user
+        planted.
         """
         container = self.fcontainerGetById(sContainerId)
         iExitCode, baOutput = container.exec_run(
             ["/bin/sh", "-c", sScript], user=sUser, demux=False,
+            environment=_fdictResolveLaneEnvironment(
+                container, S_EXEC_LANE_HUB_INTERNAL,
+            ),
         )
         sOutput = (baOutput or b"").decode("utf-8", errors="replace")
         return (-1 if iExitCode is None else int(iExitCode), sOutput)

@@ -58,7 +58,7 @@ def _fMockHostConnection(fCpuSeconds):
     mockConnection.ftResultExecuteCommand.return_value = (0, "")
 
     def fnStreamingSideEffect(
-        sContainerId, sCommand, fnEmitChunk, sWorkdir=None, sUser=None,
+        sContainerId, sCommand, fnEmitChunk, sWorkdir=None, sUser=None, sLane=None
     ):
         return ExecResult(
             iExitCode=0, sStdout="", sStderr="",

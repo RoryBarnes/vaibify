@@ -98,7 +98,7 @@ class MockDockerFull(TypedHashFromServedBytes):
         return ExecResult(iExitCode=iExitCode, sStdout=sOutput, sStderr="")
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         if "git rev-parse --show-toplevel" in sCommand:
             return (0, "/workspace\n")
@@ -136,7 +136,7 @@ class MockDockerFull(TypedHashFromServedBytes):
         """
         return ["analyze.py", "plot.py"]
 
-    def fdictFetchSmallFiles(self, sContainerId, listPaths):
+    def fdictFetchSmallFiles(self, sContainerId, listPaths, sLane=None):
         """The batched read, answered from this fake's per-file read."""
         dictFiles = {}
         for sPath in listPaths:
@@ -146,7 +146,7 @@ class MockDockerFull(TypedHashFromServedBytes):
                 dictFiles[sPath] = None
         return dictFiles
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath.endswith(".json"):
@@ -172,7 +172,7 @@ class MockDockerFull(TypedHashFromServedBytes):
         self._dictFiles[sPath] = baContent
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         from types import SimpleNamespace
         iExit, sOutput = self.ftResultExecuteCommand(
@@ -183,7 +183,7 @@ class MockDockerFull(TypedHashFromServedBytes):
         )
 
     def fsExecCreate(
-        self, sContainerId, sCommand=None, sUser=None,
+        self, sContainerId, sCommand=None, sUser=None, sLane=None
     ):
         return "exec-id-mock"
 

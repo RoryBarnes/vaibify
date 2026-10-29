@@ -65,7 +65,7 @@ class SyncExecDouble:
         self.listProbedPaths.extend(listPaths)
         return [True for _ in listPaths]
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         self.listCommands.append(sCommand)
         if self.bRaiseOnExec:
             raise RuntimeError("daemon connection reset")
@@ -475,7 +475,7 @@ def testAnInterruptedPushTheProbeProvesLandedIsASuccess():
     """Zero commits ahead of the upstream is the one proof of a landed push."""
 
     class ProbeDouble(SyncExecDouble):
-        def ftResultExecuteCommand(self, sContainerId, sCommand):
+        def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
             self.listCommands.append(sCommand)
             return (0, "abcdef0123456789\n0\t0\n")
 
