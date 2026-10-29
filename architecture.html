@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.2.2.dev12 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.2.3.dev14 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=0d397edb"></script>
+      <script src="_static/documentation_options.js?v=728d52c1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -1265,6 +1265,46 @@ intervals, so a single dropped signal never triggers a shutdown; only
 sustained absence does – the same guidance JupyterHub gives for its
 cull timeouts.</p>
 </section>
+<section id="quit-one-busy-question-a-closed-gate-then-the-question-again">
+<h3>Quit: one busy question, a closed gate, then the question again<a class="headerlink" href="#quit-one-busy-question-a-closed-gate-then-the-question-again" title="Link to this heading"></a></h3>
+<p>Quit (<code class="docutils literal notranslate"><span class="pre">hubQuit</span></code>) and the idle watchdog ask one predicate,
+<code class="docutils literal notranslate"><span class="pre">serverLifespan.flistHubBusyReasons</span></code>. It returns every piece of work a
+hub holds, in the researcher’s words: a running pipeline in a held
+container, live council work, a reproduction, a live containerization,
+a live environment rename, and each carrier mutation or durable task
+in flight, named by kind and container. An empty list means the hub
+may stop without cutting anything off. Before the two shared it, each
+veto lived inside the watchdog, so a second caller would have been a
+second list that drifts from the first. A live WebSocket is a
+watchdog-only veto, kept out of the predicate: the researcher who
+clicks Quit is the open tab.</p>
+<p>Asking the question once is not enough. A Quit spans this hub and
+every hub it spawned (each a separate process), and work can start
+between a check and the shutdown. So a Quit first closes an admission
+gate (<code class="docutils literal notranslate"><span class="pre">mutationAdmission</span></code>) in every hub. It closes the children’s
+gates over each child’s peer-authenticated host control socket
+(<code class="docutils literal notranslate"><span class="pre">close-admissions</span></code>). It then waits a bounded time for already-admitted
+work to settle (with the gates closed, those counts can only fall),
+asks every hub the question again (<code class="docutils literal notranslate"><span class="pre">describe-busy</span></code>), and stops only on
+an empty answer. While the gate is closed, a route answers a mutation
+503 with the refusal <code class="docutils literal notranslate"><span class="pre">shutting-down</span></code>. The carrier itself refuses a run
+over a socket that was already open, and a claim, a containerization
+or a new WebSocket is refused before it takes a lock. Each says it is
+refused because vaibify is shutting down, never that the container is
+busy, because that would send the researcher to look for work that is
+not there.</p>
+<p>On any outcome but success, every gate the Quit closed is reopened
+by its id. A child’s gate carries a lease that the parent renews
+until the child has exited. That way a parent that dies after closing
+the gate cannot leave the child refusing work forever, and a lease
+cannot lapse while the child shuts down. Children are found from the
+<code class="docutils literal notranslate"><span class="pre">Popen</span></code> handles <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/session/spawn</span></code> keeps, beside each one’s
+port, and are trusted only while alive and named by the live hub slot
+for that port. Quit and its preflight refuse the in-container agent by
+both of its signals. An agent must never end the hub it is talking to,
+so the route is excluded from the agent catalog, and its CLI home is
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span> <span class="pre">stop</span></code>.</p>
+</section>
 <section id="session-lifetime-two-windows-three-tiers-one-honest-notice">
 <h3>Session lifetime: two windows, three tiers, one honest notice<a class="headerlink" href="#session-lifetime-two-windows-three-tiers-one-honest-notice" title="Link to this heading"></a></h3>
 <p>A browser session is bounded by two windows, and they relate to a live
@@ -1489,6 +1529,62 @@ never reaped. No new dependency is introduced; the probe shells out to
 <p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code> CLI (see <a class="reference internal" href="install.html"><span class="std std-doc">Advanced Installation</span></a>) is the
 host-side enumerator over these same files – the analog of
 <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">list</span></code> / <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">stop</span></code>.</p>
+</section>
+<section id="two-locks-per-name-who-is-using-it-and-who-is-changing-it">
+<h3>Two locks per name: who is using it, and who is changing it<a class="headerlink" href="#two-locks-per-name-who-is-using-it-and-who-is-changing-it" title="Link to this heading"></a></h3>
+<p>The session lock, <code class="docutils literal notranslate"><span class="pre">~/.vaibify/locks/&lt;name&gt;.lock</span></code>, says which hub is
+USING an environment. It was never the right tool for keeping two
+operations that change what a name OWNS apart: CLI <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code>
+created and started a container under no lock at all, <code class="docutils literal notranslate"><span class="pre">destroy</span></code>
+removed volumes under none, and a rename would have had nothing to
+exclude them with. The lifecycle lock,
+<code class="docutils literal notranslate"><span class="pre">~/.vaibify/lifecycleLocks/&lt;name&gt;.lock</span></code>
+(<code class="docutils literal notranslate"><span class="pre">containerLock.ffileTakeLifecycleLock</span></code>), is held by every operation
+that creates or removes the name’s container, volumes or image tags,
+or rewrites its registry entry: CLI and dashboard start and stop,
+destroy and deletion, build, the pinned-image tag, conversion,
+promotion, repair, the reconcile stop and rename. It is taken
+non-blocking, so it cannot deadlock, and a refusal names the operation
+in progress. Three properties hold it honest. It lives in its own
+directory, because <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.lifecycle.lock</span></code> beside the session locks
+would BE the session lock of an environment named <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.lifecycle</span></code>.
+Its files are never unlinked: unlinking a file whose <code class="docutils literal notranslate"><span class="pre">flock</span></code> is held
+lets another process lock a new inode at the same path, which is the
+race the lock exists to close. And no container may mount it, or the
+session locks, the pending journals or the registry (the bind-mount
+denylist), because a container that could delete one would defeat the
+operation it guards. <code class="docutils literal notranslate"><span class="pre">tests/testLifecycleLock.py</span></code> scans the package
+for every call of a lifecycle primitive and fails on one not under the
+lock, a helper all of whose callers hold it, or an allow-listed reason.</p>
+</section>
+<section id="renaming-an-environment-is-one-transaction">
+<h3>Renaming an environment is one transaction<a class="headerlink" href="#renaming-an-environment-is-one-transaction" title="Link to this heading"></a></h3>
+<p>A name keys a container, two volumes, an image repository’s tags, a
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> field, several host files (<code class="docutils literal notranslate"><span class="pre">gui/environmentResources</span></code>,
+the one list deletion reads too) and a registry entry. Docker can
+rename none of the volumes, so a rename COPIES them, as root, in the
+one disposable profile that runs as root (ruling D13; the
+volume-copier entry in <code class="docutils literal notranslate"><span class="pre">disposableSpecification</span></code>), and verifies each
+copy by a content manifest of every entry before the original goes.
+The transaction (<code class="docutils literal notranslate"><span class="pre">gui/environmentRename</span></code>) follows the containerization
+commit’s precedent: both names’ lifecycle locks and session flocks held
+throughout; a durable journal of the original <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> bytes and
+every Docker identity written before the first change
+(<code class="docutils literal notranslate"><span class="pre">config/pendingRenames</span></code>); each new volume labeled with the
+transaction id and each new tag pointed at a journaled image ID, so a
+rollback removes only what this rename made; each host file’s intent
+journaled before it moves; then ONE registry write that renames the
+entry and stamps it with the transaction. That write is the commit
+point. Recovery, at hub startup and from <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span></code>, decides
+committed-or-not from the registry alone and which files moved from
+the filesystem; the journal’s stage is for display, and nothing
+branches on it. A state that is neither committed nor cleanly
+uncommitted, or a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> that is neither the original nor the
+rename’s rewrite, is left exactly as found and reported, because
+guessing could lose data. A rename is refused on a daemon another
+machine might share. <code class="docutils literal notranslate"><span class="pre">tests/testEnvironmentRename.py</span></code> injects a crash
+on both sides of every step and bookkeeping write and requires one
+complete environment, under one name, after recovery.</p>
 </section>
 </section>
 <section id="the-hub-s-reapers-run-on-one-cadence-and-record-what-they-did">
@@ -3894,6 +3990,25 @@ after rendering.</p>
 <p>Every render calls <code class="docutils literal notranslate"><span class="pre">fnUpdateHighlightState()</span></code> to synchronize the
 toolbar verification indicator (checkmark and color shift) with the
 current project state.</p>
+</section>
+<section id="the-proof-level-color-has-one-home">
+<h3>The PROOF level color has one home<a class="headerlink" href="#the-proof-level-color-has-one-home" title="Link to this heading"></a></h3>
+<p>The three level colors are defined once, as <code class="docutils literal notranslate"><span class="pre">--proof-level-N-color</span></code> on
+<code class="docutils literal notranslate"><span class="pre">:root</span></code>, and each <code class="docutils literal notranslate"><span class="pre">body.proof-level-N</span></code> points <code class="docutils literal notranslate"><span class="pre">--highlight-color</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--highlight-rgb</span></code> and <code class="docutils literal notranslate"><span class="pre">--proof-icon-filter</span></code> at its own. Every accent
+that follows the level reads those, and nothing else names a level’s
+color: the Level 1 purple was once hard-coded in a dozen places, so
+Level 2 and Level 3 wore two themes at once. The Level 3 card and its
+verify button read the Level 3 color at every level, because they name
+that level; status colors (a successful run’s pale-blue light, sync
+badges) keep their meaning at every level. The toolbar logo is painted
+in the level color through an alpha mask, because a filter over its
+opaque image tinted the image’s own background into a box. Two browser
+tests check the result by role at L0-L3:
+<code class="docutils literal notranslate"><span class="pre">tests/browser/testTheLevelColorHasOneHome.py</span></code> by computed CSS, with a
+sweep of every visible element, and
+<code class="docutils literal notranslate"><span class="pre">tests/browser/testTheLevelMarksRenderTheLevelsHue.py</span></code> by the pixels
+of the filtered marks, the logo and the terminal cursor.</p>
 </section>
 </section>
 <section id="packaging-why-runtime-resources-live-inside-the-package">

@@ -202,7 +202,11 @@ or start in a Project from the beginning. Project mode is for numerical
 experiments expected to become part of a document: clearly defined
 steps that produce data products requiring careful monitoring. As a
 project matures, vaibify shows what the next PROOF level requires, and the
-dashboard's theme follows the level the project has reached.
+dashboard's theme follows the level the project has reached: pale blue
+below Level 1, purple at Level 1 (Self-Consistent), green at Level 2
+(Published), and pink at Level 3 (Reproducible). Status colors keep
+their own meaning at every level: a step's pale-blue run light still
+means its last run succeeded.
 
 Every requirement has a **scope**. A *Project* requirement applies to
 the whole experiment and lives in the Main tab's **Project** block. A

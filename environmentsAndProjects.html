@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Environments and Projects &mdash; Vaibify 0.2.2.dev12 documentation</title>
+  <title>Environments and Projects &mdash; Vaibify 0.2.3.dev14 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=0d397edb"></script>
+      <script src="_static/documentation_options.js?v=728d52c1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -59,6 +59,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#templates">Templates</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#containerizing-a-host-environment">Containerizing a host environment</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#tile-actions">Tile actions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#renaming-an-environment">Renaming an environment</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#multiple-projects-in-one-environment">Multiple projects in one environment</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sessions">Sessions</a></li>
 </ul>
@@ -344,10 +345,11 @@ a Project.</p>
 <h3>Tile actions<a class="headerlink" href="#tile-actions" title="Link to this heading"></a></h3>
 <p>A container tile’s <strong>⋮</strong> menu offers <strong>Start</strong>, <strong>Stop</strong>,
 <strong>Restart</strong>, <strong>Rebuild</strong>, and <strong>Force Rebuild</strong>, then <strong>Release</strong>
-(when this tab holds the container), <strong>Remove from list</strong>, and
-<strong>Delete environment…</strong>. Its <strong>⚙</strong> opens the container settings,
-including the resource limits below. A host tile’s menu offers
-<strong>Containerize Environment</strong>, <strong>Release</strong>, and <strong>Remove from list</strong>.</p>
+(when this tab holds the container), <strong>Rename…</strong>, <strong>Remove from
+list</strong>, and <strong>Delete environment…</strong>. Its <strong>⚙</strong> opens the container
+settings, including the resource limits below. A host tile’s menu
+offers <strong>Containerize Environment</strong>, <strong>Release</strong>, <strong>Rename…</strong>, and
+<strong>Remove from list</strong>.</p>
 <p>The two removals differ in what they touch:</p>
 <ul class="simple">
 <li><p><strong>Remove from list</strong> unregisters the environment and touches
@@ -366,6 +368,43 @@ in-container agent can never request it. If any part fails, the
 tile stays and the message says what did and did not go.</p></li>
 </ul>
 </section>
+<section id="renaming-an-environment">
+<h3>Renaming an environment<a class="headerlink" href="#renaming-an-environment" title="Link to this heading"></a></h3>
+<p><strong>Rename…</strong> moves everything the environment’s name keys to the new
+name: its container, its workspace and credentials volumes, every
+image tag, the <code class="docutils literal notranslate"><span class="pre">projectName</span></code> in its <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, the files vaibify
+keeps for it under <code class="docutils literal notranslate"><span class="pre">~/.vaibify</span></code>, and its entry in the environments
+page.</p>
+<ul class="simple">
+<li><p><strong>Stop the environment first.</strong> While it runs, <strong>Rename…</strong> is
+disabled and says so, because a running container could write to its
+volumes while they are copied.</p></li>
+<li><p><strong>Docker cannot rename a volume, so vaibify copies it.</strong> Every
+file’s owner, permissions, timestamps, symlinks, hard links and
+extended attributes are kept. The copy is then checked file by file
+against the original before the original is removed. The
+confirmation lists every move and the size of each volume; the copy
+and its check take time in proportion to that size.</p></li>
+<li><p><strong>The tile reads “Renaming to &lt;new&gt;… (copying N)”, then
+“Finishing rename…”.</strong> Every action is disabled until the rename is
+done. The new name appears only once everything has moved, and the
+container’s banner shows it the next time the environment starts,
+without a rebuild.</p></li>
+<li><p><strong>The rename survives a closed tab, and a crash.</strong> It runs in the
+hub, not the browser. If vaibify stops partway through, the next
+start of vaibify, or <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span> <span class="pre">&lt;name&gt;</span></code>, finishes or undoes
+it, so the environment ends up complete under exactly one name. A
+rename it cannot settle without guessing is left exactly as found,
+and the tile says so.</p></li>
+<li><p><strong>A rename is refused</strong> when the new name is already used by any
+environment, container, volume, image or vaibify file; while another
+rename or containerization of either name is unfinished; while
+another session has the environment open; and when Docker runs on
+another machine (another vaibify there may be using the same
+environment). The stopped container is removed rather than renamed:
+the next start creates it under the new name, as every start does.</p></li>
+</ul>
+</section>
 <section id="multiple-projects-in-one-environment">
 <h3>Multiple projects in one environment<a class="headerlink" href="#multiple-projects-in-one-environment" title="Link to this heading"></a></h3>
 <p>Opening an environment shows its <strong>Project Hub</strong>. A line names the
@@ -379,6 +418,16 @@ tree but no steps, for work that has none yet.</p></li>
 <li><p><strong>New Project</strong> is a three-step wizard: a display name, a location
 (an existing git directory, or a new directory vaibify creates and
 initializes as a repository), and a confirmation.</p></li>
+<li><p>Each Project card’s <strong>⋮</strong> menu offers <strong>Rename…</strong>, which changes the
+Project’s display name (<code class="docutils literal notranslate"><span class="pre">sWorkflowName</span></code> in its Project file). Before
+anything is written, the confirmation lists every PROOF level and
+label the new bytes would no longer match (a Project file is hashed
+by the published and reproduced records) and any other change the
+save makes to the file, such as a format upgrade. A Project whose
+steps use <code class="docutils literal notranslate"><span class="pre">{sWorkflowName}</span></code> in a path or field is refused, and the
+message names each step and field, because renaming it would move
+those outputs. Only the researcher can rename a Project; an
+in-container agent cannot.</p></li>
 </ul>
 <p>Inside the dashboard, click the Project name in the toolbar to switch
 Projects or start a new one. Projects in one container can run at the
@@ -404,9 +453,25 @@ active in it.</p></li>
 and a dashboard opened later shows it.</p></li>
 <li><p>To work on two environments at once, use <strong>⧉ New vaibify window</strong>
 (on the environments page, the Project Hub, and the <strong>Admin</strong> menu).</p></li>
-<li><p>Listing and stopping live sessions is done from the command line;
-see <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>.</p></li>
+<li><p><strong>Quit vaibify</strong> (on the environments page and the Project Hub) and
+<strong>Admin → Quit</strong> stop vaibify, together with every window opened
+with <strong>New vaibify window</strong>. Listing and stopping one live session
+at a time is done from the command line; see
+<a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>.</p></li>
 </ul>
+<p><strong>Quitting vaibify.</strong> Before anything stops, the Quit dialog lists the
+environments that will keep running, the windows that will close, and
+any open terminals, whose programs may keep running. <strong>Also stop N
+running environments</strong> stops them as well; without it they keep
+running and can be opened again later. Quit is refused, with the
+reason and the window it applies to, while work is in progress in any
+vaibify window: a pipeline run, an Agent Council, a reproduction, a
+containerization, an environment rename, or a change already being
+written to a container. Once you confirm, vaibify accepts no new work
+in any window. Anything started in that moment is refused with
+<em>vaibify is shutting down</em>, and a Quit that is then refused accepts
+work again. If a stop fails partway through, the dialog names the
+environments it already stopped.</p>
 <p><strong>Terminals and quiescence.</strong> A shell can start a process that
 detaches from everything vaibify tracks, so once a terminal has been
 used in an environment, vaibify reports that environment’s quiescence

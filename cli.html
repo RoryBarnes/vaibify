@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.2.2.dev12 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.2.3.dev14 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=0d397edb"></script>
+      <script src="_static/documentation_options.js?v=728d52c1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -512,6 +512,13 @@ only copy. The confirmation prompt is the only guard.</p>
 does not remove the container itself (stop it with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">stop</span></code>) or
 the volume that holds the container’s stored credentials, which
 remains until you remove it with <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">volume</span> <span class="pre">rm</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">start</span></code>, <code class="docutils literal notranslate"><span class="pre">stop</span></code>, <code class="docutils literal notranslate"><span class="pre">destroy</span></code> and <code class="docutils literal notranslate"><span class="pre">build</span></code> each hold the environment’s
+name while they work, as the dashboard’s start, stop, deletion,
+rename and containerization do, so two of them can never interleave on
+one environment. One that finds the name held refuses at once, naming
+what holds it: <code class="docutils literal notranslate"><span class="pre">'&lt;name&gt;'</span> <span class="pre">is</span> <span class="pre">being</span> <span class="pre">renamed</span> <span class="pre">by</span> <span class="pre">another</span> <span class="pre">vaibify</span> <span class="pre">process;</span> <span class="pre">try</span> <span class="pre">again</span> <span class="pre">when</span> <span class="pre">it</span> <span class="pre">finishes.</span></code> <code class="docutils literal notranslate"><span class="pre">start</span></code> is also refused while a rename of
+the environment has not finished; <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span> <span class="pre">&lt;name&gt;</span></code> settles
+one.</p>
 </section>
 <section id="vaibify-verify">
 <h3>vaibify verify<a class="headerlink" href="#vaibify-verify" title="Link to this heading"></a></h3>
@@ -765,6 +772,10 @@ vaibify<span class="w"> </span>sessions<span class="w"> </span>stop<span class="
 <p><code class="docutils literal notranslate"><span class="pre">stop</span></code> sends <code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code>, so the server releases its session and
 container locks, and it refuses any PID that is not a live vaibify
 session.</p>
+<p>The dashboard’s equivalent is <strong>Quit vaibify</strong> (or <strong>Admin → Quit</strong>),
+which stops a hub and the windows it opened, and is refused while any
+of them has work in progress. <code class="docutils literal notranslate"><span class="pre">sessions</span> <span class="pre">stop</span></code> makes no such check:
+it stops the session it is given, the same as closing its terminal.</p>
 </section>
 </section>
 <section id="vaibify-do">
@@ -845,7 +856,12 @@ the container is released at once rather than held until the hub gives
 up on the step.</p>
 <p>Actions that act on the hub rather than on a running container, such
 as <code class="docutils literal notranslate"><span class="pre">set-container-settings</span></code>, address the project by name and claim
-nothing. <code class="docutils literal notranslate"><span class="pre">upload-file-stream</span></code> takes <code class="docutils literal notranslate"><span class="pre">sLocalPath=&lt;file&gt;</span></code> and streams
+nothing. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">rename-environment</span> <span class="pre">-p</span> <span class="pre">OLD</span> <span class="pre">sNewName=NEW</span></code> renames a
+stopped environment; it is a dry run that lists every move unless
+<code class="docutils literal notranslate"><span class="pre">bDryRun=false</span></code> is given (see <a class="reference internal" href="environmentsAndProjects.html#renaming-an-environment"><span class="std std-ref">Renaming an
+environment</span></a>).
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">rename-project</span> <span class="pre">sWorkflowPath=PATH</span> <span class="pre">sNewName=NAME</span></code> renames a
+Project, also a dry run first; an in-container agent is refused both. <code class="docutils literal notranslate"><span class="pre">upload-file-stream</span></code> takes <code class="docutils literal notranslate"><span class="pre">sLocalPath=&lt;file&gt;</span></code> and streams
 that host file as the request body, filling in its size and name.</p>
 </section>
 <section id="recovering-a-quarantined-container">
@@ -859,7 +875,8 @@ vaibify<span class="w"> </span>reconcile<span class="w"> </span>CONTAINER<span c
 </div>
 <p>Once a terminal has been used in an environment, vaibify reports its
 quiescence as unproven on release or shutdown, and <code class="docutils literal notranslate"><span class="pre">reconcile</span></code> is how
-to settle it. A plain run shows which operation was mid-write, when,
+to settle it. It also finishes or undoes a rename of the environment
+that vaibify stopped partway through, before anything else. A plain run shows which operation was mid-write, when,
 and in which container; proves the recorded writer dead and the
 operation settled; and only then clears the quarantine, or refuses and
 leaves the container quarantined. The dashboard’s <strong>Reconcile now</strong>
