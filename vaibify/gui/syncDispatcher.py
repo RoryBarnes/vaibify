@@ -3,7 +3,6 @@
 import json
 import posixpath
 import re
-import shlex
 import subprocess
 import uuid
 
@@ -229,25 +228,61 @@ def ftResultPushToOverleaf(
     dictWorkflow=None, sGithubBaseUrl="", sDoi="",
     sTexFilename="main.tex", sMirrorSha="",
 ):
-    """Push figures to Overleaf, optionally annotating the TeX.
+    """Push figures to Overleaf from the HOST; return ``(iExitCode, sOutput)``.
 
-    When ``sMirrorSha`` is provided, the container CLI is invoked with
-    ``--mirror-sha <short>`` so the commit message on Overleaf records
-    which mirror snapshot the push was built on. The command's stdout
-    now contains a ``HEAD_SHA=<40hex>`` line alongside the ``ok``
-    marker; callers that care about the post-push head should consult
-    :func:`fsParseHeadShaFromOutput`.
+    The figures leave the container through the confined reader into a
+    private host scratch directory and are committed and pushed from
+    there by :mod:`vaibify.reproducibility.overleafSync` in this
+    process, with the host keyring's token; no container program runs
+    and the token never enters the container. When ``sMirrorSha`` is
+    provided the commit message on Overleaf records which mirror
+    snapshot the push was built on. The output carries the
+    ``PUSH_STATUS=`` and ``HEAD_SHA=`` lines the command line prints,
+    so :func:`fsParseHeadShaFromOutput` and
+    :func:`fsParsePushStatusFromOutput` read it unchanged.
     """
+    from vaibify.reproducibility import overleafSync
     fnValidateOverleafProjectId(sProjectId)
-    if dictWorkflow and sGithubBaseUrl:
-        return _ftResultAnnotatedPush(
-            connectionDocker, sContainerId, listFilePaths,
-            sProjectId, sTargetDirectory, dictWorkflow,
-            sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha,
+    sToken = _fsFetchOverleafToken()
+    if not sToken:
+        return (overleafSync.fiExitCodeForError(overleafSync.OverleafAuthError()),
+                S_NO_OVERLEAF_TOKEN_MESSAGE)
+    sScratchDirectory = _fsCreateHostScratchDirectory()
+    try:
+        listLocalPaths = _flistStageFilesOnHost(
+            connectionDocker, sContainerId, listFilePaths, sScratchDirectory,
         )
-    return _ftResultPlainPush(
-        connectionDocker, sContainerId, listFilePaths,
-        sProjectId, sTargetDirectory, sMirrorSha,
+        tOutcome = _ftPushStagedFigures(
+            overleafSync, listLocalPaths, sProjectId, sTargetDirectory, sToken,
+            dictWorkflow, sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha,
+        )
+    except overleafSync.OverleafError as error:
+        return (overleafSync.fiExitCodeForError(error), str(error))
+    except (OSError, ValueError) as error:
+        return (1, "LOCAL-FILE-ERROR (not an Overleaf problem): " + repr(error))
+    finally:
+        _fnRemoveScratchDirectory(sScratchDirectory)
+    return (0, overleafSync.fsFormatPushOutput(*tOutcome))
+
+
+S_NO_OVERLEAF_TOKEN_MESSAGE = (
+    "No Overleaf token is stored on this host; connect Overleaf from the "
+    "Repos panel (authentication required)."
+)
+
+
+def _ftPushStagedFigures(
+    overleafSync, listLocalPaths, sProjectId, sTargetDirectory, sToken,
+    dictWorkflow, sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha,
+):
+    """Push the staged copies, annotating the TeX when a GitHub base is known."""
+    if dictWorkflow and sGithubBaseUrl:
+        return overleafSync.ftPushAnnotatedToOverleaf(
+            listLocalPaths, sProjectId, sTargetDirectory, dictWorkflow,
+            sGithubBaseUrl, sDoi, sToken, sTexFilename, sMirrorSha,
+        )
+    return overleafSync.ftPushFiguresToOverleaf(
+        listLocalPaths, sProjectId, sTargetDirectory, sToken, sMirrorSha,
     )
 
 
@@ -269,127 +304,100 @@ def fsParsePushStatusFromOutput(sOutput):
     return ""
 
 
-_S_OVERLEAF_SCRIPT = "/usr/share/vaibify/overleafSync.py"
-_S_OVERLEAF_MODULE = "vaibify.reproducibility.overleafSync"
-
-
-def _flistOverleafProgramWords(sResourceId):
-    """Return the words that invoke the Overleaf CLI for this resource.
-
-    The container image installs the script at a fixed path under
-    ``/usr/share/vaibify``, which is a path that exists nowhere on the
-    researcher's machine. On the host the same code is an ordinary
-    module of the installed package, so it is invoked as one -- which
-    also means the import machinery finds its dependencies instead of
-    a ``sys.path`` entry having to.
-    """
-    listInterpreter = shlex.split(fsResolveHelperInterpreter(sResourceId))
-    if fbIsHostProject(sResourceId):
-        return listInterpreter + ["-m", _S_OVERLEAF_MODULE]
-    return listInterpreter + [_S_OVERLEAF_SCRIPT]
-
-
-def _flistOverleafCliWords(
-    sSubcommand, sProjectId, sResourceId,
-    sTargetDirectory=None, sMirrorSha="",
-):
-    """Build the argument vector of an overleafSync CLI call.
-
-    A list, never shell text: the call is made with the credential on
-    its standard input, and an exact vector means no quoting layer can
-    turn a project id or a path into syntax.
-    """
-    listParts = _flistOverleafProgramWords(sResourceId) + [
-        sSubcommand, "--project", sProjectId,
-    ]
-    if sTargetDirectory is not None:
-        listParts += ["--target", sTargetDirectory]
-    if sMirrorSha:
-        listParts += ["--mirror-sha", sMirrorSha]
-    return listParts
-
-
-def _ftRunOverleafCli(
-    connectionDocker, sContainerId, listCliWords, sStdinText,
-):
-    """Run the Overleaf CLI with ``sStdinText`` on its standard input.
-
-    The token is the first stdin line. It crosses to the program on the
-    exec's stdin only, so it is in neither the command line, ``docker
-    inspect`` nor a process listing. Returns ``(iExitCode, sOutput)``.
-    """
-    tExecResult = connectionDocker.ftRunProgramWithStdin(
-        sContainerId, listCliWords, sStdinText.encode("utf-8"),
-    )
-    return (
-        tExecResult.iExitCode, tExecResult.sStdout + tExecResult.sStderr,
-    )
-
-
 def _fsFetchOverleafToken():
-    """Fetch the Overleaf token from the host keyring for per-push use."""
+    """Return the host keyring's Overleaf token, or '' when none is stored."""
     from vaibify.config.secretManager import fsRetrieveSecret
-    return fsRetrieveSecret("overleaf_token", "keyring")
-
-
-def _fsPrependToken(sToken, sPayload):
-    """Prepend the token as the first stdin line before a payload."""
-    return sToken + "\n" + sPayload
-
-
-def _ftResultPlainPush(
-    connectionDocker, sContainerId,
-    listFilePaths, sProjectId, sTargetDirectory, sMirrorSha="",
-):
-    """Push figures without TeX annotation."""
-    sStdin = _fsPrependToken(
-        _fsFetchOverleafToken(), "\n".join(listFilePaths))
-    return _ftRunOverleafCli(
-        connectionDocker, sContainerId,
-        _flistOverleafCliWords(
-            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha),
-        sStdin,
-    )
-
-
-def _ftResultAnnotatedPush(
-    connectionDocker, sContainerId, listFilePaths,
-    sProjectId, sTargetDirectory, dictWorkflow,
-    sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha="",
-):
-    """Push figures and annotate the TeX with source links."""
-    sPayload = json.dumps({
-        "listFigurePaths": listFilePaths,
-        "dictWorkflow": dictWorkflow,
-    })
-    sStdin = _fsPrependToken(_fsFetchOverleafToken(), sPayload)
-    listCliWords = _flistOverleafCliWords(
-        "push-annotated", sProjectId, sContainerId,
-        sTargetDirectory, sMirrorSha,
-    ) + [
-        "--github-base-url", sGithubBaseUrl,
-        "--doi", sDoi,
-        "--tex-filename", sTexFilename,
-    ]
-    return _ftRunOverleafCli(
-        connectionDocker, sContainerId, listCliWords, sStdin,
-    )
+    try:
+        return fsRetrieveSecret("overleaf_token", "keyring") or ""
+    except KeyError:
+        return ""
 
 
 def ftResultPullFromOverleaf(
     connectionDocker, sContainerId,
-    sProjectId, listPullPaths, sTargetDirectory,
+    sProjectId, listPullPaths, sTargetDirectory, sProjectRepoPath="",
 ):
-    """Pull TeX files from Overleaf inside the container."""
+    """Pull TeX sources from Overleaf on the HOST and land them in the project.
+
+    The clone runs on the host with the host keyring's token, into a
+    private scratch directory; the files then enter the container
+    through the confined tree write, as the container user, confined
+    to ``sTargetDirectory`` with the write deny list, or land in a host
+    project through the host confined writer. ``sProjectRepoPath`` is
+    the root the target directory is created below (the target's
+    parent when not given). No container program runs and the token
+    never enters the container.
+    """
+    from vaibify.reproducibility import overleafSync
     fnValidateOverleafProjectId(sProjectId)
-    sStdin = _fsPrependToken(
-        _fsFetchOverleafToken(), "\n".join(listPullPaths))
-    return _ftRunOverleafCli(
-        connectionDocker, sContainerId,
-        _flistOverleafCliWords(
-            "pull", sProjectId, sContainerId, sTargetDirectory),
-        sStdin,
+    sToken = _fsFetchOverleafToken()
+    if not sToken:
+        return (overleafSync.fiExitCodeForError(overleafSync.OverleafAuthError()),
+                S_NO_OVERLEAF_TOKEN_MESSAGE)
+    sScratchDirectory = _fsCreateHostScratchDirectory()
+    try:
+        overleafSync.fnPullTexFromOverleaf(
+            sProjectId, listPullPaths, sScratchDirectory, sToken,
+        )
+        _fnLandPulledSources(
+            connectionDocker, sContainerId, sScratchDirectory, sTargetDirectory,
+            sProjectRepoPath or posixpath.dirname(sTargetDirectory),
+        )
+    except overleafSync.OverleafError as error:
+        return (overleafSync.fiExitCodeForError(error), str(error))
+    except OSError as error:
+        return (1, "LOCAL-FILE-ERROR (not an Overleaf problem): " + repr(error))
+    finally:
+        _fnRemoveScratchDirectory(sScratchDirectory)
+    return (0, "ok\n")
+
+
+def _fnLandPulledSources(
+    connectionDocker, sContainerId, sScratchDirectory, sTargetDirectory,
+    sCreationRoot,
+):
+    """Write the pulled files into the project's manuscript directory.
+
+    A container project receives them through the confined tree write:
+    the target is created one component at a time below the project
+    (``.git`` refused by name; ``.vaibify`` is where the manuscript copy
+    lives), then the files land rooted at the target so a planted link
+    cannot redirect them and the deny list still refuses vaibify's own
+    metadata names below it. A host project receives them through the
+    host confined writer.
+    """
+    import os
+    listLocalPaths = sorted(
+        os.path.join(sScratchDirectory, sName)
+        for sName in os.listdir(sScratchDirectory)
     )
+    if fbIsHostProject(sContainerId):
+        _fnLandPulledSourcesOnHost(listLocalPaths, sTargetDirectory)
+        return
+    from .pipelineServer import T_WRITE_DENYLISTED_NAMES
+    connectionDocker.fnMakeDirectory(
+        sContainerId, sTargetDirectory, sAuthorizedRoot=sCreationRoot,
+        tForbiddenNames=(".git",),
+    )
+    connectionDocker.fnWriteTreeViaTar(
+        sContainerId, sTargetDirectory, listLocalPaths,
+        sAuthorizedRoot=sTargetDirectory,
+        tForbiddenNames=T_WRITE_DENYLISTED_NAMES, bCreateDestination=False,
+    )
+
+
+def _fnLandPulledSourcesOnHost(listLocalPaths, sTargetDirectory):
+    import os
+    from vaibify.host.hostConfinedWrite import fsWriteFileInsideRoot
+    os.makedirs(sTargetDirectory, exist_ok=True)
+    sRealRoot = os.path.realpath(sTargetDirectory)
+    for sLocalPath in listLocalPaths:
+        with open(sLocalPath, "rb") as fileLocal:
+            fsWriteFileInsideRoot(
+                sRealRoot,
+                os.path.join(sRealRoot, os.path.basename(sLocalPath)),
+                iter(lambda: fileLocal.read(65536), b""),
+            )
 
 
 _DICT_ZENODO_API_BASE = {
@@ -423,7 +431,6 @@ def ftResultArchiveToZenodo(
     deposit: a carrier worker that raised would quarantine the
     container over a rejected token.
     """
-    import shutil
     from .zenodoTokenAccess import (
         ZenodoTokenUnavailable, fsRequireActiveZenodoToken,
     )
@@ -440,13 +447,13 @@ def ftResultArchiveToZenodo(
         )
     except ZenodoTokenUnavailable as error:
         return (1, "no-token: " + error.sMessage)
-    sScratchDirectory = _fsCreateArchiveScratchDirectory()
+    sScratchDirectory = _fsCreateHostScratchDirectory()
     try:
-        listLocalPaths = _flistStageArchiveFilesOnHost(
+        listLocalPaths = _flistStageFilesOnHost(
             connectionDocker, sContainerId, listFilePaths, sScratchDirectory,
         )
     except (OSError, ValueError) as error:
-        shutil.rmtree(sScratchDirectory, ignore_errors=True)
+        _fnRemoveScratchDirectory(sScratchDirectory)
         return (1, "LOCAL-FILE-ERROR (not a Zenodo problem): " + repr(error))
     try:
         return _ftDepositStagedFiles(
@@ -454,25 +461,31 @@ def ftResultArchiveToZenodo(
             listLocalPaths, dictApi, int(iParentDepositId or 0),
         )
     finally:
-        shutil.rmtree(sScratchDirectory, ignore_errors=True)
+        _fnRemoveScratchDirectory(sScratchDirectory)
 
 
-def _fsCreateArchiveScratchDirectory():
-    """Return a fresh private directory under ``~/.vaibify`` for one deposit."""
+def _fsCreateHostScratchDirectory():
+    """Return a fresh private directory under ``~/.vaibify`` for one operation."""
     from vaibify.reproducibility.imageDeposit import (
         fsResolveDepositScratchDirectory,
     )
     return fsResolveDepositScratchDirectory()
 
 
-def _flistStageArchiveFilesOnHost(
+def _fnRemoveScratchDirectory(sScratchDirectory):
+    import shutil
+    shutil.rmtree(sScratchDirectory, ignore_errors=True)
+
+
+def _flistStageFilesOnHost(
     connectionDocker, sContainerId, listFilePaths, sScratchDirectory,
 ):
     """Stream each selected file out through the confined reader; return host paths.
 
-    A Zenodo deposit is flat, so a file lands under its basename and a
-    second file with the same basename is refused here as a local
-    error rather than silently overwriting the first on the way out.
+    A Zenodo deposit and an Overleaf figure directory are both flat, so
+    a file lands under its basename and a second file with the same
+    basename is refused here as a local error rather than silently
+    overwriting the first on the way out.
     """
     import os
     from vaibify.host.hostConfinedWrite import fsWriteFileInsideRoot

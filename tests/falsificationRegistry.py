@@ -8276,14 +8276,14 @@ LIST_FALSIFICATIONS = [
         old=(
             '    return await _fdictPullManuscriptUnderTheDrain(\n'
             '        syncDispatcher, dictCtx, sContainerId, sProjectId,\n'
-            '        listPullPaths, sTargetDirectory, requestHttp,\n'
+            '        listPullPaths, sTargetDirectory, requestHttp, sRepo,\n'
             '    )\n'
         ),
         new=(
             '    return await asyncio.to_thread(\n'
             '        _fdictPullManuscriptBlocking,\n'
             '        syncDispatcher, dictCtx, sContainerId, sProjectId,\n'
-            '        listPullPaths, sTargetDirectory,\n'
+            '        listPullPaths, sTargetDirectory, sRepo,\n'
             '    )\n'
         ),
     ),
@@ -25564,12 +25564,48 @@ LIST_FALSIFICATIONS = [
         old='            { "X-Session-Token": sSessionCredential });\n',
         new='            {});\n',
     ),
-    # --- The Overleaf token reaches its program on stdin only ---
+    # --- The Overleaf lane runs on the host (2026-10-29): the pulled
+    # sources land through the confined tree write, and every push and
+    # pull acts on the project the researcher confirmed ---
     Falsification(
-        nodeid='tests/testOverleafTokenStaysOffTheCommandLine.py::testAPlainPushKeepsTheTokenOffTheCommandLine',
+        nodeid='tests/testOverleafTokenStaysOffTheCommandLine.py::testThePulledSourcesLandThroughTheConfinedTreeWrite',
         source='vaibify/gui/syncDispatcher.py',
-        old='            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha),\n        sStdin,\n',
-        new='            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha)\n        + ["--token", _fsFetchOverleafToken()],\n        sStdin,\n',
+        old=(
+            '        sAuthorizedRoot=sTargetDirectory,\n'
+            '        tForbiddenNames=T_WRITE_DENYLISTED_NAMES, bCreateDestination=False,\n'
+        ),
+        new='        bCreateDestination=False,\n',
+    ),
+    Falsification(
+        nodeid='tests/testSyncRoutesCoverage.py::test_overleaf_push_acts_on_the_bound_project_not_the_edited_id',
+        source='vaibify/gui/routes/syncRoutes.py',
+        # the push flow hands the dispatcher project.json's id
+        old='    dictOverleafArgs["sProjectId"] = sProjectId\n',
+        new='    dictOverleafArgs["sProjectId"] = dictWorkflow.get("sOverleafProjectId", "")\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullManuscriptRoute.py::test_pull_manuscript_pulls_the_bound_project_not_the_edited_id',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    sProjectId = fsRequireBoundOverleafProjectId(\n'
+            '        dictCtx, sContainerId, dictWorkflow,\n'
+            '    )\n'
+            '    sRepo = dictWorkflow.get("sProjectRepoPath", "")\n'
+        ),
+        new=(
+            '    sProjectId = dictWorkflow.get("sOverleafProjectId", "")\n'
+            '    sRepo = dictWorkflow.get("sProjectRepoPath", "")\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testAutoArchive.py::test_fnMaybeAutoArchive_pushes_to_the_bound_overleaf_project',
+        source='vaibify/gui/fileStatusManager.py',
+        old=(
+            '    sProjectId = _fsBoundAutoArchiveTarget(\n'
+            '        connectionDocker, sContainerId, dictWorkflow, "overleaf",\n'
+            '    )\n'
+        ),
+        new='    sProjectId = dictWorkflow.get("sOverleafProjectId", "")\n',
     ),
     # --- The bind-mount deny list reads the filesystem, not the spelling ---
     Falsification(

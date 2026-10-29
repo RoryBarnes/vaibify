@@ -209,17 +209,21 @@ def _fmockCreateDockerSync():
 
 @pytest.fixture(autouse=True)
 def fixtureHostArchiveAnswersLikeTheMock(monkeypatch):
-    """The Zenodo deposit runs on the HOST since 2026-10-29, with no exec.
+    """The Zenodo deposit and the Overleaf push run on the HOST since 2026-10-29.
 
-    These route tests still describe the outcome through the mock's
-    sync exit code and output, so the host deposit is stood in for by a
-    function that answers exactly those. Tests about the deposit's own
-    behaviour live in ``testTheProjectDepositIsAskedWhatItStored.py``.
+    No exec, and a token this test does not hold. These route tests
+    still describe the outcome through the mock's sync exit code and
+    output, so both host lanes are stood in for by a function that
+    answers exactly those. Tests about the lanes' own behaviour live in
+    ``testTheProjectDepositIsAskedWhatItStored.py`` and
+    ``testOverleafHostLane.py``.
     """
     from vaibify.gui import syncDispatcher
 
-    def ftAnswerLikeTheMock(connectionDocker, sContainerId, *tArguments):
-        del connectionDocker, sContainerId, tArguments
+    def ftAnswerLikeTheMock(
+        connectionDocker, sContainerId, *tArguments, **dictKeywords,
+    ):
+        del connectionDocker, sContainerId, tArguments, dictKeywords
         return (
             _mockDockerInstance._iSyncExitCode,
             _mockDockerInstance._sSyncOutput,
@@ -227,6 +231,9 @@ def fixtureHostArchiveAnswersLikeTheMock(monkeypatch):
 
     monkeypatch.setattr(
         syncDispatcher, "ftResultArchiveToZenodo", ftAnswerLikeTheMock,
+    )
+    monkeypatch.setattr(
+        syncDispatcher, "ftResultPushToOverleaf", ftAnswerLikeTheMock,
     )
 
 
@@ -309,6 +316,43 @@ def test_overleaf_push_success(clientHttp):
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bSuccess"] is True
+
+
+@pytest.mark.falsification
+def test_overleaf_push_acts_on_the_bound_project_not_the_edited_id(
+    clientHttp, monkeypatch,
+):
+    """The push spends the token on the project the researcher confirmed.
+
+    ``project.json`` names one id (as after an agent edit) and the
+    binding record another; the dispatcher is handed the bound one.
+
+    Kills: the push flow taking its project id from project.json.
+    """
+    from vaibify.gui.routes import syncRoutes
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "pushed"
+    monkeypatch.setattr(
+        syncRoutes, "fsRequireBoundOverleafProjectId",
+        lambda dictCtx, sContainerId, dictWorkflow: "bound-project-id",
+    )
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
+        return_value=(0, "PUSH_STATUS=pushed\nHEAD_SHA=abc\nok\n"),
+    ) as mockPush, patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={
+            "sWorkflowName": "Test Pipeline", "sOverleafProjectId": "agent-edited-id",
+            "sProjectRepoPath": "/workspace/repo", "listSteps": [],
+        },
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={"listFilePaths": ["/workspace/Plot/fig.pdf"]},
+        )
+    assert responseHttp.status_code == 200, responseHttp.text
+    assert mockPush.call_args[1]["sProjectId"] == "bound-project-id"
 
 
 def test_overleaf_push_triggers_post_push_verify(clientHttp):

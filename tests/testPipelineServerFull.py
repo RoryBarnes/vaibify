@@ -10,6 +10,9 @@ from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.typedHashDouble import TypedHashFromServedBytes
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 
 S_CONTAINER_ID = "srv123container"
@@ -239,9 +242,11 @@ def test_overleaf_push_success(clientHttp):
         "listFilePaths": ["/workspace/Plot/fig.pdf"],
         "sCommitMessage": "Update figures",
     }
+    # The push itself runs on the host (overleafSync, with the host
+    # keyring's token) since 2026-10-29; this test is about the route.
     with patch(
-        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
-        return_value="test-tok",
+        "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
+        return_value=(0, "PUSH_STATUS=pushed\nHEAD_SHA=abc\nok\n"),
     ):
         responseHttp = clientHttp.post(
             f"/api/overleaf/{S_CONTAINER_ID}/push",
@@ -262,10 +267,17 @@ def test_zenodo_archive_success(clientHttp):
         "listFilePaths": ["data.npy"],
         "sCommitMessage": "Archive data",
     }
-    responseHttp = clientHttp.post(
-        f"/api/zenodo/{S_CONTAINER_ID}/archive",
-        json=dictPayload,
-    )
+    # The deposit runs on the host with the project's active token since
+    # 2026-10-29; this test is about the route.
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 1, "sDoi": '
+                      '"10.5072/zenodo.1", "sConceptDoi": "", "sHtmlUrl": ""}'),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json=dictPayload,
+        )
     assert responseHttp.status_code == 200
     assert responseHttp.json()["bSuccess"] is True
 

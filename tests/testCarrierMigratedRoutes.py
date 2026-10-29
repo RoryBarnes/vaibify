@@ -196,6 +196,33 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
             iMode=iMode, iUid=iUid, iGid=iGid,
         )
 
+    def fnWriteTreeViaTar(
+        self, sContainerId, sDestinationDirectory, listHostPaths,
+        iUid=None, iGid=None, sArchiveName=None, sAuthorizedRoot=None,
+        tForbiddenNames=(), bCreateDestination=False,
+    ):
+        """The confined tree write: gated like every write, recorded by its name."""
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnWriteTreeViaTar",
+        )
+        self._fnRecordLiveAdmission(
+            sContainerId, "fnWriteTreeViaTar", sPath=sDestinationDirectory,
+        )
+        for sHostPath in listHostPaths:
+            with open(sHostPath, "rb") as fileLocal:
+                self._dictFiles[
+                    sDestinationDirectory + "/" + os.path.basename(sHostPath)
+                ] = fileLocal.read()
+
+    def fnMakeDirectory(
+        self, sContainerId, sDirectoryPath, sAuthorizedRoot=None,
+        tForbiddenNames=(),
+    ):
+        self.fnWriteTreeViaTar(
+            sContainerId, sDirectoryPath, [], sAuthorizedRoot=sAuthorizedRoot,
+            tForbiddenNames=tForbiddenNames, bCreateDestination=True,
+        )
+
     def fnWriteFileViaTar(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
@@ -5887,6 +5914,9 @@ class DockerDoubleServingASyncBoundWorkflow(
     def __init__(self):
         super().__init__()
         self.setExistingPaths.add(S_SYNC_PUSHABLE_FILE)
+        # The push stages the figure out through the confined reader
+        # (2026-10-29), so the bytes must be there to read.
+        self._dictFiles[S_SYNC_PUSHABLE_FILE] = b"%PDF-figure"
 
     def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH:
@@ -5987,11 +6017,24 @@ def testTheManuscriptPullWritesItsIgnoreUnderTheSameDrain(
     Kills: reverting ``_fdictHandlePullManuscript`` to its two
     ``asyncio.to_thread`` hops plus a bare ``fnWriteFile``.
     """
-    from vaibify.reproducibility import overleafMirror
+    import os
+    from vaibify.reproducibility import overleafMirror, overleafSync
     client, connectionDocker = tclientSyncBound
+
+    def fnCloneOnTheHost(sProjectId, listPullPaths, sTargetDirectory, sToken):
+        # The host-side clone (2026-10-29), stood in for: it lands the
+        # sources in the scratch directory the dispatcher then writes
+        # into the container through the confined tree write.
+        with open(os.path.join(sTargetDirectory, "main.tex"), "w") as fileTex:
+            fileTex.write("pulled")
+
     with _fnOverleafHostMirrorStubbed(), patch.object(
         overleafMirror, "flistListMirrorTree",
         lambda sProjectId: [{"sPath": "main.tex", "sType": "blob"}],
+    ), patch.object(
+        overleafSync, "fnPullTexFromOverleaf", fnCloneOnTheHost,
+    ), patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken", lambda: "tok",
     ):
         client.post(
             f"/api/overleaf/{S_CONTAINER_ID}/pull-manuscript",
@@ -6737,8 +6780,19 @@ def _tlistRecordEveryOverleafPush():
 
 
 def _fresponsePostOverleafPush(client):
-    """Push one figure through the migrated Overleaf push route."""
-    with _fnOverleafHostMirrorStubbed():
+    """Push one figure through the migrated Overleaf push route.
+
+    The push itself runs on the host since 2026-10-29 (a clone with a
+    token this test does not hold), so the dispatcher is stubbed to a
+    pushed outcome; the provenance pass and the bookkeeping save that
+    follow are what these tests observe.
+    """
+    with _fnOverleafHostMirrorStubbed(), patch(
+        "vaibify.reproducibility.overleafSync.ftPushFiguresToOverleaf",
+        return_value=("pushed", "abc"),
+    ), patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken", lambda: "tok",
+    ):
         return client.post(
             f"/api/overleaf/{S_CONTAINER_ID}/push",
             json={

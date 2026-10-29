@@ -5767,7 +5767,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # left to the content check, not re-judged by timestamp each poll.
     # 2654 -> 2658 (2026-10-24): the researcher-notice maps and the
     # workflow-epoch origins join the container-keyed sweep list.
-    "fileStatusManager.py": 2658,
+    # 2658 -> 2692 (2026-10-29): the unattended auto-archive takes its
+    # Overleaf and Zenodo targets from the host-side binding record.
+    "fileStatusManager.py": 2692,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,

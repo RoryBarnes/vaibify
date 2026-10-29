@@ -108,6 +108,31 @@ def test_pull_manuscript_happy_path(fixtureClient, fixtureDocker):
     assert tWriteArgs[2] == b"*\n"
 
 
+@pytest.mark.falsification
+def test_pull_manuscript_pulls_the_bound_project_not_the_edited_id(
+    fixtureClient, monkeypatch,
+):
+    """Kills: the pull taking its project id from project.json."""
+    clientHttp, _ = fixtureClient
+    monkeypatch.setattr(
+        syncRoutes, "fsRequireBoundOverleafProjectId",
+        lambda dictCtx, sContainerId, dictWorkflow: "bound-project-id",
+    )
+    with patch(
+        "vaibify.reproducibility.overleafMirror.flistListMirrorTree",
+        return_value=_LIST_MIRROR_TREE,
+    ) as mockTree, patch(
+        "vaibify.gui.syncDispatcher.ftResultPullFromOverleaf",
+        return_value=(0, "ok"),
+    ) as mockPull:
+        response = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/pull-manuscript",
+        )
+    assert response.status_code == 200
+    assert mockTree.call_args[0][0] == "bound-project-id"
+    assert mockPull.call_args[0][2] == "bound-project-id"
+
+
 def test_pull_manuscript_requires_overleaf_binding(fixtureClient):
     """No bound Overleaf project maps to a 409 precondition."""
     clientHttp, dictCtx = fixtureClient

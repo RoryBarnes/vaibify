@@ -89,32 +89,52 @@ def test_fnValidateOverleafProjectId_invalid():
 # -----------------------------------------------------------------------
 
 
+def _fMockDockerServingFiles(dictFiles):
+    """A connection whose confined reader serves ``dictFiles``; no exec."""
+    mockDocker = MagicMock(spec=["fiterReadFileConfined"])
+
+    def fiterRead(sContainerId, sFilePath, sAuthorizedRoot=None):
+        yield dictFiles[sFilePath]
+
+    mockDocker.fiterReadFileConfined.side_effect = fiterRead
+    return mockDocker
+
+
 def test_ftResultPushToOverleaf_plain():
-    mockDocker = _fMockDocker(0, "pushed")
+    mockDocker = _fMockDockerServingFiles({"/workspace/fig.pdf": b"%PDF"})
     with patch(
         "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
         return_value="test-tok",
-    ):
+    ), patch(
+        "vaibify.reproducibility.overleafSync.ftPushFiguresToOverleaf",
+        return_value=("pushed", "abc"),
+    ) as mockPush:
         iExit, sOut = ftResultPushToOverleaf(
-            mockDocker, "cid", ["fig.pdf"],
+            mockDocker, "cid", ["/workspace/fig.pdf"],
             "projid123", "figures",
         )
     assert iExit == 0
+    assert "PUSH_STATUS=pushed" in sOut and "HEAD_SHA=abc" in sOut
+    assert mockPush.call_args[0][3] == "test-tok"
 
 
 def test_ftResultPushToOverleaf_annotated():
-    mockDocker = _fMockDocker(0, "annotated")
+    mockDocker = _fMockDockerServingFiles({"/workspace/fig.pdf": b"%PDF"})
     with patch(
         "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
         return_value="test-tok",
-    ):
+    ), patch(
+        "vaibify.reproducibility.overleafSync.ftPushAnnotatedToOverleaf",
+        return_value=("pushed", "abc"),
+    ) as mockPush:
         iExit, sOut = ftResultPushToOverleaf(
-            mockDocker, "cid", ["fig.pdf"],
+            mockDocker, "cid", ["/workspace/fig.pdf"],
             "projid123", "figures",
             dictWorkflow={"sWorkflowName": "T"},
             sGithubBaseUrl="https://github.com/t",
         )
     assert iExit == 0
+    assert mockPush.call_args[0][4] == "https://github.com/t"
 
 
 # -----------------------------------------------------------------------
@@ -123,16 +143,25 @@ def test_ftResultPushToOverleaf_annotated():
 
 
 def test_ftResultPullFromOverleaf():
-    mockDocker = _fMockDocker(0, "pulled")
+    mockDocker = MagicMock(spec=["fnWriteTreeViaTar", "fnMakeDirectory"])
+
+    def fnFakePull(sProjectId, listPullPaths, sTargetDirectory, sToken):
+        with open(sTargetDirectory + "/main.tex", "w") as fileTex:
+            fileTex.write("\\documentclass{article}")
+
     with patch(
         "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
         return_value="test-tok",
+    ), patch(
+        "vaibify.reproducibility.overleafSync.fnPullTexFromOverleaf",
+        side_effect=fnFakePull,
     ):
         iExit, sOut = ftResultPullFromOverleaf(
             mockDocker, "cid", "projid123",
             ["main.tex"], "/workspace/tex",
         )
     assert iExit == 0
+    assert mockDocker.fnWriteTreeViaTar.call_args[0][1] == "/workspace/tex"
 
 
 # -----------------------------------------------------------------------

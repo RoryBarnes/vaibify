@@ -216,7 +216,11 @@ in shell history, in Git configuration or in a committed file.
 **Publishing tokens never enter the container.** A Zenodo token lives
 only in the host keyring, in an active slot named for the project's
 registry identity and the instance; every deposit, publish and token
-check runs on the host, and the container keyring holds none. A token
+check runs on the host, and the container keyring holds none. The
+Overleaf token likewise stays on the host: a push stages the figures
+out through the confined reader and commits from the host, a pull
+clones on the host and lands the sources through the confined tree
+write, and no container program is handed the token on any channel. A token
 an older container still holds is moved out at the next open: staged
 on the host as *pending* with a verified read-back, deleted from the
 container only once that is recorded, checked against Zenodo from the

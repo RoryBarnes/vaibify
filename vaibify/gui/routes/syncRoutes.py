@@ -651,13 +651,13 @@ async def _fdictHandlePullManuscript(
     sTargetDirectory = posixpath.join(sRepo, ".vaibify", "manuscript")
     return await _fdictPullManuscriptUnderTheDrain(
         syncDispatcher, dictCtx, sContainerId, sProjectId,
-        listPullPaths, sTargetDirectory, requestHttp,
+        listPullPaths, sTargetDirectory, requestHttp, sRepo,
     )
 
 
 async def _fdictPullManuscriptUnderTheDrain(
     syncDispatcher, dictCtx, sContainerId, sProjectId,
-    listPullPaths, sTargetDirectory, requestHttp,
+    listPullPaths, sTargetDirectory, requestHttp, sProjectRepoPath="",
 ):
     """Pull the sources and write their ``.gitignore`` under one drain.
 
@@ -683,7 +683,7 @@ async def _fdictPullManuscriptUnderTheDrain(
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: _fdictPullManuscriptBlocking(
                 syncDispatcher, dictCtx, sContainerId, sProjectId,
-                listPullPaths, sTargetDirectory,
+                listPullPaths, sTargetDirectory, sProjectRepoPath,
             ),
             setAlsoCarriedStatusCodes=frozenset({502}),
         )
@@ -696,7 +696,7 @@ async def _fdictPullManuscriptUnderTheDrain(
 
 def _fdictPullManuscriptBlocking(
     syncDispatcher, dictCtx, sContainerId, sProjectId,
-    listPullPaths, sTargetDirectory,
+    listPullPaths, sTargetDirectory, sProjectRepoPath="",
 ):
     """Run the pull and write the self-ignoring ``.gitignore``.
 
@@ -707,7 +707,7 @@ def _fdictPullManuscriptBlocking(
     """
     iExitCode, sOutput = syncDispatcher.ftResultPullFromOverleaf(
         dictCtx["docker"], sContainerId, sProjectId,
-        listPullPaths, sTargetDirectory,
+        listPullPaths, sTargetDirectory, sProjectRepoPath=sProjectRepoPath,
     )
     if iExitCode != 0:
         raise HTTPException(

@@ -235,6 +235,15 @@ Environment archive row, described in
 
 ## Overleaf
 
+Every Overleaf operation runs on your machine with the token in your
+keyring: a push copies the selected figures out of the container
+through the confined reader and commits them from the host; a pull
+clones the project on the host and lands the sources in the container
+through the confined write, as the container user, inside the
+manuscript directory. No program in the container ever receives the
+token, and both act on the project you confirmed in the binding
+record, never on an id the agent may have edited into `project.json`.
+
 **Sync → Push to Overleaf** copies figures into the bound Overleaf
 project through Overleaf's Git integration. The dialog:
 

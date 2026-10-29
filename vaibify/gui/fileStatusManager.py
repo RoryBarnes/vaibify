@@ -2215,13 +2215,44 @@ def flistStepRemoteFiles(dictWorkflow, iStepIndex, sService):
     return listResult
 
 
+def _fsBoundAutoArchiveTarget(connectionDocker, sContainerId, dictWorkflow, sService):
+    """Return the researcher-confirmed target for an unattended push, or ''.
+
+    The auto-archive spends the researcher's token with nobody watching,
+    so its target comes from the host-side binding record and never
+    from ``project.json``, which the in-container agent can edit. A
+    missing or disagreeing binding is logged and refuses the push; the
+    manual sync UI, which names the disagreement, is the recovery path.
+    """
+    from fastapi import HTTPException
+    from . import remoteBindingContext
+    dictCtx = {"docker": connectionDocker}
+    try:
+        if sService == "overleaf":
+            return remoteBindingContext.fsRequireBoundOverleafProjectId(
+                dictCtx, sContainerId, dictWorkflow,
+            )
+        return remoteBindingContext.fdictRequireBoundZenodoTarget(
+            dictCtx, sContainerId, dictWorkflow,
+        )["sInstance"]
+    except HTTPException as error:
+        logging.getLogger("vaibify").warning(
+            "Auto Archive: %s push refused: %s", sService, error.detail,
+        )
+        return ""
+
+
 def _fbPushOverleafForAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, listFiles,
 ):
     """Push files to Overleaf for the auto-archive flow."""
     from . import syncDispatcher
-    sProjectId = dictWorkflow.get("sOverleafProjectId", "")
-    if not sProjectId or not listFiles:
+    if not listFiles:
+        return False
+    sProjectId = _fsBoundAutoArchiveTarget(
+        connectionDocker, sContainerId, dictWorkflow, "overleaf",
+    )
+    if not sProjectId:
         return False
     sTargetDirectory = dictWorkflow.get(
         "sOverleafTargetDirectory", ""
@@ -2247,7 +2278,11 @@ def _fbArchiveZenodoForAutoArchive(
     from ..reproducibility import syncBookkeeping
     if not listFiles:
         return False
-    sZenodoService = dictWorkflow.get("sZenodoService", "sandbox")
+    sZenodoService = _fsBoundAutoArchiveTarget(
+        connectionDocker, sContainerId, dictWorkflow, "zenodo",
+    )
+    if not sZenodoService:
+        return False
     # The same local refusal the manual archive raises. Unattended,
     # the remote 404 would land in a log nobody reads and the
     # auto-archive would report a failure with no cause attached.

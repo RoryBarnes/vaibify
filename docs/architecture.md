@@ -1611,8 +1611,12 @@ becomes a second authority on what those roots are.
 2026-10-29 a Zenodo token lives only in the researcher's own OS
 keyring, in an active slot named for the project's registry identity
 and the instance (`vaibify/config/zenodoTokenSlots.py`), which is where
-Overleaf's token already went in both modes because the Overleaf push
-has always run on the host. Every Zenodo operation runs on the host
+Overleaf's token already went in both modes. Since the same date every
+Overleaf operation runs on the host too: the push stages the figures
+out through the confined reader and commits in process
+(`overleafSync.ftPushFiguresToOverleaf`), and the pull clones on the
+host and lands the sources through `fnWriteTreeViaTar`, so the
+in-container `overleafSync.py` copy is no longer executed. Every Zenodo operation runs on the host
 too (`syncDispatcher.ftResultArchiveToZenodo` streams the files out
 through the confined reader), so the container keyring holds no token.
 A token an older container still holds is moved out at connect by

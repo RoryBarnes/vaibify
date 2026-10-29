@@ -167,11 +167,12 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 272 -> 271 (2026-10-12): the test generator's unclassified conftest
 # write and the new marker-plugin writes share one classified confined
 # write site, _fnWriteTextConfined.
-# 267 -> 261 (2026-10-29): the in-container Zenodo lane is gone (its
-# store, copy, archive and validation execs with it), and the two typed
-# reads that replaced it -- the host deposit's confined file read and
-# the migration's keyring read -- are classified.
-I_UNCLASSIFIED_ROW_BUDGET = 261
+# 267 -> 260 (2026-10-29): the in-container Zenodo and Overleaf lanes
+# are gone (their store, copy, archive, validation and stdin-program
+# execs with them), and the reads and writes that replaced them -- the
+# host lanes' confined file read, the migration's keyring read, and the
+# pull's confined tree write -- are classified.
+I_UNCLASSIFIED_ROW_BUDGET = 260
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -447,7 +448,11 @@ I_UNCLASSIFIED_ROW_BUDGET = 261
 # the guards behind it are kill-confirmed.
 # 231 -> 224 (2026-10-29): Zenodo tokens leave the container; the
 # store, copy, archive, validation and staged-client execs are gone.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 224
+# 224 -> 225 (2026-10-29): the Overleaf pull lands its sources through
+# TWO confined writes (fnMakeDirectory for the manuscript directory,
+# fnWriteTreeViaTar for the files) where one stdin-fed program exec
+# stood before; both are classified, under the pull's mode-(b) carrier.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 225
 
 
 # Every acquisition of a declared capability that still has no reviewed

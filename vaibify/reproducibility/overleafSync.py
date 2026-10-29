@@ -4,11 +4,16 @@ Pushes generated figures to an Overleaf project and pulls TeX sources
 back, using git credential helpers so that tokens never appear in URLs
 or command history.
 
-Self-contained on stdlib + ``keyring`` + ``git`` so the module can be
-shipped into a Docker container and executed as a standalone script at
-``/usr/share/vaibify/overleafSync.py``. The sibling import of
-``latexConnector`` below tolerates both the packaged layout (host-side
-unit tests) and the flat container layout (script invocation).
+Since 2026-10-29 every Overleaf operation vaibify performs runs on the
+HOST (``vaibify/gui/syncDispatcher.py`` calls the functions below in
+process), so the Overleaf token never enters a container. Older project
+images still carry a copy of this module at
+``/usr/share/vaibify/overleafSync.py`` from the time the push ran as a
+script inside the container; vaibify no longer executes that copy, but
+the module stays self-contained on stdlib + ``git`` and the sibling
+import of ``latexConnector`` below tolerates both layouts, so the copy
+does not break an image that imports it. The command line remains for a
+researcher who wants to drive the same code by hand.
 """
 
 import argparse
@@ -277,11 +282,15 @@ def fnValidatePullRelativePath(sRelativePath):
             )
 
 
-def fnPushFiguresToOverleaf(
+def ftPushFiguresToOverleaf(
     listFigurePaths, sOverleafId, sTargetDirectory, sToken,
     sMirrorSha="",
 ):
-    """Push figure files into an Overleaf project via git."""
+    """Push figure files into an Overleaf project via git.
+
+    Returns ``(sPushStatus, sHeadSha)``: ``pushed`` or ``no-changes``,
+    and the remote's head afterwards ('' when git could not say).
+    """
     fnValidateTargetDirectory(sTargetDirectory)
     sTmpDir = tempfile.mkdtemp(prefix="vc_overleaf_push_")
     sTokenPath = _fsWriteTokenFile(sToken)
@@ -289,7 +298,7 @@ def fnPushFiguresToOverleaf(
         listCredArgs = flistBuildCredentialHelperArgs(sTokenPath)
         _fnCloneOverleafRepo(sOverleafId, sTmpDir, listCredArgs)
         _fnCopyFiguresToRepo(listFigurePaths, sTmpDir, sTargetDirectory)
-        _fnCommitAndPush(sTmpDir, sMirrorSha, listCredArgs)
+        return _ftCommitAndPush(sTmpDir, sMirrorSha, listCredArgs)
     finally:
         shutil.rmtree(sTmpDir, ignore_errors=True)
         _fnRemoveTokenFile(sTokenPath)
@@ -319,12 +328,12 @@ def fnPullTexFromOverleaf(
         _fnRemoveTokenFile(sTokenPath)
 
 
-def fnPushAnnotatedToOverleaf(
+def ftPushAnnotatedToOverleaf(
     listFigurePaths, sOverleafId, sTargetDirectory,
     dictWorkflow, sGithubBaseUrl, sDoi, sToken,
     sTexFilename="main.tex", sMirrorSha="",
 ):
-    """Push figures and annotate the TeX file with source links."""
+    """Push figures and annotate the TeX file; return ``(sPushStatus, sHeadSha)``."""
     fnValidateTargetDirectory(sTargetDirectory)
     sTmpDir = tempfile.mkdtemp(prefix="vc_overleaf_annotate_")
     sTokenPath = _fsWriteTokenFile(sToken)
@@ -336,7 +345,7 @@ def fnPushAnnotatedToOverleaf(
         _fnAnnotateTexInRepo(
             sTmpDir, sTexFilename, dictWorkflow,
             sGithubBaseUrl, sDoi)
-        _fnCommitAndPush(sTmpDir, sMirrorSha, listCredArgs)
+        return _ftCommitAndPush(sTmpDir, sMirrorSha, listCredArgs)
     finally:
         shutil.rmtree(sTmpDir, ignore_errors=True)
         _fnRemoveTokenFile(sTokenPath)
@@ -463,39 +472,64 @@ def _fnAssertDestinationParentSafe(sDestination, sExpectedRoot):
     )
 
 
-def _fnCommitAndPush(sRepoDir, sMirrorSha="", listCredArgs=None):
+S_PUSH_STATUS_PUSHED = "pushed"
+S_PUSH_STATUS_NO_CHANGES = "no-changes"
+
+
+def _ftCommitAndPush(sRepoDir, sMirrorSha="", listCredArgs=None):
     """Stage all changes, commit with marker, and push.
 
     When ``sMirrorSha`` is set, the commit message records which mirror
-    snapshot the push was built on. After a successful push, the
-    post-push HEAD SHA is emitted to stdout as ``HEAD_SHA=<sha>`` so
-    the host dispatcher can persist it into the sync-status baseline.
+    snapshot the push was built on. Returns ``(sPushStatus, sHeadSha)``
+    so the dispatcher can persist the post-push head into the
+    sync-status baseline; the command line prints the same pair.
     """
     if not _fbHasUncommittedChanges(sRepoDir):
-        sys.stdout.write("PUSH_STATUS=no-changes\n")
-        _fnEmitHeadSha(sRepoDir)
-        return
+        return (S_PUSH_STATUS_NO_CHANGES, fsReadHeadSha(sRepoDir))
     _fnGitAdd(sRepoDir)
     _fnGitCommit(sRepoDir, sMirrorSha)
     _fnGitPush(sRepoDir, listCredArgs)
-    sys.stdout.write("PUSH_STATUS=pushed\n")
-    _fnEmitHeadSha(sRepoDir)
+    return (S_PUSH_STATUS_PUSHED, fsReadHeadSha(sRepoDir))
 
 
-def _fnEmitHeadSha(sRepoDir):
-    """Print a ``HEAD_SHA=<sha>`` line for the repo's current HEAD."""
+def fsReadHeadSha(sRepoDir):
+    """Return the repo's current HEAD, or '' when git cannot say.
+
+    A missing git binary or a repository with no commit answers '',
+    never a fabricated head.
+    """
     try:
         processResult = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=sRepoDir, capture_output=True, text=True, encoding="utf-8",
         )
     except FileNotFoundError:
-        return
+        return ""
     if processResult.returncode != 0:
-        return
-    sHead = (processResult.stdout or "").strip()
-    if sHead:
-        sys.stdout.write(f"HEAD_SHA={sHead}\n")
+        return ""
+    return (processResult.stdout or "").strip()
+
+
+def fsFormatPushOutput(sPushStatus, sHeadSha):
+    """Render a push outcome as the ``PUSH_STATUS=``/``HEAD_SHA=`` lines.
+
+    One spelling for the command line and for the dispatcher, which
+    parses these lines back (``fsParsePushStatusFromOutput``,
+    ``fsParseHeadShaFromOutput``).
+    """
+    sOutput = f"PUSH_STATUS={sPushStatus}\n"
+    if sHeadSha:
+        sOutput += f"HEAD_SHA={sHeadSha}\n"
+    return sOutput + "ok\n"
+
+
+def fiExitCodeForError(error):
+    """Return the exit status an Overleaf failure maps to."""
+    if isinstance(error, OverleafAuthError):
+        return _EXIT_AUTH
+    if isinstance(error, OverleafRateLimitError):
+        return _EXIT_RATE_LIMIT
+    return _EXIT_ERROR
 
 
 def _fbHasUncommittedChanges(sRepoDir):
@@ -766,11 +800,11 @@ def _fnRunPush(args):
     _fnValidateProjectIdOrDie(args.project)
     sToken, sRemainder = _ftReadTokenAndRest()
     listPaths = _flistSplitRemainderLines(sRemainder)
-    fnPushFiguresToOverleaf(
+    tOutcome = ftPushFiguresToOverleaf(
         listPaths, args.project, args.target, sToken,
         getattr(args, "mirror_sha", "") or "",
     )
-    sys.stdout.write("ok\n")
+    sys.stdout.write(fsFormatPushOutput(*tOutcome))
 
 
 def _fnRunPushAnnotated(args):
@@ -778,7 +812,7 @@ def _fnRunPushAnnotated(args):
     _fnValidateProjectIdOrDie(args.project)
     sToken, sRemainder = _ftReadTokenAndRest()
     dictPayload = json.loads(sRemainder or "{}")
-    fnPushAnnotatedToOverleaf(
+    tOutcome = ftPushAnnotatedToOverleaf(
         dictPayload.get("listFigurePaths", []),
         args.project, args.target,
         dictPayload.get("dictWorkflow", {}),
@@ -786,7 +820,7 @@ def _fnRunPushAnnotated(args):
         args.tex_filename,
         getattr(args, "mirror_sha", "") or "",
     )
-    sys.stdout.write("ok\n")
+    sys.stdout.write(fsFormatPushOutput(*tOutcome))
 
 
 def _fnRunPull(args):
@@ -864,15 +898,9 @@ def main(listArgv=None):
     args = parser.parse_args(listArgv)
     try:
         args.func(args)
-    except OverleafAuthError as error:
-        sys.stderr.write(f"{error}\n")
-        sys.exit(_EXIT_AUTH)
-    except OverleafRateLimitError as error:
-        sys.stderr.write(f"{error}\n")
-        sys.exit(_EXIT_RATE_LIMIT)
     except OverleafError as error:
         sys.stderr.write(f"{error}\n")
-        sys.exit(_EXIT_ERROR)
+        sys.exit(fiExitCodeForError(error))
 
 
 if __name__ == "__main__":
