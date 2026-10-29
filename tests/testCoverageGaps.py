@@ -986,25 +986,27 @@ def test_fbProcessIsRunning_false(mockRun):
     assert _fbProcessIsRunning("nonexistent") is False
 
 
+@patch("vaibify.docker.x11Forwarding.platform")
 @patch("subprocess.run")
-@patch.dict("os.environ", {"USER": "testuser"})
-def test_fnGrantLocalUserXhostAccess(mockRun):
-    from vaibify.docker.x11Forwarding import (
-        _fnGrantLocalUserXhostAccess,
-    )
-    _fnGrantLocalUserXhostAccess()
-    saCommand = mockRun.call_args[0][0]
-    assert "SI:localuser:testuser" in saCommand[-1]
+@patch.dict("os.environ", {"USER": "testuser", "DISPLAY": ":0"})
+def test_fnRevokeLegacyXhostGrants_withdraws_both_entries(mockRun, mockPlatform):
+    from vaibify.docker.x11Forwarding import fnRevokeLegacyXhostGrants
+    mockPlatform.system.return_value = "Linux"
+    fnRevokeLegacyXhostGrants()
+    listLastArguments = [listCall[0][0][-1] for listCall in mockRun.call_args_list]
+    assert listLastArguments == ["-localhost", "-SI:localuser:testuser"]
 
 
+@patch("vaibify.docker.x11Forwarding.platform")
 @patch("subprocess.run")
-@patch.dict("os.environ", {"USER": ""}, clear=False)
-def test_fnGrantLocalUserXhostAccess_no_user(mockRun):
-    from vaibify.docker.x11Forwarding import (
-        _fnGrantLocalUserXhostAccess,
-    )
-    _fnGrantLocalUserXhostAccess()
-    mockRun.assert_not_called()
+@patch.dict("os.environ", {"USER": "", "DISPLAY": ":0"}, clear=False)
+def test_fnRevokeLegacyXhostGrants_without_a_user_withdraws_the_host_entry_only(
+    mockRun, mockPlatform,
+):
+    from vaibify.docker.x11Forwarding import fnRevokeLegacyXhostGrants
+    mockPlatform.system.return_value = "Linux"
+    fnRevokeLegacyXhostGrants()
+    assert [listCall[0][0][-1] for listCall in mockRun.call_args_list] == ["-localhost"]
 
 
 # =======================================================================

@@ -4397,7 +4397,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the same reason as both.
     # NEW at 802 (2026-10-28): the hub registers the environment
     # rename's startup recovery beside the conversion's.
-    "appFactory.py": 802,
+    # 802 -> 803 (2026-10-29): the X11 authorization lifecycle is
+    # registered beside the rename recovery.
+    "appFactory.py": 803,
     # 892 -> 897 (2026-10-28): a live environment rename vetoes the idle
     # watchdog, on the conversion's terms.
     # 897 -> 929 (2026-10-28): the idle watchdog's work vetoes become
@@ -5436,7 +5438,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # bind-mount mode drift finding beside the X11 and limit findings it
     # already renders; one more comparison of the running container
     # with vaibify.yml, in the module that owns that comparison.
-    "routes/systemRoutes.py": 820,
+    # 820 -> 826 (2026-10-29): the readiness lines carry the container's
+    # own X11 authorization sentences (a copied cookie, a failed setup).
+    "routes/systemRoutes.py": 826,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -7360,7 +7364,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # start refusal while a rename has not finished.
     # 2644 -> 2646 (2026-10-28): a containerization is refused while a
     # Quit holds the admission gate.
-    "registryRoutes.py": 2646,
+    # 2646 -> 2653 (2026-10-29): turning x11Forwarding off revokes the
+    # running container's X authorization at once.
+    "registryRoutes.py": 2653,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

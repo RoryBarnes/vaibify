@@ -45,7 +45,9 @@ import logging
 
 from vaibify.config import containerLock, registryManager
 from vaibify.config.keepAliveManager import fnStopKeepAlive
-from vaibify.docker import containerManager, imageBuilder, volumeManager
+from vaibify.docker import (
+    containerManager, imageBuilder, volumeManager, x11Authorizations,
+)
 from vaibify.gui import environmentResources
 
 logger = logging.getLogger(__name__)
@@ -77,6 +79,8 @@ def fdictDeleteEnvironment(dictProject):
         sContainerName = dictProject.get("sContainerName") or sName
         listFailures = []
         bContainerRemoved = _fbRemoveContainer(sContainerName, listFailures)
+        if bContainerRemoved:
+            x11Authorizations.fnReleaseAuthorizationQuietly(sContainerName)
         listVolumes = (
             _flistRemoveVolumes(sName, listFailures)
             if bContainerRemoved else []

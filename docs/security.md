@@ -252,18 +252,52 @@ reason vaibify refuses to start a project that sets both
 `x11Forwarding` and `networkIsolation`: a display channel would defeat
 the seal.
 
+How a container is admitted to your display:
+
+- **Its own authorization, never a host-wide grant.** When an opted-in
+  container starts, vaibify asks the X server (through the X SECURITY
+  extension) for an *untrusted* authorization for that one container
+  and mounts it read-only at `/run/vaibify/x11/Xauthority`, with
+  `XAUTHORITY` pointing there. An untrusted client cannot read other
+  windows' contents, grab keystrokes aimed at them, or synthesize input
+  through XTEST: what remains is its own windows on your screen. The
+  authorization is revoked when the container stops, when the project
+  turns `x11Forwarding` off, when the environment is deleted, and when
+  the hub finds a recorded container gone. No `xhost` entry is made,
+  and the hub withdraws the `+localhost` and `+SI:localuser:$USER`
+  entries earlier versions made, so a container without a cookie is
+  refused however it reaches the server.
+- **What the record holds.** `~/.vaibify/x11/authorizations.json`
+  names each container's authorization id, display and directory; the
+  cookie itself lives only in the container's own directory, mode 600,
+  which no bind mount may reach.
+- **The fallback, and what it costs.** XQuartz and the MacPorts X
+  server do not implement the SECURITY extension. For such a server
+  vaibify copies the server's own cookie into the container's
+  directory instead. That is full display access, the same a program
+  on your Mac has, revocable only by restarting the X server; the
+  dashboard's readiness banner and `vaibify doctor` say so for every
+  container that holds one.
+- **A server restart.** Generated authorizations do not survive an X
+  server restart. The hub probes each container's cookie every minute
+  and, when the server has lost it, generates a new one and replaces
+  the mounted file, so a running container regains its display without
+  being created again; the banner reports the renewal.
+
 What vaibify changes on the host when forwarding is on:
 
-- **Linux:** mounts `/tmp/.X11-unix` read-only and runs
-  `xhost +SI:localuser:$USER`, which admits only your own account.
-  Revoke it with `xhost -SI:localuser:$USER`.
+- **Linux:** mounts `/tmp/.X11-unix` read-only, beside the
+  authorization directory.
 - **macOS:** the container reaches the X server over TCP at
   `host.docker.internal`, so the server (XQuartz or the MacPorts X11
-  application) must accept network clients. vaibify starts the server,
-  runs `xhost +SI:localuser:$USER` and `xhost +localhost` (the local-user
-  rule admits only Unix-socket clients, not a TCP connection from the
-  container engine), and tells you if the server refuses network
-  clients. Revoke the TCP entry with `xhost -localhost`.
+  application) must accept network clients. At the first opt-in
+  vaibify turns the server's network-client setting on
+  (`defaults write <domain> nolisten_tcp -bool false`), starts the
+  server, and tells you when it must be quit and started again for the
+  setting to take effect. vaibify never turns the setting back off,
+  because it cannot know what else you use it for; `vaibify doctor`
+  warns when the server accepts network clients and no registered
+  project forwards, and prints the command that turns it off.
 
 The display setting is fixed when a container is created. After you
 turn `x11Forwarding` on, or install or reconfigure the X server, stop

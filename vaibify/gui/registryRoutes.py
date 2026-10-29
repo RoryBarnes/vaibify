@@ -1125,6 +1125,7 @@ def _fnRegisterContainerSettings(app, dictCtx):
         if request.bX11Forwarding is not None:
             bRestartRequired = _fbApplyX11Forwarding(
                 dictProject["sConfigPath"], request.bX11Forwarding,
+                dictProject.get("sContainerName") or sName,
             ) or bRestartRequired
         for sAgent, _, sAutoUpdateField, _ in _T_AGENT_SETTINGS:
             bAutoUpdate = getattr(request, sAutoUpdateField)
@@ -1198,13 +1199,17 @@ def _fnRegisterWritableLayerPreview(app, dictCtx):
         )
 
 
-def _fbApplyX11Forwarding(sConfigPath, bNewValue):
+def _fbApplyX11Forwarding(sConfigPath, bNewValue, sContainerName):
     """Apply the X11 forwarding opt-in; return True when it changed.
 
     Refuses to turn forwarding on for a project that seals its network:
     the two cannot coexist, and the launch would refuse it later.
+    Turning it off revokes the running container's X authorization at
+    once; DISPLAY stays set until the container is created again, and
+    the readiness banner says so.
     """
     from vaibify.config.projectConfig import fconfigLoadFromFile
+    from vaibify.docker.x11Authorizations import fnReleaseAuthorizationQuietly
     configProject = fconfigLoadFromFile(sConfigPath)
     if configProject.bX11Forwarding == bNewValue:
         return False
@@ -1215,6 +1220,8 @@ def _fbApplyX11Forwarding(sConfigPath, bNewValue):
             "Turn networkIsolation off in vaibify.yml first.",
         )
     _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)
+    if not bNewValue:
+        fnReleaseAuthorizationQuietly(sContainerName)
     return True
 
 

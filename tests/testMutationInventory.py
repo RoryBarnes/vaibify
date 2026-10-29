@@ -452,7 +452,13 @@ I_UNCLASSIFIED_ROW_BUDGET = 260
 # TWO confined writes (fnMakeDirectory for the manuscript directory,
 # fnWriteTreeViaTar for the files) where one stdin-fed program exec
 # stood before; both are classified, under the pull's mode-(b) carrier.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 225
+# 225 -> 226 (2026-10-29), a NEW reach on the researcher's own machine,
+# named: the X11 helper launch (x11Authorizations.fdictRunHelper), a
+# fixed `sys.executable -I -m vaibify.host.x11Authority` argv with
+# validated values, which touches no container and reaches only the
+# researcher's own X server. The row is excluded with its authority
+# recorded; the guards behind it are kill-confirmed.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 226
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -759,7 +765,13 @@ DICT_UNRESOLVED_BUDGET = {
     # plan's steps, root only through an OS-owned prompt). Each takes
     # its argv as a parameter, built from constants in one module, so
     # the scan cannot read it; both rows carry reviewed dispositions.
-    "opaque-subprocess-command": 24,
+    # 24 -> 25 (2026-10-29), NEW host reach, named: the X11 helper
+    # launch, x11Authorizations.fdictRunHelper, which takes the
+    # helper's argument list as a parameter (the operation name and the
+    # validated values _flistCommonArguments builds) and prefixes the
+    # fixed `sys.executable -I -m vaibify.host.x11Authority`; the row
+    # carries a reviewed disposition.
+    "opaque-subprocess-command": 25,
     # 52 since fsImageState (2026-09-18): a gateway image lookup, read
     # through the same SDK root as flistGetRunningContainers beside it.
     # 53 since fdictSweepSurvivorsOfVanishedResources (2026-09-21): the

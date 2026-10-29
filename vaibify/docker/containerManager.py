@@ -34,6 +34,7 @@ from . import fnRunDockerCommand
 from .volumeManager import (
     fbVolumeExists, fsGetCredentialsVolumeName, fsGetVolumeName,
 )
+from .x11Authorizations import fnReleaseAuthorizationQuietly
 from .x11Forwarding import flistConfigureX11Args
 
 # The immutable label a reservation-owned container carries. Cleanup
@@ -1221,7 +1222,18 @@ def _fnAddX11Forwarding(config, saRunArgs):
             "networkIsolation. A sealed container cannot use a display "
             "channel; set one of them to false in vaibify.yml."
         )
-    saRunArgs.extend(flistConfigureX11Args())
+    saRunArgs.extend(flistConfigureX11Args(
+        config.sProjectName, _fsProjectUuidOrEmpty(config.sProjectName),
+    ))
+
+
+def _fsProjectUuidOrEmpty(sProjectName):
+    """Return the registered project's identity; '' for a name the registry lacks."""
+    from vaibify.config.registryManager import fsProjectUuidFor
+    try:
+        return fsProjectUuidFor(sProjectName)
+    except (KeyError, OSError, ValueError):
+        return ""
 
 
 def _fnAddAgentHostBridge(config, saRunArgs):
@@ -1477,7 +1489,9 @@ def fnRemoveStopped(sProjectName):
     """Remove a stopped container if it still exists.
 
     Its secret files are released once the daemon confirms the removal;
-    see :func:`_fnReleaseSecretSourcesIfRemoved`.
+    see :func:`_fnReleaseSecretSourcesIfRemoved`. Its X authorization,
+    if it had one, is revoked: a stopped container draws nothing, and
+    a cookie that outlives its container admits whoever holds a copy.
     """
     listMountSources = _flistMountSourcesOfContainer(sProjectName)
     saCommand = ["docker", "rm", sProjectName]
@@ -1494,6 +1508,7 @@ def fnRemoveStopped(sProjectName):
     except Exception:  # noqa: BLE001 -- a removal never fails on its cleanup
         logger.warning("secret-file release after removal failed",
                        exc_info=True)
+    fnReleaseAuthorizationQuietly(sProjectName)
 
 
 def fbContainerIsRunning(sProjectName):

@@ -27257,15 +27257,9 @@ LIST_FALSIFICATIONS = [
         old='    return int(matchDisplay.group(1)) if matchDisplay else 0\n',
         new='    return 0\n',
     ),
-    Falsification(
-        nodeid='tests/testX11Forwarding.py::test_macGrant_admits_the_local_user_and_the_tcp_loopback',
-        source='vaibify/docker/x11Forwarding.py',
-        old='    _fnRunBestEffort([_fsFindXhost(), "+localhost"])\n',
-        new='',
-    ),
     # --- 2026-10-02: X11 forwarding is opt-in per project and refused beside network isolation ---
     Falsification(
-        nodeid='tests/testX11OptIn.py::testAProjectThatDidNotOptInGetsNoDisplayNoSocketAndNoXhost',
+        nodeid='tests/testX11OptIn.py::testAProjectThatDidNotOptInGetsNoDisplayNoSocketAndNoAuthorization',
         source='vaibify/docker/containerManager.py',
         old='    if not getattr(config, "bX11Forwarding", False):\n        return\n',
         new='',
@@ -27329,8 +27323,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testX11Settings.py::test_turning_the_opt_in_on_persists_and_asks_for_a_recreate',
         source='vaibify/gui/registryRoutes.py',
-        old='    _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)\n    return True\n',
-        new='    return True\n',
+        old='    _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)\n    if not bNewValue:\n',
+        new='    if not bNewValue:\n',
     ),
     Falsification(
         nodeid='tests/testX11Settings.py::test_the_opt_in_is_refused_beside_network_isolation',
@@ -38145,5 +38139,86 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/routeScope.py',
         old='    return fbAdmissionGateClosed()\n',
         new='    return False\n',
+    ),
+    # --- 2026-10-29: X11 forwarding admits a container by its OWN
+    # authorization (security hardening plan, commit 8): no xhost grant,
+    # revoke after a probe, renew after a server restart, read-only mount. ---
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::testTheLegacyXhostGrantsAreWithdrawn',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    _fnRunBestEffort([_fsFindXhost(), "-localhost"])\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Lifecycle.py::testTheHubWithdrawsTheLegacyGrantsAtStartup',
+        source='vaibify/gui/x11Lifecycle.py',
+        old='    if fbXServerAvailable():\n        x11Forwarding.fnRevokeLegacyXhostGrants()\n',
+        new='    if False:\n        x11Forwarding.fnRevokeLegacyXhostGrants()\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testTheAuthorizationIsMountedReadOnly',
+        source='vaibify/docker/x11Authorizations.py',
+        old='        f"type=bind,source={sDirectory},target={S_CONTAINER_AUTHORITY_DIRECTORY},readonly",\n',
+        new='        f"type=bind,source={sDirectory},target={S_CONTAINER_AUTHORITY_DIRECTORY}",\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testATransientFailureNeverFallsBackToTheServerCookie',
+        source='vaibify/docker/x11Authorizations.py',
+        # an unreachable server treated like one without the extension
+        old=(
+            '        x11Authority.S_OUTCOME_SECURITY_UNSUPPORTED,\n'
+            '        x11Authority.S_OUTCOME_LIBRARY_MISSING,\n'
+            '    ):\n'
+        ),
+        new=(
+            '        x11Authority.S_OUTCOME_SECURITY_UNSUPPORTED,\n'
+            '        x11Authority.S_OUTCOME_LIBRARY_MISSING,\n'
+            '        x11Authority.S_OUTCOME_SERVER_UNREACHABLE,\n'
+            '    ):\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testARefusedProbeRenewsAndNeverRevokesTheOldId',
+        source='vaibify/docker/x11Authorizations.py',
+        old='    if dictProbe["sOutcome"] != x11Authority.S_OUTCOME_REFUSED:\n        return dictProbe\n',
+        new='    if True:\n        return dictProbe\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authority.py::testARefusedProbeRevokesNothing',
+        source='vaibify/host/x11Authority.py',
+        old=(
+            '        if sProbe == S_OUTCOME_REFUSED:\n'
+            '            fnPrintOutcome(S_OUTCOME_GONE,\n'
+            '                           sReason="the cookie is already refused; nothing revoked")\n'
+            '            return\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authority.py::testTheTimeoutIsNeitherZeroNorPastTheServersClock',
+        source='vaibify/host/x11Authority.py',
+        old='I_SECURITY_NEVER_TIMEOUT_SECONDS = 1_000_000\n',
+        new='I_SECURITY_NEVER_TIMEOUT_SECONDS = 0\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Release.py::testStoppingAContainerRevokesItsAuthorization',
+        source='vaibify/docker/containerManager.py',
+        old='    fnReleaseAuthorizationQuietly(sProjectName)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Release.py::testTurningForwardingOffRevokesTheRunningContainersAuthorization',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if not bNewValue:\n        fnReleaseAuthorizationQuietly(sContainerName)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Release.py::testDeletingAnEnvironmentRevokesItsAuthorization',
+        source='vaibify/gui/environmentDeletion.py',
+        old=(
+            '        if bContainerRemoved:\n'
+            '            x11Authorizations.fnReleaseAuthorizationQuietly(sContainerName)\n'
+        ),
+        new='',
     ),
 ]

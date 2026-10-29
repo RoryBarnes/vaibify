@@ -464,14 +464,20 @@ def _ftDescribeX11Findings(connectionDocker, sContainerId):
     lines, every failure to establish a fact answers with NO lines.
     """
     from vaibify.docker.containerManager import fjsonInspectContainer
+    from vaibify.docker.x11Authorizations import flistDescribeAuthorization
     from vaibify.docker.x11Forwarding import ftDescribeX11Findings
+    from ..pipelineServer import fsContainerNameForId
     configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
     if configProject is None:
         return [], []
     try:
-        return ftDescribeX11Findings(
+        listContainerLines, listHostLines = ftDescribeX11Findings(
             configProject.bX11Forwarding, fjsonInspectContainer(sContainerId),
         )
+        listContainerLines += flistDescribeAuthorization(
+            fsContainerNameForId(connectionDocker, sContainerId),
+        )
+        return listContainerLines, listHostLines
     except Exception:
         return [], []
 
