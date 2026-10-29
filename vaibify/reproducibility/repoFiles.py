@@ -1229,10 +1229,21 @@ class SnapshotRepoFiles:
         return self._dictFiles[sRelPath]
 
     def fbIsFile(self, sRelPath):
-        """Return the snapshotted existence of an envelope file."""
+        """Return the snapshotted existence of an envelope file.
+
+        ``None`` in the snapshot means the reader was refused the path;
+        that is "could not check", so it raises ``OSError`` like a failed
+        live read, never answers absent.
+        """
         if not self.sRootPath:
             return False
-        return bool(self._fdictFileEntry(sRelPath).get("bIsFile"))
+        bIsFile = self._fdictFileEntry(sRelPath).get("bIsFile")
+        if bIsFile is None:
+            raise OSError(
+                f"could not check '{sRelPath}': the reader was refused "
+                "the path at snapshot time"
+            )
+        return bool(bIsFile)
 
     def fbIsDir(self, sRelPath):
         """Directories are not sampled; snapshot has no honest answer."""
@@ -1243,6 +1254,11 @@ class SnapshotRepoFiles:
     def fsReadText(self, sRelPath):
         """Return snapshotted file text; FileNotFoundError when absent."""
         dictEntry = self._fdictFileEntry(sRelPath)
+        if dictEntry.get("bIsFile") is None:
+            raise OSError(
+                f"could not read '{sRelPath}': the reader was refused "
+                "the path at snapshot time"
+            )
         if not dictEntry.get("bIsFile") or dictEntry.get("sText") is None:
             raise FileNotFoundError(
                 f"not in container at snapshot time: '{sRelPath}'"

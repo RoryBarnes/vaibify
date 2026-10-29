@@ -47,7 +47,9 @@ def liveContainer():
     )
     try:
         for sSetup in (
-            f"useradd -m {S_USER}",
+            # Ubuntu's useradd gives a 750 home; the read-only reader
+            # needs that group bit, so Debian's 700 is widened here.
+            f"useradd -m {S_USER} && chmod 750 /home/{S_USER}",
             f"mkdir -p {S_PROJECT}/docs {S_OUTSIDE}",
             f"chown -R {S_USER} /home/{S_USER}",
         ):
@@ -72,7 +74,12 @@ def testALargeSecretIsWrittenIntactPrivateAndOwnedByTheUser(liveContainer):
     iExit, sStat = _fsRunAsUser(container, f"stat -c '%a %U %s' {sTarget}")
     assert iExit == 0
     assert sStat.split() == ["600", S_USER, str(len(baPayload))]
-    baReadBack = connection.fbaFetchFile(container.id, sTarget)
+    # A mode-600 file is the container user's private file, which the
+    # hub reads as that user, not as the read-only integrity reader.
+    from vaibify.docker.execLane import S_EXEC_LANE_HUB_INTERNAL
+    baReadBack = connection.fbaFetchFile(
+        container.id, sTarget, sLane=S_EXEC_LANE_HUB_INTERNAL,
+    )
     assert baReadBack == baPayload
 
 

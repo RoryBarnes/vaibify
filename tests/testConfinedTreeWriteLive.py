@@ -65,7 +65,7 @@ def liveContainer():
     )
     try:
         _fnRunSetup(container, [
-            f"useradd -m {S_USER}",
+            f"useradd -m {S_USER} && chmod 750 /home/{S_USER}",
             f"mkdir -p {S_PROJECT} && chown -R {S_USER} /home/{S_USER}",
         ])
         yield container, DockerConnection()

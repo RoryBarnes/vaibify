@@ -386,9 +386,18 @@ def _fsHashFollow(sAbs):
         return h.hexdigest()
     except OSError:
         return None
+def _fbIsFileOrNone(sAbs):
+    # None is "could not look": a reader refused the directory. It is
+    # neither present nor absent, and the adapter raises on it.
+    try:
+        return os.path.isfile(sAbs) if os.lstat(sAbs) else False
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError:
+        return None
 for sRel in dictArgs["listContentPaths"]:
     sAbs = os.path.join(sRoot, sRel)
-    dictEntry = {"bIsFile": os.path.isfile(sAbs), "sText": None,
+    dictEntry = {"bIsFile": _fbIsFileOrNone(sAbs), "sText": None,
                  "iMtime": None}
     if dictEntry["bIsFile"]:
         try:
@@ -725,6 +734,22 @@ I_MAX_CREDENTIAL_FILE_BYTES = 256 * 1024
 # stops one byte past it, so an oversized file costs the ceiling, never
 # its own size, and the extra byte tells "at the limit" from "over".
 I_MAX_SMALL_FILE_BYTES = 4 * 1024 * 1024
+
+# The existence probes' one answer for a path the reader cannot reach:
+# a non-zero exit, which the host turns into OSError, never ``0``.
+_S_EXISTENCE_PROBE_HELPER = (
+    "import json,os,stat,sys\n"
+    "def fbExistsOrRefuse(sPath, fbKind):\n"
+    "    try:\n"
+    "        statPath = os.stat(sPath)\n"
+    "    except (FileNotFoundError, NotADirectoryError):\n"
+    "        return False\n"
+    "    except OSError as errorStat:\n"
+    "        sys.stderr.write('refused: ' + type(errorStat).__name__\n"
+    "                         + ': ' + str(errorStat) + chr(10))\n"
+    "        sys.exit(2)  # a refusal is never absence\n"
+    "    return fbKind(statPath.st_mode)\n"
+)
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
@@ -1127,6 +1152,13 @@ _DICT_TYPED_READ_PROGRAMS = {
     ),
     # Existence probes, replacing `test -f` / `test -d` assembled by a
     # repo-files adapter and run through the general exec primitive.
+    # Since the integrity-read lane (2026-10-28) they run as a user who
+    # may be REFUSED a directory the container user owns, and a
+    # refusal must never read as absence: `os.path.isfile` answers
+    # False to EACCES exactly as it does to a missing file, which is
+    # how a manifest behind a mode-700 home read as "not found". The
+    # shared helper stats the path and exits non-zero on any failure
+    # but absence, which the host reads as "could not probe".
     # They are reads by any reading, but the primitive cannot know that
     # from command text, so under an enforced lane every one of them was
     # refused -- and a level gate that catches OSError turned the
@@ -1137,14 +1169,14 @@ _DICT_TYPED_READ_PROGRAMS = {
     # non-zero exit is how this layer spells "the read itself failed",
     # and "the file is absent" must not be the same answer.
     S_TYPED_READ_FILE_EXISTS: (
-        "import os,sys; "
-        "sys.stdout.write('1' if os.path.isfile("
-        + _S_TYPED_READ_PATH_SLOT + ") else '0')"
+        _S_EXISTENCE_PROBE_HELPER
+        + "sys.stdout.write('1' if fbExistsOrRefuse("
+        + _S_TYPED_READ_PATH_SLOT + ", stat.S_ISREG) else '0')\n"
     ),
     S_TYPED_READ_DIRECTORY_EXISTS: (
-        "import os,sys; "
-        "sys.stdout.write('1' if os.path.isdir("
-        + _S_TYPED_READ_PATH_SLOT + ") else '0')"
+        _S_EXISTENCE_PROBE_HELPER
+        + "sys.stdout.write('1' if fbExistsOrRefuse("
+        + _S_TYPED_READ_PATH_SLOT + ", stat.S_ISDIR) else '0')\n"
     ),
     # The BATCHED existence probe. It is a separate program rather than
     # a loop over the single-path one because the dashboard's file
@@ -1161,10 +1193,10 @@ _DICT_TYPED_READ_PROGRAMS = {
     # Python list literal inside a program that is quoted whole as one
     # argument: there is no layer left for a path to escape into.
     S_TYPED_READ_PATHS_EXIST: (
-        "import json,os,sys; "
-        "sys.stdout.write(json.dumps("
-        "[os.path.exists(s) for s in "
-        + _S_TYPED_READ_PATH_SLOT + "]))"
+        _S_EXISTENCE_PROBE_HELPER
+        + "sys.stdout.write(json.dumps("
+        "[fbExistsOrRefuse(s, lambda iMode: True) for s in "
+        + _S_TYPED_READ_PATH_SLOT + "]))\n"
     ),
     # The batched repo-relative HASH, replacing an embedded script the
     # repo-files adapter assembled and ran through the general exec
@@ -1228,10 +1260,10 @@ _DICT_TYPED_READ_PROGRAMS = {
     # directory" -- because a plain file answering no to the first was
     # being offered to the researcher as somewhere to run `git init`.
     S_TYPED_READ_DIRECTORIES_EXIST: (
-        "import json,os,sys; "
-        "sys.stdout.write(json.dumps("
-        "[os.path.isdir(s) for s in "
-        + _S_TYPED_READ_PATH_SLOT + "]))"
+        _S_EXISTENCE_PROBE_HELPER
+        + "sys.stdout.write(json.dumps("
+        "[fbExistsOrRefuse(s, stat.S_ISDIR) for s in "
+        + _S_TYPED_READ_PATH_SLOT + "]))\n"
     ),
     # One answer per requested path: base64 of the first
     # I_MAX_SMALL_FILE_BYTES + 1 bytes, or null when the file cannot be

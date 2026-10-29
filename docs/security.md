@@ -128,7 +128,14 @@ Every exec the hub performs now declares one of three lanes
 | researcher-command | the container user | the image's own environment, `~/.local/bin` included | step runs, test runs, the terminal, agent CLIs, and the probes that must see the researcher's installed packages |
 
 The read-only user needs no account in the image, so no image is
-rebuilt. What it buys is bounded, and stated: a process the agent
+rebuilt. It reads through the container user's GROUP: the directories
+on the way to a file must grant the group its traversal bit, which
+Ubuntu's `useradd` gives a home directory (mode 750) and which `/workspace`
+has by construction. A project kept under a directory that is private
+to the container user (mode 700, Debian's default home) reads as
+unknown, never as absent: the existence probes exit non-zero when the
+reader is refused, and every gate reports "could not check". What the
+reader buys is bounded, and stated: a process the agent
 controls cannot ptrace, signal or read the `/proc` entry of a program
 that hashes a file for the dashboard, and cannot alter the root-owned
 interpreter it runs. The agent can still change a file, which the

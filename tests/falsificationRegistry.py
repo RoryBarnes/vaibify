@@ -36612,6 +36612,16 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testExecLane.py::'
+            'testARefusedPathIsNeverReportedAbsentByTheExistenceProbes'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # a path the reader is refused reads as absent again
+        old='    "        sys.exit(2)  # a refusal is never absence\\n"\n',
+        new='    "        return False\\n"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecLane.py::'
             'testTheRootProbeNeverResolvesThroughTheImagePath'
         ),
         source='vaibify/docker/dockerConnection.py',

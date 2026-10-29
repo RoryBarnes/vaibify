@@ -415,3 +415,102 @@ def testAnUnreadableMarkerIsUnknownNeverMissing():
     assert dictMarker["sMarkerPath"] == "/p/Step01.json"
     assert "PermissionError" in dictMarker["sReason"]
     assert _fdictParseMarker(None, "/p/Step01.json") is None
+
+
+# ---------------------------------------------------------------------------
+# A path the reader is refused is "could not check", never absent
+# ---------------------------------------------------------------------------
+
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+
+from vaibify.docker.dockerConnection import (  # noqa: E402
+    _DICT_TYPED_READ_PROGRAMS, _S_TYPED_READ_PATH_SLOT, _fsTypedReadPathLiteral,
+    S_TYPED_READ_DIRECTORIES_EXIST, S_TYPED_READ_DIRECTORY_EXISTS,
+    S_TYPED_READ_FILE_EXISTS, S_TYPED_READ_PATHS_EXIST,
+)
+
+
+def _ftRunExistenceProgram(sOperation, objPaths):
+    sProgram = _DICT_TYPED_READ_PROGRAMS[sOperation].replace(
+        _S_TYPED_READ_PATH_SLOT, _fsTypedReadPathLiteral(objPaths),
+    )
+    resultProc = subprocess.run(
+        [sys.executable, "-I", "-c", sProgram], capture_output=True,
+        text=True, timeout=30,
+    )
+    return resultProc.returncode, resultProc.stdout, resultProc.stderr
+
+
+@pytest.fixture
+def dictProbeTree(tmp_path):
+    """A readable file, an absent path, and a file behind a closed directory."""
+    import stat as statModule
+    if os.geteuid() == 0:
+        pytest.skip("root is never refused a directory")
+    pathClosed = tmp_path / "closed"
+    pathClosed.mkdir()
+    (pathClosed / "hidden.txt").write_text("x")
+    (tmp_path / "plain.txt").write_text("y")
+    os.chmod(pathClosed, 0)
+    yield {
+        "sPlain": str(tmp_path / "plain.txt"),
+        "sAbsent": str(tmp_path / "absent.txt"),
+        "sHidden": str(pathClosed / "hidden.txt"),
+        "sClosed": str(pathClosed),
+    }
+    os.chmod(pathClosed, statModule.S_IRWXU)
+
+
+@pytest.mark.falsification
+def testARefusedPathIsNeverReportedAbsentByTheExistenceProbes(dictProbeTree):
+    """The probes stat the path; EACCES exits non-zero, absence prints 0.
+
+    The read-only reader can be refused a directory the container user
+    owns. ``os.path.isfile`` answers False to that exactly as to a
+    missing file, which read a manifest behind a mode-700 home as "not
+    found" (CI, 2026-10-28). The host turns the non-zero exit into
+    ``OSError``, which every gate reports as "could not check".
+
+    Kills: turning the refusal branch of ``fbExistsOrRefuse`` back into
+    ``return False``.
+    """
+    for sOperation in (S_TYPED_READ_FILE_EXISTS, S_TYPED_READ_DIRECTORY_EXISTS):
+        iExit, sOut, sErr = _ftRunExistenceProgram(sOperation, dictProbeTree["sHidden"])
+        assert iExit != 0 and "refused: PermissionError" in sErr, (sOperation, sOut, sErr)
+        iExit, sOut, _ = _ftRunExistenceProgram(sOperation, dictProbeTree["sAbsent"])
+        assert (iExit, sOut) == (0, "0"), sOperation
+    iExit, sOut, _ = _ftRunExistenceProgram(S_TYPED_READ_FILE_EXISTS, dictProbeTree["sPlain"])
+    assert (iExit, sOut) == (0, "1")
+    iExit, sOut, _ = _ftRunExistenceProgram(S_TYPED_READ_DIRECTORY_EXISTS, dictProbeTree["sClosed"])
+    assert (iExit, sOut) == (0, "1"), "the closed directory itself can be stat-ed"
+    for sOperation in (S_TYPED_READ_PATHS_EXIST, S_TYPED_READ_DIRECTORIES_EXIST):
+        iExit, sOut, sErr = _ftRunExistenceProgram(
+            sOperation, [dictProbeTree["sPlain"], dictProbeTree["sHidden"]],
+        )
+        assert iExit != 0 and "refused" in sErr, (sOperation, sOut)
+        iExit, sOut, _ = _ftRunExistenceProgram(
+            sOperation, [dictProbeTree["sPlain"], dictProbeTree["sAbsent"]],
+        )
+        assert iExit == 0 and sOut.strip() == (
+            "[true, false]" if sOperation == S_TYPED_READ_PATHS_EXIST
+            else "[false, false]"
+        ), (sOperation, sOut)
+
+
+def testTheSnapshotAdapterRaisesForAPathTheReaderWasRefused():
+    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
+    filesSnapshot = SnapshotRepoFiles("/p", {
+        "present.txt": {"bIsFile": True, "sText": "t", "iMtime": 1},
+        "absent.txt": {"bIsFile": False, "sText": None, "iMtime": None},
+        "refused.txt": {"bIsFile": None, "sText": None, "iMtime": None},
+    }, {})
+    assert filesSnapshot.fbIsFile("present.txt") is True
+    assert filesSnapshot.fbIsFile("absent.txt") is False
+    with pytest.raises(OSError, match="refused") as errorInfo:
+        filesSnapshot.fbIsFile("refused.txt")
+    assert not isinstance(errorInfo.value, FileNotFoundError)
+    with pytest.raises(OSError, match="refused"):
+        filesSnapshot.fsReadText("refused.txt")
+    with pytest.raises(FileNotFoundError):
+        filesSnapshot.fsReadText("absent.txt")
