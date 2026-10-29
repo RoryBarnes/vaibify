@@ -164,6 +164,29 @@ DICT_LIFECYCLE_AUDIT = {
             "removable."
         ),
     },
+    ("POST", "/api/registry/{sName}/rename"): {
+        "sHandler": "fdictRenameEnvironment",
+        "bHoldsMutationLock": False,
+        "bWritesJournalRecord": True,
+        "sTransfer": "refused",
+        "sFinding": (
+            "No container mutation lock, because there is no running "
+            "container to mutate: a rename is refused unless the "
+            "environment is stopped. The journal flag is the deletion's "
+            "mechanical reachability: the route READS the operation "
+            "journal in the shared busy refusal and writes nothing to "
+            "it; the rename keeps its own journal under pendingRenames, "
+            "which is how startup recovery rolls it back or forward. "
+            "The arbitration is the per-name lifecycle lock on BOTH "
+            "names and then both session flocks, taken by the hub-owned "
+            "transaction before its first write and held to the end, "
+            "with the checks run again under them. A claim, a start or "
+            "a transfer of either name meets a held lifecycle lock or "
+            "flock and is refused; one arriving after the transaction "
+            "settles meets a start gate that refuses while a rename is "
+            "still pending."
+        ),
+    },
     ("POST", "/api/registry/{sName}/reconcile"): {
         "sHandler": "fdictReconcileQuarantine",
         "bHoldsMutationLock": True,
@@ -227,8 +250,8 @@ def _flistCallablesBehind(tRoute):
     """Return the functions each audited handler delegates its work to."""
     from vaibify.config import reconciliation, registryManager
     from vaibify.gui import (
-        environmentDeletion, hostControlChannel, registryRoutes,
-        startReservation,
+        environmentDeletion, environmentRename, hostControlChannel,
+        registryRoutes, startReservation,
     )
     dictBehind = {
         ("POST", "/api/containers/{sName}/stop"): [
@@ -258,6 +281,13 @@ def _flistCallablesBehind(tRoute):
             registryRoutes._fnReleaseCallerOwnedSession,
             environmentDeletion.fdictDeleteEnvironment,
             environmentDeletion._fbRemoveContainer,
+        ],
+        ("POST", "/api/registry/{sName}/rename"): [
+            registryRoutes._fnRefuseBusyProject,
+            registryRoutes._fbWaitForJournalToSettle,
+            registryRoutes._fnReleaseCallerOwnedSession,
+            environmentRename.fnRunRenameTransaction,
+            environmentRename._ftReserve,
         ],
         ("POST", "/api/registry/{sName}/reconcile"): [
             hostControlChannel.fdictReconcileHeldContainer,
