@@ -17,7 +17,7 @@ and recovery that rolls back or forward at hub startup. In order:
 0. reserve the lifecycle locks, old name then new, then the session
    flocks, old then new, and re-run the checks;
 1. journal;
-2. create each new volume, labelled with the transaction, and copy;
+2. create each new volume, labeled with the transaction, and copy;
 3. verify each copy by its content manifest (``volumeCopy``);
 4. point each new tag at the journaled image ID, never at a tag;
 5. rewrite ``projectName``;
@@ -313,7 +313,7 @@ def _fdictWriteJournal(dictProject, sNewName, dockerClient):
 
 
 def _fnCopyVolumes(dictJournal, dockerClient):
-    """Steps 2-3: create each labelled volume, copy it, verify it."""
+    """Steps 2-3: create each labeled volume, copy it, verify it."""
     if dictJournal["listVolumes"] and not dictJournal["sImageId"]:
         raise RenameRefusedError(409, (
             f"'{dictJournal['sOldName']}' has volumes but no image to copy "
@@ -526,7 +526,7 @@ def _fnRestoreConfig(dictJournal):
 
 
 def _fnRemoveThisTransactionsDockerObjects(dictJournal, dockerClient):
-    """Remove the volumes this transaction labelled and the tags it made."""
+    """Remove the volumes this transaction labeled and the tags it made."""
     for dictPair in dictJournal["listVolumes"]:
         dictVolume = volumeManager.fdictInspectVolume(dictPair["sTo"])
         if dictVolume and dictVolume["dictLabels"].get(
