@@ -1,8 +1,8 @@
-"""Every level of the Project block says it can be opened.
+"""Every requirement level inside the Project block says it can be opened.
 
 All three nesting levels — the Project banner, each requirement group,
-each requirement row — have always been click-to-expand, and none of
-them showed it. The consequence was not cosmetic: a requirement whose
+each requirement row — have always been click-to-expand, and once none
+of them showed it. The consequence was not cosmetic: a requirement whose
 light is red renders as "you are blocked and there is nothing to do",
 when the detail body behind that banner is precisely where the fix
 lives. A researcher hit this on the personal-instruction-layer row and
@@ -11,6 +11,11 @@ click.
 
 Step rows have carried this triangle all along, so the fix is to stop
 the Project block being the exception.
+
+The two top banners, Project and Steps, carry no triangle (ruled
+2026-10-28): the banners are taught in the QuickStart, while rows are
+where a researcher got stuck (dc00ee8b). They keep click-to-collapse
+and the tooltip that says so.
 
 The direction is asserted, not just the presence: a collapsed row
 showing the OPEN glyph would be worse than no glyph, since it tells
@@ -51,11 +56,14 @@ def test_the_project_block_shows_and_tracks_its_expand_state(
     """
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub, bAwaitProjectBlock=True)
 
-    sProject = _fsTitleText(pageDashboard, ".project-block-title")
-    assert S_OPEN_TRIANGLE in sProject or S_CLOSED_TRIANGLE in sProject, (
-        "the Project banner is click-to-expand and shows no marker "
-        f"saying so: {sProject!r}"
-    )
+    for sBannerSelector in (".project-block-title", ".steps-block-title"):
+        sBanner = _fsTitleText(pageDashboard, sBannerSelector)
+        assert S_OPEN_TRIANGLE not in sBanner, (
+            f"the {sBannerSelector} banner carries a triangle: {sBanner!r}"
+        )
+        assert S_CLOSED_TRIANGLE not in sBanner, (
+            f"the {sBannerSelector} banner carries a triangle: {sBanner!r}"
+        )
 
     sGroup = _fsTitleText(pageDashboard, ".requirement-group-title")
     assert S_OPEN_TRIANGLE in sGroup or S_CLOSED_TRIANGLE in sGroup, (

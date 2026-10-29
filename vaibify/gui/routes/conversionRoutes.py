@@ -20,8 +20,13 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
 from ...config import pendingConversions
+from ...config.mutationAdmission import (
+    fnAssertAdmissionGateOpen, fnReRaiseControlPlaneRefusal,
+)
 from .. import conversionLifecycle
-from ..routeContext import fnRejectAgentTokenLane
+from ..routeContext import (
+    fcontextHoldLifecycleLocksOrConflict, fnRejectAgentTokenLane,
+)
 from ..routeScope import S_CARRIER_SEPARATE_AUTHORITY, ffnDeclareCarrierMode
 
 
@@ -69,6 +74,7 @@ def _fnRegisterRetry(app, dictCtx):
         fnRejectAgentTokenLane(requestHttp)
         _fnRequireSafeName(sHostName)
         _fdictRequireView(sHostName)
+        fnAssertAdmissionGateOpen("A containerization")
         try:
             await asyncio.to_thread(conversionLifecycle.fnRetryConversion, sHostName)
         except conversionLifecycle.ConversionRefusedError as error:
@@ -116,6 +122,7 @@ def _fnRegisterCancel(app, dictCtx):
         try:
             await asyncio.to_thread(conversionLifecycle.fnCancelConversion, sHostName)
         except Exception as error:  # noqa: BLE001 -- the sentence is the answer
+            fnReRaiseControlPlaneRefusal(error)
             raise HTTPException(409, detail={"sMessage": (
                 f"The containerization could not be cancelled cleanly: {error}"
             )}) from None
@@ -161,17 +168,21 @@ def _fnRegisterReturnToHostMode(app, dictCtx):
                 "sWorkingConfig": dictJudgement["sWorkingConfig"],
                 "sCommittedConfig": dictJudgement["sCommittedConfig"],
             }
-        await asyncio.to_thread(
-            fnRestoreCommittedConfig, dictProject, dictJudgement["sCommittedConfig"],
-        )
-        try:
-            sHostName = await asyncio.to_thread(
-                registryManager.fsReturnProjectToHost, sName,
+        with fcontextHoldLifecycleLocksOrConflict(
+            [sName], "returned to host mode",
+        ):
+            await asyncio.to_thread(
+                fnRestoreCommittedConfig, dictProject,
+                dictJudgement["sCommittedConfig"],
             )
-        except KeyError as error:
-            raise HTTPException(404, str(error)) from None
-        except ValueError as error:
-            raise HTTPException(409, str(error)) from None
+            try:
+                sHostName = await asyncio.to_thread(
+                    registryManager.fsReturnProjectToHost, sName,
+                )
+            except KeyError as error:
+                raise HTTPException(404, str(error)) from None
+            except ValueError as error:
+                raise HTTPException(409, str(error)) from None
         return {"bReturned": True, "sHostName": sHostName}
 
 

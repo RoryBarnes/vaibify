@@ -756,6 +756,44 @@ def fnPromoteHostProject(sOldName, sNewName):
     _fnMutateRegistryLocked(fnRewriteEntry)
 
 
+S_RENAME_COMMIT_KEY = "dictRenameCommit"
+
+
+def fnCommitEnvironmentRename(sOldName, sNewName, sTransactionId):
+    """Switch an entry to its new name: the rename's ONE commit point.
+
+    In a single locked registry write the entry's ``sName`` and
+    ``sContainerName`` become ``sNewName`` and it is stamped with the
+    transaction that did it, which is how recovery knows the rename
+    committed: the registry, and nothing else, decides. The new name
+    is checked free inside the same lock, so a registration racing the
+    rename cannot leave two entries with one name.
+    """
+    def fnRewriteEntry(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sOldName)
+        if dictEntry is None:
+            raise KeyError(f"Project '{sOldName}' not found in registry")
+        _fnRequireNewNameFree(dictRegistry, dictEntry, sNewName)
+        dictEntry["sName"] = sNewName
+        dictEntry["sContainerName"] = sNewName
+        dictEntry[S_RENAME_COMMIT_KEY] = {
+            "sTransactionId": sTransactionId, "sFromName": sOldName,
+        }
+
+    _fnMutateRegistryLocked(fnRewriteEntry)
+
+
+def fnClearRenameCommit(sName, sTransactionId):
+    """Remove a finished rename's stamp, only if it is that rename's."""
+    def fnClearStamp(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sName)
+        dictStamp = (dictEntry or {}).get(S_RENAME_COMMIT_KEY) or {}
+        if dictStamp.get("sTransactionId") == sTransactionId:
+            del dictEntry[S_RENAME_COMMIT_KEY]
+
+    _fnMutateRegistryLocked(fnClearStamp)
+
+
 def fdictGetProject(sName):
     """Return the registry entry for a project, or None.
 

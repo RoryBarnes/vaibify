@@ -36,6 +36,17 @@
     --border-radius: 6px;
     --transition-speed: 0.15s;
     --highlight-color: var(--color-pale-blue);
+    --highlight-rgb: 19, 174, 213;
+    /* The PROOF level colors have ONE home. Every level-following
+       accent reads --highlight-color (or --highlight-rgb for a
+       translucent fill), which body.proof-level-N points here; the
+       L3 card and its verify button read --proof-level-3-color
+       directly, because they name that level at every level. */
+    --proof-level-1-color: #b39ddb;
+    --proof-level-2-color: #8bc8a3;
+    --proof-level-3-color: #f48fb1;
+    --proof-bloom-color: rgba(var(--highlight-rgb), 0.35);
+    --proof-icon-filter: none;
 }
 
 * {
@@ -223,6 +234,11 @@ html, body {
 
 .container-menu-item.danger {
     color: var(--color-red, #e74c3c);
+}
+
+.container-menu-item.disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
 }
 
 /* The one menu item nothing can undo. Red alone no longer separates
@@ -465,7 +481,7 @@ html, body {
     background: none;
     border: none;
     padding: 0;
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     text-decoration: underline;
     cursor: pointer;
     font: inherit;
@@ -949,6 +965,34 @@ pre.quarantine-remedy {
     font-size: 12px;
 }
 
+/* A Project card's ⋮ menu. Opening it holds the 3-second poll's
+   repaint until it closes, so the menu and the click inside it survive
+   a tick. */
+.container-card.project-card {
+    position: relative;
+}
+
+.project-card .project-card-actions {
+    margin-left: auto;
+}
+
+.project-card-menu {
+    display: none;
+    position: absolute;
+    right: 10px;
+    top: 100%;
+    z-index: 100;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.project-card-menu.is-open {
+    display: block;
+}
+
 #mainLayout {
     display: none;
     height: 100%;
@@ -973,10 +1017,26 @@ pre.quarantine-remedy {
     gap: 8px;
 }
 
+/* The wordmark is painted in the level color through an alpha mask,
+   so it carries no backdrop of its own: a filter over the opaque PNG
+   tinted the PNG's background too, which drew a box around the logo
+   (a maroon one at Level 3). The mask is derived from
+   vaibify_logo_paleblue.png; the commit that added it records how. */
 #toolbar .toolbar-logo {
+    display: inline-block;
+    flex-shrink: 0;
     height: 24px;
-    width: auto;
-    transition: filter 0.5s ease;
+    aspect-ratio: 1447 / 705;
+    background-color: var(--highlight-color);
+    -webkit-mask-image: url("/static/vaibify_logo_mask.png");
+    mask-image: url("/static/vaibify_logo_mask.png");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    transition: background-color 0.5s ease;
 }
 
 .vaibify-logo-large {
@@ -1003,11 +1063,6 @@ pre.quarantine-remedy {
 .toolbar-value {
     color: var(--text-primary);
     font-weight: 500;
-}
-body.proof-level-1 .toolbar-label,
-body.proof-level-2 .toolbar-label,
-body.proof-level-3 .toolbar-label {
-    color: #b39ddb;
 }
 .toolbar-workflow {
     color: var(--text-primary);
@@ -1838,7 +1893,7 @@ body.proof-level-3 .toolbar-label {
 }
 
 .step-item.selected {
-    background: rgba(19, 174, 213, 0.1);
+    background: rgba(var(--highlight-rgb), 0.1);
     border-left-color: var(--highlight-color);
 }
 
@@ -2093,7 +2148,7 @@ body.proof-level-3 .toolbar-label {
 
 .step-detail .section-add:hover {
     color: var(--highlight-color);
-    background: rgba(19, 174, 213, 0.15);
+    background: rgba(var(--highlight-rgb), 0.15);
 }
 
 /* Detail item with action buttons */
@@ -2812,7 +2867,7 @@ body.proof-level-3 .toolbar-label {
 
 /* Drop target highlight on step headers */
 .step-item.drop-target {
-    background: rgba(19, 174, 213, 0.15);
+    background: rgba(var(--highlight-rgb), 0.15);
     border-left-color: var(--highlight-color);
 }
 
@@ -3168,7 +3223,7 @@ body.proof-level-3 .toolbar-label {
 .viewer-viewport.drag-over {
     outline: 2px dashed var(--highlight-color);
     outline-offset: -4px;
-    background: rgba(19, 174, 213, 0.05);
+    background: rgba(var(--highlight-rgb), 0.05);
 }
 
 /* Resize handle between viewers */
@@ -4403,7 +4458,7 @@ body.proof-level-3 .toolbar-label {
 
 .test-section-label .test-add:hover {
     color: var(--highlight-color);
-    background: rgba(19, 174, 213, 0.15);
+    background: rgba(var(--highlight-rgb), 0.15);
 }
 
 .test-file-item {
@@ -5029,39 +5084,31 @@ body.proof-level-3 .toolbar-label {
    class hooks here so future phases can extend without re-renaming. */
 
 body.proof-level-1 {
-    --highlight-color: #b39ddb;
+    --highlight-color: var(--proof-level-1-color);
+    --highlight-rgb: 179, 157, 219;
     --proof-bloom-color: rgba(179, 157, 219, 0.35);
+    --proof-icon-filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
 }
 
 body.proof-level-2 {
     /* L2 Published: green. Mirrors L1's stub-recipe pattern so
        Phase 3 can add an L3 pink palette next to these without
        re-shaping the cascade. */
-    --highlight-color: #8bc8a3;
+    --highlight-color: var(--proof-level-2-color);
+    --highlight-rgb: 139, 200, 163;
     --proof-bloom-color: rgba(139, 200, 163, 0.35);
+    --proof-icon-filter: sepia(1) hue-rotate(80deg) saturate(2) brightness(0.85);
 }
 
 body.proof-level-3 {
     /* L3 Reproducible: pink. Same pattern as the L1 purple / L2 green
        palettes so the cascade order stays uniform across the ladder. */
-    --highlight-color: #f48fb1;
+    --highlight-color: var(--proof-level-3-color);
+    --highlight-rgb: 244, 143, 177;
     --proof-bloom-color: rgba(244, 143, 177, 0.35);
+    --proof-icon-filter: sepia(1) hue-rotate(295deg) saturate(2.4) brightness(0.95);
 }
 
-body.proof-level-3 .toolbar-logo,
-body.proof-level-3 .vaib-verified-badge,
-body.proof-level-3 .level-cell-favicon {
-    /* Pink tint via the same sepia recipe so the cluster shifts hue
-       smoothly across promotions without a per-level icon swap. */
-    filter: sepia(1) hue-rotate(295deg) saturate(2.4) brightness(0.95);
-}
-
-body.proof-level-2 .toolbar-logo,
-body.proof-level-2 .vaib-verified-badge,
-body.proof-level-2 .level-cell-favicon {
-    /* Green tint mirrors the purple sepia recipe used for L1. */
-    filter: sepia(1) hue-rotate(80deg) saturate(2) brightness(0.85);
-}
 
 /* --- Radial bloom animation (real DOM overlay) --- */
 
@@ -5098,9 +5145,9 @@ body.proof-level-2 .level-cell-favicon {
 /* --- Panel border glow cascade --- */
 
 @keyframes panelBorderGlow {
-    0%   { box-shadow: 0 0 0 0 rgba(179, 157, 219, 0); }
-    40%  { box-shadow: 0 0 8px 2px rgba(179, 157, 219, 0.5); }
-    100% { box-shadow: 0 0 0 0 rgba(179, 157, 219, 0); }
+    0%   { box-shadow: 0 0 0 0 rgba(var(--highlight-rgb), 0); }
+    40%  { box-shadow: 0 0 8px 2px rgba(var(--highlight-rgb), 0.5); }
+    100% { box-shadow: 0 0 0 0 rgba(var(--highlight-rgb), 0); }
 }
 
 .vaibify-glow-cascade {
@@ -5204,26 +5251,28 @@ body.proof-level-2 .level-cell-favicon {
 
 .vaibify-project-birth-outline path {
     fill: none;
-    stroke: rgba(179, 157, 219, 0.9);
+    stroke: rgba(var(--highlight-rgb), 0.9);
     stroke-width: 3;
     vector-effect: non-scaling-stroke;
     stroke-dasharray: 1;
     stroke-dashoffset: 1;
     stroke-linecap: round;
-    filter: drop-shadow(0 0 6px rgba(179, 157, 219, 0.6));
+    filter: drop-shadow(0 0 6px var(--proof-bloom-color));
     animation: projectBirthTrace 1.2s ease-out forwards;
 }
 
-/* Every favicon-based mark follows the ladder theme: the toolbar
-   logo, the verified badge, and the level-strip "attained" favicons
+/* Every favicon-based mark follows the ladder theme: the verified
+   badge, and the level-strip "attained" favicons
    (step rows, Steps and Project banners, requirement rows, Help
    samples). The raw favicon.png is pale blue, matching the pre-L1
    theme, so untinted marks read as off-theme once the ladder
-   recolors the rest of the UI. */
-body.proof-level-1 .toolbar-logo,
-body.proof-level-1 .vaib-verified-badge,
-body.proof-level-1 .level-cell-favicon {
-    filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
+   recolors the rest of the UI. The sepia recipes shift the hue across
+   promotions without a per-level icon swap; each level's recipe is
+   its --proof-icon-filter. */
+.vaib-verified-badge,
+.level-cell-favicon,
+.vaibify-checkmark img {
+    filter: var(--proof-icon-filter);
 }
 
 /* --- PROOF checkmark cluster next to workflow name ---
@@ -5239,7 +5288,6 @@ body.proof-level-1 .level-cell-favicon {
 .vaibify-checkmark img {
     width: 18px;
     height: 18px;
-    filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
     vertical-align: middle;
 }
 
@@ -5531,12 +5579,12 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 
 .file-drop-zone.drag-over {
     border-color: var(--highlight-color);
-    background: rgba(19, 174, 213, 0.1);
+    background: rgba(var(--highlight-rgb), 0.1);
     color: var(--highlight-color);
 }
 
 #listFiles.drag-over {
-    background: rgba(19, 174, 213, 0.05);
+    background: rgba(var(--highlight-rgb), 0.05);
 }
 
 .file-drop-zone-label,
@@ -5557,7 +5605,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 
 .file-item.drop-target {
-    background: rgba(19, 174, 213, 0.18);
+    background: rgba(var(--highlight-rgb), 0.18);
     outline: 1px dashed var(--highlight-color);
     outline-offset: -1px;
 }
@@ -5846,7 +5894,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     height: 16px;
     margin: 0;
     flex-shrink: 0;
-    accent-color: var(--color-pale-blue);
+    accent-color: var(--highlight-color);
 }
 .wizard-location-group {
     margin-bottom: 14px;
@@ -5864,7 +5912,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     border: 1px solid transparent;
 }
 .wizard-location-card-selected {
-    border-color: var(--color-pale-blue);
+    border-color: var(--highlight-color);
     background: var(--bg-input);
 }
 .wizard-location-card-disabled {
@@ -5904,7 +5952,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     font-size: 12px;
     color: var(--text-primary);
     background: var(--bg-input);
-    border-left: 3px solid rgba(179, 157, 219, 0.9);
+    border-left: 3px solid var(--highlight-color);
     border-radius: var(--border-radius);
 }
 .wizard-advanced {
@@ -5959,11 +6007,11 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 .wizard-help-button:hover {
     background: var(--bg-hover);
-    color: var(--color-pale-blue);
-    border-color: var(--color-pale-blue);
+    color: var(--highlight-color);
+    border-color: var(--highlight-color);
 }
 .wizard-help-button:focus-visible {
-    outline: 2px solid var(--color-pale-blue);
+    outline: 2px solid var(--highlight-color);
     outline-offset: 2px;
 }
 .modal-info .modal-info-body {
@@ -5985,7 +6033,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     padding: 1px 5px;
     border-radius: 3px;
     font-size: 12px;
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
 }
 .modal-info .modal-info-body strong {
     color: var(--text-primary, var(--color-pale-blue));
@@ -5999,7 +6047,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 .confirm-details summary {
     cursor: pointer;
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     font-size: 12px;
     padding: 4px 0;
     user-select: none;
@@ -6035,7 +6083,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 
 .confirm-details-label code {
     background: var(--bg-input);
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     padding: 2px 6px;
     border-radius: 3px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -6067,7 +6115,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 .confirm-details-command {
     background: var(--bg-input);
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     padding: 8px 12px;
     border-radius: 4px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -6126,7 +6174,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     padding: 1px 4px;
     border-radius: 3px;
     font-size: 11px;
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
 }
 
 
@@ -6156,7 +6204,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .sync-target-value {
     flex: 1;
     background: var(--bg-input);
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     padding: 6px 10px;
     border-radius: 4px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -6169,7 +6217,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .sync-target-input {
     flex: 1;
     background: var(--bg-input);
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     padding: 6px 10px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
@@ -6179,7 +6227,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 
 .sync-target-input:focus {
     outline: none;
-    border-color: var(--color-pale-blue);
+    border-color: var(--highlight-color);
 }
 
 
@@ -6205,7 +6253,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 
 .freshness-refresh-button {
     background: transparent;
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 3px 10px;
@@ -6249,7 +6297,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 
 .tree-picker-input:focus {
     outline: none;
-    border-color: var(--color-pale-blue);
+    border-color: var(--highlight-color);
 }
 
 .tree-picker-error {
@@ -6270,7 +6318,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 
 .tree-picker-body:focus {
-    outline: 1px solid var(--color-pale-blue);
+    outline: 1px solid var(--highlight-color);
 }
 
 .tree-picker-row {
@@ -6332,7 +6380,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 
 .diff-target-line code {
     background: var(--bg-input);
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     padding: 2px 6px;
     border-radius: 3px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -6349,7 +6397,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 
 .diff-summary strong {
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
 }
 
 .diff-conflict-count {
@@ -6471,7 +6519,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 
 .conflict-row-digests code {
     background: var(--bg-primary);
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     padding: 1px 5px;
     border-radius: 3px;
     font-size: 11px;
@@ -6824,7 +6872,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 
 .proof-req-how .proof-gap-fix {
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
 }
 
 .proof-gap-row.state-satisfied .proof-gap-icon {
@@ -6935,7 +6983,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 
 .proof-card.proof-level3-card .proof-card-title {
-    color: #f48fb1;
+    color: var(--proof-level-3-color);
 }
 
 .proof-verify-row {
@@ -6944,8 +6992,8 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 
 .btn-proof-verify-l3 {
-    background: #f48fb1;
-    border: 1px solid #f48fb1;
+    background: var(--proof-level-3-color);
+    border: 1px solid var(--proof-level-3-color);
     color: #111;
     padding: 6px 12px;
     border-radius: 4px;
@@ -7775,7 +7823,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 /* Expanding a requirement row highlights its banner, exactly like an
    opened step row. */
 .requirement-row.expanded > .requirement-row-header {
-    background: rgba(19, 174, 213, 0.1);
+    background: rgba(var(--highlight-rgb), 0.1);
     border-left-color: var(--highlight-color);
 }
 
@@ -8077,7 +8125,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 /* Links inside the Project block: browser-default dark blue is
    unreadable on the dark background; use the pale-blue action color. */
 .project-block a {
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
 }
 
 /* Inline declare-determinism form. */
@@ -8186,7 +8234,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 
 .wf-file-link:hover {
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     text-decoration: underline;
 }
 
@@ -9568,7 +9616,7 @@ body.council-workspace-open #mainLayout {
     width: 38%;
 }
 .env-info-table tr.env-info-section th {
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
     font-weight: 600;
     padding-top: 12px;
     width: auto;
@@ -9865,7 +9913,7 @@ body.council-workspace-open #mainLayout {
 }
 
 .prompt-record-session.selected {
-    border-color: var(--color-pale-blue);
+    border-color: var(--highlight-color);
 }
 
 .prompt-record-session-id {
@@ -9915,7 +9963,7 @@ body.council-workspace-open #mainLayout {
 }
 
 .prompt-record-turn-prompt .prompt-record-turn-label {
-    color: var(--color-pale-blue);
+    color: var(--highlight-color);
 }
 
 .prompt-record-turn-unparsed .prompt-record-turn-label {
@@ -10022,4 +10070,41 @@ body.council-workspace-open #mainLayout {
     border-left: 2px solid var(--text-muted);
     font-size: 12px;
     color: var(--text-secondary);
+}
+
+/* --- Quit vaibify (scriptHubQuit.js) --- */
+
+.btn-quit-vaibify {
+    font-size: 12px;
+    padding: 2px 10px;
+}
+
+.quit-modal-heading {
+    margin: 10px 0 4px;
+    font-weight: 600;
+}
+
+#modalQuit ul {
+    margin: 0 0 10px 20px;
+}
+
+.quit-modal-warning {
+    margin: 10px 0;
+    color: var(--color-orange);
+}
+
+/* Covers the page once a Quit is accepted, so nothing on it reads as
+   still live while the server goes away. */
+.quit-shutdown-status {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 18px;
+    text-align: center;
 }

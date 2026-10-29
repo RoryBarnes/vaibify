@@ -73,31 +73,55 @@ var VaibifyWorkflowManager = (function () {
                 && elList.firstChild) {
             return;
         }
+        /* A repaint under an open menu would close it and drop the
+           researcher's click on whatever card takes its place (the
+           PR #187 trap). The newest answer is held, never discarded,
+           and drawn the moment the menu closes. */
+        if (elList.querySelector(_S_OPEN_PROJECT_MENU_SELECTOR)) {
+            _dictDeferredWorkflowRender = {
+                listWorkflows: listWorkflows, sId: sId};
+            return;
+        }
+        _dictDeferredWorkflowRender = null;
         elList.innerHTML = sCardsHtml;
         _fnBindWorkflowCards(elList, sId);
         _sRenderedWorkflowCardsHtml = sCardsHtml;
         _sRenderedWorkflowContainerId = sId;
     }
 
+    var _S_OPEN_PROJECT_MENU_SELECTOR = ".project-card-menu.is-open";
+    var _dictDeferredWorkflowRender = null;
+
     function _fsRenderWorkflowCard(dictWf) {
         var sRepo = dictWf.sRepoName || "";
         var iSize = dictWf.iSizeBytes || 0;
         return (
-            '<div class="container-card" data-path="' +
+            '<div class="container-card project-card" data-path="' +
             VaibifyUtilities.fnEscapeHtml(dictWf.sPath) +
             '" data-size-bytes="' + iSize + '">' +
             '<span class="name">' +
             VaibifyUtilities.fnEscapeHtml(dictWf.sName) +
             '</span>' +
             '<span class="image">' +
-            VaibifyUtilities.fnEscapeHtml(sRepo) + '</span></div>'
+            VaibifyUtilities.fnEscapeHtml(sRepo) + '</span>' +
+            '<button type="button" class="btn-icon project-card-actions" ' +
+            'title="Actions">&#8942;</button>' +
+            '<div class="project-card-menu">' +
+            '<div class="container-menu-item" data-action="rename" ' +
+            'title="Change this project\'s name. You will see what the ' +
+            'change invalidates before anything is written.">' +
+            'Rename…</div></div></div>'
         );
     }
 
     function _fnBindWorkflowCards(elList, sId) {
         elList.querySelectorAll(".container-card").forEach(
             function (el) {
-                el.addEventListener("click", function () {
+                el.addEventListener("click", function (event) {
+                    if (event.target.closest(
+                            ".project-card-actions, .project-card-menu")) {
+                        return;
+                    }
                     var sPath = el.dataset.path;
                     var sName = el.querySelector(
                         ".name").textContent;
@@ -105,8 +129,135 @@ var VaibifyWorkflowManager = (function () {
                         el.dataset.sizeBytes || "0", 10);
                     fnSelectWorkflow(sId, sPath, sName, iSize);
                 });
+                _fnBindProjectCardMenu(el, sId);
             }
         );
+        _fnBindProjectMenuDismissalOnce();
+    }
+
+    function _fnBindProjectCardMenu(elCard, sId) {
+        var elActions = elCard.querySelector(".project-card-actions");
+        var elMenu = elCard.querySelector(".project-card-menu");
+        if (!elActions || !elMenu) return;
+        elActions.addEventListener("click", function (event) {
+            event.stopPropagation();
+            var bVisible = elMenu.classList.contains("is-open");
+            _fnCloseProjectCardMenus();
+            if (!bVisible) elMenu.classList.add("is-open");
+        });
+        elMenu.querySelector('[data-action="rename"]').addEventListener(
+            "click", function (event) {
+                event.stopPropagation();
+                _fnCloseProjectCardMenus();
+                _fnAskForTheNewProjectName(
+                    sId, elCard.dataset.path,
+                    elCard.querySelector(".name").textContent);
+            });
+    }
+
+    var _bProjectMenuDismissalBound = false;
+
+    function _fnBindProjectMenuDismissalOnce() {
+        if (_bProjectMenuDismissalBound) return;
+        _bProjectMenuDismissalBound = true;
+        document.addEventListener("click", function () {
+            _fnCloseProjectCardMenus();
+        });
+    }
+
+    function _fnCloseProjectCardMenus() {
+        document.querySelectorAll(".project-card-menu").forEach(
+            function (el) { el.classList.remove("is-open"); });
+        var dictDeferred = _dictDeferredWorkflowRender;
+        if (dictDeferred) {
+            fnRenderWorkflowList(dictDeferred.listWorkflows, dictDeferred.sId);
+        }
+    }
+
+    /* --- Project rename --- */
+
+    function _fnAskForTheNewProjectName(sId, sPath, sCurrentName) {
+        VaibifyModals.fnShowInputModal(
+            "Rename “" + sCurrentName + "”", "New project name",
+            function (sNewName) {
+                _fnPreviewProjectRename(sId, sPath, sNewName);
+            }, "Continue");
+    }
+
+    function _fsRenameUrl(sId) {
+        return "/api/workflows/" + encodeURIComponent(sId) + "/rename";
+    }
+
+    async function _fnPreviewProjectRename(sId, sPath, sNewName) {
+        var dictPreview;
+        try {
+            dictPreview = await VaibifyApi.fdictPost(_fsRenameUrl(sId), {
+                sWorkflowPath: sPath, sNewName: sNewName, bDryRun: true});
+        } catch (error) {
+            _fnReportRenameFailure(error);
+            return;
+        }
+        VaibifyModals.fnShowConfirmModal(
+            "Rename project",
+            _fsDescribeRenamePreview(dictPreview),
+            function () { _fnApplyProjectRename(sId, sPath, sNewName); },
+            {sConfirmLabel: "Rename",
+             sCommand: "vaibify do rename-project sWorkflowPath='" +
+                sPath + "' sNewName='" + sNewName + "' bDryRun=false"});
+    }
+
+    function _fsDescribeRenamePreview(dictPreview) {
+        /* Every line here is the server's: the requirements come from
+           the existing level and label predicates, evaluated over the
+           bytes the save would write. Nothing is re-derived. */
+        var listLines = ["“" + dictPreview.sOldName + "” " +
+            "becomes “" + dictPreview.sNewName + "”."];
+        (dictPreview.listOtherByteChanges || []).forEach(function (s) {
+            listLines.push("• " + s.charAt(0).toUpperCase() +
+                s.slice(1) + ".");
+        });
+        if (!dictPreview.bKnown) {
+            listLines.push("⚠ " + dictPreview.sUnknownReason + ".");
+        } else if ((dictPreview.listInvalidated || []).length === 0) {
+            listLines.push("No PROOF requirement or label that holds " +
+                "now is invalidated by this change.");
+        } else {
+            listLines.push("This change invalidates:");
+            dictPreview.listInvalidated.forEach(function (dictEntry) {
+                listLines.push("• " + dictEntry.sLevel + ": " +
+                    dictEntry.sRequirement);
+            });
+        }
+        return listLines.join("\n");
+    }
+
+    async function _fnApplyProjectRename(sId, sPath, sNewName) {
+        try {
+            await VaibifyApi.fdictPost(_fsRenameUrl(sId), {
+                sWorkflowPath: sPath, sNewName: sNewName, bDryRun: false});
+        } catch (error) {
+            _fnReportRenameFailure(error);
+            return;
+        }
+        VaibifyApp.fnShowToast(
+            "Project renamed to “" + sNewName + "”.", "success");
+        fnRenderWorkflowList(await VaibifyApi.fdictGet(
+            "/api/workflows/" + encodeURIComponent(sId)), sId);
+    }
+
+    function _fnReportRenameFailure(error) {
+        /* A refusal the server worded -- the {sWorkflowName} token, a
+           live run, a taken name -- names its own cause, so it is shown
+           whole; anything else ends in the diagnosis. */
+        if (error && error.iStatus >= 400 && error.iStatus < 500 &&
+                error.message) {
+            VaibifyModals.fnShowInfoModal(
+                "This project was not renamed",
+                "<p>" + VaibifyUtilities.fnEscapeHtml(error.message) +
+                "</p>");
+            return;
+        }
+        VaibifyDiagnosis.fnReportFailureFromError(error);
     }
 
     /* --- Workflow Creation --- */
@@ -1883,7 +2034,7 @@ var VaibifyWorkflowManager = (function () {
                 var sActive =
                     sName === _dictWizardData.sTemplateName
                         ? " style=\"border-color:" +
-                          "var(--color-pale-blue);\""
+                          "var(--highlight-color);\""
                         : "";
                 return '<div class="add-choice-card" ' +
                     'data-template="' +
@@ -1913,7 +2064,7 @@ var VaibifyWorkflowManager = (function () {
             function (el) {
                 el.style.borderColor =
                     el === elSelected
-                        ? "var(--color-pale-blue)" : "";
+                        ? "var(--highlight-color)" : "";
             }
         );
     }
@@ -1933,7 +2084,7 @@ var VaibifyWorkflowManager = (function () {
                 var sActive =
                     dictChoice.sKey === _dictWizardData.sConvertDestination
                         ? " style=\"border-color:" +
-                          "var(--color-pale-blue);\""
+                          "var(--highlight-color);\""
                         : "";
                 return '<div class="add-choice-card" ' +
                     'data-destination="' +

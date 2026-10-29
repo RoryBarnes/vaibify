@@ -40,6 +40,7 @@ __all__ = [
     "fnRejectNotConnected",
     "fnRejectTerminalStart",
     "fdictConfinedWriteKeywords",
+    "fnRecordSelfWriteOfLoadedWorkflow",
     "fnRejectWriteDenylistedPath",
     "fnRunTerminalSession",
     "fnSignalTerminalAbnormalExit",
@@ -1190,7 +1191,7 @@ async def fnPipelineMessageLoop(
         )
         if taskPipeline is None:
             await fnCallback(
-                _fdictBusyRefusalEvent(sAction, dictRequest),
+                _fdictLaunchRefusalEvent(sAction, dictRequest),
             )
             continue
         if dictPipelineTasks is not None:
@@ -1755,6 +1756,28 @@ def _fdictRemoteOverwriteEvent(
             "re-issue with bConfirmRemoteOverwrite=true "
             "(CLI: --confirm-remote-overwrite)."
         ),
+    }
+
+
+def _fdictLaunchRefusalEvent(sAction, dictRequest):
+    """Return the refusal for a run the carrier would not launch.
+
+    The carrier refuses for one of two reasons a researcher acts on
+    differently: the container is busy, or a Quit has closed the
+    admission gate. Naming a Quit as "already running" would send them
+    to the Kill button for a hub that is going away.
+    """
+    from vaibify.config.mutationAdmission import (
+        S_SHUTTING_DOWN_REFUSAL, fbAdmissionGateClosed,
+    )
+    if not fbAdmissionGateClosed():
+        return _fdictBusyRefusalEvent(sAction, dictRequest)
+    return {
+        "sType": "runRefused",
+        "sAction": sAction,
+        "listStepIndices": dictRequest.get("listStepIndices", []),
+        "sHolderProject": "",
+        "sMessage": f"Refused '{sAction}': {S_SHUTTING_DOWN_REFUSAL}.",
     }
 
 
@@ -3507,6 +3530,27 @@ def fdictResolveVariables(dictWorkflows, dictPaths, sContainerId):
     return workflowManager.fdictBuildGlobalVariables(dictWorkflow, sPath)
 
 
+def fnRecordSelfWriteOfLoadedWorkflow(dictCtx, sContainerId, dictSaved):
+    """Record that the LOADED project's file now holds ``dictSaved``'s bytes.
+
+    A self-write moves the session record and the exact-source
+    fingerprint ATOMICALLY: the file's bytes are now exactly the
+    serializer's output, so the canonical and exact-source fingerprints
+    coincide until the next out-of-band edit. This is why vaibify's own
+    step edit never trips the dispatch freshness gate — the record moved
+    with the file, not because any baseline suppresses the check. Only
+    the project loaded for ``sContainerId`` may be recorded: the record
+    is keyed by the container, so a save of another project file must
+    never call this.
+    """
+    from .workflowReloadDetector import fnRecordSelfWriteFingerprint
+    sSavedFingerprint = workflowManager.fsComputeWorkflowFingerprint(
+        dictSaved,
+    )
+    dictSaved["_sSourceFingerprint"] = sSavedFingerprint
+    fnRecordSelfWriteFingerprint(dictCtx, sContainerId, sSavedFingerprint)
+
+
 def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
     """Build closure-based helper functions for the context.
 
@@ -3525,23 +3569,7 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
         fnRefuseSaveIntoAnotherProject(dictPaths, sContainerId, dictWorkflow)
         workflowManager.fnSaveWorkflowToContainer(
             dictRaw["docker"], sContainerId, dictWorkflow, sPath)
-        from .workflowReloadDetector import (
-            fnRecordSelfWriteFingerprint,
-        )
-        sSavedFingerprint = workflowManager.fsComputeWorkflowFingerprint(
-            dictWorkflow,
-        )
-        # A self-write moves the session record and the exact-source
-        # fingerprint ATOMICALLY: the file's bytes are now exactly the
-        # serializer's output, so the canonical and exact-source
-        # fingerprints coincide until the next out-of-band edit. This
-        # is why vaibify's own step edit never trips the dispatch
-        # freshness gate — the record moved with the file, not because
-        # any baseline suppresses the check.
-        dictWorkflow["_sSourceFingerprint"] = sSavedFingerprint
-        fnRecordSelfWriteFingerprint(
-            dictRaw, sContainerId, sSavedFingerprint,
-        )
+        fnRecordSelfWriteOfLoadedWorkflow(dictRaw, sContainerId, dictWorkflow)
 
     def fdictBuildVariables(sContainerId):
         return fdictResolveVariables(dictWorkflows, dictPaths, sContainerId)

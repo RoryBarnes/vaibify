@@ -520,6 +520,31 @@ def test_a_destination_name_another_process_is_committing_is_refused_by_name(
         processHolder.wait(timeout=10)
 
 
+def test_a_destination_name_another_operation_holds_waits_like_an_open_project(
+    fixtureConversionWorld, monkeypatch,
+):
+    """A rename or start of the destination name holds its lifecycle lock.
+
+    The commit is then BUSY, not refused: the staged image is kept and
+    Finish commits once the name is free.
+    """
+    from tests.lifecycleLockHolder import (
+        fcontextHoldLifecycleLockInAnotherProcess,
+    )
+    dictWorld = fixtureConversionWorld
+    appBusy = _fnStageWithoutCommitting(dictWorld, monkeypatch)
+    appBusy.state.dictContainerOwners.clear()
+    with fcontextHoldLifecycleLockInAnotherProcess(S_NEW_NAME, "renamed"):
+        with pytest.raises(
+            conversionLifecycle.ConversionBusyError,
+            match=f"'{S_NEW_NAME}' is being renamed",
+        ):
+            conversionLifecycle.fnCommitConversion(S_HOST_NAME)
+        assert registryManager.fbIsHostProject(S_HOST_NAME)
+    conversionLifecycle.fnCommitConversion(S_HOST_NAME)
+    assert registryManager.fdictGetProject(S_NEW_NAME)["sMode"] == "container"
+
+
 @pytest.mark.falsification
 def test_two_host_projects_cannot_both_take_one_container_name(
     fixtureConversionWorld, monkeypatch,

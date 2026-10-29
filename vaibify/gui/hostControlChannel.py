@@ -14,9 +14,11 @@ in, one JSON line out. The operations shipped here are the ones with
 consumers today — ``reconcile``, ``force-abandon``, ``break-glass``,
 ``abandon-host-journal`` (the ``vaibify reconcile`` CLI),
 ``mint-transfer`` (the ``vaibify open``
-CLI, slice 5), and ``mint-bootstrap`` (the headless ``vaibify do``
-credential, slice 8). Any unlisted opcode is rejected with a defined
-error naming the allowlist.
+CLI, slice 5), ``mint-bootstrap`` (the headless ``vaibify do``
+credential, slice 8), and ``describe-busy``, ``close-admissions`` and
+``reopen-admissions`` (a parent hub's Quit reaching the hubs it spawned,
+``hubQuit``). Any unlisted opcode is rejected with a defined error
+naming the allowlist.
 
 Every destructive operation carries an ABA guard (design §6b, cases 42
 and 46): ``reconcile`` and ``force-abandon`` require the container name
@@ -48,6 +50,9 @@ __all__ = [
     "S_SOCKET_OPERATION_MINT_TRANSFER",
     "S_SOCKET_OPERATION_MINT_BOOTSTRAP",
     "S_SOCKET_OPERATION_REPAIR_CONTAINER",
+    "S_SOCKET_OPERATION_DESCRIBE_BUSY",
+    "S_SOCKET_OPERATION_CLOSE_ADMISSIONS",
+    "S_SOCKET_OPERATION_REOPEN_ADMISSIONS",
     "F_RECONCILE_DRAIN_WAIT_SECONDS",
     "HostControlError",
     "ftPeerUidGid",
@@ -86,6 +91,10 @@ S_SOCKET_OPERATION_MINT_TRANSFER = "mint-transfer"
 S_SOCKET_OPERATION_MINT_BOOTSTRAP = "mint-bootstrap"
 S_SOCKET_OPERATION_LIST_REATTACHABLE = "list-reattachable"
 S_SOCKET_OPERATION_REPAIR_CONTAINER = "repair-container"
+# The parent hub's Quit, reaching the hubs it spawned (hubQuit).
+S_SOCKET_OPERATION_DESCRIBE_BUSY = "describe-busy"
+S_SOCKET_OPERATION_CLOSE_ADMISSIONS = "close-admissions"
+S_SOCKET_OPERATION_REOPEN_ADMISSIONS = "reopen-admissions"
 
 F_RECONCILE_DRAIN_WAIT_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
@@ -723,8 +732,16 @@ def _fbStopContainerByNameProven(sContainerName):
     break-glass refuses on anything unproven rather than deleting a
     marker whose writer may still be running.
     """
+    from vaibify.config.containerLock import (
+        LifecycleLockedError, fcontextHoldLifecycleLock,
+    )
     from vaibify.docker.containerManager import fbStopContainerProvenSettled
-    return fbStopContainerProvenSettled(sContainerName)
+    try:
+        with fcontextHoldLifecycleLock(sContainerName, "reconciled"):
+            return fbStopContainerProvenSettled(sContainerName)
+    except LifecycleLockedError as error:
+        logger.warning("Reconcile could not stop %s: %s", sContainerName, error)
+        return False
 
 
 async def _fdictHandleMintTransfer(app, dictCtx, dictRequest):
@@ -976,6 +993,62 @@ def _fdictRunRepairOffLoop(dictCtx, sName, sOperation, fnAnnounce):
     )
 
 
+async def _fdictHandleDescribeBusy(app, dictCtx, dictRequest):
+    """Answer a parent hub's Quit: this hub's busy reasons, recursively.
+
+    Read-only. The parent is this hub's spawner, reaching it over this
+    peer-authenticated socket, and reads what would refuse a Quit here
+    and in this hub's own children.
+    """
+    from . import hubQuit
+    return await hubQuit.fdictDescribeThisHub(
+        app, dictCtx, hubQuit.ffChildTimeoutFromRequest(dictRequest),
+    )
+
+
+async def _fdictHandleCloseAdmissions(app, dictCtx, dictRequest):
+    """Close (or, given a gate tree, renew) this hub's gate and its children's.
+
+    A close carries a lease, because the parent may die after closing
+    it. Called again with the gate-id tree the close returned, it RENEWS
+    those gates rather than opening new ones; a gate whose id no longer
+    matches, or whose lease already ran out, is refused, so a parent
+    never renews a gate it lost.
+    """
+    del dictCtx
+    from . import hubQuit
+    fLeaseSeconds = dictRequest.get("fLeaseSeconds")
+    if not isinstance(fLeaseSeconds, (int, float)) or isinstance(
+        fLeaseSeconds, bool,
+    ) or fLeaseSeconds <= 0:
+        return _fdictRefusal("close-admissions requires a positive "
+                             "fLeaseSeconds")
+    fTimeout = hubQuit.ffChildTimeoutFromRequest(dictRequest)
+    dictGateTree = dictRequest.get("dictGateTree")
+    if dictGateTree is None:
+        return await hubQuit.fdictCloseThisHubTree(app, fLeaseSeconds, fTimeout)
+    if not isinstance(dictGateTree, dict):
+        return _fdictRefusal("dictGateTree must be the tree a close returned")
+    if not await hubQuit.fbRenewThisHubTree(
+        app, dictGateTree, fLeaseSeconds, fTimeout,
+    ):
+        return _fdictRefusal("a gate in the tree was not held any longer")
+    return {"bAccepted": True, "dictGateTree": dictGateTree}
+
+
+async def _fdictHandleReopenAdmissions(app, dictCtx, dictRequest):
+    """Reopen this hub's gate, and its children's, each only by its id."""
+    del dictCtx
+    from . import hubQuit
+    dictGateTree = dictRequest.get("dictGateTree")
+    if not isinstance(dictGateTree, dict):
+        return _fdictRefusal("reopen-admissions requires dictGateTree")
+    await hubQuit.fnReopenThisHubTree(
+        app, dictGateTree, hubQuit.ffChildTimeoutFromRequest(dictRequest),
+    )
+    return {"bAccepted": True}
+
+
 _DICT_SOCKET_OPERATION_HANDLERS = {
     S_SOCKET_OPERATION_RECONCILE: _fdictHandleReconcile,
     S_SOCKET_OPERATION_FORCE_ABANDON: _fdictHandleForceAbandon,
@@ -987,6 +1060,9 @@ _DICT_SOCKET_OPERATION_HANDLERS = {
     S_SOCKET_OPERATION_LIST_REATTACHABLE:
         _fdictHandleListReattachable,
     S_SOCKET_OPERATION_REPAIR_CONTAINER: _fdictHandleRepairContainer,
+    S_SOCKET_OPERATION_DESCRIBE_BUSY: _fdictHandleDescribeBusy,
+    S_SOCKET_OPERATION_CLOSE_ADMISSIONS: _fdictHandleCloseAdmissions,
+    S_SOCKET_OPERATION_REOPEN_ADMISSIONS: _fdictHandleReopenAdmissions,
 }
 
 

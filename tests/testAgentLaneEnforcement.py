@@ -271,6 +271,44 @@ def testAgentLaneRefusesEveryUserOnlyRoute(
     assert "User-only action" in responseHttp.text
 
 
+@pytest.mark.falsification
+def testOnlyTheResearcherMayRenameAProject(appViewer):
+    """An agent token is refused the rename; the researcher is served.
+
+    Renaming a project changes the bytes of a hashed, published file, so
+    it is the researcher's decision (D11, 2026-10-28). The agent is told
+    where the researcher can do it instead.
+
+    Kills: the rename-project catalog entry's ``bAgentSafe: False``
+    flipped to True.
+    """
+    dictBody = {"sWorkflowPath": S_WORKFLOW_PATH, "sNewName": "Renamed",
+                "bDryRun": True}
+    sUrl = f"/api/workflows/{S_CONTAINER_ID}/rename"
+    clientResearcher = TestClient(
+        appViewer,
+        headers={"X-Session-Token": fsBootstrapCredential(appViewer)},
+    )
+    _fnConnectAsOwner(clientResearcher)
+    with patch(
+        "vaibify.gui.workflowManager.flistFindWorkflowsInContainer",
+        return_value=[{"sPath": S_WORKFLOW_PATH, "sName": "Test Pipeline",
+                       "sProjectRepoPath": "/workspace"}],
+    ):
+        responseResearcher = clientResearcher.post(sUrl, json=dictBody)
+    assert responseResearcher.status_code == 200, responseResearcher.text
+    assert responseResearcher.json()["sNewName"] == "Renamed"
+    clientAgent = TestClient(appViewer, headers={
+        actionCatalog.S_SESSION_HEADER_NAME:
+            appViewer.state.dictContainerOwners[
+                S_CONTAINER_NAME].sAgentToken,
+        "Host": "host.docker.internal:8050",
+    })
+    responseAgent = clientAgent.post(sUrl, json=dictBody)
+    assert responseAgent.status_code == 403
+    assert "vaibify do rename-project" in responseAgent.text
+
+
 def testAgentLaneStillAllowsAnAgentSafeAction(clientAgent):
     """The gate must not refuse the actions the agent legitimately drives."""
     responseHttp = clientAgent.post(

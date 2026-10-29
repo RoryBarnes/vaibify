@@ -38,7 +38,7 @@ class-instance identity has to be threaded through the protocol records
 (section 9.8 forbids Docker ids and SDK objects in those).
 """
 
-from vaibify.config import containerLock
+from vaibify.config import containerLock, mutationAdmission
 
 from . import agentCouncilRunner
 
@@ -160,6 +160,8 @@ def _fsCheckAdmission(dictRegistry, sCampaignId, sProvider, dictRunnerCost):
     """
     if not dictRegistry["bAdmittingNewTurns"]:
         return "the council registry is draining and admits no new turns"
+    if mutationAdmission.fbAdmissionGateClosedForNewWork():
+        return mutationAdmission.S_SHUTTING_DOWN_REFUSAL
     dictCeilings = dictRegistry["dictGlobalCeilings"]
     dictLoad = _fdictMeasureLoad(dictRegistry, sCampaignId, sProvider)
     iMemory = dictRunnerCost.get("iMemoryBytes", 0)

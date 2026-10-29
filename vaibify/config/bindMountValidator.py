@@ -83,6 +83,23 @@ _LIST_HOME_RELATIVE_DENY_PREFIXES = (
     # directory would reach the same-UID peer-authenticated socket and
     # drive reconcile/force-abandon/break-glass from inside.
     ".vaibify/control",
+    # The per-name lifecycle locks: a container that could mount this
+    # directory could delete a lock file, and a process that locks the
+    # new inode at that path no longer excludes a rename or a start.
+    ".vaibify/lifecycleLocks",
+    # The rename journals: recovery rolls a rename back or forward from
+    # the bytes recorded here, so a container that could edit one would
+    # choose what recovery writes.
+    ".vaibify/pendingRenames",
+    # The session flocks, which a rename holds throughout: deleting one
+    # lets a second hub claim the name mid-transaction.
+    ".vaibify/locks",
+    # The containerization journals, which a rename checks before it
+    # begins and which recovery replays.
+    ".vaibify/pendingConversions",
+    # The registry, whose entry decides whether a rename committed and
+    # which directory and config every name resolves to.
+    ".vaibify/registry.json",
 )
 
 

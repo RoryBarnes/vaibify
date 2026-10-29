@@ -25,6 +25,7 @@ __all__ = [
     "S_RUNTIME_DOCKER_DESKTOP", "S_RUNTIME_COLIMA",
     "S_RUNTIME_LINUX_ROOTFUL", "S_RUNTIME_LINUX_ROOTLESS",
     "S_RUNTIME_UNKNOWN", "fdictReadDaemonFacts",
+    "fbEndpointIsOnThisMachine",
 ]
 
 
@@ -135,6 +136,29 @@ def fsResolveDockerEndpoint():
     if sHost:
         return sHost + " (resolved from the Docker context by vaibify)"
     return "DOCKER_HOST unset and no context endpoint (docker-py default)"
+
+
+_T_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1", "[::1]")
+
+
+def fbEndpointIsOnThisMachine(sEndpoint):
+    """Return True when a Docker endpoint is a daemon on this machine.
+
+    A Unix socket (Docker Desktop, Colima, a Linux daemon) and a named
+    pipe are local; so is a ``tcp://`` endpoint on a loopback address,
+    and an empty endpoint, which is docker-py's default local socket.
+    Anything else -- ``ssh://``, or ``tcp://`` to another host -- may be
+    a daemon another machine's vaibify also uses.
+    """
+    from urllib.parse import urlsplit
+    sEndpoint = (sEndpoint or "").strip()
+    if not sEndpoint:
+        return True
+    tParts = urlsplit(sEndpoint)
+    if tParts.scheme in ("unix", "npipe"):
+        return True
+    return tParts.scheme == "tcp" and (
+        (tParts.hostname or "") in _T_LOOPBACK_HOSTS)
 
 
 def fsReadEffectiveDockerHost():

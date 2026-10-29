@@ -13,6 +13,7 @@ from typing import Optional
 from .. import browserSession
 from .. import containerOwnership
 from .. import projectAdoption
+from .. import projectRename
 from .. import projectRoots
 from .. import workflowManager
 from ..actionCatalog import ffnAgentAction
@@ -83,11 +84,11 @@ def _fbIsContainerStopped(error):
 
 
 def _fnRejectDuplicateWorkflowName(
-    connectionDocker, sContainerId, sWorkflowName
+    connectionDocker, sContainerId, sWorkflowName, sSearchRoot=None,
 ):
     """Raise 409 if another workflow in container uses this name."""
     listExisting = workflowManager.flistFindWorkflowsInContainer(
-        connectionDocker, sContainerId
+        connectionDocker, sContainerId, sSearchRoot,
     )
     for dictWorkflow in listExisting:
         if dictWorkflow["sName"] == sWorkflowName:
@@ -324,6 +325,91 @@ def _fsProbeThenWriteNewWorkflow(
         sContainerId, sFullPath, sContent.encode("utf-8"),
     )
     return sFullPath
+
+
+class RenameProjectRequest(BaseModel):
+    sWorkflowPath: str
+    sNewName: str
+    bDryRun: bool = True
+
+
+def _fnRegisterWorkflowRename(app, dictCtx):
+    """Register POST /api/workflows/{id}/rename (researcher only, D11)."""
+
+    @ffnAgentAction("rename-project")
+    @app.post("/api/workflows/{sContainerId}/rename")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleRenameProject(
+        sContainerId: str, request: RenameProjectRequest,
+        requestHttp: Request,
+    ):
+        dictCtx["require"](sContainerId)
+        sNewName = projectRename.fsValidateProjectDisplayName(
+            request.sNewName,
+        )
+        from .. import commitCarrier
+        dictLaneTuple = fdictRequireLaneTupleForCommit(
+            requestHttp, sContainerId, "Renaming the project",
+        )
+
+        def fdictRenameUnderTheDrain(supervisor=None):
+            del supervisor
+            return fdictCarryARefusalBackInsteadOfRaising(
+                lambda: _fdictRenameListedProject(
+                    dictCtx, sContainerId, request.sWorkflowPath,
+                    sNewName, request.bDryRun,
+                ),
+            )
+
+        dictOutcome = (await commitCarrier.fdictRunLockHeldMutation(
+            requestHttp.app.state, dictLaneTuple["sContainerName"],
+            sContainerId, dictLaneTuple, "helper", "rename-project",
+            fdictRenameUnderTheDrain,
+        ))["result"]
+        if dictOutcome["errorRefused"] is not None:
+            raise dictOutcome["errorRefused"]
+        return dictOutcome["objResult"]
+
+
+def _fdictRenameListedProject(
+    dictCtx, sContainerId, sWorkflowPath, sNewName, bDryRun,
+):
+    """Authorize the path by the listing, refuse what must wait, then act.
+
+    Every probe here reaches the general exec primitive, so all of it
+    runs inside the one held drain the write uses: the name check and
+    the write cannot be split by another session's create.
+    """
+    from .. import pipelineRunSlots
+    connectionDocker = dictCtx["docker"]
+    sSearchRoot = projectRoots.fsResolveProjectRoot(
+        sContainerId, workflowManager.DEFAULT_SEARCH_ROOT,
+    )
+    dictProject = projectRename.fdictFindListedProject(
+        workflowManager.flistFindWorkflowsInContainer(
+            connectionDocker, sContainerId, sSearchRoot,
+        ),
+        sWorkflowPath,
+    )
+    if dictProject.get("sName") == sNewName:
+        raise HTTPException(400, f"The project is already named '{sNewName}'.")
+    if pipelineRunSlots.fbProjectRunIsLive(
+            dictCtx["pipelineTasks"], sContainerId,
+            dictProject.get("sProjectRepoPath", "")):
+        raise HTTPException(409, (
+            "A pipeline run in this project's repository is in progress. "
+            "Rename the project once it has finished."
+        ))
+    _fnRejectDuplicateWorkflowName(
+        connectionDocker, sContainerId, sNewName, sSearchRoot,
+    )
+    if bDryRun:
+        return projectRename.fdictBuildRenamePreview(
+            dictCtx, sContainerId, dictProject, sNewName,
+        )
+    return projectRename.fdictRenameProject(
+        dictCtx, sContainerId, dictProject, sNewName,
+    )
 
 
 def _fnRegisterWorkflowCreationRequest(app, dictCtx):
@@ -618,6 +704,7 @@ def fnRegisterAll(app, dictCtx):
     """Register all workflow management routes."""
     _fnRegisterWorkflowSearch(app, dictCtx)
     _fnRegisterWorkflowCreate(app, dictCtx)
+    _fnRegisterWorkflowRename(app, dictCtx)
     _fnRegisterWorkflowCreationRequest(app, dictCtx)
     _fnRegisterAdoptDirectory(app, dictCtx)
     _fnRegisterConnect(app, dictCtx)

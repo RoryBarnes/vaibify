@@ -293,7 +293,8 @@ var VaibifyContainerManager = (function () {
     }
 
     function fsRenderContainerTile(dictContainer) {
-        var bDeleting = _setNamesBeingDeleted.has(dictContainer.sName);
+        var bDeleting = _setNamesBeingDeleted.has(dictContainer.sName) ||
+            Boolean(dictContainer.dictPendingRename);
         var sStatusClass = bDeleting
             ? "status-pending" : _fsStatusDotClass(dictContainer.sStatus);
         var bHost = _fbHostProject(dictContainer);
@@ -336,6 +337,8 @@ var VaibifyContainerManager = (function () {
             '" data-mode="' + (bHost ? "host" : "container") +
             '" data-is-project="' + (bIsProject ? "true" : "false") +
             '" data-quarantined="' + (bQuarantined ? "true" : "false") +
+            '" data-renaming="' +
+            (dictContainer.dictPendingRename ? "true" : "false") +
             '" data-image-source="' +
             (_fbImageObtained(dictContainer) ? "archive" : "build") +
             '" data-allow-emulation="' +
@@ -351,13 +354,12 @@ var VaibifyContainerManager = (function () {
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
-            (bDeleting
-                ? '<span class="container-tile-progress">Deleting…</span>'
-                : "") +
+            _fsRenderLifecycleProgress(dictContainer) +
             _fsRenderContainmentChip(dictContainer, bHost) +
             _fsRenderContainerizingChip(dictContainer, bHost) +
             _fsRenderHeldChip(dictContainer) +
             _fsRenderHostTileNote(dictContainer, bHost) +
+            _fsRenderRenameFailureNote(dictContainer) +
             "</div>" +
             '<button class="btn-icon container-tile-actions" ' +
             'title="Actions">&#8942;</button>' +
@@ -368,6 +370,7 @@ var VaibifyContainerManager = (function () {
                 dictContainer.bPinnedImageObtainable === true) +
             _fsRenderHostConvertMenuItem(bHost) +
             _fsRenderReleaseMenuItem(dictContainer) +
+            _fsRenderRenameMenuItem(dictContainer) +
             /* "Remove from list" stopped being the destructive item
                here the moment a permanent Delete joined the menu
                beneath it. It deletes nothing -- the container, the
@@ -383,6 +386,53 @@ var VaibifyContainerManager = (function () {
             _fsRenderDeleteMenuItem(bHost) +
             "</div></div>"
         );
+    }
+
+    function _fsRenderLifecycleProgress(dictContainer) {
+        /* A rename re-keys everything the tile stands for, so while one
+           runs the tile says so and offers nothing: the hub's journal is
+           the authority, read on every poll. The new name shows only
+           once the registry has switched to it (ruling D3). */
+        var dictRename = dictContainer.dictPendingRename;
+        var sText = "";
+        if (_setNamesBeingDeleted.has(dictContainer.sName)) {
+            sText = "Deleting…";
+        } else if (dictRename && !dictRename.bLive) {
+            sText = "Rename to " + dictRename.sNewName + " did not " +
+                "finish: restart vaibify, or run 'vaibify reconcile'";
+        } else if (dictRename && dictRename.sStage === "finishing") {
+            sText = "Finishing rename…";
+        } else if (dictRename) {
+            var listSizes = (dictRename.listCopySizes || []).filter(
+                function (sSize) { return Boolean(sSize); });
+            sText = "Renaming to " + dictRename.sNewName + "…" +
+                (listSizes.length
+                    ? " (copying " + listSizes.join(" + ") + ")" : "");
+        }
+        if (!sText) return "";
+        return '<span class="container-tile-progress">' +
+            VaibifyUtilities.fnEscapeHtml(sText) + "</span>";
+    }
+
+    function _fsRenderRenameFailureNote(dictContainer) {
+        if (!dictContainer.sRenameFailure) return "";
+        var sFailure = VaibifyUtilities.fnEscapeHtml(
+            dictContainer.sRenameFailure);
+        return '<span class="container-tile-note" title="' + sFailure +
+            '">' + sFailure + "</span>";
+    }
+
+    function _fsRenderRenameMenuItem(dictContainer) {
+        /* Allowed only while the environment is stopped (ruling D2):
+           its volumes are copied, and a running container could write
+           to them mid-copy. The server refuses a running one anyway. */
+        if (dictContainer.sStatus === "running") {
+            return '<div class="container-menu-item disabled" ' +
+                'data-action="rename-disabled" title="Stop the ' +
+                'environment to rename it.">Rename…</div>';
+        }
+        return '<div class="container-menu-item" data-action="rename">' +
+            "Rename…</div>";
     }
 
     function _fsRenderDeleteMenuItem(bHost) {
@@ -1346,6 +1396,11 @@ var VaibifyContainerManager = (function () {
             await fnForceRebuildContainer(sName);
         else if (sAction === "convert") _fnStartConversion(sName);
         else if (sAction === "remove") await fnRemoveContainer(sName);
+        else if (sAction === "rename") fnRenameEnvironment(sName);
+        else if (sAction === "rename-disabled") {
+            VaibifyApp.fnShowToast(
+                "Stop '" + sName + "' to rename it.", "info");
+        }
         else if (sAction === "delete-environment")
             fnDeleteEnvironment(sName);
         else VaibifyApp.fnShowToast(
@@ -2647,6 +2702,76 @@ var VaibifyContainerManager = (function () {
                 _fnRequestEnvironmentDeletion(sName);
             },
         });
+    }
+
+    function fnRenameEnvironment(sOldName) {
+        VaibifyModals.fnShowInputModal(
+            "Rename '" + sOldName + "' to", sOldName,
+            function (sNewName) {
+                _fnPreviewRename(sOldName, sNewName);
+            }, "Next");
+    }
+
+    function _fsRenameUrl(sOldName) {
+        return "/api/registry/" + encodeURIComponent(sOldName) + "/rename";
+    }
+
+    async function _fnPreviewRename(sOldName, sNewName) {
+        /* The dry run is the server's account of what will move; the
+           confirmation lists it rather than a summary written here. */
+        var dictPlan;
+        try {
+            dictPlan = await VaibifyApi.fdictPost(
+                _fsRenameUrl(sOldName), {sNewName: sNewName, bDryRun: true});
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            return;
+        }
+        VaibifyModals.fnShowConfirmModal(
+            "Rename '" + sOldName + "' to '" + sNewName + "'",
+            _fsDescribeRenamePlan(dictPlan),
+            function () { _fnApplyRename(sOldName, sNewName); },
+            {sConfirmLabel: "Rename"});
+    }
+
+    function _fsDescribeRenamePlan(dictPlan) {
+        var listLines = (dictPlan.listMoves || []).map(function (dictMove) {
+            var sSize = (dictPlan.dictVolumeSizes || {})[dictMove.sFrom];
+            return "• " + dictMove.sKind + ": " + dictMove.sFrom + " → " +
+                dictMove.sTo + (sSize ? " (" + sSize + ")" : "");
+        });
+        return listLines.join("\n") + "\n\n" + (dictPlan.sTimeNote || "") +
+            " The container banner shows the new name the next time the " +
+            "environment starts.";
+    }
+
+    async function _fnApplyRename(sOldName, sNewName) {
+        try {
+            await VaibifyApi.fdictPost(
+                _fsRenameUrl(sOldName), {sNewName: sNewName, bDryRun: false});
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            return;
+        }
+        _fnForgetStoredStateUnder(sOldName);
+        await fnRefreshContainerHub();
+    }
+
+    function _fnForgetStoredStateUnder(sOldName) {
+        /* The server released this tab's own session on the old name;
+           a lease or a followed start kept under it would name an
+           environment that no longer exists once the rename lands. */
+        if (VaibifyApp.fsGetLeaseForContainer(sOldName)) {
+            VaibifyApp.fnForgetLease();
+        }
+        try {
+            if (window.sessionStorage.getItem(S_PENDING_START_KEY) ===
+                    sOldName) {
+                _fnForgetPendingStart();
+            }
+        } catch (error) {
+            /* Storage unavailable: nothing was kept to forget. */
+        }
     }
 
     function _fsDeletionPhraseFor(sName) {

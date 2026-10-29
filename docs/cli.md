@@ -265,6 +265,15 @@ does not remove the container itself (stop it with `vaibify stop`) or
 the volume that holds the container's stored credentials, which
 remains until you remove it with `docker volume rm`.
 
+`start`, `stop`, `destroy` and `build` each hold the environment's
+name while they work, as the dashboard's start, stop, deletion,
+rename and containerization do, so two of them can never interleave on
+one environment. One that finds the name held refuses at once, naming
+what holds it: `'<name>' is being renamed by another vaibify process;
+try again when it finishes.` `start` is also refused while a rename of
+the environment has not finished; `vaibify reconcile <name>` settles
+one.
+
 ### vaibify verify
 
 `vaibify verify [-p NAME]` runs `checkIsolation.sh` inside the running
@@ -450,6 +459,11 @@ vaibify sessions stop --all   # stop every session except this one
 container locks, and it refuses any PID that is not a live vaibify
 session.
 
+The dashboard's equivalent is **Quit vaibify** (or **Admin → Quit**),
+which stops a hub and the windows it opened, and is refused while any
+of them has work in progress. `sessions stop` makes no such check:
+it stops the session it is given, the same as closing its terminal.
+
 ## vaibify do
 
 Every dashboard action has a command-line equivalent. Most are
@@ -516,7 +530,12 @@ up on the step.
 
 Actions that act on the hub rather than on a running container, such
 as `set-container-settings`, address the project by name and claim
-nothing. `upload-file-stream` takes `sLocalPath=<file>` and streams
+nothing. `vaibify do rename-environment -p OLD sNewName=NEW` renames a
+stopped environment; it is a dry run that lists every move unless
+`bDryRun=false` is given (see [Renaming an
+environment](environmentsAndProjects.md#renaming-an-environment)).
+`vaibify do rename-project sWorkflowPath=PATH sNewName=NAME` renames a
+Project, also a dry run first; an in-container agent is refused both. `upload-file-stream` takes `sLocalPath=<file>` and streams
 that host file as the request body, filling in its size and name.
 
 ## Recovering a quarantined container
@@ -531,7 +550,8 @@ vaibify reconcile CONTAINER --abandon-host-journal SHA256
 
 Once a terminal has been used in an environment, vaibify reports its
 quiescence as unproven on release or shutdown, and `reconcile` is how
-to settle it. A plain run shows which operation was mid-write, when,
+to settle it. It also finishes or undoes a rename of the environment
+that vaibify stopped partway through, before anything else. A plain run shows which operation was mid-write, when,
 and in which container; proves the recorded writer dead and the
 operation settled; and only then clears the quarantine, or refuses and
 leaves the container quarantined. The dashboard's **Reconcile now**

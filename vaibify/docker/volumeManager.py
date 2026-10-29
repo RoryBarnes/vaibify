@@ -31,6 +31,61 @@ def fnDestroyVolume(sVolumeName):
     _fnRunDockerCommand(saCommand, bCaptureOutput=True)
 
 
+def fnCreateLabeledVolume(sVolumeName, dictLabels):
+    """Create a NEW named volume carrying labels; refuse one that exists.
+
+    A volume that already exists is someone else's: reusing it would
+    let a copy land on top of data it did not make, and its labels would
+    not be this caller's.
+    """
+    if fbVolumeExists(sVolumeName):
+        raise RuntimeError(f"the volume {sVolumeName} already exists")
+    saCommand = ["docker", "volume", "create"]
+    for sKey, sValue in sorted(dictLabels.items()):
+        saCommand.extend(["--label", f"{sKey}={sValue}"])
+    saCommand.append(sVolumeName)
+    _fnRunDockerCommand(saCommand, bCaptureOutput=True)
+
+
+def fdictInspectVolume(sVolumeName):
+    """Return ``{sCreatedAt, dictLabels}`` for a volume, or None if absent."""
+    import json
+    processResult = subprocess.run(
+        ["docker", "volume", "inspect", sVolumeName],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    if processResult.returncode != 0:
+        return None
+    dictVolume = (json.loads(processResult.stdout or "[]") or [{}])[0]
+    return {
+        "sCreatedAt": str(dictVolume.get("CreatedAt") or ""),
+        "dictLabels": dict(dictVolume.get("Labels") or {}),
+    }
+
+
+def fdictReadVolumeSizes():
+    """Return each volume's size as the daemon reports it, by name.
+
+    The daemon's own words ("4.701GB") are kept rather than parsed: the
+    figure is shown to a researcher, never computed with.
+    """
+    import json
+    processResult = subprocess.run(
+        ["docker", "system", "df", "-v", "--format", "{{json .Volumes}}"],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    if processResult.returncode != 0:
+        return {}
+    try:
+        listVolumes = json.loads(processResult.stdout or "[]") or []
+    except ValueError:
+        return {}
+    return {
+        str(dictVolume.get("Name")): str(dictVolume.get("Size") or "")
+        for dictVolume in listVolumes if isinstance(dictVolume, dict)
+    }
+
+
 def fbVolumeExists(sVolumeName):
     """Check whether a named Docker volume exists.
 

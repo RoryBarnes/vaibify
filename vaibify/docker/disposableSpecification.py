@@ -55,6 +55,7 @@ lives with the caller that knows how much the job will write.
 
 import io
 import posixpath
+import re
 import secrets
 import socket
 import tarfile
@@ -84,6 +85,12 @@ __all__ = [
     "F_DEFAULT_WALL_CLOCK_SECONDS",
     "fdictBuildDefaultLimits",
     "fdictComposeCreateSpecification",
+    "S_ROLE_VOLUME_COPIER",
+    "S_VOLUME_COPIER_USER",
+    "LIST_VOLUME_COPIER_CAPABILITIES",
+    "S_VOLUME_COPIER_SOURCE_ROOT",
+    "S_VOLUME_COPIER_DESTINATION_ROOT",
+    "fdictComposeVolumeCopierSpecification",
     "fbufferRepackArchiveStamped",
     "finfoBuildEmptyFileEntry",
     "fnSendAllBounded",
@@ -234,7 +241,74 @@ def fdictComposeCreateSpecification(
                 S_DISPOSABLE_RESOURCE_LABEL: sResourceName,
             },
         },
+        # Recorded on the handle at reservation, and the only answer to
+        # "which user does an exec run as": never a caller argument.
+        "sExecUser": S_DISPOSABLE_CONTAINER_USER,
     }
+
+
+# ----- the volume copier: the one privileged profile -------------------
+#
+# Renaming an environment copies its two named volumes, whose files are
+# owned by several users (root, the container user, whatever a workflow
+# chose). Only root can recreate that ownership, so this ONE profile
+# runs as root -- with exactly the four capabilities a faithful copy
+# needs and nothing else: no network, a read-only root filesystem, the
+# source volume mounted read-only, no host mount of any kind, and the
+# environment's own image by ID so nothing is pulled. Approved as
+# written (ruling D13, 2026-10-28); a caller can set nothing beyond the
+# two volume names and the image ID, and any widening is a new ruling.
+
+S_ROLE_VOLUME_COPIER = "volumeCopier"
+S_VOLUME_COPIER_USER = "0:0"
+LIST_VOLUME_COPIER_CAPABILITIES = [
+    "CHOWN", "FOWNER", "DAC_OVERRIDE", "DAC_READ_SEARCH",
+]
+S_VOLUME_COPIER_SOURCE_ROOT = "/source"
+S_VOLUME_COPIER_DESTINATION_ROOT = "/destination"
+# Docker's own rule for a volume name.
+_RE_DOCKER_VOLUME_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
+_RE_IMAGE_IDENTIFIER = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def fdictComposeVolumeCopierSpecification(
+    sImageId, sReservationId, sSourceVolume, sDestinationVolume,
+    sResourceName="",
+):
+    """Compose the create keywords for the volume copier; see above.
+
+    Built on the ordinary posture with its default limits, so every
+    bound it carries -- memory, CPU, PIDs, private IPC,
+    no-new-privileges, all capabilities dropped first -- is the same
+    one; only the user, the four added capabilities and the two volume
+    mounts differ. ``sResourceName`` is the gateway's attribution
+    label, never the caller's.
+    """
+    for sVolume in (sSourceVolume, sDestinationVolume):
+        if not _RE_DOCKER_VOLUME_NAME.match(sVolume or ""):
+            raise ValueError(f"not a Docker volume name: {sVolume!r}")
+    if sSourceVolume == sDestinationVolume:
+        raise ValueError("a volume cannot be copied onto itself")
+    if not _RE_IMAGE_IDENTIFIER.match(sImageId or ""):
+        raise ValueError(
+            f"the volume copier runs an image by its ID, not {sImageId!r}")
+    dictSpecification = fdictComposeCreateSpecification(
+        sImageId, sReservationId, S_ROLE_VOLUME_COPIER, None,
+        sNetworkName=None, sResourceName=sResourceName,
+        bReadOnlyRootFilesystem=True,
+    )
+    dictSpecification["dictCreateKeywords"].update({
+        "user": S_VOLUME_COPIER_USER,
+        "cap_add": list(LIST_VOLUME_COPIER_CAPABILITIES),
+        "volumes": {
+            sSourceVolume: {
+                "bind": S_VOLUME_COPIER_SOURCE_ROOT, "mode": "ro"},
+            sDestinationVolume: {
+                "bind": S_VOLUME_COPIER_DESTINATION_ROOT, "mode": "rw"},
+        },
+    })
+    dictSpecification["sExecUser"] = S_VOLUME_COPIER_USER
+    return dictSpecification
 
 
 def _fnValidateArchiveMember(infoMember):

@@ -238,6 +238,13 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
 
     fnRedirectDirectory(containerLock, "_S_LOCK_DIRECTORY", "locks")
     fnRedirectDirectory(
+        containerLock, "_S_LIFECYCLE_LOCK_DIRECTORY", "lifecycleLocks",
+    )
+    from vaibify.config import pendingRenames
+    fnRedirectDirectory(
+        pendingRenames, "_S_PENDING_RENAMES_DIRECTORY", "pendingRenames",
+    )
+    fnRedirectDirectory(
         stateWriteLock, "S_STATE_LOCK_DIRECTORY", "stateLocks",
     )
     fnRedirectDirectory(hubPortRegistry, "_S_VAIBIFY_DIRECTORY")
@@ -289,6 +296,14 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     # prevent. Returning "" reads as UNSET, so the default (or an env
     # override, which still wins) applies. A test of the preference
     # tier patches these back.
+    # The Quit admission gate is one per process. A test whose Quit
+    # succeeds leaves it closed, exactly as a hub that is exiting would,
+    # so each test starts with a fresh, open gate.
+    from vaibify.config import mutationAdmission
+    monkeypatch.setattr(
+        mutationAdmission, "_dictAdmissionGate",
+        {"sGateId": "", "fExpiresMonotonic": None},
+    )
     from vaibify.config import preferencesStore
     monkeypatch.setattr(
         preferencesStore, "fsSessionCapPreference", lambda: "",

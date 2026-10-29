@@ -4400,7 +4400,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 885 -> 892 (2026-10-14): a live containerization vetoes the idle
     # self-exit beside the council's and the reproduction's vetoes, for
     # the same reason as both.
-    "serverLifespan.py": 892,
+    # NEW at 802 (2026-10-28): the hub registers the environment
+    # rename's startup recovery beside the conversion's.
+    "appFactory.py": 802,
+    # 892 -> 897 (2026-10-28): a live environment rename vetoes the idle
+    # watchdog, on the conversion's terms.
+    # 897 -> 929 (2026-10-28): the idle watchdog's work vetoes become
+    # flistHubBusyReasons, the one predicate Quit asks too, naming every
+    # in-flight carrier mutation; both end the hub through one signal.
+    "serverLifespan.py": 929,
     # NEW at 823 (2026-10-09): the orphan terminator, which rebuilds a
     # dead hub's terminal records from the journal and ends them, and
     # the record-free group terminate-and-prove the CLI-shell lane
@@ -4438,7 +4446,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # whether the project has the remote, never a dictRemotes key.
     # 946 -> 956 (2026-10-27, review): a refusal the verify's own
     # configuration raised is relayed in the push's warning.
-    "routeContext.py": 956,
+    # 956 -> 978 (2026-10-28): the shared 409 for a lifecycle lock that
+    # another operation holds, used by every route module that takes it.
+    "routeContext.py": 978,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -5916,7 +5926,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the create-step builder also takes bNoInputData from the request.
     # 2954 -> 2967 (2026-10-27): one helper attaches the host push
     # record, so a push can refresh the open workflow's copy too.
-    "workflowManager.py": 2967,
+    # 2967 -> 2994 (2026-10-28): the save's in-memory preparation is
+    # its own function, so the project rename's dry run previews the
+    # exact bytes a save writes; the save gains a write-keyword pass-through.
+    "workflowManager.py": 2994,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -6329,7 +6342,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3772 -> 3782 (2026-10-15): re-exports the ten public
     # fileStatusManager symbols, required by the orchestrator re-export
     # invariant.
-    "pipelineServer.py": 3782,
+    # 3782 -> 3787 (2026-10-28): the post-save self-write bookkeeping
+    # is one function, shared by the save and the project rename.
+    # 3787 -> 3809 (2026-10-28): a run the carrier refuses while a Quit
+    # holds the gate says so, rather than calling it a busy container.
+    "pipelineServer.py": 3809,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6388,7 +6405,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # The join, its member bookkeeping and the join-aware busy question
     # are durable-launch semantics; they belong beside the launch.
     # 1317 -> 1321 (2026-10-01): type-only imports name the annotations.
-    "commitCarrier.py": 1321,
+    # 1321 -> 1359 (2026-10-28): the carrier's entry asks the Quit
+    # gate, and names every live item so a Quit can say what it waits for.
+    "commitCarrier.py": 1359,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -6449,7 +6468,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # workflow cache and file paths are all keyed by the old one. The
     # refusal and its reasoning live here because this is the module
     # that knows a hub holds the container.
-    "hostControlChannel.py": 1070,
+    # 1070 -> 1078 (2026-10-28): the reconcile stop holds the name's
+    # lifecycle lock, so it cannot interleave with a rename or a start.
+    # 1078 -> 1146 (2026-10-28): describe-busy, close-admissions and
+    # reopen-admissions, a parent's Quit reaching the hubs it spawned.
+    "hostControlChannel.py": 1146,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one
@@ -6589,7 +6612,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # ending an earlier hub's sessions says so, and a granted claim of a
     # running neverSleep container starts its session lane; the claim path
     # is the one place that holds the verdict, the state and the lock.
-    "sessionLifecycle.py": 1870,
+    # 1870 -> 1872 (2026-10-28): a claim is refused while a Quit settles.
+    "sessionLifecycle.py": 1872,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -6782,7 +6806,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # container it removes ended, BEFORE removing it, and records an
     # out-of-memory kill when the start settles; the worker thread has
     # no app state, so the evidence rides the start task record.
-    "startReservation.py": 1136,
+    # 1136 -> 1141 (2026-10-28): the reserved create-and-start holds the
+    # name's lifecycle lock, so a rename or a CLI start cannot land
+    # between the clear, the create and the start.
+    "startReservation.py": 1141,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -7289,7 +7316,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2533 -> 2544 (2026-10-14): that cancel runs BEFORE the entry goes,
     # so a commit in flight refuses the removal by name (409) instead of
     # losing its journal under a vanished entry.
-    "registryRoutes.py": 2544,
+    # 2544 -> 2584 (2026-10-28): the per-name lifecycle lock. Start,
+    # stop, claim, un-register, create, convert and promote each hold
+    # (or refuse on) the name's lock, and the bodies they wrap gained a
+    # level of indentation; the routes stay where the operations are.
+    # 2584 -> 2644 (2026-10-28): the environment rename route, whose
+    # checks run in a fixed order before anything is written, and the
+    # start refusal while a rename has not finished.
+    # 2644 -> 2646 (2026-10-28): a containerization is refused while a
+    # Quit holds the admission gate.
+    "registryRoutes.py": 2646,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7506,7 +7542,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1544 -> 1548 (2026-10-24): the setup wizard's step route is excluded from the agent catalog, with why.
     # 1548 -> 1553 (2026-10-27): run-all says it runs every step's
     # tests, and the L2/L3 readiness descriptions name their criteria.
-    "actionCatalog.py": 1553,
+    # 1553 -> 1557 (2026-10-28): the environment rename is excluded from
+    # the agent catalog, with why.
+    # 1557 -> 1568 (2026-10-28): the researcher-only rename-project entry.
+    # 1568 -> 1572 (2026-10-28): Quit is excluded from the agent lane.
+    "actionCatalog.py": 1572,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8063,7 +8103,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-10-14): the reproduction retry's scope row, beside its
     # run and discard siblings.
     # 1193 -> 1198 (2026-10-24): the setup wizard's step route is declared browser-hub scoped, with why.
-    "routeScope.py": 1198,
+    # 1198 -> 1202 (2026-10-28): the environment rename's lifecycle scope.
+    # 1202 -> 1251 (2026-10-28): every route answers a mutation 503
+    # while a Quit holds the gate; Quit and its preflight are scoped.
+    "routeScope.py": 1251,
 }
 
 

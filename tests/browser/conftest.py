@@ -492,6 +492,9 @@ def _fnIsolateProjectRegistry():
         ), patch.object(
             containerLock, "_S_LOCK_DIRECTORY",
             os.path.join(sHome, "locks"),
+        ), patch.object(
+            containerLock, "_S_LIFECYCLE_LOCK_DIRECTORY",
+            os.path.join(sHome, "lifecycleLocks"),
         ):
             yield sHome
 

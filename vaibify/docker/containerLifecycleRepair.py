@@ -213,9 +213,12 @@ def _fdictMutateThroughTheGateway(
     the message has to say what.
     """
     try:
-        return containerManager.fdictRepairContainerLifecycle(
-            config, sContainerName, sOperation, sImageIdentity,
-        )
+        with containerLock.fcontextHoldLifecycleLock(
+            sContainerName, "repaired",
+        ):
+            return containerManager.fdictRepairContainerLifecycle(
+                config, sContainerName, sOperation, sImageIdentity,
+            )
     except (RuntimeError, ValueError) as errorRepair:
         raise RepairRefusedError(str(errorRepair))
 

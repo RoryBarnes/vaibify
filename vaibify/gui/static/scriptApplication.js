@@ -6517,10 +6517,8 @@ const VaibifyApp = (function () {
         );
         if (iLevel >= 1) {
             document.body.classList.add("proof-level-" + iLevel);
-            VaibifyTerminal.fnUpdateCursorColor("#b39ddb");
-        } else {
-            VaibifyTerminal.fnUpdateCursorColor("#13aed5");
         }
+        VaibifyTerminal.fnUpdateCursorColor(fsGetHighlightColor());
         fnTriggerLevelTransitionAnimation(
             iLevel, _dictWorkflowState.iLastRenderedProofLevel,
         );

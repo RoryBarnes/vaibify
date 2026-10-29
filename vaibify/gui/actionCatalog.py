@@ -249,6 +249,17 @@ LIST_AGENT_ACTIONS = [
                      "researcher reviews and confirms there; once "
                      "the project exists, populate it with "
                      "create-step."},
+    {"sName": "rename-project", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/workflows/{sContainerId}/rename",
+     "bAgentSafe": False,
+     "sDescription": "Researcher-only: rename a project. Args: "
+                     "{sWorkflowPath, sNewName, bDryRun}; bDryRun "
+                     "defaults to true and returns the PROOF "
+                     "requirements and labels the new bytes would "
+                     "invalidate. An agent asks the researcher to "
+                     "rename from the Project hub's menu, or on the "
+                     "host with `vaibify do rename-project`."},
     {"sName": "create-step", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/create",
@@ -1345,6 +1356,10 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # the researcher's behalf. Excluded here AND the handler rejects the
     # agent token lane.
     ("POST", "/api/registry/{sName}/delete-environment"),
+    # Renaming an environment re-keys the lock, lease and journal and
+    # copies its volumes as root; researcher only. Excluded here AND the
+    # handler rejects the agent token lane.
+    ("POST", "/api/registry/{sName}/rename"),
     # Project-context import reads the HOST filesystem; an
     # agent-invokable host read would let a compromised in-container
     # agent exfiltrate home-directory files into a public repository.
@@ -1389,6 +1404,10 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # keep the researcher's credential alive past the attention it is
     # supposed to track. The route itself 403s the agent lane too.
     ("POST", "/api/session/renew"),
+    # Quit stops this hub and its child windows, and may stop the
+    # researcher's environments. An agent inside one of them must never
+    # end the hub it is talking to; the route refuses the agent lane too.
+    ("POST", "/api/session/quit"),
     ("POST", "/api/workflows/{sContainerId}/create"),
     # Docker-runtime retry — agents run inside the container that
     # needs Docker, so the UI is the only sensible caller.

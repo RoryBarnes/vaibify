@@ -5,6 +5,8 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import time
 
 import click
 
@@ -68,6 +70,93 @@ def _fnStartContainerDetached(config, sDockerDir):
     click.echo(
         f"Started {config.sProjectName} detached ({sContainerId[:12]})."
     )
+
+
+# How long the interactive start waits to see its container running
+# before it lets the lifecycle lock go anyway. Generous: the image is
+# already local (pre-flight checked it), so this bounds only Docker
+# creating and starting one container.
+F_INTERACTIVE_START_LOCK_SECONDS = 300.0
+F_RUNNING_POLL_SECONDS = 0.5
+
+
+def fdictTakeLifecycleLockOrExit(sProjectName, sOperation):
+    """Take the name's lifecycle lock for a CLI command, or exit 1.
+
+    Returns a holder dictionary for ``fnReleaseHeldLifecycleLock``,
+    which may be called from more than one thread and releases once.
+    """
+    from vaibify.config.containerLock import (
+        LifecycleLockedError, ffileTakeLifecycleLock,
+    )
+    try:
+        fileHandle = ffileTakeLifecycleLock(sProjectName, sOperation)
+    except LifecycleLockedError as error:
+        click.echo(f"Error: {error}", err=True)
+        sys.exit(1)
+    return {"fileHandle": fileHandle, "lockRelease": threading.Lock()}
+
+
+def fnReleaseHeldLifecycleLock(dictHeld):
+    """Release a lock taken by ``fdictTakeLifecycleLockOrExit`` once."""
+    from vaibify.config.containerLock import fnReleaseLifecycleLock
+    with dictHeld["lockRelease"]:
+        fileHandle = dictHeld.pop("fileHandle", None)
+        if fileHandle is not None:
+            fnReleaseLifecycleLock(fileHandle)
+
+
+def _fnReleaseOnceRunning(sProjectName, dictHeld):
+    """Release the lifecycle lock as soon as the container is running.
+
+    The interactive start attaches a terminal and blocks until the
+    container exits, but the lock covers only creating and starting
+    it: held for the whole session, it would refuse the ``vaibify
+    stop`` a researcher runs from another terminal.
+    """
+    from vaibify.docker.containerManager import fbContainerIsRunning
+    fDeadline = time.monotonic() + F_INTERACTIVE_START_LOCK_SECONDS
+    while "fileHandle" in dictHeld and time.monotonic() < fDeadline:
+        if fbContainerIsRunning(sProjectName):
+            break
+        time.sleep(F_RUNNING_POLL_SECONDS)
+    fnReleaseHeldLifecycleLock(dictHeld)
+
+
+def _fnRefuseWhileRenamePendingOrExit(sProjectName):
+    """Exit 1 while a rename that names this environment has not finished."""
+    from vaibify.gui.environmentRename import (
+        RenameRefusedError, fnRefuseWhileRenamePending,
+    )
+    try:
+        fnRefuseWhileRenamePending(sProjectName)
+    except RenameRefusedError as error:
+        click.echo(f"Error: {error}", err=True)
+        sys.exit(1)
+
+
+def _fnLaunchUnderLifecycleLock(config, sDockerDir, bDetach, sCommand):
+    """Clear a stale container and start a new one, holding the name.
+
+    Holding the lifecycle lock across the clear, the create and the
+    start is what keeps a rename, a destroy or a GUI start of the same
+    name from landing between them.
+    """
+    dictHeld = fdictTakeLifecycleLockOrExit(config.sProjectName, "started")
+    try:
+        _fnRefuseWhileRenamePendingOrExit(config.sProjectName)
+        fnClearStoppedContainerBeforeLaunch(config)
+        click.echo(f"Starting container {config.sProjectName} ...")
+        if bDetach:
+            _fnStartContainerDetached(config, sDockerDir)
+            return
+        threading.Thread(
+            target=_fnReleaseOnceRunning,
+            args=(config.sProjectName, dictHeld), daemon=True,
+        ).start()
+        _fnStartContainer(config, sDockerDir, sCommand)
+    finally:
+        fnReleaseHeldLifecycleLock(dictHeld)
 
 
 def _fnRejectCommandWithDetach(sCommand):
@@ -609,13 +698,8 @@ def fnStartCommand(
     _fnEnforcePreflightOrExit(listPreflight)
     _fnPrintWarningsIfAny(listPreflight)
     fnConfirmImageTrustOrExit(config, sImageTrust, bWithCredentials)
-    fnClearStoppedContainerBeforeLaunch(config)
-    sDockerDir = fsDockerDir()
-    click.echo(f"Starting container {config.sProjectName} ...")
     if bDetach:
         _fnRejectCommandWithDetach(command)
-        _fnStartContainerDetached(config, sDockerDir)
-    else:
-        _fnStartContainer(config, sDockerDir, command)
+    _fnLaunchUnderLifecycleLock(config, fsDockerDir(), bDetach, command)
     if bGui:
         fnLaunchGui(config, iPort, sConfigPath)
