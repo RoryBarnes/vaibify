@@ -137,9 +137,11 @@ jobs:
         run: |
           python -m pytest tests/testArchitecturalInvariants.py -v
 
+      # A hang detector, not a budget: the step measured 838-900 s on
+      # 2026-10-29, at the old 15-minute ceiling.
       - name: Falsification tests
         if: matrix.shard == 1
-        timeout-minutes: 15
+        timeout-minutes: 40
         run: |
           python -m pytest -m falsification -v
 
@@ -212,7 +214,7 @@ jobs:
           python -m pytest tests/testArchitecturalInvariants.py -v
 
       - name: Falsification tests
-        timeout-minutes: 15
+        timeout-minutes: 40
         run: |
           python -m pytest -m falsification -v
 
