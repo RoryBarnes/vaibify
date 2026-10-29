@@ -40,6 +40,7 @@ __all__ = [
     "fgenericRunWorkerUnderTheDrain",
     "fsHashContainerFileOrEmpty",
     "fsRefreshVerifyCacheAfterPush",
+    "fcontextHoldLifecycleLocksOrConflict",
 ]
 
 import asyncio
@@ -954,3 +955,24 @@ def fnRequireNetworkAccess(sContainerId):
             status_code=409,
             detail=fdictIsolationBlockedResponse(),
         )
+
+
+@contextmanager
+def fcontextHoldLifecycleLocksOrConflict(listNames, sOperation):
+    """Hold the names' lifecycle locks, or answer 409 naming the holder.
+
+    Only the ACQUISITION is translated: a ``LifecycleLockedError`` the
+    body itself raises is someone else's refusal and propagates as is.
+    """
+    from vaibify.config.containerLock import (
+        LifecycleLockedError, flistTakeLifecycleLocks,
+        fnReleaseLifecycleLocks,
+    )
+    try:
+        listHandles = flistTakeLifecycleLocks(listNames, sOperation)
+    except LifecycleLockedError as error:
+        raise HTTPException(409, detail={"sMessage": str(error)})
+    try:
+        yield
+    finally:
+        fnReleaseLifecycleLocks(listHandles)

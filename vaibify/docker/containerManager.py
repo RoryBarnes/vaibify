@@ -574,6 +574,11 @@ def flistBuildRunArgs(
     saRunArgs.append("--init")
     saRunArgs.extend(["--name", config.sProjectName])
     saRunArgs.extend(["--hostname", config.sProjectName])
+    # The name the banner shows is the CURRENT one, passed at every
+    # start: the image's own VC_PROJECT_NAME was baked at build time,
+    # so after a rename it would name the old environment until a
+    # rebuild nobody needs.
+    saRunArgs.extend(["-e", f"VC_PROJECT_NAME={config.sProjectName}"])
     _fnAddEntrypointUser(saRunArgs, bRestricted)
     _fnAddCapabilityDrops(saRunArgs, bRestricted)
     _fnAddCpuAllocation(config, saRunArgs)

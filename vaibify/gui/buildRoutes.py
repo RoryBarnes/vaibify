@@ -26,6 +26,8 @@ from collections import deque
 
 from fastapi import HTTPException, Request
 
+from vaibify.config.containerLock import LifecycleLockedError
+
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +126,8 @@ def _fnRegisterBuildContainer(app, dictCtx):
             await asyncio.to_thread(
                 _fnExecuteBuild, dictProject, bNoCache, dictProgress,
             )
+        except LifecycleLockedError as error:
+            raise HTTPException(409, detail={"sMessage": str(error)})
         except Exception as error:
             sTail = getattr(error, "sStderrTail", "") or ""
             logger.error(

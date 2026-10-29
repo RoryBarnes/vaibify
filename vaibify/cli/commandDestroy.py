@@ -79,19 +79,30 @@ def fnRequireDocker():
 )
 def fnDestroyCommand(sProjectName):
     """Remove the Vaibify workspace volume and optionally the image."""
+    from vaibify.docker.volumeManager import (
+        fsWorkspaceVolumeNameForProject,
+    )
+    from .commandStart import (
+        fdictTakeLifecycleLockOrExit, fnReleaseHeldLifecycleLock,
+    )
     fnRequireDocker()
     config = fconfigResolveProject(sProjectName)
-    sVolumeName = f"{config.sProjectName}-workspace"
+    sVolumeName = fsWorkspaceVolumeNameForProject(config.sProjectName)
     if not click.confirm(
         f"This will remove the workspace volume "
         f"'{sVolumeName}'. Continue?"
     ):
         click.echo("Aborted.")
         return
-    fnRemoveVolume(sVolumeName)
-    if click.confirm(
+    bRemoveImages = click.confirm(
         "Also remove the Docker images (the base layer, every overlay, "
         "and latest)?", default=False
-    ):
-        flistRemoveProjectImages(config.sProjectName)
+    )
+    dictHeld = fdictTakeLifecycleLockOrExit(config.sProjectName, "destroyed")
+    try:
+        fnRemoveVolume(sVolumeName)
+        if bRemoveImages:
+            flistRemoveProjectImages(config.sProjectName)
+    finally:
+        fnReleaseHeldLifecycleLock(dictHeld)
     click.echo("Destroy complete.")

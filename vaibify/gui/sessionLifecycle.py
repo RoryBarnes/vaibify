@@ -405,8 +405,10 @@ async def ftClaimWithCardinality(
     two different container-mutation locks but serialize on the single
     cardinality lock, so they resolve to exactly one owner record.
     Returns the primitive's ``(iStatusCode, dictPayload)`` verdict
-    unchanged.
+    unchanged. A claim is new work, so a Quit's closed admission gate
+    refuses it before any lock is taken.
     """
+    mutationAdmission.fnAssertAdmissionGateOpen("A claim of this environment")
     dictLockStore = _fdictLockStoreForAppState(appState)
     dictContainerOwners = getattr(appState, "dictContainerOwners", {})
     dictSessionOwner = getattr(appState, "dictSessionOwner", None)

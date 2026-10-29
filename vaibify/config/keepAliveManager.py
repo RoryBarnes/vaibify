@@ -210,6 +210,11 @@ def _fnRemovePidFile(sPath):
     pidFileRegistry.fnUnlinkQuietly(sPath)
 
 
+def fsPidFilePathFor(sContainerName):
+    """Return where a container's keep-alive record lives, present or not."""
+    return _fsPidFilePath(sContainerName)
+
+
 def _fsPidFilePath(sContainerName):
     """Return the PID file path for a container."""
     return os.path.join(_S_PID_DIRECTORY, f"{sContainerName}.pid")

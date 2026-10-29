@@ -271,6 +271,27 @@ def fnSaveToFile(config, sFilePath):
         )
 
 
+def fbaRenderConfigWithProjectName(baConfig, sNewName):
+    """Return a vaibify.yml's bytes with only ``projectName`` changed.
+
+    Every other field the researcher wrote is preserved by loading the
+    file and overlaying the one key, and the result is VALIDATED before
+    it is rendered, so an already-broken file cannot be stranded under
+    a new name: ``ValueError`` when the merged configuration is
+    invalid. The bytes are exactly what :func:`fnSaveToFile` would
+    write, so a caller can record them before writing them.
+    """
+    dictMerged = dict(yaml.safe_load(baConfig.decode("utf-8")) or {})
+    dictMerged["projectName"] = sNewName
+    if not fbValidateConfig(dictMerged):
+        raise ValueError(
+            f"the configuration is invalid under the name {sNewName!r}")
+    return yaml.safe_dump(
+        _fdictConfigToYamlDict(fconfigFromYamlDict(dictMerged)),
+        default_flow_style=False, sort_keys=False,
+    ).encode("utf-8")
+
+
 def fconfigFromYamlDict(dictRaw):
     """Merge a camelCase YAML dict with defaults and return ProjectConfig.
 

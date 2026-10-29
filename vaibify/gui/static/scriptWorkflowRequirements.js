@@ -3829,8 +3829,9 @@ var VaibifyWorkflowRequirements = (function () {
         var sHtml = '<div class="project-block-header">' +
             '<span class="project-block-title" ' +
             'title="Requirements that apply to the project as a ' +
-            'whole rather than to any single step.">' +
-            _fsExpandTriangle(bOpen) + 'Project' +
+            'whole rather than to any single step. Click the ' +
+            'banner to collapse or expand.">' +
+            'Project' +
             '</span></div>';
         if (!bOpen) return sHtml;
         return sHtml + '<div class="project-block-body">' +
@@ -3979,7 +3980,7 @@ var VaibifyWorkflowRequirements = (function () {
             'title="Requirements that apply to the project as a ' +
             'whole rather than to any single step. Click the ' +
             'banner to collapse or expand.">' +
-            _fsExpandTriangle(bOpen) + 'Project' +
+            'Project' +
             '</span>' +
             VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
             '</div>';

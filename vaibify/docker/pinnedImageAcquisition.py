@@ -58,6 +58,7 @@ __all__ = [
 
 import logging
 
+from vaibify.config import containerLock
 from vaibify.docker import disposableContainer
 from vaibify.docker import imageBuilder
 
@@ -199,9 +200,10 @@ def fdictObtainAndStage(
         sBaseImageId, sRunningImageId, fnReport,
     )
     fnReport(f"Tagging {sRunningImageId[:19]}... as {dictProject['sName']}:{sTag}")
-    disposableContainer.fnTagImage(
-        dockerDisposable, sRunningImageId, dictProject["sName"], sTag,
-    )
+    with containerLock.fcontextHoldLifecycleLock(dictProject["sName"], "tagged"):
+        disposableContainer.fnTagImage(
+            dockerDisposable, sRunningImageId, dictProject["sName"], sTag,
+        )
     return {
         "sBaseImageId": sBaseImageId,
         "sRunningImageId": sRunningImageId,

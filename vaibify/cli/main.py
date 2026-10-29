@@ -360,7 +360,11 @@ def fnStopCommand(sProjectName):
     """Stop the running Vaibify environment."""
     configProject = fconfigResolveProject(sProjectName)
     from vaibify.docker.containerManager import fnStopContainer
+    from .commandStart import (
+        fdictTakeLifecycleLockOrExit, fnReleaseHeldLifecycleLock,
+    )
     sName = configProject.sProjectName
+    dictHeld = fdictTakeLifecycleLockOrExit(sName, "stopped")
     try:
         click.echo(f"Stopping container {sName} ...")
         fnStopContainer(sName)
@@ -368,6 +372,8 @@ def fnStopCommand(sProjectName):
     except RuntimeError:
         click.echo(f"ERROR: vaibify container {sName} is not active.")
         sys.exit(1)
+    finally:
+        fnReleaseHeldLifecycleLock(dictHeld)
 
 
 @main.command("connect")

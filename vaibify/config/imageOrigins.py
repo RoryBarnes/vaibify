@@ -53,6 +53,7 @@ __all__ = [
     "fnRemoveOriginRecord",
     "fnRenameOriginRecord",
     "fnWriteOriginRecord",
+    "fsOriginRecordPathFor",
     "fsOriginsDirectory",
 ]
 
@@ -147,6 +148,11 @@ def fnRemoveOriginRecord(sProjectName):
         os.remove(_fsRecordPath(sProjectName))
     except FileNotFoundError:
         return
+
+
+def fsOriginRecordPathFor(sProjectName):
+    """Return where a project's origin record lives, present or not."""
+    return _fsRecordPath(sProjectName)
 
 
 def fnRenameOriginRecord(sOldName, sNewName):

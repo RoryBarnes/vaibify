@@ -419,7 +419,7 @@ var VaibifyDependencyScanner = (function () {
         for (var i = 0; i < listChecked.length; i++) {
             var dictDep = listChecked[i];
             sHtml += '<div class="dependency-suggestion">' +
-                '<span style="color:var(--color-pale-blue);">' +
+                '<span style="color:var(--highlight-color);">' +
                 '&#10003;</span> ' +
                 '<span class="dependency-step-badge">' +
                 VaibifyUtilities.fnEscapeHtml(dictDep.sSourceStepName) +

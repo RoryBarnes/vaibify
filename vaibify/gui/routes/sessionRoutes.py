@@ -20,9 +20,15 @@ session. It is the remedy the warning offers, and it is triggered by a
 researcher, never by a poll: an automatic renewal would delete the cap
 while the Settings control went on claiming one existed.
 
-Both routes reject requests carrying the in-container agent token: only
-a browser-origin caller may spawn a hub, and the agent holds no browser
-session whose lifetime it could read.
+``GET /api/session/quit-preflight`` and ``POST /api/session/quit`` are
+the hubs' Quit button and Admin -> Quit: what a Quit would leave
+running and what refuses it, and the Quit itself (``hubQuit``), which
+closes the admission gate here and in every spawned window, settles,
+re-checks, and only then shuts this hub down.
+
+Every route rejects requests carrying the in-container agent token: only
+a browser-origin caller may spawn or quit a hub, and the agent holds no
+browser session whose lifetime it could read.
 """
 
 __all__ = ["fnRegisterAll", "S_SUPPRESS_BROWSER_ENV"]
@@ -35,9 +41,18 @@ import sys
 import time
 
 from fastapi import HTTPException, Request
+from pydantic import BaseModel
+
+from ..routeScope import (
+    S_CARRIER_LIFECYCLE_TRANSACTION,
+    S_CARRIER_TYPED_READ,
+    ffnDeclareCarrierMode,
+)
 
 
 _I_MAX_LIVE_SPAWNS = 5
+_F_CHILD_EXIT_TIMEOUT_SECONDS = 10.0
+_F_SHUTDOWN_SIGNAL_DELAY_SECONDS = 0.2
 _S_AGENT_SESSION_HEADER_NAME = "x-vaibify-session"
 _S_BROWSER_CREDENTIAL_HEADER_NAME = "x-session-token"
 _F_READY_TIMEOUT_SECONDS = 30.0
@@ -172,6 +187,9 @@ def _fnRegisterSpawn(app):
             )
         iPort = fiPickFreePort(iPreferred=8050)
         child = _fprocessLaunchDetachedHub(iPort)
+        # Kept beside the handle, so a Quit can find the child's control
+        # socket (hubQuit.flistTrustedChildPorts).
+        child.iHubPort = iPort
         listChildren.append(child)
         return {
             "sUrl": await _fsSignInUrlForSpawnedChild(
@@ -238,12 +256,30 @@ def _fnRegisterRenewal(app):
         )
 
 
+def _fnAwaitChildExit(processChild):
+    """Wait, bounded, for a terminated child to exit; kill one that will not."""
+    try:
+        processChild.wait(timeout=_F_CHILD_EXIT_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        try:
+            processChild.kill()
+            processChild.wait(timeout=_F_CHILD_EXIT_TIMEOUT_SECONDS)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    except OSError:
+        pass
+
+
 def _fnRegisterSpawnedChildShutdown(app):
     """Terminate every spawned hub child when this process shuts down.
 
     Without this hook a hub that exits (idle self-shutdown, terminal
-    close) leaves its spawned children running; they are otherwise only
-    pruned on the next spawn and never actively terminated.
+    close, Quit) leaves its spawned children running; they are otherwise
+    only pruned on the next spawn and never actively terminated.
+
+    The children are waited for, and only then is a Quit's lease
+    renewal stopped: a child's admission gate must stay closed until
+    the child has exited, so its lease cannot lapse in between.
     """
     if not hasattr(app.state, "listSpawnedChildren"):
         app.state.listSpawnedChildren = []
@@ -251,20 +287,116 @@ def _fnRegisterSpawnedChildShutdown(app):
         app.state.listLifespanShutdown = []
 
     async def fnTerminateSpawnedChildren(app):
-        for child in list(app.state.listSpawnedChildren):
+        from .. import hubQuit
+        listChildren = list(app.state.listSpawnedChildren)
+        for processChild in listChildren:
             try:
-                child.terminate()
-            except Exception:
+                processChild.terminate()
+            except OSError:
                 pass
+        for processChild in listChildren:
+            await asyncio.to_thread(_fnAwaitChildExit, processChild)
         app.state.listSpawnedChildren.clear()
+        hubQuit.fnStopLeaseRenewal(app)
 
     app.state.listLifespanShutdown.append(fnTerminateSpawnedChildren)
 
 
+def _fnRejectBrowserHubCaller(request, sAction):
+    """Refuse the in-container agent, by either of its two signals."""
+    from ..routeContext import fnRejectAgentTokenLane
+    _fnRejectContainerAgentCallers(
+        request,
+        sDetail=f"{sAction} is the researcher's, never the in-container "
+        "agent's.",
+    )
+    fnRejectAgentTokenLane(request)
+
+
+def _fnRegisterQuitPreflight(app, dictCtx):
+    """Register GET /api/session/quit-preflight on the given app.
+
+    What the Quit dialog shows before anything is closed: the
+    environments left running, the child windows that will close, the
+    open terminals, and every reason a Quit would be refused, by window.
+    """
+
+    @app.get("/api/session/quit-preflight")
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictReadQuitPreflight(request: Request):
+        from .. import hubQuit
+        _fnRejectBrowserHubCaller(request, "Quitting vaibify")
+        return await hubQuit.fdictBuildQuitPreflight(app, dictCtx)
+
+
+class QuitRequest(BaseModel):
+    bStopEnvironments: bool = False
+
+
+async def _fnScheduleHubShutdown(app):
+    """Mark the Quit committed, then SIGTERM this hub once the reply is out.
+
+    Runs as the response's background task, so the 202 has flushed; the
+    short delay lets the socket close cleanly before uvicorn's graceful
+    shutdown runs every hook.
+    """
+    from .. import serverLifespan
+    app.state.bQuitTerminationScheduled = True
+    await asyncio.sleep(_F_SHUTDOWN_SIGNAL_DELAY_SECONDS)
+    serverLifespan.fnSignalHubToShutDown()
+
+
+def _fnRegisterQuit(app, dictCtx):
+    """Register POST /api/session/quit on the given app (D6-D8, D12).
+
+    The whole transaction is ``hubQuit.fdictRunQuit``; this answers 202
+    when it succeeds and schedules the shutdown, and 409 with every
+    reason and every environment already stopped when it does not.
+    """
+
+    @app.post("/api/session/quit")
+    @ffnDeclareCarrierMode(S_CARRIER_LIFECYCLE_TRANSACTION)
+    async def fresponseQuitVaibify(
+        request: Request, requestQuit: QuitRequest,
+    ):
+        from fastapi.responses import JSONResponse
+        from starlette.background import BackgroundTask
+        from .. import hubQuit
+        _fnRejectBrowserHubCaller(request, "Quitting vaibify")
+        try:
+            dictResult = await hubQuit.fdictRunQuit(
+                app, dictCtx, requestQuit.bStopEnvironments,
+            )
+        except hubQuit.QuitRefusedError as error:
+            raise HTTPException(status_code=409, detail=error.dictDetail)
+        return JSONResponse(
+            status_code=202, content=dictResult,
+            background=BackgroundTask(_fnScheduleHubShutdown, app),
+        )
+
+
+def _fnRegisterShuttingDownRefusal(app):
+    """Answer work refused by a closed Quit gate as 503, in its own words."""
+    from fastapi.responses import JSONResponse
+    from vaibify.config.mutationAdmission import AdmissionsClosedError
+    from ..routeScope import S_REFUSAL_SHUTTING_DOWN
+
+    async def fresponseShuttingDown(request, errorRefused):
+        del request
+        return JSONResponse(status_code=503, content={"detail": {
+            "sMessage": str(errorRefused),
+            "sRefusal": S_REFUSAL_SHUTTING_DOWN,
+        }})
+
+    app.add_exception_handler(AdmissionsClosedError, fresponseShuttingDown)
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all session routes."""
-    del dictCtx
     _fnRegisterSpawn(app)
     _fnRegisterLifetime(app)
     _fnRegisterRenewal(app)
+    _fnRegisterQuitPreflight(app, dictCtx)
+    _fnRegisterQuit(app, dictCtx)
+    _fnRegisterShuttingDownRefusal(app)
     _fnRegisterSpawnedChildShutdown(app)

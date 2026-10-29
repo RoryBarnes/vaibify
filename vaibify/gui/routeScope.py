@@ -47,7 +47,11 @@ import logging
 from fastapi.routing import APIRoute
 from starlette.responses import Response
 
-from vaibify.config.mutationAdmission import ControlPlaneRefusalError
+from vaibify.config.mutationAdmission import (
+    ControlPlaneRefusalError,
+    S_SHUTTING_DOWN_REFUSAL,
+    fbAdmissionGateClosed,
+)
 
 from . import actionCatalog
 from . import browserSession
@@ -58,6 +62,8 @@ logger = logging.getLogger("vaibify")
 __all__ = [
     "S_LEASE_HEADER_NAME",
     "S_REFUSAL_CLAIM_REQUIRED",
+    "S_REFUSAL_SHUTTING_DOWN",
+    "SET_ROUTES_ADMITTED_WHILE_QUITTING",
     "S_SCOPE_PUBLIC_STATIC",
     "S_SCOPE_BOOTSTRAP_CAPABILITY",
     "S_SCOPE_BROWSER_HUB",
@@ -174,6 +180,16 @@ S_END_SUPERVISION_ON_HOST_PATH = (
 # is live: refused as a CONFLICT, not a forbidden — the caller may well
 # be the owner, and the honest answer is "not yet", not "not you".
 I_REJECT_STARTING = 409
+# A state-mutating request arriving while a Quit settles. 503 says what
+# is true -- the server is up, and is going away -- and a client keys on
+# the refusal code, never on the prose.
+I_REJECT_SHUTTING_DOWN = 503
+S_REFUSAL_SHUTTING_DOWN = "shutting-down"
+# The mutations the Quit gate lets through: the Quit itself, which
+# closes the gate as its first act and so must not be refused by it.
+SET_ROUTES_ADMITTED_WHILE_QUITTING = frozenset({
+    ("POST", "/api/session/quit"),
+})
 
 
 # Non-container control-plane routes and the scope each carries. A mutating
@@ -237,6 +253,10 @@ DICT_CONTROL_PLANE_SCOPES = {
     # session cannot delete an environment another is working in.
     ("POST", "/api/registry/{sName}/delete-environment"):
         S_SCOPE_CONTAINER_LIFECYCLE,
+    # Renaming re-keys everything a name owns, so on the same terms as
+    # deletion: lease-enforced while the environment is owned, so one
+    # session cannot rename an environment another is working in.
+    ("POST", "/api/registry/{sName}/rename"): S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/containers/{sName}/settings"):
         S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/host-directories/create"): S_SCOPE_BROWSER_HUB,
@@ -314,6 +334,12 @@ DICT_CONTROL_PLANE_SCOPES = {
     # would leave exactly those researchers unable to answer the
     # warning they were shown.
     ("POST", "/api/session/renew"): S_SCOPE_BROWSER_HUB,
+    # Quit, and the preflight that says what Quit would leave running and
+    # what refuses it: they stop this hub and its child windows, and read
+    # host state (the hub's held environments and its children's busy
+    # reasons). Browser only; both handlers refuse the agent lane too.
+    ("GET", "/api/session/quit-preflight"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/session/quit"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/system/docker-status/retry"): S_SCOPE_BROWSER_HUB,
     # The remnant panel reads and acts on HOST state: processes, lock
     # files, keep-alives, every container on the daemon. Browser only.
@@ -995,6 +1021,8 @@ class ContainerAwareRoute(APIRoute):
 
         async def fresponseHandleAuthorized(request):
             from . import commitCarrier
+            if _fbRefusedByTheQuitGate(request.method, self.path):
+                return _fresponseShuttingDown()
             dictScope = fdictResolveRouteScope(
                 self.methods, self.path, self.endpoint,
             )
@@ -1078,6 +1106,31 @@ def _fbRefuseSupervisedHostMutation(setMethods, sPath, request):
         return False
     from . import attributionLog
     return attributionLog.fbSupervisionEnabled(dictWorkflow)
+
+
+def _fbRefusedByTheQuitGate(sMethod, sPath):
+    """Return True for a state-mutating request while a Quit is settling.
+
+    Every HTTP route in both apps runs through this class, so this one
+    check is what makes "every state-mutating action is refused while
+    the gate is closed" hold for HTTP. It is not the gate itself, which
+    lives in ``mutationAdmission`` and is also asked by the carrier and
+    by each non-carrier start, because a command over a socket opened
+    before the Quit never passes through here.
+    """
+    if sMethod.upper() not in _SET_STATE_MUTATING_METHODS:
+        return False
+    if (sMethod.upper(), sPath) in SET_ROUTES_ADMITTED_WHILE_QUITTING:
+        return False
+    return fbAdmissionGateClosed()
+
+
+def _fresponseShuttingDown():
+    """Return the refusal a mutation meets while a Quit is settling."""
+    return _fresponseJson(I_REJECT_SHUTTING_DOWN, {
+        "sMessage": S_SHUTTING_DOWN_REFUSAL + ".",
+        "sRefusal": S_REFUSAL_SHUTTING_DOWN,
+    })
 
 
 def _fresponseSupervisedHostRefusal():

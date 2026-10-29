@@ -54,27 +54,33 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache, sProjectDirectory=None):
     The staging copy is discarded on success and kept on failure, with
     its path printed, because a failed image build is exactly when
     someone wants to read the context that produced it.
+
+    The name's lifecycle lock is held for the whole build, because it
+    rewrites every ``<name>:*`` tag; ``LifecycleLockedError`` is raised
+    before anything is staged while another operation holds the name.
     """
-    fnBuildImage = _ffnImportBuildOrExit()
-    sStagedDir = fsStageBuildContext(config, sDockerDir)
-    # Read the pin BEFORE the build: fnRecordBaseImageDigestIfFloating
-    # below rewrites environment.json, so a read afterwards would
-    # compare the new environment against itself.
-    tPinnedBefore = _ftReadPinnedEnvironment()
-    try:
-        fnPrepareBuildContext(config, sStagedDir, sProjectDirectory)
-        bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
-        fnWarnIfBaseImageFloating(config)
-        fnBuildImage(config, sStagedDir, bNoCache=bEffectiveNoCache)
-    except BaseException:
-        click.echo(f"[vaib] Build context retained at {sStagedDir}")
-        fnPruneOlderBuildContexts(config)
-        raise
-    fnDiscardBuildContext(sStagedDir)
-    fnRecordBaseImageDigestIfFloating(config)
-    fnRecordBuildArgHash(config)
-    fnWarnIfRebuildChangedEnvironment(config, tPinnedBefore)
-    fnPruneDanglingImages()
+    from vaibify.config.containerLock import fcontextHoldLifecycleLock
+    with fcontextHoldLifecycleLock(config.sProjectName, "built"):
+        fnBuildImage = _ffnImportBuildOrExit()
+        sStagedDir = fsStageBuildContext(config, sDockerDir)
+        # Read the pin BEFORE the build: fnRecordBaseImageDigestIfFloating
+        # below rewrites environment.json, so a read afterwards would
+        # compare the new environment against itself.
+        tPinnedBefore = _ftReadPinnedEnvironment()
+        try:
+            fnPrepareBuildContext(config, sStagedDir, sProjectDirectory)
+            bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
+            fnWarnIfBaseImageFloating(config)
+            fnBuildImage(config, sStagedDir, bNoCache=bEffectiveNoCache)
+        except BaseException:
+            click.echo(f"[vaib] Build context retained at {sStagedDir}")
+            fnPruneOlderBuildContexts(config)
+            raise
+        fnDiscardBuildContext(sStagedDir)
+        fnRecordBaseImageDigestIfFloating(config)
+        fnRecordBuildArgHash(config)
+        fnWarnIfRebuildChangedEnvironment(config, tPinnedBefore)
+        fnPruneDanglingImages()
 
 
 def fsStageBuildContext(config, sDockerDir):
@@ -317,6 +323,11 @@ def _fbResolveNoCache(config, bNoCache):
 
 
 _S_BUILD_HASH_DIRECTORY = os.path.expanduser("~/.vaibify/cache")
+
+
+def fsBuildArgHashPathFor(sProjectName):
+    """Return where a project's build-argument hash lives, present or not."""
+    return _fsBuildArgHashPath(sProjectName)
 
 
 def _fsBuildArgHashPath(sProjectName):

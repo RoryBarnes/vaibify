@@ -52,10 +52,21 @@ __all__ = [
     "fnPromoteJournaledExec",
     "fnSettleJournaledExec",
     "fsetActiveExecOperationIds",
+    "S_SHUTTING_DOWN_REFUSAL",
+    "AdmissionsClosedError",
+    "fsCloseAdmissions",
+    "fbRenewAdmissions",
+    "fnReopenAdmissions",
+    "fbAdmissionGateClosed",
+    "fbAdmissionGateClosedForNewWork",
+    "fnAssertAdmissionGateOpen",
 ]
 
 import contextvars
 import logging
+import secrets
+import threading
+import time
 
 from vaibify.config import operationJournal
 
@@ -169,6 +180,131 @@ def fnReRaiseControlPlaneRefusal(error):
     """
     if isinstance(error, ControlPlaneRefusalError):
         raise error
+
+
+# ---------------------------------------------------------------------
+# The Quit gate: one per process, closed while a Quit settles.
+# ---------------------------------------------------------------------
+
+S_SHUTTING_DOWN_REFUSAL = (
+    "vaibify is shutting down and admits no new work; if the Quit is "
+    "refused, try again in a moment"
+)
+
+# The current gate: its id, and when its lease ends. A gate closed for
+# this hub's OWN Quit carries no lease (``fExpiresMonotonic`` None): it
+# stays closed until that Quit reopens it or the process exits. A gate
+# closed by a PARENT hub on this child carries one, as a backstop
+# against a parent that dies after closing it; the parent renews it for
+# as long as its Quit runs.
+_dictAdmissionGate = {"sGateId": "", "fExpiresMonotonic": None}
+_lockAdmissionGate = threading.Lock()
+
+# Admissions minted at the entry of a request are not "work already
+# granted": every request mints one, including those that arrive after
+# the gate closed.
+_SET_ENTRY_ADMISSION_MODES = frozenset({
+    S_ADMISSION_MODE_REQUEST, S_ADMISSION_MODE_ESTABLISHING,
+})
+
+
+class AdmissionsClosedError(ControlPlaneRefusalError):
+    """New work was refused because a Quit has closed the gate."""
+
+
+def _fbGateClosedLocked():
+    """Return True while a gate is set and its lease has not ended."""
+    if not _dictAdmissionGate["sGateId"]:
+        return False
+    fExpires = _dictAdmissionGate["fExpiresMonotonic"]
+    return fExpires is None or time.monotonic() < fExpires
+
+
+def _ffExpiryFor(fLeaseSeconds):
+    """Return the monotonic expiry for a lease, or None for no lease."""
+    if fLeaseSeconds is None:
+        return None
+    return time.monotonic() + float(fLeaseSeconds)
+
+
+def fsCloseAdmissions(fLeaseSeconds=None):
+    """Close the gate to new work and return its gate id.
+
+    ``fLeaseSeconds`` is set only when a parent hub closes this child's
+    gate; this hub's own Quit passes None. A gate that is already
+    closed refuses a second close, because two Quits running at once
+    would each believe they hold the only gate.
+    """
+    with _lockAdmissionGate:
+        if _fbGateClosedLocked():
+            raise AdmissionsClosedError(
+                "a Quit of vaibify is already in progress"
+            )
+        sGateId = secrets.token_hex(16)
+        _dictAdmissionGate["sGateId"] = sGateId
+        _dictAdmissionGate["fExpiresMonotonic"] = _ffExpiryFor(fLeaseSeconds)
+        return sGateId
+
+
+def fbRenewAdmissions(sGateId, fLeaseSeconds):
+    """Extend a still-closed gate's lease; False when it is not that gate.
+
+    A gate whose lease already ran out is NOT renewed: new work may
+    have been admitted in the gap, so the Quit that held it must fail
+    rather than carry on as though the gate had held.
+    """
+    with _lockAdmissionGate:
+        if not sGateId or _dictAdmissionGate["sGateId"] != sGateId:
+            return False
+        if not _fbGateClosedLocked():
+            return False
+        _dictAdmissionGate["fExpiresMonotonic"] = _ffExpiryFor(fLeaseSeconds)
+        return True
+
+
+def fnReopenAdmissions(sGateId):
+    """Reopen the gate, but only when it is the one ``sGateId`` names.
+
+    The id is the ABA guard: a late reopen from a Quit whose child lease
+    already lapsed must not reopen a newer Quit's gate.
+    """
+    with _lockAdmissionGate:
+        if not sGateId or _dictAdmissionGate["sGateId"] != sGateId:
+            return
+        _dictAdmissionGate["sGateId"] = ""
+        _dictAdmissionGate["fExpiresMonotonic"] = None
+
+
+def fbAdmissionGateClosed():
+    """Return True while a Quit holds the gate closed."""
+    with _lockAdmissionGate:
+        return _fbGateClosedLocked()
+
+
+def _fbInsideGrantedWork():
+    """Return True when the context already runs admitted carrier work.
+
+    A running durable task, a lock-held worker or a synchronous commit
+    carries its admission in the context, and work it starts is part of
+    work already granted, which the gate lets finish.
+    """
+    return any(
+        admission.sMode not in _SET_ENTRY_ADMISSION_MODES
+        for admission in _contextActiveAdmissions.get()
+    )
+
+
+def fbAdmissionGateClosedForNewWork():
+    """Return True when the gate refuses work started in this context."""
+    return fbAdmissionGateClosed() and not _fbInsideGrantedWork()
+
+
+def fnAssertAdmissionGateOpen(sWhat):
+    """Refuse to start ``sWhat`` while a Quit holds the gate closed."""
+    if fbAdmissionGateClosedForNewWork():
+        raise AdmissionsClosedError(
+            f"{sWhat} was not started: {S_SHUTTING_DOWN_REFUSAL}."
+        )
 
 
 class MutationAdmission:

@@ -244,6 +244,13 @@ LIST_RESEARCHER_ACTIONS = [
         "tag the project owns. Args: {sConfirmation} -- the confirmation "
         "phrase the route asks for, typed out."),
     _fdictHubEntry(
+        "rename-environment", "container", "POST",
+        "/api/registry/{sName}/rename",
+        "Rename a stopped environment: its container, volumes (copied, "
+        "then verified), image tags, vaibify.yml name, host files and "
+        "registry entry all move. Args: {sNewName, bDryRun} -- bDryRun "
+        "true (the default) only lists what would move."),
+    _fdictHubEntry(
         "scan-host-dependencies", "containerize", "POST",
         "/api/registry/{sName}/scan-dependencies",
         "Suggest packages from a host project's own imports before "
@@ -307,6 +314,9 @@ DICT_ROUTE_TO_HOST_COMMAND = {
     # The dashboard's "Set up Docker" wizard runs one step of the plan
     # `vaibify setup-docker` runs in a terminal.
     ("POST", "/api/runtime/setup/run"): "setup-docker",
+    # The hubs' Quit button; `vaibify sessions stop` stops a hub from a
+    # terminal.
+    ("POST", "/api/session/quit"): "sessions",
 }
 
 SET_GUI_ONLY_ROUTES = {

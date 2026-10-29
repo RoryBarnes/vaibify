@@ -43,9 +43,10 @@ __all__ = [
 
 import logging
 
-from vaibify.config import registryManager
+from vaibify.config import containerLock, registryManager
 from vaibify.config.keepAliveManager import fnStopKeepAlive
 from vaibify.docker import containerManager, imageBuilder, volumeManager
+from vaibify.gui import environmentResources
 
 logger = logging.getLogger(__name__)
 
@@ -66,34 +67,38 @@ def fdictDeleteEnvironment(dictProject):
     """Delete one container environment; return what was actually removed.
 
     Blocking Docker work throughout, so callers on the event loop must
-    run it in a thread.
+    run it in a thread. The name's lifecycle lock is held throughout,
+    so no start, rename or build of the same name interleaves with it;
+    ``containerLock.LifecycleLockedError`` is raised, before anything is
+    removed, while another operation holds it.
     """
     sName = dictProject["sName"]
-    sContainerName = dictProject.get("sContainerName") or sName
-    listFailures = []
-    bContainerRemoved = _fbRemoveContainer(sContainerName, listFailures)
-    listVolumes = (
-        _flistRemoveVolumes(sName, listFailures)
-        if bContainerRemoved else []
-    )
-    listImages = (
-        _flistRemoveImages(sContainerName, listFailures)
-        if bContainerRemoved else []
-    )
-    listResidue = (
-        _flistRemoveHostResidue(sName) if bContainerRemoved else []
-    )
-    return {
-        "sName": sName,
-        "bContainerRemoved": bContainerRemoved,
-        "listVolumesRemoved": listVolumes,
-        "listImagesRemoved": listImages,
-        "listResidueRemoved": listResidue,
-        "bRegistryEntryRemoved": (
-            not listFailures and _fbRemoveRegistryEntry(sName, listFailures)
-        ),
-        "listFailures": listFailures,
-    }
+    with containerLock.fcontextHoldLifecycleLock(sName, "deleted"):
+        sContainerName = dictProject.get("sContainerName") or sName
+        listFailures = []
+        bContainerRemoved = _fbRemoveContainer(sContainerName, listFailures)
+        listVolumes = (
+            _flistRemoveVolumes(sName, listFailures)
+            if bContainerRemoved else []
+        )
+        listImages = (
+            _flistRemoveImages(sContainerName, listFailures)
+            if bContainerRemoved else []
+        )
+        listResidue = (
+            _flistRemoveHostResidue(sName) if bContainerRemoved else []
+        )
+        return {
+            "sName": sName,
+            "bContainerRemoved": bContainerRemoved,
+            "listVolumesRemoved": listVolumes,
+            "listImagesRemoved": listImages,
+            "listResidueRemoved": listResidue,
+            "bRegistryEntryRemoved": (
+                not listFailures and _fbRemoveRegistryEntry(sName, listFailures)
+            ),
+            "listFailures": listFailures,
+        }
 
 
 def _fbRemoveContainer(sContainerName, listFailures):
@@ -135,9 +140,8 @@ def _fbRemoveContainer(sContainerName, listFailures):
 def _flistRemoveVolumes(sProjectName, listFailures):
     """Remove the workspace and credentials volumes that still exist."""
     listRemoved = []
-    for sVolumeName in (
-        volumeManager.fsWorkspaceVolumeNameForProject(sProjectName),
-        volumeManager.fsCredentialsVolumeNameForProject(sProjectName),
+    for sVolumeName in environmentResources.flistVolumeNamesOwnedBy(
+        sProjectName,
     ):
         if not volumeManager.fbVolumeExists(sVolumeName):
             continue

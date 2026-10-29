@@ -164,10 +164,11 @@ a Project.
 
 A container tile's **⋮** menu offers **Start**, **Stop**,
 **Restart**, **Rebuild**, and **Force Rebuild**, then **Release**
-(when this tab holds the container), **Remove from list**, and
-**Delete environment…**. Its **⚙** opens the container settings,
-including the resource limits below. A host tile's menu offers
-**Containerize Environment**, **Release**, and **Remove from list**.
+(when this tab holds the container), **Rename…**, **Remove from
+list**, and **Delete environment…**. Its **⚙** opens the container
+settings, including the resource limits below. A host tile's menu
+offers **Containerize Environment**, **Release**, **Rename…**, and
+**Remove from list**.
 
 The two removals differ in what they touch:
 
@@ -186,6 +187,42 @@ The two removals differ in what they touch:
   in-container agent can never request it. If any part fails, the
   tile stays and the message says what did and did not go.
 
+### Renaming an environment
+
+**Rename…** moves everything the environment's name keys to the new
+name: its container, its workspace and credentials volumes, every
+image tag, the `projectName` in its `vaibify.yml`, the files vaibify
+keeps for it under `~/.vaibify`, and its entry in the environments
+page.
+
+- **Stop the environment first.** While it runs, **Rename…** is
+  disabled and says so, because a running container could write to its
+  volumes while they are copied.
+- **Docker cannot rename a volume, so vaibify copies it.** Every
+  file's owner, permissions, timestamps, symlinks, hard links and
+  extended attributes are kept. The copy is then checked file by file
+  against the original before the original is removed. The
+  confirmation lists every move and the size of each volume; the copy
+  and its check take time in proportion to that size.
+- **The tile reads "Renaming to \<new\>… (copying N)", then
+  "Finishing rename…".** Every action is disabled until the rename is
+  done. The new name appears only once everything has moved, and the
+  container's banner shows it the next time the environment starts,
+  without a rebuild.
+- **The rename survives a closed tab, and a crash.** It runs in the
+  hub, not the browser. If vaibify stops partway through, the next
+  start of vaibify, or `vaibify reconcile <name>`, finishes or undoes
+  it, so the environment ends up complete under exactly one name. A
+  rename it cannot settle without guessing is left exactly as found,
+  and the tile says so.
+- **A rename is refused** when the new name is already used by any
+  environment, container, volume, image or vaibify file; while another
+  rename or containerization of either name is unfinished; while
+  another session has the environment open; and when Docker runs on
+  another machine (another vaibify there may be using the same
+  environment). The stopped container is removed rather than renamed:
+  the next start creates it under the new name, as every start does.
+
 ### Multiple projects in one environment
 
 Opening an environment shows its **Project Hub**. A line names the
@@ -199,6 +236,16 @@ repositories.
 - **New Project** is a three-step wizard: a display name, a location
   (an existing git directory, or a new directory vaibify creates and
   initializes as a repository), and a confirmation.
+- Each Project card's **⋮** menu offers **Rename…**, which changes the
+  Project's display name (`sWorkflowName` in its Project file). Before
+  anything is written, the confirmation lists every PROOF level and
+  label the new bytes would no longer match (a Project file is hashed
+  by the published and reproduced records) and any other change the
+  save makes to the file, such as a format upgrade. A Project whose
+  steps use `{sWorkflowName}` in a path or field is refused, and the
+  message names each step and field, because renaming it would move
+  those outputs. Only the researcher can rename a Project; an
+  in-container agent cannot.
 
 Inside the dashboard, click the Project name in the toolbar to switch
 Projects or start a new one. Projects in one container can run at the
@@ -224,8 +271,25 @@ time, and one browser session holds at most **one environment**.
   and a dashboard opened later shows it.
 - To work on two environments at once, use **⧉ New vaibify window**
   (on the environments page, the Project Hub, and the **Admin** menu).
-- Listing and stopping live sessions is done from the command line;
-  see [CLI Reference](cli.md).
+- **Quit vaibify** (on the environments page and the Project Hub) and
+  **Admin → Quit** stop vaibify, together with every window opened
+  with **New vaibify window**. Listing and stopping one live session
+  at a time is done from the command line; see
+  [CLI Reference](cli.md).
+
+**Quitting vaibify.** Before anything stops, the Quit dialog lists the
+environments that will keep running, the windows that will close, and
+any open terminals, whose programs may keep running. **Also stop N
+running environments** stops them as well; without it they keep
+running and can be opened again later. Quit is refused, with the
+reason and the window it applies to, while work is in progress in any
+vaibify window: a pipeline run, an Agent Council, a reproduction, a
+containerization, an environment rename, or a change already being
+written to a container. Once you confirm, vaibify accepts no new work
+in any window. Anything started in that moment is refused with
+*vaibify is shutting down*, and a Quit that is then refused accepts
+work again. If a stop fails partway through, the dialog names the
+environments it already stopped.
 
 **Terminals and quiescence.** A shell can start a process that
 detaches from everything vaibify tracks, so once a terminal has been

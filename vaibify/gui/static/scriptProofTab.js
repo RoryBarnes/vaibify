@@ -823,8 +823,7 @@ var VaibifyProofTab = (function () {
         _fnNotifyCachedProofLevel(iLevel);
         var dictHeader = _DICT_LEVEL_HEADERS[iLevel] ||
             _DICT_LEVEL_HEADERS[0];
-        return '<div class="proof-header-card proof-level-' +
-            iLevel + '-tint">' +
+        return '<div class="proof-header-card">' +
             '<div class="proof-header-title">' +
             fnEscapeHtml(dictHeader.sTitle) + '</div>' +
             '<div class="proof-header-subtitle">' +

@@ -38,10 +38,12 @@ __all__ = [
     "I_REJECT_TERMINAL_DISABLED",
     "I_REJECT_TERMINAL_NOT_ON_HOST",
     "I_REJECT_POISONED",
+    "I_REJECT_SHUTTING_DOWN",
 ]
 
 import logging
 
+from vaibify.config import mutationAdmission
 from . import browserSession
 from . import containerOwnership
 from .pipelineServer import fbHasAgentToken, fbValidateWebSocketOrigin
@@ -76,6 +78,11 @@ I_REJECT_TERMINAL_NOT_ON_HOST = 4504
 # problem -- the container is -- and the recovery is 'vaibify
 # reconcile', not a re-claim.
 I_REJECT_POISONED = 4423
+
+# A new pipeline or terminal socket arriving while a Quit has closed the
+# admission gate. Distinct from every authorization code, because the
+# caller's standing is fine: the hub is going away.
+I_REJECT_SHUTTING_DOWN = 4505
 
 
 def fbCheckOrigin(connection):
@@ -149,12 +156,17 @@ def fiContainerSessionRejectionCode(connection, dictCtx, sName):
     A non-loopback connection is never a browser, so it is admitted only
     through the lease-exempt agent lane and otherwise rejected as an
     untrusted origin.
+
+    An authorized connection is then refused while a Quit holds the
+    admission gate closed: a new socket is how a run or a shell starts,
+    and the check comes after authorization so it tells a caller with
+    no standing nothing.
     """
     dictContainerOwners = dictCtx.get("dictContainerOwners", {})
     dictBrowserSessions = dictCtx.get("dictBrowserSessions", {})
     if not fbCheckOrigin(connection):
         if fbCheckAgentToken(connection, dictContainerOwners, sName):
-            return I_REJECT_AUTHORIZED
+            return _fiAuthorizedUnlessQuitting()
         return I_REJECT_BAD_ORIGIN
     sBrowserSessionId = fsBrowserSessionIdForCredential(
         connection, dictBrowserSessions,
@@ -165,6 +177,13 @@ def fiContainerSessionRejectionCode(connection, dictCtx, sName):
         connection, dictContainerOwners, sName, sBrowserSessionId,
     ):
         return I_REJECT_FOREIGN_LEASE
+    return _fiAuthorizedUnlessQuitting()
+
+
+def _fiAuthorizedUnlessQuitting():
+    """Return the authorized verdict, or 4505 while a Quit holds the gate."""
+    if mutationAdmission.fbAdmissionGateClosed():
+        return I_REJECT_SHUTTING_DOWN
     return I_REJECT_AUTHORIZED
 
 

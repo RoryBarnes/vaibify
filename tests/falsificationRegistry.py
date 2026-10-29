@@ -14451,9 +14451,9 @@ LIST_FALSIFICATIONS = [
         # re-entry strands the researcher on an empty picker (the
         # 2026-08-20 live incident).
         old=(
-            '        _fnScaffoldWorkflowIfAbsent(\n'
-            '            dictProject["sDirectory"], request.sProjectName,\n'
-            '        )\n'
+            '            _fnScaffoldWorkflowIfAbsent(\n'
+            '                dictProject["sDirectory"], request.sProjectName,\n'
+            '            )\n'
         ),
         new='',
     ),
@@ -33774,13 +33774,13 @@ LIST_FALSIFICATIONS = [
             '    try:\n'
             '        fileDestination = pendingConversions.ffileTakeDestinationLock('
             'dictRecord["sNewName"])\n'
-            '        dictFresh ='
+            '        with containerLock.fcontextHoldLifecycleLock(\n'
         ),
         new=(
             '    fileSource = None\n'
             '    fileDestination = None\n'
             '    try:\n'
-            '        dictFresh ='
+            '        with containerLock.fcontextHoldLifecycleLock(\n'
         ),
     ),
     Falsification(
@@ -37660,5 +37660,490 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptZenodoTokens.js',
         old='        elRow.appendChild(_felementDecisionButtons(dictSlot));\n',
         new='',
+    ),
+    # --- 2026-10-28: the PROOF level color has one home ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLevelColorHasOneHome.py::'
+            'testEveryLevelAccentFollowsTheLevelAndNothingElseDoes'
+        ),
+        # The toolbar label goes back to the fixed Level 1 purple.
+        source='vaibify/gui/static/styleMain.css',
+        old='.toolbar-value {\n',
+        new=(
+            'body.proof-level-1 .toolbar-label,\n'
+            'body.proof-level-2 .toolbar-label,\n'
+            'body.proof-level-3 .toolbar-label {\n'
+            '    color: #b39ddb;\n'
+            '}\n'
+            '.toolbar-value {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLevelMarksRenderTheLevelsHue.py::'
+            'testFilteredMarksAndTheCursorRenderTheLevelsHue'
+        ),
+        # The checkmark keeps the fixed Level 1 purple filter.
+        source='vaibify/gui/static/styleMain.css',
+        old=(
+            '.vaibify-checkmark img {\n'
+            '    width: 18px;\n'
+            '    height: 18px;\n'
+        ),
+        new=(
+            '.vaibify-checkmark img {\n'
+            '    width: 18px;\n'
+            '    height: 18px;\n'
+            '    filter: sepia(1) hue-rotate(220deg) saturate(2)'
+            ' brightness(0.85);\n'
+        ),
+    ),
+    # --- 2026-10-28: a CLI start holds the name's lifecycle lock ---
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleLock.py::'
+            'testCliStartRefusesWhileAnotherProcessHoldsTheName'
+        ),
+        # CLI start creates and starts with no lifecycle lock again.
+        source='vaibify/cli/commandStart.py',
+        old=(
+            '    dictHeld = fdictTakeLifecycleLockOrExit('
+            'config.sProjectName, "started")\n'
+        ),
+        new='    dictHeld = {"lockRelease": threading.Lock()}\n',
+    ),
+    # --- 2026-10-28: the volume copier's manifest sees every field ---
+    Falsification(
+        nodeid=(
+            'tests/testVolumeCopy.py::'
+            'testOneByteFlippedWithoutChangingTheLengthChangesTheManifest'
+        ),
+        # The manifest reduced to the file count and the total bytes.
+        source='vaibify/docker/volumeCopy.py',
+        old=(
+            '        hashManifest.update(\n'
+            '            json.dumps(dictEntry, sort_keys=True).encode()'
+            ' + b"\\n")\n'
+        ),
+        new='        hashManifest.update(str(dictEntry["iSize"]).encode())\n',
+    ),
+    Falsification(
+        nodeid='tests/testVolumeCopy.py::testAChangedModeChangesTheManifest',
+        # The manifest drops the permission bits.
+        source='vaibify/docker/volumeCopy.py',
+        old='        "iMode": stat.S_IMODE(statEntry.st_mode),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVolumeCopy.py::'
+            'testAChangedSymlinkTargetChangesTheManifest'
+        ),
+        # The manifest drops a symlink's target.
+        source='vaibify/docker/volumeCopy.py',
+        old='        dictEntry["sTarget"] = os.readlink(sAbsolute)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testVolumeCopy.py::testAChangedOwnerChangesTheManifest',
+        # The manifest drops the numeric owner.
+        source='vaibify/docker/volumeCopy.py',
+        old='"sPath": sRelative, "sType": sType, "iUid": statEntry.st_uid,',
+        new='"sPath": sRelative, "sType": sType,',
+    ),
+    # --- 2026-10-28: only the volume copier execs as root ---
+    Falsification(
+        nodeid=(
+            'tests/testVolumeCopyLive.py::'
+            'testOnlyTheVolumeCopierExecsAsRootWithItsFourCapabilities'
+        ),
+        # Every disposable exec runs as root.
+        source='vaibify/docker/disposableContainer.py',
+        old='        user=dictHandle["sExecUser"],\n',
+        new='        user="0:0",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVolumeCopyLive.py::'
+            'testAVolumeOfMixedOwnershipArrivesIntact'
+        ),
+        # The volume copier's execs stay the unprivileged user.
+        source='vaibify/docker/disposableSpecification.py',
+        old='    dictSpecification["sExecUser"] = S_VOLUME_COPIER_USER\n',
+        new='',
+    ),
+    # --- 2026-10-28: the lifecycle refusals and the copier's own ---
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleLock.py::'
+            'testGuiStartRefusesWhileAnotherProcessHoldsTheName'
+        ),
+        # The start route's early refusal asks nothing.
+        source='vaibify/gui/registryRoutes.py',
+        old='        fnRefuseWhileLifecycleLockHeld(sName)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleLock.py::'
+            'testGuiClaimRefusesWhileAnotherProcessHoldsTheName'
+        ),
+        # The lifecycle probe answers "free" without taking the lock.
+        source='vaibify/config/containerLock.py',
+        old=(
+            '    fnReleaseLifecycleLock(ffileTakeLifecycleLock('
+            'sProjectName, "checked"))\n'
+        ),
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVolumeCopy.py::'
+            'testACapabilityAttributeRefusesTheCopyBeforeAnythingIsWritten'
+        ),
+        # A security.capability attribute no longer refuses the copy.
+        source='vaibify/docker/volumeCopy.py',
+        old='    if dictManifest["bCapabilityAttribute"]:\n',
+        new='    if False:\n',
+    ),
+    # --- 2026-10-28: the banner names the environment as it is now ---
+    Falsification(
+        nodeid=(
+            'tests/testContainerManager.py::'
+            'test_flistBuildRunArgs_passes_the_current_name_to_the_banner'
+        ),
+        # The start no longer passes the current name.
+        source='vaibify/docker/containerManager.py',
+        old='    saRunArgs.extend(["-e", f"VC_PROJECT_NAME={config.sProjectName}"])\n',
+        new='',
+    ),
+    # --- 2026-10-28: the environment rename's orderings and identities ---
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testACrashAfterTheRegistrySwitchRollsForward'
+        ),
+        # Recovery decides committed-or-not from the journal's stage.
+        source='vaibify/gui/environmentRename.py',
+        old=(
+            '    if _fbCommitted(dictJournal):\n'
+            '        _fnRollForward(dictJournal, dockerClient)\n'
+        ),
+        new=(
+            '    if dictJournal.get("sStage") == S_STAGE_FINISHING:\n'
+            '        _fnRollForward(dictJournal, dockerClient)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testACrashWhileHostFilesMoveRollsBackToTheOldName'
+        ),
+        # The registry switch moves ahead of the host-file moves.
+        source='vaibify/gui/environmentRename.py',
+        old=(
+            '        _fnMoveHostFiles(\n'
+            '            dictJournal, dictJournal["sOldName"], dictJournal["sNewName"])\n'
+            '        registryManager.fnCommitEnvironmentRename(\n'
+            '            dictJournal["sOldName"], dictJournal["sNewName"],\n'
+            '            dictJournal["sTransactionId"])\n'
+        ),
+        new=(
+            '        registryManager.fnCommitEnvironmentRename(\n'
+            '            dictJournal["sOldName"], dictJournal["sNewName"],\n'
+            '            dictJournal["sTransactionId"])\n'
+            '        _fnMoveHostFiles(\n'
+            '            dictJournal, dictJournal["sOldName"], dictJournal["sNewName"])\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testARollbackRestoresTheExactConfigBytes'
+        ),
+        # A rollback that skips restoring vaibify.yml.
+        source='vaibify/gui/environmentRename.py',
+        old=(
+            '    _fnUndoHostFileMoves(dictJournal)\n'
+            '    _fnRestoreConfig(dictJournal)\n'
+        ),
+        new='    _fnUndoHostFileMoves(dictJournal)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testATagRepointedAfterItWasJournaledSurvivesCleanup'
+        ),
+        # Cleanup untags the old name's tags by name alone.
+        source='vaibify/gui/environmentRename.py',
+        old='    if dictImage["sId"] != dictTag["sImageId"]:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testTheOldNamesLockFilesOutliveTheRename'
+        ),
+        # Cleanup unlinks the old name's lock files.
+        source='vaibify/gui/environmentRename.py',
+        old=(
+            '    pendingRenames.fnRemoveRenameJournal(dictJournal["sOldName"])\n'
+            '    registryManager.fnClearRenameCommit(\n'
+        ),
+        new=(
+            '    os.unlink(containerLock.fsLockPathFor(dictJournal["sOldName"]))\n'
+            '    os.unlink(containerLock.fsLifecycleLockPathFor(\n'
+            '        dictJournal["sOldName"]))\n'
+            '    pendingRenames.fnRemoveRenameJournal(dictJournal["sOldName"])\n'
+            '    registryManager.fnClearRenameCommit(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testAnSshEndpointIsTreatedAsAnotherMachine'
+        ),
+        # The locality predicate answers "this machine" for every endpoint.
+        source='vaibify/docker/dockerContext.py',
+        old='    sEndpoint = (sEndpoint or "").strip()\n    if not sEndpoint:\n',
+        new='    return True\n    if not sEndpoint:\n',
+    ),
+    # --- 2026-10-28: the environment rename's refusals ---
+    Falsification(
+        nodeid='tests/testEnvironmentRename.py::testAnUnfinishedRenameRefusesBothNames',
+        # The pending-rename refusal matches no journal.
+        source='vaibify/gui/environmentRename.py',
+        old='        if sName in (dictJournal["sOldName"], dictJournal["sNewName"]):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testEnvironmentRename.py::testTheGuiStartRefusesWhileARenameIsUnfinished',
+        # The start route skips the pending-rename refusal.
+        source='vaibify/gui/registryRoutes.py',
+        old='        environmentRename.fnRefuseWhileRenamePending(sName)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testEnvironmentRename.py::testTheCliStartRefusesWhileARenameIsUnfinished',
+        # CLI start skips the pending-rename refusal.
+        source='vaibify/cli/commandStart.py',
+        old='        fnRefuseWhileRenamePending(sProjectName)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testEnvironmentRename.py::testARenameClaimingTheSameNewNameIsRefused',
+        # No check for another unfinished transaction.
+        source='vaibify/gui/environmentRename.py',
+        old='    setNames = {sOldName, sNewName}\n',
+        new='    return\n',
+    ),
+    Falsification(
+        nodeid='tests/testEnvironmentRename.py::testARemoteDaemonRefusesTheRenameNamingTheEndpoint',
+        # The remote-daemon refusal returns without asking.
+        source='vaibify/gui/environmentRename.py',
+        old='    if dockerContext.fbEndpointIsOnThisMachine(sEndpoint):\n        return\n',
+        new='    return\n',
+    ),
+    # --- 2026-10-28: renaming a project (D4, D5, D11) ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectRename.py::'
+            'testRenamingAnotherProjectLeavesTheLoadedOneUntouched'
+        ),
+        # The rename saves through the loaded project's save.
+        source='vaibify/gui/projectRename.py',
+        old=(
+            '    workflowManager.fnSaveWorkflowToContainer(\n'
+            '        connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,\n'
+            '        dictWriteKeywords={\n'
+            '            "sAuthorizedRoot": posixpath.normpath(\n'
+            '                dictProject.get("sProjectRepoPath") or ""),\n'
+            '            "tForbiddenNames": (".git",),\n'
+            '        },\n'
+            '    )\n'
+        ),
+        new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectRename.py::'
+            'testAnUnlistedWritableFileIsNotFoundAndKeepsItsBytes'
+        ),
+        # Any requested path is accepted, listed or not.
+        source='vaibify/gui/projectRename.py',
+        old='    raise HTTPException(404, "No such project in this environment.")\n',
+        new=(
+            '    return {"sPath": sWorkflowPath,\n'
+            '            "sProjectRepoPath": posixpath.dirname(sWorkflowPath)}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectRename.py::'
+            'testTheDryRunNamesAManifestThatWouldNoLongerMatch'
+        ),
+        # The second evaluation sees today's bytes, not the save's.
+        source='vaibify/gui/projectRename.py',
+        old=(
+            '    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles\n'
+            '    baNew = sNewText.encode("utf-8")\n'
+        ),
+        new='    return filesSnapshot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLaneEnforcement.py::'
+            'testOnlyTheResearcherMayRenameAProject'
+        ),
+        # The rename becomes agent-safe.
+        source='vaibify/gui/actionCatalog.py',
+        old=(
+            '     "sPath": "/api/workflows/{sContainerId}/rename",\n'
+            '     "bAgentSafe": False,\n'
+        ),
+        new=(
+            '     "sPath": "/api/workflows/{sContainerId}/rename",\n'
+            '     "bAgentSafe": True,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAProjectIsRenamedFromItsCard.py::'
+            'test_a_project_is_renamed_from_its_card_menu'
+        ),
+        # A changed listing repaints the cards under an open menu.
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old='        if (elList.querySelector(_S_OPEN_PROJECT_MENU_SELECTOR)) {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectRename.py::'
+            'testAProjectUsingTheNameTokenIsRefusedNamingStepAndField'
+        ),
+        # A project naming {sWorkflowName} is renamed anyway.
+        source='vaibify/gui/projectRename.py',
+        old=(
+            '    listUses = flistDescribeWorkflowNameTokenUses(dictWorkflow)\n'
+            '    if not listUses:\n'
+            '        return\n'
+        ),
+        new='    return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectRename.py::'
+            'testANameWithAControlCharacterIsRefused'
+        ),
+        # A name carrying a control character is accepted.
+        source='vaibify/gui/projectRename.py',
+        old=(
+            '        raise HTTPException(\n'
+            '            400, "A project name may not contain control characters.",\n'
+            '        )\n'
+        ),
+        new='        pass\n',
+    ),
+    # --- 2026-10-28: Quit vaibify from either hub ---
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testQuitIsRefusedDuringAPipelineRun'
+        ),
+        # The final re-check after the settlement is dropped.
+        source='vaibify/gui/hubQuit.py',
+        old='        listReasons = await _flistFinalReasons(app, dictCtx, listChildTrees)\n',
+        new='        listReasons = []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuitChildren.py::'
+            'testAnIdleParentIsRefusedWhileItsChildHoldsALiveRun'
+        ),
+        # The final check consults only the parent's own reasons.
+        source='vaibify/gui/hubQuit.py',
+        old='    listReasons.extend(_flistFlattenChildReasons(\n        await _fdictDescribeChildren(listChildTrees)))\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testARunOverAnAlreadyOpenSocketIsRefusedOnceTheGateCloses'
+        ),
+        # The gate check leaves the carrier, so only HTTP would see it.
+        source='vaibify/gui/commitCarrier.py',
+        old='    if fbAdmissionGateClosedForNewWork():\n        raise CommitRefusedError(S_SHUTTING_DOWN_REFUSAL + ".")\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testAStaleReopenLeavesANewerGateClosed'
+        ),
+        # The reopen ignores the gate id it is handed.
+        source='vaibify/config/mutationAdmission.py',
+        old='        if not sGateId or _dictAdmissionGate["sGateId"] != sGateId:\n            return\n        _dictAdmissionGate["sGateId"] = ""\n',
+        new='        _dictAdmissionGate["sGateId"] = ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testASlowCarrierMutationMakesQuitWaitThenSucceedOrFail'
+        ),
+        # In-flight carrier mutations are dropped from the busy reasons.
+        source='vaibify/gui/serverLifespan.py',
+        old='    for dictLive in commitCarrier.flistDescribeEveryLiveMutation(app.state):\n        listReasons.append(\n            f"{dictLive[\'sDescription\']} in \'{dictLive[\'sContainerName\']}\'"\n        )\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuitChildren.py::'
+            'testAChildKilledMidQuitFailsItAndEveryOtherGateReopens'
+        ),
+        # The reopen is removed from the Quit's finally.
+        source='vaibify/gui/hubQuit.py',
+        old='            await fnReopenEverything(app, sOwnGateId, listChildTrees)\n            fnStopLeaseRenewal(app)\n',
+        new='            fnStopLeaseRenewal(app)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuitChildren.py::'
+            'testAChildsGateStaysClosedPastItsLeaseUntilItExits'
+        ),
+        # The children's lease renewal is never started.
+        source='vaibify/gui/hubQuit.py',
+        old='        app.state.taskQuitLeaseRenewal = asyncio.ensure_future(\n            _fnRenewChildLeasesUntilStopped(app, listChildTrees))\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testANewWebSocketIsRefusedWhileTheGateIsClosed'
+        ),
+        # The socket gate answers authorized whatever the Quit gate says.
+        source='vaibify/gui/webSocketAuthorization.py',
+        old='        return I_REJECT_SHUTTING_DOWN\n    return I_REJECT_AUTHORIZED\n',
+        new='        return I_REJECT_AUTHORIZED\n    return I_REJECT_AUTHORIZED\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testTheAgentLaneCannotQuitOrReadThePreflight'
+        ),
+        # Quit and its preflight lose both agent-lane refusals.
+        source='vaibify/gui/routes/sessionRoutes.py',
+        old='    from ..routeContext import fnRejectAgentTokenLane\n    _fnRejectContainerAgentCallers(\n        request,\n        sDetail=f"{sAction} is the researcher\'s, never the in-container "\n        "agent\'s.",\n    )\n    fnRejectAgentTokenLane(request)\n',
+        new='    del request, sAction\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testAMutationIsRefusedWithItsOwnWordsWhileQuitting'
+        ),
+        # The route class's Quit-gate check never refuses.
+        source='vaibify/gui/routeScope.py',
+        old='    return fbAdmissionGateClosed()\n',
+        new='    return False\n',
     ),
 ]

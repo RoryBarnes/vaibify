@@ -1188,6 +1188,48 @@ intervals, so a single dropped signal never triggers a shutdown; only
 sustained absence does -- the same guidance JupyterHub gives for its
 cull timeouts.
 
+### Quit: one busy question, a closed gate, then the question again
+
+Quit (`hubQuit`) and the idle watchdog ask one predicate,
+`serverLifespan.flistHubBusyReasons`. It returns every piece of work a
+hub holds, in the researcher's words: a running pipeline in a held
+container, live council work, a reproduction, a live containerization,
+a live environment rename, and each carrier mutation or durable task
+in flight, named by kind and container. An empty list means the hub
+may stop without cutting anything off. Before the two shared it, each
+veto lived inside the watchdog, so a second caller would have been a
+second list that drifts from the first. A live WebSocket is a
+watchdog-only veto, kept out of the predicate: the researcher who
+clicks Quit is the open tab.
+
+Asking the question once is not enough. A Quit spans this hub and
+every hub it spawned (each a separate process), and work can start
+between a check and the shutdown. So a Quit first closes an admission
+gate (`mutationAdmission`) in every hub. It closes the children's
+gates over each child's peer-authenticated host control socket
+(`close-admissions`). It then waits a bounded time for already-admitted
+work to settle (with the gates closed, those counts can only fall),
+asks every hub the question again (`describe-busy`), and stops only on
+an empty answer. While the gate is closed, a route answers a mutation
+503 with the refusal `shutting-down`. The carrier itself refuses a run
+over a socket that was already open, and a claim, a containerization
+or a new WebSocket is refused before it takes a lock. Each says it is
+refused because vaibify is shutting down, never that the container is
+busy, because that would send the researcher to look for work that is
+not there.
+
+On any outcome but success, every gate the Quit closed is reopened
+by its id. A child's gate carries a lease that the parent renews
+until the child has exited. That way a parent that dies after closing
+the gate cannot leave the child refusing work forever, and a lease
+cannot lapse while the child shuts down. Children are found from the
+`Popen` handles `POST /api/session/spawn` keeps, beside each one's
+port, and are trusted only while alive and named by the live hub slot
+for that port. Quit and its preflight refuse the in-container agent by
+both of its signals. An agent must never end the hub it is talking to,
+so the route is excluded from the agent catalog, and its CLI home is
+`vaibify sessions stop`.
+
 ### Session lifetime: two windows, three tiers, one honest notice
 
 A browser session is bounded by two windows, and they relate to a live
@@ -1426,6 +1468,62 @@ never reaped. No new dependency is introduced; the probe shells out to
 The `vaibify sessions` CLI (see [Advanced Installation](install.md)) is the
 host-side enumerator over these same files -- the analog of
 `jupyter server list` / `jupyter server stop`.
+
+### Two locks per name: who is using it, and who is changing it
+
+The session lock, `~/.vaibify/locks/<name>.lock`, says which hub is
+USING an environment. It was never the right tool for keeping two
+operations that change what a name OWNS apart: CLI `vaibify start`
+created and started a container under no lock at all, `destroy`
+removed volumes under none, and a rename would have had nothing to
+exclude them with. The lifecycle lock,
+`~/.vaibify/lifecycleLocks/<name>.lock`
+(`containerLock.ffileTakeLifecycleLock`), is held by every operation
+that creates or removes the name's container, volumes or image tags,
+or rewrites its registry entry: CLI and dashboard start and stop,
+destroy and deletion, build, the pinned-image tag, conversion,
+promotion, repair, the reconcile stop and rename. It is taken
+non-blocking, so it cannot deadlock, and a refusal names the operation
+in progress. Three properties hold it honest. It lives in its own
+directory, because `<name>.lifecycle.lock` beside the session locks
+would BE the session lock of an environment named `<name>.lifecycle`.
+Its files are never unlinked: unlinking a file whose `flock` is held
+lets another process lock a new inode at the same path, which is the
+race the lock exists to close. And no container may mount it, or the
+session locks, the pending journals or the registry (the bind-mount
+denylist), because a container that could delete one would defeat the
+operation it guards. `tests/testLifecycleLock.py` scans the package
+for every call of a lifecycle primitive and fails on one not under the
+lock, a helper all of whose callers hold it, or an allow-listed reason.
+
+### Renaming an environment is one transaction
+
+A name keys a container, two volumes, an image repository's tags, a
+`vaibify.yml` field, several host files (`gui/environmentResources`,
+the one list deletion reads too) and a registry entry. Docker can
+rename none of the volumes, so a rename COPIES them, as root, in the
+one disposable profile that runs as root (ruling D13; the
+volume-copier entry in `disposableSpecification`), and verifies each
+copy by a content manifest of every entry before the original goes.
+The transaction (`gui/environmentRename`) follows the containerization
+commit's precedent: both names' lifecycle locks and session flocks held
+throughout; a durable journal of the original `vaibify.yml` bytes and
+every Docker identity written before the first change
+(`config/pendingRenames`); each new volume labeled with the
+transaction id and each new tag pointed at a journaled image ID, so a
+rollback removes only what this rename made; each host file's intent
+journaled before it moves; then ONE registry write that renames the
+entry and stamps it with the transaction. That write is the commit
+point. Recovery, at hub startup and from `vaibify reconcile`, decides
+committed-or-not from the registry alone and which files moved from
+the filesystem; the journal's stage is for display, and nothing
+branches on it. A state that is neither committed nor cleanly
+uncommitted, or a `vaibify.yml` that is neither the original nor the
+rename's rewrite, is left exactly as found and reported, because
+guessing could lose data. A rename is refused on a daemon another
+machine might share. `tests/testEnvironmentRename.py` injects a crash
+on both sides of every step and bookkeeping write and requires one
+complete environment, under one name, after recovery.
 
 ## The hub's reapers run on one cadence and record what they did
 
@@ -3877,6 +3975,25 @@ after rendering.
 Every render calls `fnUpdateHighlightState()` to synchronize the
 toolbar verification indicator (checkmark and color shift) with the
 current project state.
+
+### The PROOF level color has one home
+
+The three level colors are defined once, as `--proof-level-N-color` on
+`:root`, and each `body.proof-level-N` points `--highlight-color`,
+`--highlight-rgb` and `--proof-icon-filter` at its own. Every accent
+that follows the level reads those, and nothing else names a level's
+color: the Level 1 purple was once hard-coded in a dozen places, so
+Level 2 and Level 3 wore two themes at once. The Level 3 card and its
+verify button read the Level 3 color at every level, because they name
+that level; status colors (a successful run's pale-blue light, sync
+badges) keep their meaning at every level. The toolbar logo is painted
+in the level color through an alpha mask, because a filter over its
+opaque image tinted the image's own background into a box. Two browser
+tests check the result by role at L0-L3:
+`tests/browser/testTheLevelColorHasOneHome.py` by computed CSS, with a
+sweep of every visible element, and
+`tests/browser/testTheLevelMarksRenderTheLevelsHue.py` by the pixels
+of the filtered marks, the logo and the terminal cursor.
 
 ## Packaging: why runtime resources live inside the package
 

@@ -262,10 +262,13 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # pipelineServer's bare `loop` became `loopRunning`.
 # 320 -> 319 (2026-10-04): the whole-second poll mtime coercion was replaced
 # by the snapshot's own stat key, and took its unprefixed parameter with it.
+# 317 -> 316 (2026-10-28): the spawned-child shutdown hook, rewritten to
+# wait for each child to exit, names its loop variable `processChild`.
 # 317 -> 310 (2026-10-29): the in-container Zenodo credential lane is
 # gone, and the seven syncRoutes helpers that took the dispatcher module
 # as an unprefixed parameter went with it.
-I_LEGACY_VARIABLE_BUDGET = 310
+# 316 + 310 -> 309 (2026-10-29): the two lines of work above, merged.
+I_LEGACY_VARIABLE_BUDGET = 309
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,
