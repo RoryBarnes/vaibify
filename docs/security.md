@@ -45,7 +45,7 @@ these restrictions:
 | Root only at startup, then `gosu` | The entrypoint starts as root to write a few system paths and fix workspace ownership, then `exec`s itself through `gosu` as the container user. Root exists at container start, but nothing you or an agent run inherits it. |
 | Minimal capabilities | The container starts with `--cap-drop ALL` and adds back only the five capabilities the entrypoint needs for that ownership fix and the `gosu` drop. `no-new-privileges` is set, so no setuid binary can regain privileges after the drop. |
 | No Docker socket | The daemon socket is never mounted. A bind mount that resolves to a Docker endpoint, is a socket, or contains one is refused (see below). |
-| Few host mounts | Files enter and leave through vaibify's own transfer commands, not a shared host directory. Three kinds of host path can be mounted: resolved secret files (read-only, under `/run/secrets`), any `bindMounts` you declare in `vaibify.yml`, and, only for a project that opts in, the Linux X11 socket (read-only). |
+| Few host mounts | Files enter and leave through vaibify's own transfer commands, not a shared host directory. Four kinds of host path can be mounted: resolved secret files (read-only, under `/run/secrets`), the repository list a container started on a pinned image syncs from (read-only, at `/etc/vaibify/container.conf`), any `bindMounts` you declare in `vaibify.yml` (read-only unless an entry sets `readWrite: true`), and, only for a project that opts in, the Linux X11 socket (read-only). |
 | Workspace volume | A Docker named volume holds `/workspace` (or your configured `workspaceRoot`). It is not part of the host directory tree. |
 | Loopback-only ports | Every forwarded container port is bound to `127.0.0.1` unless that port's entry sets `lanExpose: true`. |
 | Optional network isolation | `networkIsolation: true` in `vaibify.yml` starts the container with `--network none`, blocking all traffic in and out. It cannot be combined with `x11Forwarding`. |
@@ -53,10 +53,22 @@ these restrictions:
 ### Declared bind mounts
 
 Each `bindMounts` entry is validated when the configuration loads and
-again when the run arguments are built. A mount is refused if it leaves
-your home directory, contains `..`, or touches `/etc`, `/root`, your
-SSH, cloud, GitHub CLI, GnuPG, Docker or Kubernetes configuration, or
-vaibify's own journal, control-socket or temporary-secret directories.
+again when the run arguments are built. Every mount is read-only inside
+the container unless its entry sets `readWrite: true`; the retired
+`readOnly` key and any other unknown key are refused, so a file written
+against the old schema cannot mount read-write by accident. A mount is
+refused if it leaves your home directory, contains `..`, or touches
+`/etc`, `/root`, your SSH, cloud, GnuPG, Docker or Kubernetes
+configuration, all of `~/.config`, an agent CLI's home (`~/.claude`,
+`~/.codex`, `~/.gemini`), `~/.gitconfig`, `~/.netrc`, `~/.pypirc`,
+`~/.npmrc`, a shell start-up file, `~/Library/LaunchAgents`,
+`~/Library/Keychains`, or anything under `~/.vaibify`. A `readWrite`
+mount may not be, or contain, the directory holding the project's
+`vaibify.yml`: a container that could edit the file declaring its own
+mounts and secrets would choose its own confinement at the next start.
+A mount's mode is fixed when the container is created, so the readiness
+banner and `vaibify doctor` compare the running container's `RW` flag
+with the file and say when they differ.
 The Docker socket is refused by **resolution and file type**, not by
 spelling: every endpoint your Docker configuration names, and any path
 that is a socket or contains one, is denied (on Colima, Rancher and

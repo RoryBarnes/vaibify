@@ -23,6 +23,9 @@ import subprocess
 import tarfile
 import time
 
+from vaibify.config.bindMountValidator import (
+    fbBindMountIsReadWrite, fnValidateBindMountList,
+)
 from vaibify.config.agentTerminalEnvironment import (
     flistBuildAgentTerminalEnvironmentArguments,
 )
@@ -631,7 +634,6 @@ def _fnMountRepositoryListWithoutSeededFolder(config, saRunArgs, dictPosture):
     )
     saRunArgs.extend(["--mount", _fsBuildBindMountSpec({
         "host": sHostPath, "container": S_IMAGE_REPOSITORY_LIST_PATH,
-        "readOnly": True,
     })])
 
 
@@ -1105,12 +1107,24 @@ def _fnAddBindMounts(config, saRunArgs):
     an empty directory in place of the data. That is the correct
     behaviour and it will surprise existing projects.
     """
-    from vaibify.config.bindMountValidator import (
-        fnValidateBindMountList,
+    fnValidateBindMountList(
+        config.listBindMounts,
+        sProjectDirectory=_fsRegisteredProjectDirectory(config),
     )
-    fnValidateBindMountList(config.listBindMounts)
     for dictMount in config.listBindMounts:
         saRunArgs.extend(["--mount", _fsBuildBindMountSpec(dictMount)])
+
+
+def _fsRegisteredProjectDirectory(config):
+    """Return the host directory of this project's vaibify.yml, or ``""``.
+
+    A read-write bind mount may not cover it. An unregistered project
+    (a test double, a config built in memory) has no directory to
+    protect, and the loader already applied the rule to a file it read.
+    """
+    from vaibify.config.registryManager import fdictGetProject
+    dictProject = fdictGetProject(getattr(config, "sProjectName", "") or "")
+    return (dictProject or {}).get("sDirectory", "") or ""
 
 
 def _fsBuildBindMountSpec(dictMount):
@@ -1126,7 +1140,7 @@ def _fsBuildBindMountSpec(dictMount):
         'type=bind,"source=' + dictMount["host"] + '"'
         + ',"target=' + dictMount["container"] + '"'
     )
-    if dictMount.get("readOnly", False):
+    if not fbBindMountIsReadWrite(dictMount):
         sSpec += ",readonly"
     return sSpec
 

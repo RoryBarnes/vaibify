@@ -476,6 +476,25 @@ def _ftDescribeX11Findings(connectionDocker, sContainerId):
         return [], []
 
 
+def _flistDescribeBindMountDrift(connectionDocker, sContainerId):
+    """Return the lines saying the container's mount modes differ from vaibify.yml.
+
+    Three-state like the X11 finding: a failure to read either side
+    answers with no lines, never with a claim.
+    """
+    from vaibify.docker.bindMountDrift import flistDescribeBindMountDrift
+    from vaibify.docker.containerManager import fjsonInspectContainer
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    if configProject is None:
+        return []
+    try:
+        return flistDescribeBindMountDrift(
+            configProject.listBindMounts, fjsonInspectContainer(sContainerId),
+        )
+    except Exception:
+        return []
+
+
 def _flistDescribeResourceLimitDrift(connectionDocker, sContainerId):
     """Return the lines saying the running limits differ from vaibify.yml.
 
@@ -566,6 +585,7 @@ def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
     dictReadiness["listConfigurationDrift"] = (
         listBuiltDrift
         + listX11ContainerLines
+        + _flistDescribeBindMountDrift(connectionDocker, sContainerId)
     )
     # Its own key: the pinned image is never called out of date.
     dictReadiness["listPinnedEnvironmentDrift"] = listPinnedDrift

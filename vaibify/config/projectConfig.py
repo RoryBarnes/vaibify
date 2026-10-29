@@ -2,6 +2,7 @@
 
 import copy
 import posixpath
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -211,11 +212,36 @@ def fconfigLoadFromFile(sFilePath):
     """
     dictRaw = _fdictReadYaml(sFilePath)
     dictMerged = _fdictMergeWithDefaults(dictRaw)
+    _fnValidateBindMountsForFile(dictMerged, sFilePath)
     if not fbValidateConfig(dictMerged):
         raise ValueError(
             f"Configuration validation failed for '{sFilePath}'."
         )
     return _fconfigFromYamlDict(dictMerged)
+
+
+def _fnValidateBindMountsForFile(dictMerged, sFilePath):
+    """Refuse a mount list with the validator's own sentence.
+
+    Run before the boolean validation so a researcher reads WHY the
+    entry was refused -- an unknown key, the retired ``readOnly``, a
+    denied path, a read-write mount over this very file's directory --
+    rather than "validation failed". The directory of the file is the
+    project directory a read-write mount may not cover.
+    """
+    listMounts = dictMerged.get("bindMounts") or []
+    if not isinstance(listMounts, list):
+        return
+    try:
+        fnValidateBindMountList(
+            listMounts,
+            sProjectDirectory=os.path.dirname(os.path.realpath(sFilePath)),
+        )
+    except BindMountValidationError as errorMount:
+        raise ValueError(
+            f"Configuration validation failed for '{sFilePath}': "
+            f"{errorMount}"
+        ) from errorMount
 
 
 def fnSaveToFile(config, sFilePath):

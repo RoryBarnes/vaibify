@@ -4404,13 +4404,10 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testBindMountValidator.py::test_journal_directory_mount_is_rejected_in_every_direction',
         source='vaibify/config/bindMountValidator.py',
-        old='''    ".kube",
-    # The operation-journal quarantine markers (design §8): a same-UID
-    # agent inside a container that could mount this directory could
-    # delete a quarantine marker and un-quarantine a container whose
-    # past operations were never proven settled.
-    ".vaibify/journal",''',
-        new='''    ".kube",''',
+        # Re-anchored 2026-10-28: the one ".vaibify" entry now covers
+        # the journal, the ephemeral secrets and the control sockets.
+        old='    ".vaibify",\n',
+        new='',
     ),
 
     # ORPHANED_SESSION slice 3b — the commit-guard carrier (design §8).
@@ -25654,8 +25651,58 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testBindMountDenyListReadsTheFilesystem.py::testTheEphemeralSecretStoreIsDeniedInEveryDirection',
         source='vaibify/config/bindMountValidator.py',
-        old='    ".vaibify/tmp",\n',
+        # Re-anchored 2026-10-28: ``.vaibify`` is denied as a whole.
+        old='    ".vaibify",\n',
         new='',
+    ),
+    # --- 2026-10-28: bind mounts are read-only unless declared readWrite ---
+    Falsification(
+        nodeid=(
+            'tests/testBindMountReadOnlyDefault.py::'
+            'testAMountIsReadOnlyUnlessItSaysReadWrite'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # the default mounts writable and readWrite: true mounts read-only
+        old='    if not fbBindMountIsReadWrite(dictMount):\n        sSpec += ",readonly"\n',
+        new='    if fbBindMountIsReadWrite(dictMount):\n        sSpec += ",readonly"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBindMountReadOnlyDefault.py::'
+            'testAnAgentsHomeIsDeniedInEveryDirection'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        # an agent CLI's home is mountable again
+        old='    ".claude", ".codex", ".gemini",\n',
+        new='    ".codex", ".gemini",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBindMountReadOnlyDefault.py::'
+            'testTheRetiredReadOnlyKeyIsRefusedByName'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old='    if "readOnly" in dictMount:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBindMountReadOnlyDefault.py::'
+            'testAReadWriteMountOverTheProjectDirectoryIsRefused'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old='    if sResolved == sProject or sProject.startswith(sResolved + os.sep):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBindMountReadOnlyDefault.py::'
+            'testTheLoaderNamesTheRefusedEntryInItsOwnWords'
+        ),
+        source='vaibify/config/projectConfig.py',
+        # the loader no longer runs the validator with its own sentence
+        old='    listMounts = dictMerged.get("bindMounts") or []\n    if not isinstance(listMounts, list):\n        return\n',
+        new='    listMounts = []\n',
     ),
     Falsification(
         nodeid='tests/testBindMountDenyListReadsTheFilesystem.py::testASourceDockerWouldNotReadAsValidatedIsRefused',

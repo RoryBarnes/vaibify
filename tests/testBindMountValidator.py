@@ -210,12 +210,17 @@ def test_mounting_config_parent_of_gh_is_rejected(monkeypatch, tmp_path):
         )
 
 
-def test_granular_config_sibling_is_still_allowed(monkeypatch, tmp_path):
-    """A specific ~/.config/myapp mount is fine — only the parent is denied."""
+def test_the_whole_of_config_is_denied(monkeypatch, tmp_path):
+    """Since 2026-10-28 every tool's ~/.config directory is denied, not gh alone.
+
+    Git, pip and many credential stores keep their configuration there,
+    and a writable one is a channel to code the researcher runs later.
+    """
     sHome = _ftConfigureHome(monkeypatch, tmp_path)
     sApp = sHome / ".config" / "myapp"
     sApp.mkdir(parents=True)
-    fnValidateBindMount({"host": str(sApp), "container": "/app"})
+    with pytest.raises(BindMountValidationError, match="denied location"):
+        fnValidateBindMount({"host": str(sApp), "container": "/app"})
 
 
 @pytest.mark.parametrize("sDenied", [".gnupg", ".docker", ".kube"])
@@ -281,8 +286,10 @@ def test_journal_directory_mount_is_rejected_in_every_direction(
     operations were never proven settled.
 
     Kills: in bindMountValidator._LIST_HOME_RELATIVE_DENY_PREFIXES,
-    drop the ".vaibify/journal" entry (with its comment block), so a
-    mount of ~/.vaibify passes the home-allowlist untouched.
+    drop the ".vaibify" entry (which since 2026-10-28 covers the
+    journal, the ephemeral secrets, the control sockets and the binding
+    records together), so a mount of ~/.vaibify passes the
+    home-allowlist untouched.
     """
     sHome = _ftConfigureHome(monkeypatch, tmp_path)
     sJournalDirectory = str(sHome / ".vaibify" / "journal")
@@ -313,9 +320,8 @@ def test_control_socket_directory_mount_is_rejected_in_every_direction(
     a compromised agent connect to the peer-authenticated socket and
     drive reconcile/force-abandon/break-glass from inside.
 
-    Kills: in bindMountValidator._LIST_HOME_RELATIVE_DENY_PREFIXES,
-    drop the ".vaibify/control" entry (with its comment block), so a
-    mount of the socket directory passes the home-allowlist untouched.
+    Since 2026-10-28 the one ".vaibify" entry covers the control
+    directory with the rest of vaibify's host state.
     """
     sHome = _ftConfigureHome(monkeypatch, tmp_path)
     sControlDirectory = str(sHome / ".vaibify" / "control")

@@ -27,17 +27,22 @@ fbMountIsSafePath() {
     return 1
 }
 
-fnCheckSecretMount() {
+fnCheckReadOnlyMount() {
     local sMountPoint="$1"
     local sLine="$2"
+    local sWhat="$3"
     local sReadOnly
     sReadOnly=$(echo "$sLine" | awk '{print $6}')
     if [[ "$sReadOnly" == ro,* || "$sReadOnly" == ro ]]; then
-        echo "  [OK] $sMountPoint — read-only secret"
+        echo "  [OK] $sMountPoint — read-only $sWhat"
     else
-        echo "  [WARN] $sMountPoint — secret mount is read-write"
+        echo "  [WARN] $sMountPoint — $sWhat mount is read-write"
         iExitCode=1
     fi
+}
+
+fnCheckSecretMount() {
+    fnCheckReadOnlyMount "$1" "$2" "secret"
 }
 
 fnClassifyMount() {
@@ -53,6 +58,10 @@ fnClassifyMount() {
         echo "  [OK] $sMountPoint — Docker named volume (isolated from host)"
     elif [[ "$sMountPoint" == /run/secrets/* ]]; then
         fnCheckSecretMount "$sMountPoint" "$sLine"
+    elif [[ "$sMountPoint" == /etc/vaibify/container.conf ]]; then
+        # The repository list a container started on a pinned image
+        # syncs from; vaibify mounts it read-only.
+        fnCheckReadOnlyMount "$sMountPoint" "$sLine" "repository list"
     else
         echo "  [FAIL] $sMountPoint — possible host bind mount (source: $sSource, type: $sFilesystemType)"
         return 1

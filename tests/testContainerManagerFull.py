@@ -209,7 +209,7 @@ def test_fnAddPortForwarding_lan_expose_opts_out_of_loopback():
 
 
 def test_fnAddBindMounts_regular(tmp_path, monkeypatch):
-    """Bind mount under the user's home directory is permitted."""
+    """Bind mount under the user's home directory is permitted, read-only."""
     monkeypatch.setenv("HOME", str(tmp_path))
     sHostPath = str(tmp_path / "data")
     os.makedirs(sHostPath)
@@ -222,12 +222,13 @@ def test_fnAddBindMounts_regular(tmp_path, monkeypatch):
     assert "--mount" in saRunArgs
     assert "-v" not in saRunArgs
     assert (
-        f'type=bind,"source={sHostPath}","target=/mnt/data"' in saRunArgs
+        f'type=bind,"source={sHostPath}","target=/mnt/data",readonly'
+        in saRunArgs
     )
 
 
-def test_fnAddBindMounts_readonly(tmp_path, monkeypatch):
-    """Read-only bind mount under home is permitted and tagged ``:ro``."""
+def test_fnAddBindMounts_readWrite(tmp_path, monkeypatch):
+    """Only an entry that says ``readWrite: true`` is mounted writable."""
     monkeypatch.setenv("HOME", str(tmp_path))
     sHostPath = str(tmp_path / "data")
     os.makedirs(sHostPath)
@@ -237,13 +238,12 @@ def test_fnAddBindMounts_readonly(tmp_path, monkeypatch):
         {
             "host": sHostPath,
             "container": "/mnt/data",
-            "readOnly": True,
+            "readWrite": True,
         },
     ]
     _fnAddBindMounts(config, saRunArgs)
     assert (
-        f'type=bind,"source={sHostPath}","target=/mnt/data",readonly'
-        in saRunArgs
+        f'type=bind,"source={sHostPath}","target=/mnt/data"' in saRunArgs
     )
 
 
