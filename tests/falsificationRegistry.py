@@ -36619,6 +36619,63 @@ LIST_FALSIFICATIONS = [
         old='    "        sys.exit(2)  # a refusal is never absence\\n"\n',
         new='    "        return False\\n"\n',
     ),
+    # --- 2026-10-29: a stable project identity and the trusted remote binding ---
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testReRegistrationGetsANewIdentityAndNoBindings'
+        ),
+        source='vaibify/config/registryManager.py',
+        # the identity is the name again, so a re-registration inherits it
+        old='        "sProjectUuid": uuid.uuid4().hex,\n',
+        new='        "sProjectUuid": sName,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testNothingBindsUntilTheResearcherConfirms'
+        ),
+        source='vaibify/config/remoteBindings.py',
+        # an absent binding is filled from project.json automatically
+        old=(
+            '    if dictBound is None:\n'
+            '        raise BindingRequiredError(\n'
+        ),
+        new=(
+            '    if dictBound is None:\n'
+            '        return _fdictNormalizedTarget(sService, dictProjectTarget)\n'
+            '        raise BindingRequiredError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testTheAgentLaneCannotConfirmABinding'
+        ),
+        source='vaibify/gui/routes/bindingRoutes.py',
+        # the confirm handler no longer refuses the agent lane itself
+        # (the service-name guard follows this entry)
+        old=(
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"](sContainerId)\n'
+            '        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)\n'
+            '        if request.sService not in'
+        ),
+        new=(
+            '        dictCtx["require"](sContainerId)\n'
+            '        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)\n'
+            '        if request.sService not in'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testAnUnknownServiceOrFieldIsRefused'
+        ),
+        source='vaibify/config/remoteBindings.py',
+        old='    if sService not in T_BINDING_SERVICES:\n',
+        new='    if False:\n',
+    ),
     Falsification(
         nodeid=(
             'tests/testExecLane.py::'

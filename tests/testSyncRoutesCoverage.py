@@ -21,6 +21,9 @@ from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.typedHashDouble import TypedHashFromServedBytes
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 
 S_CONTAINER_ID = "sync_test_cid"
@@ -1237,8 +1240,8 @@ def test_mirror_refresh_auth_failure(clientHttp):
     assert "authentication" in dictResult["sMessage"]
 
 
-def test_mirror_refresh_missing_project_id_returns_400(clientHttp):
-    """Project ID absent from workflow => HTTP 400 from refresh."""
+def test_mirror_refresh_missing_project_id_is_refused_409(clientHttp):
+    """Project ID absent from workflow => HTTP 409 (no confirmed binding) from refresh."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
@@ -1247,11 +1250,11 @@ def test_mirror_refresh_missing_project_id_returns_400(clientHttp):
         responseHttp = clientHttp.post(
             f"/api/overleaf/{S_CONTAINER_ID}/mirror/refresh",
         )
-    assert responseHttp.status_code == 400
+    assert responseHttp.status_code == 409
 
 
-def test_mirror_tree_missing_project_id_returns_400(clientHttp):
-    """Project ID absent => HTTP 400 from tree endpoint."""
+def test_mirror_tree_missing_project_id_is_refused_409(clientHttp):
+    """Project ID absent => HTTP 409 (no confirmed binding) from tree endpoint."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
@@ -1260,11 +1263,11 @@ def test_mirror_tree_missing_project_id_returns_400(clientHttp):
         responseHttp = clientHttp.get(
             f"/api/overleaf/{S_CONTAINER_ID}/mirror/tree",
         )
-    assert responseHttp.status_code == 400
+    assert responseHttp.status_code == 409
 
 
-def test_mirror_diff_missing_project_id_returns_400(clientHttp):
-    """Project ID absent => HTTP 400 from diff endpoint."""
+def test_mirror_diff_missing_project_id_is_refused_409(clientHttp):
+    """Project ID absent => HTTP 409 (no confirmed binding) from diff endpoint."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
@@ -1277,11 +1280,11 @@ def test_mirror_diff_missing_project_id_returns_400(clientHttp):
                 "sTargetDirectory": "figures",
             },
         )
-    assert responseHttp.status_code == 400
+    assert responseHttp.status_code == 409
 
 
-def test_mirror_delete_missing_project_id_returns_400(clientHttp):
-    """Project ID absent => HTTP 400 from delete endpoint."""
+def test_mirror_delete_missing_project_id_is_refused_409(clientHttp):
+    """Project ID absent => HTTP 409 (no confirmed binding) from delete endpoint."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
@@ -1290,7 +1293,7 @@ def test_mirror_delete_missing_project_id_returns_400(clientHttp):
         responseHttp = clientHttp.delete(
             f"/api/overleaf/{S_CONTAINER_ID}/mirror",
         )
-    assert responseHttp.status_code == 400
+    assert responseHttp.status_code == 409
 
 
 def test_mirror_tree_includes_refreshed_at(clientHttp, tmp_path, monkeypatch):

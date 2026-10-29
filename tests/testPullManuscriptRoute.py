@@ -16,6 +16,9 @@ from fastapi.testclient import TestClient
 from vaibify.gui.routes import syncRoutes
 from vaibify.gui.routes.syncRoutes import _fnRegisterPullManuscript
 from tests.carrierStandDown import fnStandCarrierDown
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 
 S_CONTAINER_ID = "pull_ms_cid"

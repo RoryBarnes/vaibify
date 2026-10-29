@@ -86,6 +86,9 @@ from vaibify.gui import (
 from vaibify.reproducibility.publicationScope import (
     I_PUBLICATION_SCOPE_VERSION,
 )
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 S_PRIMITIVE_WRITE = "fnWriteFileViaTar"
 S_PRIMITIVE_EXEC = "ftRunInContainerStreamed"

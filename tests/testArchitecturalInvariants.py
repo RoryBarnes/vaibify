@@ -5473,7 +5473,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # state and its lock live in gui/archiveProgress.py.
     # 1019 -> 1041 (2026-10-27): a settled deposit or promotion is
     # logged by its version DOI, as its failure already was.
-    "routes/environmentArchiveRoutes.py": 1041,
+    # 1041 -> 1048 (2026-10-29): the deposit requires the confirmed Zenodo instance.
+    "routes/environmentArchiveRoutes.py": 1048,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5699,7 +5700,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # logged, requested and outcome, by public identifiers only.
     # 3743 -> 3755 (2026-10-27, review): a logged Zenodo site is
     # one the client's table knows, so it cannot forge log lines.
-    "routes/syncRoutes.py": 3755,
+    # 3755 -> 3774 (2026-10-29): token-bearing Overleaf and Zenodo actions read their target from the confirmed host binding, and a deposit moves it.
+    "routes/syncRoutes.py": 3774,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -6353,7 +6355,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # fileStatusManager symbols, required by the orchestrator re-export
     # invariant.
     # 3782 -> 3783 (2026-10-28): the agent-token comparison is constant-time.
-    "pipelineServer.py": 3783,
+    # 3783 -> 3784 (2026-10-29): the remote-binding routes are mounted.
+    "pipelineServer.py": 3784,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -7539,7 +7542,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1544 -> 1548 (2026-10-24): the setup wizard's step route is excluded from the agent catalog, with why.
     # 1548 -> 1553 (2026-10-27): run-all says it runs every step's
     # tests, and the L2/L3 readiness descriptions name their criteria.
-    "actionCatalog.py": 1553,
+    # 1553 -> 1562 (2026-10-29): confirm-remote-binding, researcher-only.
+    "actionCatalog.py": 1562,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8099,7 +8103,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-10-14): the reproduction retry's scope row, beside its
     # run and discard siblings.
     # 1193 -> 1198 (2026-10-24): the setup wizard's step route is declared browser-hub scoped, with why.
-    "routeScope.py": 1198,
+    # 1198 -> 1203 (2026-10-29): the remote-binding read is lease-enforced.
+    "routeScope.py": 1203,
 }
 
 

@@ -35,6 +35,7 @@ import asyncio
 from fastapi import HTTPException, Request
 
 from ..actionCatalog import ffnAgentAction
+from ..remoteBindingContext import fdictRequireBoundZenodoTarget
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
     fdictCommitWorkflowSave,
@@ -83,13 +84,17 @@ def _fclientForPromotion(dictCtx, sContainerId, dictRecord, dictWorkflow):
         ZenodoClient, fsZenodoTokenName,
     )
     sService = str(dictRecord.get("sTargetService") or "zenodo")
+    # Resuming spends the researcher's token on this instance, so the
+    # instance must still be the one the researcher confirmed.
+    fdictRequireBoundZenodoTarget(
+        dictCtx, sContainerId, dictWorkflow, sService, bInstanceOnly=True,
+    )
     try:
         sToken = dictCtx["docker"].fsFetchKeyringSecret(
             sContainerId, fsZenodoTokenName(sService),
         )
     except LookupError:
         sToken = ""
-    del dictWorkflow
     return ZenodoClient(sService, sToken=sToken or "")
 
 

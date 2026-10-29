@@ -36,6 +36,9 @@ from vaibify.reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
 )
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 
 S_CONTAINER_ID = "containerRecoveryAlpha"

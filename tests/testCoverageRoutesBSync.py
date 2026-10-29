@@ -25,6 +25,9 @@ from vaibify.config import registryManager
 from vaibify.docker import containerManager
 from vaibify.gui import syncDispatcher
 from vaibify.gui.routes import syncRoutes
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 
 S_CONTAINER_ID = "containerIdSyncPanel"

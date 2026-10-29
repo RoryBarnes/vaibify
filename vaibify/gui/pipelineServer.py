@@ -3655,6 +3655,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.levelRoutes.fnRegisterAll(app, dictCtx)
     routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
     routes.committedFileRoutes.fnRegisterAll(app, dictCtx)
+    routes.bindingRoutes.fnRegisterAll(app, dictCtx)
     routes.environmentArchiveRoutes.fnRegisterAll(app, dictCtx)
     routes.promotionRecoveryRoutes.fnRegisterAll(app, dictCtx)
     routes.reproductionRoutes.fnRegisterAll(app, dictCtx)

@@ -18,6 +18,10 @@ from fastapi.responses import Response
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from .. import containerGit, workflowManager
 from ..actionCatalog import ffnAgentAction
+from ..remoteBindingContext import (
+    fdictRequireBoundZenodoTarget, fnRecordZenodoOutcomeInBinding,
+    fsRequireBoundOverleafProjectId,
+)
 from ..pipelineRunner import fsShellQuote
 from ..routeContext import (
     S_ISOLATION_BLOCK_ERROR,
@@ -511,11 +515,16 @@ async def _fdictRunOverleafPushFlow(
 ):
     """Perform the Overleaf push itself; returns the sync result dict."""
     sTargetDirectory = _fsResolveTargetDirectory(request, dictWorkflow)
-    sProjectId = dictWorkflow.get("sOverleafProjectId", "")
+    # The TRUSTED target: the id the researcher confirmed on the host,
+    # which project.json must agree with (remoteBindings).
+    sProjectId = fsRequireBoundOverleafProjectId(
+        dictCtx, sContainerId, dictWorkflow,
+    )
     sMirrorSha = await asyncio.to_thread(
         _fsCapturePreMirrorSha, sProjectId)
     dictOverleafArgs = _fdictBuildOverleafArgs(
         dictWorkflow, sTargetDirectory)
+    dictOverleafArgs["sProjectId"] = sProjectId
     iExit, sOut = await _ftRunOverleafPushCall(
         syncDispatcher, dictCtx["docker"], sContainerId,
         request.listFilePaths, sMirrorSha, dictOverleafArgs,
@@ -618,12 +627,9 @@ async def _fdictHandlePullManuscript(
     dictWorkflow = fdictRequireWorkflow(
         dictCtx["workflows"], sContainerId,
     )
-    sProjectId = dictWorkflow.get("sOverleafProjectId", "")
-    if not sProjectId:
-        raise HTTPException(
-            status_code=409,
-            detail="No Overleaf project is bound to this project.",
-        )
+    sProjectId = fsRequireBoundOverleafProjectId(
+        dictCtx, sContainerId, dictWorkflow,
+    )
     sRepo = dictWorkflow.get("sProjectRepoPath", "")
     if not sRepo:
         raise HTTPException(
@@ -1219,9 +1225,14 @@ async def _ftPerformZenodoArchive(
     # instance first would stale the deposit it is about to mint, and
     # a sandbox deposit id sent to production's `newversion` flow
     # names a record that does not exist there.
-    sZenodoService = sServiceOverride or dictWorkflow.get(
-        "sZenodoService", "sandbox",
+    # The TRUSTED target: the instance (and, once minted, the record)
+    # the researcher confirmed on the host, which project.json must
+    # agree with. A promotion names production and the binding must
+    # already say so.
+    dictBoundTarget = fdictRequireBoundZenodoTarget(
+        dictCtx, sContainerId, dictWorkflow, sServiceOverride,
     )
+    sZenodoService = dictBoundTarget["sInstance"]
     dictMetadata = _fdictResolveZenodoMetadataForArchive(dictWorkflow)
     iParentDepositId = (
         _fiReadParentDepositId(dictWorkflow)
@@ -1260,6 +1271,13 @@ async def _fnPersistZenodoArchiveSuccess(
     """
     _fnPersistZenodoPublishRecord(
         dictWorkflow, dictResult, sZenodoService,
+    )
+    # The hub made this deposit, so the confirmed target follows it:
+    # the next action matches the record the deposit minted.
+    fnRecordZenodoOutcomeInBinding(
+        dictCtx, sContainerId, dictWorkflow, sZenodoService,
+        str(dictWorkflow.get("sZenodoConceptDoi") or ""),
+        str(dictWorkflow.get("sZenodoDepositionId") or ""),
     )
     workflowManager.fnUpdateSyncStatus(
         dictWorkflow, request.listFilePaths, "Zenodo",
@@ -3256,16 +3274,17 @@ def _fnRegisterOverleafMirrorDelete(app, dictCtx):
 
 
 def _fsRequireOverleafProjectId(dictCtx, sContainerId):
-    """Return sOverleafProjectId or raise HTTP 400 with a hint."""
+    """Return the CONFIRMED Overleaf project id, or refuse saying why.
+
+    Reads the host-side binding the researcher confirmed, never
+    ``project.json`` alone: the mirror refresh and delete spend the
+    researcher's Overleaf token on whatever id this returns.
+    """
     dictWorkflow = fdictRequireWorkflow(
         dictCtx["workflows"], sContainerId)
-    sProjectId = dictWorkflow.get("sOverleafProjectId", "")
-    if not sProjectId:
-        raise HTTPException(
-            status_code=400,
-            detail="Overleaf project ID not set for this container.",
-        )
-    return sProjectId
+    return fsRequireBoundOverleafProjectId(
+        dictCtx, sContainerId, dictWorkflow,
+    )
 
 
 _LIST_VERIFY_REMOTE_SERVICES = ("github", "overleaf", "zenodo", "arxiv")

@@ -94,6 +94,24 @@ asks for what that service needs:
 - **GitHub**: nothing, if `gh auth login` has been run on the host;
   otherwise a per-repository token.
 
+### Confirming where a token may be spent
+
+The project ID and the Zenodo record a workflow names live in
+`project.json`, which the in-container agent can edit. The copy vaibify
+trusts lives on your machine, under `~/.vaibify/bindings/`, in a record
+keyed by the project's own identity (a random `sProjectUuid` in the
+registry, kept across renames) and by the workflow (its file path and
+name). Only you write that record: the Remotes panel's binding view
+(`GET /api/bindings/...`) shows what `project.json` names beside what
+your own token fetched about it, and **Confirm** (or, on the host,
+`vaibify do confirm-remote-binding sService=overleaf` or
+`sService=zenodo`) records it. Every Overleaf push, pull and mirror
+refresh, and every Zenodo deposit, publish and Make Permanent, reads
+its target from that record and refuses when `project.json` disagrees,
+naming both values. A workflow you move or rename has no binding until
+you confirm again; the confirmation can carry the old one across. After
+a deposit vaibify made, the record follows the new deposition itself.
+
 **Connect** stores the token and immediately tests it against the
 service. If the test fails, vaibify restores the token you had before
 (or removes the new one if there was none), and the message says which

@@ -358,6 +358,11 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # writes nothing, and only the session that owns the container is
     # shown the host's socket path.
     ("GET", "/api/containers/{sContainerId}/vscode-link"),
+    # The remote-binding panel: what project.json names, what the
+    # researcher confirmed on the host, and what the host fetched about
+    # it with the researcher's own token. Reaches no container; the
+    # handler also refuses the agent lane by name.
+    ("GET", "/api/bindings/{sContainerId}"),
     # The Files tab's free-space answer before a drop. Reads the free
     # bytes of the volume (or host directory) the files would land in
     # and the destination names that already exist; writes nothing,

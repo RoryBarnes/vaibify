@@ -1246,6 +1246,16 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": False,
      "sDescription": "Delete a staged snapshot that will not be run. "
                      "Human-only."},
+    # ---- Remote bindings ----
+    {"sName": "confirm-remote-binding", "sCategory": "sync",
+     "sMethod": "POST", "sPath": "/api/bindings/{sContainerId}/confirm",
+     "bAgentSafe": False,
+     "sDescription": "Confirm which Overleaf project or Zenodo record this "
+                     "workflow's token-bearing actions may act on. Args: "
+                     "{sService: overleaf|zenodo, optional dictTarget, "
+                     "optional sCarryFromWorkflowKey}. Human-only: the "
+                     "record lives on the host and decides where the "
+                     "researcher's tokens are spent."},
 ]
 
 

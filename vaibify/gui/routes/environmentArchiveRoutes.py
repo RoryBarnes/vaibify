@@ -29,6 +29,7 @@ from fastapi import HTTPException, Request
 
 from .. import archiveProgress
 from ..actionCatalog import ffnAgentAction
+from ..remoteBindingContext import fdictRequireBoundZenodoTarget
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
@@ -372,6 +373,12 @@ def _fnRegisterDepositEnvironmentArchive(app, dictCtx):
         dictContainer = _fdictRequireEnvelopeContainerBlock(filesRepo)
         dictDestination = _fdictResolveDepositDestination(
             dictContainer, dictBody,
+        )
+        # The archive is its own record, but it spends the researcher's
+        # token on an INSTANCE, which must be the confirmed one.
+        fdictRequireBoundZenodoTarget(
+            dictCtx, sContainerId, dictWorkflow,
+            dictDestination["sZenodoService"], bInstanceOnly=True,
         )
         sToken = await asyncio.to_thread(
             _fsReadZenodoTokenFromContainer,

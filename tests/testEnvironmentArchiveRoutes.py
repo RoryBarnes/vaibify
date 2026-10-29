@@ -29,6 +29,9 @@ from vaibify.reproducibility import imageArchive
 from vaibify.reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
 )
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 
 S_CONTAINER_ID = "archive_cid"
