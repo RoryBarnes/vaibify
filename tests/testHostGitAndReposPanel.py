@@ -272,17 +272,7 @@ def testAPlainFileIsNotOfferedAsARepositoryToBe(tHostPanel):
     )
 
 
-# ── Credentials: which keyring holds this project's tokens ───────
-
-class _PoisonConnection:
-    """Raises on any use, proving a lane reached no container."""
-
-    def __getattr__(self, sAttributeName):
-        raise AssertionError(
-            f"a container was consulted (.{sAttributeName}) for a host "
-            "project's credential"
-        )
-
+# ── Registered projects with no hub ───────────────────────────────
 
 @pytest.fixture
 def fixtureHostRegistryOnly(tmp_path, monkeypatch):
@@ -307,122 +297,6 @@ def fixtureHostRegistryOnly(tmp_path, monkeypatch):
             fileConfig.write(f"projectName: {sName}\n")
         registryManager.fnAddProject(sDirectory, sMode=sMode)
     return sHome
-
-
-@pytest.mark.falsification
-def testAHostProjectsTokenGoesToTheResearchersOwnKeyring(
-    fixtureHostRegistryOnly,
-):
-    """No container is consulted, and the token lands on the host.
-
-    The container leg writes the value to a temporary file and runs an
-    in-container python that reads it back into ``keyring``. For a host
-    project that lane is wrong twice over: there is no container to run
-    it in, and the file would be a secret written to the researcher's
-    own disk on the way to a keyring this process can reach directly.
-
-    The keyring here is the suite's hermetic fake (conftest), so what
-    is asserted is which STORE was chosen, not that a real OS keychain
-    accepted it.
-
-    Kills: the dispatcher losing its mode test, which sends every host
-    project's token into a container it does not have.
-    """
-    from vaibify.config.secretManager import fbSecretExists
-    from vaibify.gui import syncDispatcher
-    syncDispatcher.fnStoreCredentialForProject(
-        _PoisonConnection(), "credentialHostProject",
-        "zenodo_token_sandbox", "a-real-looking-token",
-    )
-    assert fbSecretExists("zenodo_token_sandbox", "keyring")
-
-
-@pytest.mark.falsification
-def testAContainerProjectsTokenStillGoesIntoItsContainer(
-    fixtureHostRegistryOnly,
-):
-    """The other direction, and the one with the wider blast radius.
-
-    A container project's keyring is inside the container, because
-    that is where the sync commands run. Sending its token to the
-    host keyring would leave every containerized push authenticating
-    with nothing, and would put a token the researcher scoped to one
-    container into their login keychain.
-
-    Kills: the dispatcher stuck on the host branch.
-    """
-    from unittest.mock import MagicMock
-    from vaibify.gui import syncDispatcher
-    mockConnection = MagicMock()
-    mockConnection.ftResultExecuteCommand.return_value = (0, "")
-    syncDispatcher.fnStoreCredentialForProject(
-        mockConnection, "credentialContainerProject",
-        "zenodo_token_sandbox", "a-real-looking-token",
-    )
-    assert mockConnection.fnWriteFile.called, (
-        "the container lane did not stage the credential file"
-    )
-
-
-def testAHostProjectsCredentialCheckAsksTheHostKeyring(
-    fixtureHostRegistryOnly,
-):
-    """The connectivity probe follows the token it is asking about."""
-    from vaibify.config.secretManager import fnStoreSecret
-    from vaibify.gui import syncDispatcher
-    fnStoreSecret("zenodo_token_sandbox", "tok", "keyring")
-    dictProbe = syncDispatcher.fdictCheckConnectivity(
-        _PoisonConnection(), "credentialHostProject", "zenodo",
-    )
-    assert dictProbe["bConnected"] is True
-
-
-def testAHostProjectsCredentialRoundTripsThroughCopyAndDelete(
-    fixtureHostRegistryOnly,
-):
-    """Snapshot, restore and cleanup, which is what a failed token does.
-
-    The stage-validate-commit flow copies the existing token aside
-    before storing a new one and copies it back when validation fails.
-    A host project that could store but not snapshot would lose the
-    researcher's working token on the first typo.
-    """
-    from vaibify.config.secretManager import fbSecretExists
-    from vaibify.gui import syncDispatcher
-    connection = _PoisonConnection()
-    syncDispatcher.fnStoreCredentialForProject(
-        connection, "credentialHostProject", "zenodo_token_sandbox",
-        "original",
-    )
-    assert syncDispatcher.fbCopyCredentialForProject(
-        connection, "credentialHostProject",
-        "zenodo_token_sandbox", "zenodo_token_sandbox_backup",
-    ) is True
-    syncDispatcher.fnDeleteCredentialForProject(
-        connection, "credentialHostProject", "zenodo_token_sandbox_backup",
-    )
-    assert not fbSecretExists("zenodo_token_sandbox_backup", "keyring")
-    assert syncDispatcher.fbCopyCredentialForProject(
-        connection, "credentialHostProject",
-        "zenodo_token_sandbox_backup", "zenodo_token_sandbox",
-    ) is False, "copying an absent slot must not report success"
-
-
-def testAHostProjectsCredentialSlotNameIsStillClosed(
-    fixtureHostRegistryOnly,
-):
-    """The token-name vocabulary guards the host lane too.
-
-    The name reaches a keyring service slot and arrives from a request
-    body; the container functions each refuse an unknown one, and a
-    host branch that skipped the check would be the looser lane.
-    """
-    from vaibify.gui import syncDispatcher
-    with pytest.raises(ValueError, match="Invalid token name"):
-        syncDispatcher.fnStoreCredentialForProject(
-            _PoisonConnection(), "credentialHostProject",
-            "evil_slot", "value",
-        )
 
 
 # ── The CLI's push and pull, which have no container to cross ────

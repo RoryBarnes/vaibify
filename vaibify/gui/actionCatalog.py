@@ -1256,6 +1256,24 @@ LIST_AGENT_ACTIONS = [
                      "optional sCarryFromWorkflowKey}. Human-only: the "
                      "record lives on the host and decides where the "
                      "researcher's tokens are spent."},
+    # ---- Zenodo tokens moved out of the container ----
+    {"sName": "decide-migrated-zenodo-token", "sCategory": "sync",
+     "sMethod": "POST", "sPath": "/api/zenodo-tokens/{sContainerId}/decide",
+     "bAgentSafe": False,
+     "sDescription": "Decide about a Zenodo token moved out of this "
+                     "project's container: confirm it (it becomes the "
+                     "active token), decline it (it is discarded), or "
+                     "resolve a conflict with keep-host or stage-pending. "
+                     "Args: {sSlot, sDecision, optional sInstance for the "
+                     "legacy slot, optional bReplaceActive}. Human-only: "
+                     "the container keyring is agent-writable, so only the "
+                     "researcher can say the token is theirs."},
+    {"sName": "retry-zenodo-token-migration", "sCategory": "sync",
+     "sMethod": "POST", "sPath": "/api/zenodo-tokens/{sContainerId}/migrate",
+     "bAgentSafe": False,
+     "sDescription": "Run the Zenodo token migration pass again now, "
+                     "retrying a validation the host could not complete. "
+                     "Human-only."},
 ]
 
 

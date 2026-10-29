@@ -8,23 +8,13 @@ not the one sent would leave the deposit record saying exactly what
 it says now, and the L2/L3 cells would go green over an archive that
 cannot satisfy them.
 
-This lane runs INSIDE the container, so the check cannot import the
-host package. It shares one implementation with the host lane via
-``zenodoClient``, the only module staged on both sides of that wall.
-
-The tests execute the real generated script — the one that is
-base64-encoded and exec'd in the container — against a fake Zenodo.
-Asserting on substrings of the template would prove the text and not
+Since 2026-10-29 the project deposit runs on the HOST, like the
+environment archive, and the two share one comparison through
+``zenodoClient``. The tests drive the real deposit function against a
+fake Zenodo. Asserting on the source text would prove the text and not
 the behavior, and this file exists because a check that is merely
 written down is the failure mode under review.
 """
-
-import base64
-import io
-import re
-import sys
-import types
-from contextlib import redirect_stdout
 
 import pytest
 
@@ -37,17 +27,6 @@ _BA_CONTENT = b"a,b\n1,2\n"
 # md5 of _BA_CONTENT, computed by the code under test's own helper at
 # call time rather than pinned here — a pinned constant would agree
 # with a hasher that had stopped reading the file.
-
-
-def _fsBuildScript(listPaths, iParent=0):
-    """Decode the script the dispatcher would actually run."""
-    sCommand = syncDispatcher._fsBuildZenodoArchiveCommand(
-        "https://example.invalid/api", "zenodo_token_sandbox",
-        listPaths, {"title": "A project", "creators": [{"name": "X"}]},
-        "cid", iParent,
-    )
-    sEncoded = re.search(r"b64decode\('([^']+)'\)", sCommand).group(1)
-    return base64.b64decode(sEncoded).decode()
 
 
 class _FakeZenodo:
@@ -104,29 +83,21 @@ def _fsMd5(baContent):
 
 
 def _ftRunScript(monkeypatch, listPaths, clientFake, iParent=0):
-    """Exec the real script against a fake Zenodo; return (code, stdout).
+    """Run the host deposit against a fake Zenodo; return (code, stdout).
 
-    ``sys.modules['zenodoClient']`` is pointed at the real module so
-    the script's flat import finds the genuine comparison functions,
-    and only the client class is replaced. A fake comparison would
-    make this test agree with itself.
+    Only the client is replaced: the comparison functions are the real
+    ones, because a fake comparison would make this test agree with
+    itself. ``code`` is the failure sentence (the old script's exit
+    message) or '' on success; ``stdout`` is the result line or ''.
     """
-    moduleKeyring = types.ModuleType("keyring")
-    moduleKeyring.get_password = lambda sService, sSlot: "a-token"
-    monkeypatch.setitem(sys.modules, "keyring", moduleKeyring)
-    monkeypatch.setitem(sys.modules, "zenodoClient", zenodoClient)
-    monkeypatch.setattr(
-        zenodoClient, "ZenodoClient",
-        lambda **kwargs: clientFake, raising=True,
+    del monkeypatch
+    iExit, sOut = syncDispatcher._ftDepositStagedFiles(
+        clientFake, listPaths,
+        {"title": "A project", "creators": [{"name": "X"}]}, iParent,
     )
-    sScript = _fsBuildScript(listPaths, iParent)
-    streamOut = io.StringIO()
-    try:
-        with redirect_stdout(streamOut):
-            exec(compile(sScript, "<archive>", "exec"), {"__name__": "__m__"})
-    except SystemExit as errorExit:
-        return str(errorExit.code), streamOut.getvalue()
-    return "", streamOut.getvalue()
+    if iExit != 0:
+        return sOut, ""
+    return "", sOut
 
 
 @pytest.fixture
@@ -157,8 +128,8 @@ def test_a_disagreeing_draft_costs_a_draft_and_never_a_doi(
     that nothing on this path could clean up, because a published
     record cannot be discarded.
 
-    Kills: dropping the verification from the container script, or
-    moving it after ``fdictPublishDraft``.
+    Kills: dropping the verification from the host deposit, or moving
+    it after ``fdictPublishDraft``.
     """
     clientFake = _FakeZenodo(dictServed={"files": [
         {"key": _S_NAME, "filesize": len(_BA_CONTENT),
@@ -200,7 +171,7 @@ def test_a_file_the_clear_missed_is_caught(monkeypatch, pathFile):
     which is why the environment archive does not ask for it.
 
     Kills: dropping ``flistDescribeUnexpectedDepositFiles`` from the
-    container script's problem list.
+    host deposit's problem list.
     """
     clientFake = _FakeZenodo(dictServed={"files": [
         {"key": _S_NAME, "filesize": len(_BA_CONTENT),
@@ -235,7 +206,7 @@ def test_a_missing_local_file_is_still_named_a_local_problem(
 
 
 def test_the_two_lanes_share_one_comparison():
-    """The container cannot import the host, so drift is the default.
+    """Both deposits ask ``zenodoClient`` the same question.
 
     Two copies of this check would announce their divergence as a
     deposit that passed on one lane and failed on the other.
@@ -246,8 +217,8 @@ def test_the_two_lanes_share_one_comparison():
         imageDeposit.flistDescribeArchiveDisagreement,
     )
     assert "zenodoClient.flistDescribeDepositDisagreement" in sImageSource
-    assert "flistDescribeDepositDisagreement" in (
-        syncDispatcher._S_ARCHIVE_SCRIPT_TEMPLATE
+    assert "zenodoClient.flistDescribeDepositDisagreement" in (
+        inspect.getsource(syncDispatcher._ftDepositStagedFiles)
     )
 
 

@@ -106,6 +106,10 @@ def fixtureSeededProject(tmp_path, monkeypatch):
 
 def _fnUseDocker(monkeypatch, recorderDocker):
     monkeypatch.setattr(containerManager.subprocess, "run", recorderDocker)
+    # A freshly converted project has no credentials volume; the mount
+    # asks the daemon whether one exists (2026-10-29), and that question
+    # is not one of the three commands the read makes.
+    monkeypatch.setattr(containerManager, "fbVolumeExists", lambda sVolumeName: False)
 
 
 def _fsReadMountedList(saRunArgs):

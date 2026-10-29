@@ -1607,14 +1607,18 @@ ephemeral root its path guard admits. The container answer is passed
 in at every call site rather than known here, so this module never
 becomes a second authority on what those roots are.
 
-**Which keyring, likewise.** A container project's service tokens live
-in the container's keyring, reachable only from inside it and thrown
-away with it. A host project's live in the researcher's own OS
-keyring, which is where Overleaf's token already went in both modes
-because the Overleaf push has always run on the host. The dispatchers
-in `syncDispatcher` pick the store; the `InContainer` primitives
-beneath them are unchanged, because that is still exactly what they
-do.
+**Which keyring: the host's, for both kinds of project.** Since
+2026-10-29 a Zenodo token lives only in the researcher's own OS
+keyring, in an active slot named for the project's registry identity
+and the instance (`vaibify/config/zenodoTokenSlots.py`), which is where
+Overleaf's token already went in both modes because the Overleaf push
+has always run on the host. Every Zenodo operation runs on the host
+too (`syncDispatcher.ftResultArchiveToZenodo` streams the files out
+through the confined reader), so the container keyring holds no token.
+A token an older container still holds is moved out at connect by
+`vaibify/gui/zenodoTokenMigration.py`: staged pending with a verified
+read-back, deleted only once that is recorded, validated on the host,
+and activated only by the researcher's decision.
 
 **Paths.** Every direct path argument and working directory is
 validated against exactly two roots — the project directory and the
@@ -2822,18 +2826,17 @@ compressor. zstd and gzip give different bytes for one image, and so
 can two builds of one codec, which would report an identical image as
 diverged.
 
-### The deposit runs on the host and the credential crosses once
+### The deposit runs on the host, with the host's token
 
 `docker save` talks to the daemon, so only the hub can produce the
-tarball; vaibify stores the Zenodo token in the CONTAINER keyring,
-because every other Zenodo call it makes runs as a script inside the
-container. The bytes and the credential therefore start on opposite
-sides of the boundary and one of them has to cross. Moving the token is
-the cheaper crossing by a factor of a hundred million: it is read
-through the typed-read seam (`DockerConnection.fsFetchKeyringSecret`),
-held in a local for the length of one upload, and written to no file
-and no log. Moving the tarball would mean streaming a gigabyte through
-an exec socket built for a terminal.
+tarball, and since 2026-10-29 the Zenodo token lives only on the host
+too (`vaibify/gui/zenodoTokenAccess.py` reads the project's active
+slot), so nothing crosses the container boundary for this deposit at
+all. The typed read of the container keyring
+(`DockerConnection.fsFetchKeyringSecret`) remains for one purpose: the
+migration that moves a token an older container still holds out of
+it. The token is held in a local for the length of one upload, and
+written to no file and no log.
 
 The deposit is a mode-(c) durable task and reports progress, because a
 silent multi-minute upload reads as a hang. Its route is

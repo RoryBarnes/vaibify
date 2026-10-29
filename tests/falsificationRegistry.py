@@ -6618,16 +6618,12 @@ LIST_FALSIFICATIONS = [
             '        fnRejectAgentTokenLane(requestHttp)\n'
             '        dictCtx["require"](sContainerId)\n'
             '        syncDispatcher.fnValidateServiceName(sService)\n'
-            '        return {\n'
-            '            "bHasCredential": '
-            '_fbServiceHasStoredCredential(sService),\n'
+            '        if sZenodoInstance and (\n'
         ),
         new=(
             '        dictCtx["require"](sContainerId)\n'
             '        syncDispatcher.fnValidateServiceName(sService)\n'
-            '        return {\n'
-            '            "bHasCredential": '
-            '_fbServiceHasStoredCredential(sService),\n'
+            '        if sZenodoInstance and (\n'
         ),
     ),
 
@@ -10083,46 +10079,6 @@ LIST_FALSIFICATIONS = [
             '        )\n'
         ),
         new='        listIsDirectory = [True] * len(listPaths)\n',
-    ),
-    # --- Which keyring holds this project's credentials (phase C) ---
-    #
-    # The container leg writes the value to a temporary file and runs an
-    # in-container python that reads it back into keyring. For a host
-    # project that lane is wrong twice: there is no container to run it
-    # in, and the file would be a secret written to the researcher's
-    # own disk on the way to a keyring this process can reach directly.
-    # The other direction is the wider failure -- a container project
-    # whose token went to the host keychain would authenticate every
-    # push with nothing.
-    Falsification(
-        nodeid=(
-            'tests/testHostGitAndReposPanel.py::'
-            'testAHostProjectsTokenGoesToTheResearchersOwnKeyring'
-        ),
-        source='vaibify/gui/syncDispatcher.py',
-        old=(
-            '    if fbIsHostProject(sContainerId):\n'
-            '        from vaibify.config.secretManager import fnStoreSecret\n'
-        ),
-        new=(
-            '    if False:\n'
-            '        from vaibify.config.secretManager import fnStoreSecret\n'
-        ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testHostGitAndReposPanel.py::'
-            'testAContainerProjectsTokenStillGoesIntoItsContainer'
-        ),
-        source='vaibify/gui/syncDispatcher.py',
-        old=(
-            '    if fbIsHostProject(sContainerId):\n'
-            '        from vaibify.config.secretManager import fnStoreSecret\n'
-        ),
-        new=(
-            '    if True:\n'
-            '        from vaibify.config.secretManager import fnStoreSecret\n'
-        ),
     ),
     # --- push and pull with no container to cross (phase C) ---
     Falsification(
@@ -21108,20 +21064,23 @@ LIST_FALSIFICATIONS = [
             'test_a_disagreeing_draft_costs_a_draft_and_never_a_doi'
         ),
         source='vaibify/gui/syncDispatcher.py',
-        # The container script publishes over an archive nobody
-        # asked -- the state the environment lane had already left.
+        # The host deposit publishes over an archive nobody asked --
+        # the state the environment lane had already left.
         old=(
-            "    _draftNow = client.fdictGetDeposit(iDid)\n"
-            "    _problems = (flistDescribeDepositDisagreement("
-            "_draftNow, _expected)\n"
-            "                 + flistDescribeUnexpectedDepositFiles("
-            "_draftNow,\n"
-            "                                                       "
-            "_expected))\n"
-            "    if _problems:\n"
-            "        raise _ArchiveMismatch(' '.join(_problems))\n"
+            "        dictDraftNow = clientZenodo.fdictGetDeposit(iDepositId)\n"
+            "        listProblems = (\n"
+            "            zenodoClient.flistDescribeDepositDisagreement("
+            "dictDraftNow, listExpected)\n"
+            "            + zenodoClient.flistDescribeUnexpectedDepositFiles(\n"
+            "                dictDraftNow, listExpected,\n"
+            "            )\n"
+            "        )\n"
+            "        if listProblems:\n"
         ),
-        new='',
+        new=(
+            "        listProblems = []\n"
+            "        if listProblems:\n"
+        ),
     ),
     Falsification(
         nodeid=(
@@ -21132,16 +21091,15 @@ LIST_FALSIFICATIONS = [
         # Per-file comparison only: every uploaded file agrees while
         # the record also serves the previous version's leftovers.
         old=(
-            "    _problems = (flistDescribeDepositDisagreement("
-            "_draftNow, _expected)\n"
-            "                 + flistDescribeUnexpectedDepositFiles("
-            "_draftNow,\n"
-            "                                                       "
-            "_expected))\n"
+            "            zenodoClient.flistDescribeDepositDisagreement("
+            "dictDraftNow, listExpected)\n"
+            "            + zenodoClient.flistDescribeUnexpectedDepositFiles(\n"
+            "                dictDraftNow, listExpected,\n"
+            "            )\n"
         ),
         new=(
-            "    _problems = flistDescribeDepositDisagreement("
-            "_draftNow, _expected)\n"
+            "            zenodoClient.flistDescribeDepositDisagreement("
+            "dictDraftNow, listExpected)\n"
         ),
     ),
     Falsification(
@@ -22307,22 +22265,6 @@ LIST_FALSIFICATIONS = [
             '        if (false) {\n'
             '            var sReason = _fsDistillZenodoReason(\n'
         ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testTheStagedClientStaysCurrent.py::'
-            'test_a_stale_staged_client_is_rewritten_before_the_upload'
-        ),
-        source='vaibify/gui/syncDispatcher.py',
-        # The shipped shape: the archive script runs against
-        # whatever the image build froze, and a publish dies on an
-        # ImportError over a symbol the host added since.
-        old=(
-            '    fnEnsureStagedClientCurrent(connectionDocker, '
-            'sContainerId)\n'
-            '    _fnValidateArchiveFilePaths(listFilePaths)\n'
-        ),
-        new='    _fnValidateArchiveFilePaths(listFilePaths)\n',
     ),
     # --- 2026-09-16: sync->async is the one signature change Python
     # does not report at the call site, so a guard that stops being
@@ -37529,5 +37471,158 @@ LIST_FALSIFICATIONS = [
             '        dictIncident.get("sExceptionRepr", "")\n'
             '        or dictIncident.get("sMessage", ""))\n'
         ),
+    ),
+    # --- 2026-10-29: Zenodo tokens leave the container (security
+    # hardening plan, commit 6). The host slots, the migration out of
+    # the container, and the researcher-only decision. ---
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenSlots.py::'
+            'testASlotNameNeverAcceptsAnUnknownInstance'
+        ),
+        source='vaibify/config/zenodoTokenSlots.py',
+        old='    if sInstance not in T_ZENODO_INSTANCES:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenSlots.py::'
+            'testASlotNameNeedsAProjectIdentity'
+        ),
+        source='vaibify/config/zenodoTokenSlots.py',
+        old=(
+            '    if not sProjectUuid or not isinstance(sProjectUuid, str) or (\n'
+            '        not sProjectUuid.replace("-", "").isalnum()\n'
+            '    ):\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenSlots.py::'
+            'testATokenIsStoredPerProjectNeverShared'
+        ),
+        source='vaibify/config/zenodoTokenSlots.py',
+        # the shared, project-free slot every project would read
+        old='    return f"zenodo_token_{sInstance}:{sProjectUuid}"\n',
+        new='    return f"zenodo_token_{sInstance}"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testAPendingTokenIsNeverSpentByATokenBearingAction'
+        ),
+        source='vaibify/config/zenodoTokenSlots.py',
+        # the active reader falls back to the pending slot
+        old='    return fsReadSlot(fsActiveSlot(sInstance, sProjectUuid))\n',
+        new=(
+            '    return fsReadSlot(fsActiveSlot(sInstance, sProjectUuid)) or '
+            'fsReadSlot(\n'
+            '        fsPendingSlot(f"zenodo_token_{sInstance}", sProjectUuid),\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testTheContainerCopyIsDeletedOnlyAfterTheStageIsRecorded'
+        ),
+        source='vaibify/gui/zenodoTokenMigration.py',
+        # delete before the stage is recorded: the one way to lose a token
+        old='    if not bAuthorized:\n        return\n',
+        new='    if False:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testAnUndeterminedValidationIsNeverRejected'
+        ),
+        source='vaibify/gui/zenodoTokenMigration.py',
+        # an undetermined probe recorded as a rejection
+        old=(
+            '        if dictProbe["sOutcome"] == zenodoClient.S_PROBE_UNDETERMINED:\n'
+            '            sOutcome = zenodoClient.S_PROBE_UNDETERMINED\n'
+        ),
+        new=(
+            '        if dictProbe["sOutcome"] == zenodoClient.S_PROBE_UNDETERMINED:\n'
+            '            sOutcome = zenodoClient.S_PROBE_REJECTED\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenSlots.py::'
+            'testANetworkFailureIsUndetermined'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        # an outage read as a rejection by the probe itself
+        old=(
+            '    except (ZenodoError, requests.RequestException) as error:\n'
+            '        return {\n'
+            '            "sOutcome": S_PROBE_UNDETERMINED,\n'
+        ),
+        new=(
+            '    except (ZenodoError, requests.RequestException) as error:\n'
+            '        return {\n'
+            '            "sOutcome": S_PROBE_REJECTED,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testAConflictingHostValueIsNeverOverwritten'
+        ),
+        source='vaibify/gui/zenodoTokenMigration.py',
+        # staging over the host's value instead of recording the conflict
+        old='    if sConflict and sChoice != S_DECISION_STAGE_PENDING:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testDecliningDeletesOnlyThePendingSlot'
+        ),
+        source='vaibify/gui/zenodoTokenMigration.py',
+        # a decline that also clears the active slots
+        old='    slots.fnDeleteSlot(slots.fsPendingSlot(sSlot, sProjectUuid))\n',
+        new=(
+            '    slots.fnDeleteSlot(slots.fsPendingSlot(sSlot, sProjectUuid))\n'
+            '    for sInstance in slots.T_ZENODO_INSTANCES:\n'
+            '        slots.fnDeleteSlot(slots.fsActiveSlot(sInstance, sProjectUuid))\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenRoutes.py::'
+            'testTheAgentLaneCannotDecideAboutAToken'
+        ),
+        source='vaibify/gui/routes/zenodoTokenRoutes.py',
+        old=(
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"](sContainerId)\n'
+            '        if request.sDecision not in zenodoTokenMigration.T_DECISIONS:\n'
+        ),
+        new=(
+            '        dictCtx["require"](sContainerId)\n'
+            '        if request.sDecision not in zenodoTokenMigration.T_DECISIONS:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerManager.py::'
+            'test_flistBuildRunArgs_creates_no_credentials_volume_for_a_new_container'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # a -v for a volume that does not exist makes Docker create it
+        old='    if not fbVolumeExists(sVolumeName):\n        return\n',
+        new='    if False:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheZenodoTokenBannerIsTheServers.py::'
+            'testAPendingTokenIsShownWithItsEvidenceAndTheDecisionButtons'
+        ),
+        source='vaibify/gui/static/scriptZenodoTokens.js',
+        old='        elRow.appendChild(_felementDecisionButtons(dictSlot));\n',
+        new='',
     ),
 ]

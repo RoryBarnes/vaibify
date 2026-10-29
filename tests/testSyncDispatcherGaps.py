@@ -206,56 +206,6 @@ class TestBuildDagEdgesIncludesImplicitDeps:
 # ── fnStoreCredentialInContainer: exit-code propagation ─────────
 
 
-class TestStoreCredentialExitCodePropagation:
-    """Non-zero exit from keyring.set_password must raise RuntimeError."""
-
-    def test_nonzero_exit_raises_runtime_error(self):
-        from vaibify.gui.syncDispatcher import (
-            fnStoreCredentialInContainer,
-        )
-        mockDocker = MagicMock()
-        mockDocker.ftResultExecuteCommand.return_value = (
-            1, "keyring: NoKeyringError: backend unavailable"
-        )
-        mockDocker.fnWriteFile.return_value = None
-        with pytest.raises(RuntimeError) as excInfo:
-            fnStoreCredentialInContainer(
-                mockDocker, "cid", "overleaf_token", "secret-value",
-            )
-        assert "Keyring storage failed" in str(excInfo.value)
-        assert "NoKeyringError" in str(excInfo.value)
-
-    def test_tempfile_cleanup_on_failure(self):
-        from vaibify.gui.syncDispatcher import (
-            fnStoreCredentialInContainer,
-        )
-        mockDocker = MagicMock()
-        mockDocker.ftResultExecuteCommand.return_value = (
-            1, "error"
-        )
-        mockDocker.fnWriteFile.return_value = None
-        with pytest.raises(RuntimeError):
-            fnStoreCredentialInContainer(
-                mockDocker, "cid", "overleaf_token", "secret-value",
-            )
-        listCalls = [
-            c[0][1] for c in
-            mockDocker.ftResultExecuteCommand.call_args_list
-        ]
-        assert any("rm -f" in s for s in listCalls)
-
-    def test_zero_exit_does_not_raise(self):
-        from vaibify.gui.syncDispatcher import (
-            fnStoreCredentialInContainer,
-        )
-        mockDocker = MagicMock()
-        mockDocker.ftResultExecuteCommand.return_value = (0, "")
-        mockDocker.fnWriteFile.return_value = None
-        fnStoreCredentialInContainer(
-            mockDocker, "cid", "overleaf_token", "secret-value",
-        )
-
-
 # ── _fdictCheckKeyring: backend health vs token presence ────────
 
 

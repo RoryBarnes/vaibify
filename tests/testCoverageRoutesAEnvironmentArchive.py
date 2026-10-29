@@ -53,6 +53,9 @@ from vaibify.reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
 )
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+from tests.zenodoTokenFixtures import (  # noqa: F401  (autouse fixture)
+    S_TEST_PROJECT_UUID, fixtureHostZenodoSlots,
+)
 from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
     fixtureBindingsFollowProjectJson,
 )
@@ -99,31 +102,56 @@ class _FakeZenodoHttp:
         return _FakeResponse(self.iStatus, self.dictBody)
 
 
+_DICT_INSTANCE_OF_SLOT = {
+    "zenodo_token_sandbox": "sandbox",
+    "zenodo_token_production": "production",
+}
+
+
+def _fnSeedHostSlots(dictSlots):
+    """Put each (old container slot name -> token) into the host active slot."""
+    from vaibify.config import zenodoTokenSlots
+    for sSlot, sToken in (dictSlots or {}).items():
+        zenodoTokenSlots.fnStoreActiveToken(
+            _DICT_INSTANCE_OF_SLOT[sSlot], S_TEST_PROJECT_UUID, sToken,
+        )
+
+
+_listHostSlotsForThisTest = []
+
+
+@pytest.fixture(autouse=True)
+def fixtureRememberHostSlots(fixtureHostZenodoSlots):
+    """Hand this test's hermetic keyring to the doubles built inside it."""
+    _listHostSlotsForThisTest[:] = [fixtureHostZenodoSlots]
+    yield
+    _listHostSlotsForThisTest.clear()
+
+
+def _fnBreakHostKeyring():
+    """Make every host keyring read fail, as a locked keychain does."""
+    _listHostSlotsForThisTest[0].fnBreakEveryRead("keychain locked")
+
+
 class _KeyringDocker:
-    """A connection whose only reachable surface is the keyring read."""
+    """A connection with no reachable surface: the token lives on the host.
+
+    ``dictSlots`` seeds the project's ACTIVE host slots; ``bMissing``
+    makes the host keyring unreadable.
+    """
 
     def __init__(self, dictSlots=None, bMissing=False):
-        self.dictSlots = dictSlots or {}
-        self.bMissing = bMissing
-
-    def fsFetchKeyringSecret(self, sContainerId, sSlot):
-        if self.bMissing:
-            raise LookupError(
-                "No Zenodo token is stored in the container keyring; "
-                "connect Zenodo from the Repos panel.",
-            )
-        return self.dictSlots.get(sSlot, "")
+        _fnSeedHostSlots(dictSlots)
+        if bMissing:
+            _fnBreakHostKeyring()
 
 
 class _GatedDockerWithKeyring(DockerDoubleThatCallsTheRealGates):
-    """The gated double, plus the keyring and file probes the routes ask."""
+    """The gated double, plus the file probes the routes ask; tokens on the host."""
 
     def __init__(self, dictSlots):
         super().__init__()
-        self.dictSlots = dictSlots
-
-    def fsFetchKeyringSecret(self, sContainerId, sSlot):
-        return self.dictSlots.get(sSlot, "")
+        _fnSeedHostSlots(dictSlots)
 
     def fbContainerPathIsFile(self, sContainerId, sPath):
         DockerDoubleThatCallsTheRealGates.fbContainerPathIsFile(
@@ -304,7 +332,7 @@ def testAKeyringThatCannotBeReadIsA409WithItsInstruction(
         _fsBarePath("deposit"), json=DICT_SANDBOX_DEPOSIT_BODY,
     )
     assert responseHttp.status_code == 409
-    assert "Repos panel" in responseHttp.json()["detail"]
+    assert "could not be read" in responseHttp.json()["detail"]
 
 
 def testADepositWithNoStoredTokenIsRefusedBeforeAnySave(
@@ -466,17 +494,17 @@ def testAMissingProductionTokenIsNamedForTheCredentialPrompt(
     assert fakeZenodo.listRequests == []
 
 
-def testAKeyringLookupFailureReadsAsAMissingProductionToken(
+def testAKeyringLookupFailureIsNotReadAsAMissingProductionToken(
     sProjectRepo,
 ):
+    """An unreadable host keyring says so; it does not ask for a token."""
     clientTest, _dictWorkflow = _fclientBare(
         sProjectRepo, _KeyringDocker(bMissing=True),
     )
     responseHttp = clientTest.post(_fsBarePath("promote"))
     assert responseHttp.status_code == 409
-    assert responseHttp.json()["detail"]["sError"] == (
-        "PRODUCTION-TOKEN-MISSING"
-    )
+    assert "could not be read" in responseHttp.json()["detail"]
+    assert "PRODUCTION-TOKEN-MISSING" not in responseHttp.text
 
 
 @pytest.mark.parametrize("iStatus, sFragment", [

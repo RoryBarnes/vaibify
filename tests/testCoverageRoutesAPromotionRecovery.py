@@ -36,6 +36,9 @@ from vaibify.reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
 )
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+from tests.zenodoTokenFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureHostZenodoSlots,
+)
 from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
     fixtureBindingsFollowProjectJson,
 )
@@ -290,9 +293,9 @@ def testReconcileOfAnUnknownPromotionNamesItAndAsksNobody(
 
 
 def testReconcileAsksTheTargetedInstanceWithTheStoredToken(
-    sProjectRepo, fakeZenodo, fixtureNetworkOpen,
+    sProjectRepo, fakeZenodo, fixtureNetworkOpen, fixtureHostZenodoSlots,
 ):
-    """The token comes from the CONTAINER keyring slot of the target.
+    """The token comes from the HOST's active slot for the target instance.
 
     The record targeted production, so the production slot is read and
     the GET goes to zenodo.org -- never to the sandbox the project
@@ -301,6 +304,8 @@ def testReconcileAsksTheTargetedInstanceWithTheStoredToken(
     """
     _fnSeedPendingPromotion(sProjectRepo, archivePromotion.S_LANE_IMAGE)
     fakeZenodo.dictDeposits[I_DEPOSIT_ID] = _fdictDraftDeposit()
+    fixtureHostZenodoSlots.fnStoreActive("production", S_KEYRING_TOKEN)
+    fixtureHostZenodoSlots.fnStoreActive("sandbox", "the-wrong-instance")
     connectionDocker = _FakeKeyringDocker()
     clientTest, _dictWorkflow = _fclientBuild(
         sProjectRepo, connectionDocker,
@@ -313,9 +318,9 @@ def testReconcileAsksTheTargetedInstanceWithTheStoredToken(
     assert dictOutcome["sOutcome"] == archivePromotion.S_OUTCOME_PUBLISHABLE
     assert dictOutcome["listActions"] == ["resume", "discard"]
     assert dictOutcome["dictRecord"]["sPromotionId"] == S_PROMOTION_ID
-    assert connectionDocker.listSlotsAsked == [
-        (S_CONTAINER_ID, "zenodo_token_production"),
-    ]
+    assert connectionDocker.listSlotsAsked == [], (
+        "the container keyring must not be consulted for a token"
+    )
     sMethod, sUrl, dictHeaders = fakeZenodo.listRequests[0]
     assert sMethod == "GET"
     assert sUrl.startswith("https://zenodo.org/api/deposit/depositions/")

@@ -31,7 +31,9 @@ from vaibify.config.agentTerminalEnvironment import (
 )
 
 from . import fnRunDockerCommand
-from .volumeManager import fsGetCredentialsVolumeName, fsGetVolumeName
+from .volumeManager import (
+    fbVolumeExists, fsGetCredentialsVolumeName, fsGetVolumeName,
+)
 from .x11Forwarding import flistConfigureX11Args
 
 # The immutable label a reservation-owned container carries. Cleanup
@@ -1055,17 +1057,22 @@ def _fnAddVolumeMount(config, saRunArgs):
 
 
 def _fnAddCredentialsVolume(config, saRunArgs):
-    """Mount the credentials volume at the container keyring data dir.
+    """Mount an EXISTING credentials volume at the container keyring data dir.
 
-    Persists ``PlaintextKeyring`` passwords across container
-    recreations. The Dockerfile pre-creates
-    ``~/.local/share/python_keyring/`` with mode 700 and the
-    container user as owner; Docker's copy-on-mount behaviour
-    copies that empty directory into the named volume the first
-    time the container runs, so subsequent rebuilds reuse
-    whatever was stored.
+    The volume persisted ``PlaintextKeyring`` passwords across
+    container recreations while Zenodo tokens lived in the container.
+    Since 2026-10-29 they live on the host and nothing new is written
+    into the container keyring, so no volume is created for a new
+    container -- and Docker creates a named volume on first use, which
+    is why the existence check comes first. One that already exists is
+    still mounted: it may hold a token the migration
+    (``vaibify/gui/zenodoTokenMigration.py``) has not yet moved out,
+    and a recreate that dropped the mount would strand that token in
+    the volume.
     """
     sVolumeName = fsGetCredentialsVolumeName(config)
+    if not fbVolumeExists(sVolumeName):
+        return
     sUser = getattr(config, "sContainerUser", "researcher")
     sContainerPath = f"/home/{sUser}/.local/share/python_keyring"
     saRunArgs.extend(["-v", f"{sVolumeName}:{sContainerPath}"])

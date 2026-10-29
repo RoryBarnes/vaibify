@@ -36,17 +36,18 @@ assumes an AI agent works inside the container. The rules are:
   line.** Environment variables and command lines are visible to
   process inspection and `docker inspect`; files in a repository get
   published.
-- **Tokens live in established credential stores.** On the host, that
-  is your operating system's keyring, or your existing `gh auth`
-  login for GitHub. Inside a container it is a keyring kept on a
-  dedicated Docker volume, so a token survives a Rebuild without being
-  baked into the image.
+- **Tokens live in established credential stores on your machine.**
+  That is your operating system's keyring, or your existing `gh auth`
+  login for GitHub. A Zenodo token is kept in a slot of that keyring
+  named for the project it belongs to (its random `sProjectUuid` in
+  the registry) and the instance, so two projects never share one and
+  nothing inside a container can read it: every Zenodo deposit,
+  publish and token check runs on your machine.
 - **Tokens reach programs through short-lived channels.** Git is given
   a mode-700 helper script that reads the token at the moment git asks
-  and is deleted afterwards; container-side programs receive a token
-  on standard input. A GitHub credential the container itself needs
-  is mounted read-only as a Docker secret file and handed to git by a
-  credential helper only for requests to GitHub.
+  and is deleted afterwards. A GitHub credential the container itself
+  needs is mounted read-only as a Docker secret file and handed to git
+  by a credential helper only for requests to GitHub.
 - **Error messages are redacted** before they reach the dashboard, so
   a server that echoes a credential back does not put it on screen.
 
@@ -56,7 +57,7 @@ project:
 | Service | Container project | Host-mode project |
 |---|---|---|
 | GitHub | Your host's `gh auth` login, or a per-repository token in a keyring | Same |
-| Zenodo | The container's keyring (one entry for the sandbox, one for production) | The host keyring |
+| Zenodo | The host keyring, one slot per project and instance | The same |
 | Overleaf | The host keyring | The host keyring |
 | arXiv | No credential needed | No credential needed |
 
@@ -117,6 +118,43 @@ service. If the test fails, vaibify restores the token you had before
 (or removes the new one if there was none), and the message says which
 happened. A connection that cannot be made because the container runs
 with network isolation is refused at once rather than after a timeout.
+
+### Zenodo tokens moved out of an older container
+
+Before October 2026 a container project's Zenodo token lived in the
+container's own keyring, which the in-container agent could read and
+write. It now lives only on your machine, and every time a project is
+opened vaibify moves whatever Zenodo tokens its container still holds
+out of it, in a way that can neither lose a token nor put one to use
+behind your back:
+
+1. Each container slot (sandbox, production, the older unnamed slot
+   and the two snapshot slots) is read as the container user.
+2. Its value is written to a **pending** slot of your keyring and read
+   back; only an equal read-back counts. A value your keyring already
+   holds active is recognized at once; a *different* value already on
+   your machine is a conflict, and nothing is written or deleted until
+   you choose.
+3. The container copy is deleted only after the pending write is
+   recorded, and a second read confirms it is gone.
+4. The pending token is checked against Zenodo from your machine. A
+   rejection, or no answer at all, discards nothing; an unanswered
+   check is retried at the next open.
+5. **You decide.** The dashboard's banner shows each token's state, how
+   the check went and the titles of the deposits Zenodo reports for it,
+   with **Confirm** (it becomes the active token) and **Decline** (it is
+   discarded). On the host, `vaibify do decide-migrated-zenodo-token
+   sSlot=zenodo_token_sandbox sDecision=confirm` does the same; the
+   unnamed older slot also takes `sInstance=sandbox|production`.
+   Until you confirm, every Zenodo action refuses and says so.
+
+The record of the move lives in `~/.vaibify/migrations/` and holds
+slot names and states, never a value. Moving a token does not revoke
+copies an agent may already have read, so the banner also asks you to
+regenerate your Zenodo tokens (and your Overleaf token) on each
+service's account page; vaibify cannot revoke them for you. No
+credentials volume is created for a new container; one that already
+exists stays mounted until the move out of it has finished.
 
 ## GitHub
 
@@ -323,9 +361,9 @@ interface to tools, so revoke the token on the service's own account
 page too, because a cleared local copy does not invalidate a token
 that may have been copied elsewhere.
 
-A Zenodo token entered for a container project lives in that
-container's keyring, so revoke it on Zenodo's account page; the copy
-left in the container then no longer works.
+A Zenodo token belongs to one project, so `vaibify revoke zenodo` and
+`vaibify credential delete zenodo` take `--project` (or run inside the
+project directory) as well as `--instance`.
 
 ## Working on a remote machine
 

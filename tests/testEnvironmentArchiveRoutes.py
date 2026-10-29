@@ -32,6 +32,9 @@ from vaibify.reproducibility.environmentSnapshot import (
 from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
     fixtureBindingsFollowProjectJson,
 )
+from tests.zenodoTokenFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureHostZenodoSlots,
+)
 
 
 S_CONTAINER_ID = "archive_cid"
@@ -259,25 +262,30 @@ def test_a_deposit_without_a_stored_token_names_the_instance_it_needs(
 
 
 @pytest.mark.falsification
+def _flistRecordTokenReads(monkeypatch, sAnswer):
+    """Record which instance's ACTIVE host slot the route asks for."""
+    from vaibify.gui import zenodoTokenAccess
+    listAsked = []
+
+    def fsRecord(connectionDocker, sContainerId, sService):
+        del connectionDocker, sContainerId
+        listAsked.append(sService)
+        return sAnswer
+
+    monkeypatch.setattr(zenodoTokenAccess, "fsActiveZenodoToken", fsRecord)
+    return listAsked
+
+
 def test_a_deposit_with_no_choice_is_refused_before_any_token_is_read(
-    sProjectRepo,
+    sProjectRepo, monkeypatch,
 ):
     """The destination is the researcher's to name, never a default.
 
     Kills: defaulting a missing choice to the project's Zenodo setting,
     which is how a deposit came to go somewhere the row never named.
     """
-    listAsked = []
-
-    class _RecordingConnection:
-        def fsFetchKeyringSecret(self, sContainerId, sSlotName):
-            del sContainerId
-            listAsked.append(sSlotName)
-            return "token"
-
-    clientTest, _dictWorkflow = _fclientBuild(
-        sProjectRepo, connectionDocker=_RecordingConnection(),
-    )
+    listAsked = _flistRecordTokenReads(monkeypatch, "token")
+    clientTest, _dictWorkflow = _fclientBuild(sProjectRepo)
     responseHttp = clientTest.post(_fsDepositPath(), json={})
     assert responseHttp.status_code == 422
     assert "new-record-permanent" in responseHttp.json()["detail"]
@@ -285,7 +293,9 @@ def test_a_deposit_with_no_choice_is_refused_before_any_token_is_read(
 
 
 @pytest.mark.falsification
-def test_a_deposit_asks_the_slot_of_the_chosen_destination(sProjectRepo):
+def test_a_deposit_asks_the_slot_of_the_chosen_destination(
+    sProjectRepo, monkeypatch,
+):
     """The CHOSEN Zenodo's token is read, not the project setting's.
 
     The project publishes to the sandbox and the researcher chose
@@ -296,49 +306,33 @@ def test_a_deposit_asks_the_slot_of_the_chosen_destination(sProjectRepo):
     Kills: reading the token of the project's Zenodo setting instead
     of the chosen destination's.
     """
-    listAsked = []
-
-    class _RecordingConnection:
-        def fsFetchKeyringSecret(self, sContainerId, sSlotName):
-            del sContainerId
-            listAsked.append(sSlotName)
-            return ""
-
-    clientTest, dictWorkflow = _fclientBuild(
-        sProjectRepo, connectionDocker=_RecordingConnection(),
-    )
+    listAsked = _flistRecordTokenReads(monkeypatch, "")
+    clientTest, dictWorkflow = _fclientBuild(sProjectRepo)
     assert dictWorkflow["sZenodoService"] == "sandbox"
     clientTest.post(
         _fsDepositPath(), json={"sChoice": "new-record-permanent"},
     )
-    assert listAsked == ["zenodo_token_production"]
+    assert listAsked == ["zenodo"]
 
 
 def test_an_unreadable_token_slot_is_not_reported_as_an_empty_one(
-    sProjectRepo,
+    sProjectRepo, fixtureHostZenodoSlots,
 ):
-    """A keyring that cannot be read is not "no token stored".
+    """A host keyring that cannot be read is not "no token stored".
 
     Answering it with the credential prompt would tell the researcher
     to add a token they may already have, and storing one would fix
     nothing.
     """
-
-    class _ConnectionWithABrokenKeyring:
-        def fsFetchKeyringSecret(self, sContainerId, sSlotName):
-            del sContainerId
-            raise LookupError(f"Could not read the credential slot {sSlotName!r}.")
-
-    clientTest, _dictWorkflow = _fclientBuild(
-        sProjectRepo, connectionDocker=_ConnectionWithABrokenKeyring(),
-    )
+    fixtureHostZenodoSlots.fnBreakEveryRead("keychain locked")
+    clientTest, _dictWorkflow = _fclientBuild(sProjectRepo)
     responseHttp = clientTest.post(
         _fsDepositPath(), json={"sChoice": "new-record-sandbox"},
     )
     assert responseHttp.status_code == 409
-    assert "Could not read the credential slot" in (
-        responseHttp.json()["detail"]
-    )
+    sDetail = responseHttp.json()["detail"]
+    assert "could not be read" in sDetail
+    assert "ZENODO-TOKEN-MISSING" not in responseHttp.text
 
 
 def test_the_stop_route_stops_only_a_running_deposit(sProjectRepo):

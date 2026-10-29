@@ -142,8 +142,9 @@ interpreter it runs. The agent can still change a file, which the
 dashboard reports as changed, or make one unreadable, which the
 dashboard reports as unknown and never as unchanged or deleted. Three
 typed reads stay with the container user because they read that
-user's private files: the container keyring, an agent login document
-and the size of `/tmp`. The set of execs that opt into the researcher
+user's private files: the container keyring (read only to move a
+Zenodo token out of it), an agent login document and the size of
+`/tmp`. The set of execs that opt into the researcher
 lane is enumerated in `tests/testExecLaneInvariant.py`; adding one is
 a security decision.
 
@@ -212,15 +213,25 @@ in shell history, in Git configuration or in a committed file.
    starts without it, and vaibify names the secret, its method and the
    remedy, never its value or where it would be stored.
 
-**Credentials inside the container are persistent and shared.** Two
-stores survive container recreation. The container keyring (a
-plaintext keyring backend) lives on a separate per-project credentials
-volume, which survives a Rebuild; **Delete environment…** on the
-environment's tile menu removes it. Each coding
-agent's login and settings live on the workspace volume. All agents run
-as the same container user, so file permissions isolate nothing between
-them: treat "one agent was compromised" as "every configured provider's
-session was exposed."
+**Publishing tokens never enter the container.** A Zenodo token lives
+only in the host keyring, in an active slot named for the project's
+registry identity and the instance; every deposit, publish and token
+check runs on the host, and the container keyring holds none. A token
+an older container still holds is moved out at the next open: staged
+on the host as *pending* with a verified read-back, deleted from the
+container only once that is recorded, checked against Zenodo from the
+host, and spent by nothing until the researcher confirms it in the
+dashboard or with `vaibify do decide-migrated-zenodo-token` (the
+container keyring is agent-writable, so the token may not be theirs).
+No credentials volume is created for a new container; an existing one
+stays mounted until the move out of it has finished, and **Delete
+environment…** on the environment's tile menu removes it.
+
+**Agent logins inside the container are persistent and shared.** Each
+coding agent's login and settings live on the workspace volume. All
+agents run as the same container user, so file permissions isolate
+nothing between them: treat "one agent was compromised" as "every
+configured provider's session was exposed."
 
 ## X11 display forwarding
 
@@ -305,10 +316,11 @@ recreated.
 
 Stored credentials are a separate choice, off by default and
 unavailable under Inspect only. "Credentials" means the project's
-configured secrets (mounted read-only under `/run/secrets`), the
-credentials volume that holds the container keyring, and the host bridge
-an in-container agent uses to call back to vaibify. Unchecked, none of
-them is attached.
+configured secrets (mounted read-only under `/run/secrets`), an
+existing credentials volume (the container keyring an older container
+still holds a Zenodo token in), and the host bridge an in-container
+agent uses to call back to vaibify. Unchecked, none of them is
+attached.
 
 ### Restricted mode compatibility contract
 

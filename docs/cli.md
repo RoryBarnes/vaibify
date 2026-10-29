@@ -555,10 +555,10 @@ judgments available only here:
 | `vaibify secret delete-provider-key --provider NAME` | Remove a provider's key |
 | `vaibify credential set github\|overleaf\|zenodo [--project-id ID] [--instance sandbox\|production] [-p NAME]` | Store a publishing token for a project, read from a prompt that does not echo |
 | `vaibify credential status [-p NAME]` | Report which remotes are configured and reachable |
-| `vaibify credential delete github\|overleaf\|zenodo` | The same as `vaibify revoke` |
+| `vaibify credential delete github\|overleaf\|zenodo [--instance sandbox\|production] [-p NAME]` | The same as `vaibify revoke` |
 | `vaibify revoke github [--keyring-slot SLOT]` | Remove the stored GitHub credential, or one repository's with `--keyring-slot`, and revoke it upstream where possible |
 | `vaibify revoke overleaf` | The same, for Overleaf |
-| `vaibify revoke zenodo [--instance sandbox\|production]` | The same, for one Zenodo instance (default `sandbox`) |
+| `vaibify revoke zenodo [--instance sandbox\|production] [-p NAME]` | The same, for one project's token on one Zenodo instance (default `sandbox`; the project is the current directory's unless named) |
 
 `credential set` is the command-line form of the dashboard's credential
 forms. The token is read at a hidden prompt and sent only in the body
@@ -573,10 +573,12 @@ cleared. For GitHub it also runs `gh auth logout`. Overleaf and Zenodo
 offer tools no way to revoke a token, so for them the command clears
 the local copy and names the account page where you revoke the token
 yourself; do that too, because clearing a local copy does not
-invalidate a token that may have been copied elsewhere. `revoke` acts
-on the host only: a Zenodo token entered for a container project is
-held inside that container, so revoke it on Zenodo's account page,
-after which the copy in the container no longer works.
+invalidate a token that may have been copied elsewhere. A Zenodo token
+is stored per project, so `revoke zenodo` clears one project's slot
+for one instance. A token moved out of an older container awaits your
+decision in the dashboard, or with `vaibify do
+decide-migrated-zenodo-token sSlot=<slot> sDecision=confirm|decline`
+(see [External Resources](externalResources.md)).
 
 ## Remote machines
 

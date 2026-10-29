@@ -228,8 +228,9 @@ def tApp(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         bindingRoutes, "_DICT_EVIDENCE_FETCHERS",
-        {sService: (lambda dictTarget: {"sState": "fetched", "sTitle": "stub"})
-         for sService in remoteBindings.T_BINDING_SERVICES},
+        {sService: (lambda dictCtx, sContainerId, dictTarget: {
+            "sState": "fetched", "sTitle": "stub",
+        }) for sService in remoteBindings.T_BINDING_SERVICES},
     )
     dictCtx = {
         "require": lambda sContainerId: None,

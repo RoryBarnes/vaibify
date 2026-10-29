@@ -182,7 +182,6 @@
 "vaibify/gui/serverMiddleware.py::_fbAgentRequestAuthorized",
 "vaibify/gui/startReservation.py::_fnRefuseIfCancelled",
 "vaibify/gui/startReservation.py::_fsRefuseUnacknowledgedFailure",
-"vaibify/gui/syncDispatcher.py::_fnRefuseUnknownTokenName",
 "vaibify/gui/syncDispatcher.py::_fnValidateApiMetadata",
 "vaibify/gui/syncDispatcher.py::_fnValidateArchiveFilePaths",
 "vaibify/gui/syncDispatcher.py::_ftValidateOverleafOnHost",

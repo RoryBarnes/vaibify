@@ -111,10 +111,16 @@ def fnCredentialStatusCommand(sProjectName, iPort):
               type=click.Choice(_LIST_VALID_ZENODO_INSTANCES,
                                 case_sensitive=False),
               default="sandbox", help="Zenodo: sandbox or production.")
-def fnDeleteCredentialCommand(sService, sKeyringSlot, sZenodoInstance):
+@click.option("--project", "-p", "sProjectName", default=None,
+              help="Zenodo: the project whose token to clear (omit "
+                   "inside a project directory).")
+def fnDeleteCredentialCommand(
+    sService, sKeyringSlot, sZenodoInstance, sProjectName,
+):
     """Revoke SERVICE's stored credential and clear its keyring slot."""
     dictResult = _fdictRevokeForService(
-        sService.lower(), sKeyringSlot, sZenodoInstance.lower())
+        sService.lower(), sKeyringSlot, sZenodoInstance.lower(),
+        sProjectName)
     fnPrintRevocationReport(sService, dictResult)
     if not dictResult["bLocalCleared"]:
         sys.exit(1)

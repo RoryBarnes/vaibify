@@ -4,7 +4,8 @@ Removes a stored credential from the local keyring and best-effort
 revokes the credential upstream. Currently supports the same three
 services that vaibify can push to: ``github``, ``overleaf``, and
 ``zenodo``. The Zenodo case takes an optional ``--instance`` flag so
-the user can target the sandbox or production keyring slot.
+the user can target the sandbox or production slot, and ``--project``
+because a Zenodo token is stored per project on the host.
 
 The command never throws: it returns a structured status dict from
 each provider and prints the human-readable summary so the operator
@@ -40,17 +41,25 @@ _LIST_VALID_ZENODO_INSTANCES = ["sandbox", "production"]
         "Zenodo only: target the sandbox or production keyring slot."
     ),
 )
-def fnRevokeCommand(sservice, sKeyringSlot, sZenodoInstance):
+@click.option(
+    "--project", "-p", "sProjectName", default=None,
+    help="Zenodo only: the project whose token to clear (omit inside "
+         "a project directory).",
+)
+def fnRevokeCommand(sservice, sKeyringSlot, sZenodoInstance, sProjectName):
     """Revoke a stored credential and clear the local keyring slot."""
     dictResult = _fdictRevokeForService(
         sservice.lower(), sKeyringSlot, sZenodoInstance.lower(),
+        sProjectName,
     )
     fnPrintRevocationReport(sservice, dictResult)
     if not dictResult["bLocalCleared"]:
         sys.exit(1)
 
 
-def _fdictRevokeForService(sservice, sKeyringSlot, sZenodoInstance):
+def _fdictRevokeForService(
+    sservice, sKeyringSlot, sZenodoInstance, sProjectName=None,
+):
     """Dispatch to the per-provider revoker and return its status dict."""
     if sservice == "github":
         from vaibify.reproducibility.githubAuth import (
@@ -69,8 +78,17 @@ def _fdictRevokeForService(sservice, sKeyringSlot, sZenodoInstance):
         sZenodoService = (
             "zenodo" if sZenodoInstance == "production" else "sandbox"
         )
-        return fdictRevokeZenodoToken(sZenodoService)
+        return fdictRevokeZenodoToken(
+            sZenodoService, _fsResolveProjectUuid(sProjectName),
+        )
     raise click.UsageError(f"Unknown service '{sservice}'.")
+
+
+def _fsResolveProjectUuid(sProjectName):
+    """Return the identity of the project a Zenodo token belongs to."""
+    from vaibify.config.registryManager import fsProjectUuidFor
+    from .configLoader import fconfigResolveProject
+    return fsProjectUuidFor(fconfigResolveProject(sProjectName).sProjectName)
 
 
 def fnPrintRevocationReport(sservice, dictResult):

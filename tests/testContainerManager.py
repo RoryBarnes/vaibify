@@ -327,13 +327,21 @@ def test_flistBuildRunArgs_agent_auto_update_is_provider_specific(
 
 
 @patch(
+    "vaibify.docker.containerManager.fbVolumeExists", return_value=True,
+)
+@patch(
     "vaibify.docker.containerManager.flistConfigureX11Args",
     return_value=[],
 )
-def test_flistBuildRunArgs_mounts_credentials_volume(mockX11):
-    """The credentials volume must mount the container keyring data
-    dir so Zenodo/GitHub tokens survive ``docker rm`` + ``docker run``
-    (which is what the GUI's Restart and Rebuild actions both do)."""
+def test_flistBuildRunArgs_mounts_an_existing_credentials_volume(
+    mockX11, mockExists,
+):
+    """A credentials volume that already exists is still mounted.
+
+    It may hold a Zenodo token the migration out of the container has
+    not finished moving; a recreate that dropped the mount would strand
+    that token in the volume.
+    """
     config = _fConfigMinimal()
     saArgs = flistBuildRunArgs(config)
     sExpectedMount = (
@@ -343,11 +351,41 @@ def test_flistBuildRunArgs_mounts_credentials_volume(mockX11):
     assert sExpectedMount in saArgs
 
 
+@pytest.mark.falsification
+@patch(
+    "vaibify.docker.containerManager.fbVolumeExists", return_value=False,
+)
 @patch(
     "vaibify.docker.containerManager.flistConfigureX11Args",
     return_value=[],
 )
-def test_flistBuildRunArgs_credentials_volume_honours_container_user(mockX11):
+def test_flistBuildRunArgs_creates_no_credentials_volume_for_a_new_container(
+    mockX11, mockExists,
+):
+    """No credentials volume is created for a new container.
+
+    Zenodo tokens live on the host since 2026-10-29 and nothing writes
+    into the container keyring, so a ``-v name:path`` here would only
+    make Docker create an empty volume on first use.
+
+    Kills: dropping the existence check before the mount.
+    """
+    config = _fConfigMinimal()
+    saArgs = flistBuildRunArgs(config)
+    assert not any("python_keyring" in sArg for sArg in saArgs)
+    mockExists.assert_called_once_with(f"{config.sProjectName}-credentials")
+
+
+@patch(
+    "vaibify.docker.containerManager.fbVolumeExists", return_value=True,
+)
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
+def test_flistBuildRunArgs_credentials_volume_honours_container_user(
+    mockX11, mockExists,
+):
     """A non-default sContainerUser routes the mount to that user's home."""
     config = _fConfigMinimal()
     config.sContainerUser = "scientist"

@@ -16,7 +16,6 @@ from vaibify.gui.syncDispatcher import (
     ftResultAddFileToGithub,
     ftResultGenerateLatex,
     fdictCheckConnectivity,
-    fnStoreCredentialInContainer,
     fbValidateOverleafCredentials,
     fbValidateZenodoToken,
     fnValidateOverleafProjectId,
@@ -139,14 +138,6 @@ def test_ftResultPullFromOverleaf():
 # -----------------------------------------------------------------------
 # syncDispatcher: ftResultArchiveToZenodo
 # -----------------------------------------------------------------------
-
-
-def test_ftResultArchiveToZenodo():
-    mockDocker = _fMockDocker(0, "archived")
-    iExit, sOut = ftResultArchiveToZenodo(
-        mockDocker, "cid", "zenodo", ["data.npy"],
-    )
-    assert iExit == 0
 
 
 # -----------------------------------------------------------------------
@@ -288,23 +279,6 @@ def test_fdictCheckKeyring_invalid_name():
 # -----------------------------------------------------------------------
 
 
-def test_fnStoreCredentialInContainer_stores():
-    mockDocker = _fMockDocker(0, "")
-    fnStoreCredentialInContainer(
-        mockDocker, "cid", "overleaf_token", "mytoken123"
-    )
-    mockDocker.fnWriteFile.assert_called_once()
-    mockDocker.ftResultExecuteCommand.assert_called()
-
-
-def test_fnStoreCredentialInContainer_invalid():
-    mockDocker = _fMockDocker()
-    with pytest.raises(ValueError):
-        fnStoreCredentialInContainer(
-            mockDocker, "cid", "invalid_name", "value"
-        )
-
-
 # -----------------------------------------------------------------------
 # syncDispatcher: fbValidateOverleafCredentials
 # -----------------------------------------------------------------------
@@ -351,43 +325,6 @@ def test_fbValidateOverleafCredentials_failure():
 # -----------------------------------------------------------------------
 
 
-def test_fbValidateZenodoToken_success():
-    mockDocker = _fMockDocker(0, "ok\n")
-    bResult = fbValidateZenodoToken(mockDocker, "cid")
-    assert bResult is True
-
-
-def test_fbValidateZenodoToken_failure():
-    mockDocker = _fMockDocker(1, "error")
-    bResult = fbValidateZenodoToken(mockDocker, "cid")
-    assert bResult is False
-
-
-def test_fbValidateZenodoToken_hits_sandbox_endpoint():
-    mockDocker = _fMockDocker(0, "ok\n")
-    fbValidateZenodoToken(mockDocker, "cid", "sandbox")
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "sandbox.zenodo.org/api/deposit/depositions" in sCommand
-    assert "zenodo_token_sandbox" in sCommand
-
-
-def test_fbValidateZenodoToken_hits_production_endpoint():
-    mockDocker = _fMockDocker(0, "ok\n")
-    fbValidateZenodoToken(mockDocker, "cid", "zenodo")
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "//zenodo.org/api/deposit/depositions" in sCommand
-    assert "zenodo_token_production" in sCommand
-
-
-def test_fbValidateZenodoToken_does_not_import_vaibify():
-    """Container lacks the vaibify package; validation must not import it."""
-    mockDocker = _fMockDocker(0, "ok\n")
-    fbValidateZenodoToken(mockDocker, "cid", "sandbox")
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "from vaibify" not in sCommand
-    assert "import vaibify" not in sCommand
-
-
 def test_fbValidateZenodoToken_rejects_invalid_service():
     mockDocker = _fMockDocker()
     with pytest.raises(ValueError):
@@ -401,87 +338,6 @@ def test_fbValidateZenodoToken_rejects_invalid_service():
 # scopes", which sent a researcher whose container lacked `requests`
 # (a valid token, never tested) to their Zenodo settings page.
 # -----------------------------------------------------------------------
-
-
-def _fsValidationDetail(iExitCode, sOutput, sService="sandbox"):
-    from vaibify.gui.syncDispatcher import ftResultValidateZenodoToken
-    mockDocker = _fMockDocker(iExitCode, sOutput)
-    bPass, sDetail = ftResultValidateZenodoToken(
-        mockDocker, "cid", sService,
-    )
-    assert bPass is False
-    return sDetail
-
-
-def test_a_missing_container_module_is_named_not_blamed_on_scopes():
-    sDetail = _fsValidationDetail(
-        1,
-        "Traceback (most recent call last):\n"
-        "  File \"<string>\", line 1, in <module>\n"
-        "ModuleNotFoundError: No module named 'requests'\n",
-    )
-    assert "'requests'" in sDetail
-    assert "scopes" not in sDetail, (
-        "a crash before any network call must not tell the "
-        f"researcher to check their token's scopes: {sDetail}"
-    )
-
-
-def test_a_rejection_names_the_instance_that_rejected():
-    sDetail = _fsValidationDetail(
-        1, "requests.exceptions.HTTPError: 401 Client Error",
-        sService="sandbox",
-    )
-    assert "sandbox.zenodo.org rejected" in sDetail
-    # "zenodo.org" alone is a substring of the sandbox host, so the
-    # other-instance hint is asserted by its distinguishing phrase.
-    assert "not zenodo.org" in sDetail, (
-        "the likeliest cause of a rejection is a token minted on the "
-        f"OTHER instance; the message must name it: {sDetail}"
-    )
-
-
-def test_a_production_rejection_points_the_other_way():
-    sDetail = _fsValidationDetail(
-        1, "403 FORBIDDEN", sService="zenodo",
-    )
-    assert "zenodo.org rejected" in sDetail
-    assert "sandbox.zenodo.org" in sDetail
-
-
-def test_a_missing_token_says_nothing_was_tested():
-    sDetail = _fsValidationDetail(1, "no-token")
-    assert "nothing was tested" in sDetail
-
-
-def test_a_network_failure_is_not_a_token_problem():
-    sDetail = _fsValidationDetail(
-        1,
-        "requests.exceptions.ConnectionError: "
-        "HTTPSConnectionPool(host='sandbox.zenodo.org', port=443)",
-    )
-    assert "network problem" in sDetail
-    assert "not a token problem" in sDetail
-
-
-def test_an_unrecognized_failure_still_names_the_instance():
-    sDetail = _fsValidationDetail(1, "something odd happened")
-    assert "sandbox.zenodo.org" in sDetail
-
-
-def test_raw_validation_output_never_reaches_the_message():
-    """The exec handles credentials; its output is not UI text."""
-    sMarker = "SECRETLOOKINGSTRING12345"
-    sDetail = _fsValidationDetail(1, f"boom {sMarker}")
-    assert sMarker not in sDetail
-
-
-def test_a_passing_validation_carries_no_detail():
-    from vaibify.gui.syncDispatcher import ftResultValidateZenodoToken
-    mockDocker = _fMockDocker(0, "ok\n")
-    assert ftResultValidateZenodoToken(
-        mockDocker, "cid", "sandbox",
-    ) == (True, "")
 
 
 def test_fsZenodoInstanceToService_maps_sandbox():
@@ -520,43 +376,6 @@ def test_fsZenodoTokenNameForInstance_production():
     )
 
 
-def _fsDecodeArchiveScript(sCommand):
-    """Extract and base64-decode the archive script from a built command."""
-    import base64, re
-    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
-    assert sMatch is not None, f"No base64 payload: {sCommand!r}"
-    return base64.b64decode(sMatch.group(1)).decode("utf-8")
-
-
-def test_ftResultArchiveToZenodo_hits_production_api():
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(mockDocker, "cid", "zenodo", ["/a.txt"])
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "https://zenodo.org/api" in sScript
-    assert "zenodo_token_production" in sScript
-
-
-def test_ftResultArchiveToZenodo_hits_sandbox_api():
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(mockDocker, "cid", "sandbox", ["/a.txt"])
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "https://sandbox.zenodo.org/api" in sScript
-    assert "zenodo_token_sandbox" in sScript
-
-
-def test_ftResultArchiveToZenodo_does_not_import_vaibify():
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(mockDocker, "cid", "sandbox", ["/a.txt"])
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    sScript = _fsDecodeArchiveScript(sCommand)
-    assert "from vaibify" not in sScript
-    assert "import vaibify" not in sScript
-
-
 def test_ftResultArchiveToZenodo_rejects_invalid_service():
     mockDocker = _fMockDocker()
     with pytest.raises(ValueError):
@@ -571,18 +390,6 @@ def test_ftResultArchiveToZenodo_rejects_null_byte_in_path():
         ftResultArchiveToZenodo(
             mockDocker, "cid", "sandbox", ["/bad\x00path.txt"],
         )
-
-
-def test_ftResultArchiveToZenodo_accepts_quote_in_path():
-    """Phase 5 transport base64-encodes the full script; quotes OK."""
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/with'quote.txt"],
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "/with'quote.txt" in sScript
 
 
 def test_fdictBuildApiMetadata_injects_title():
@@ -613,213 +420,9 @@ def test_fdictBuildApiMetadata_accepts_tricky_strings():
     assert dictApi["creators"][0]["name"] == "O'Brien"
 
 
-def test_ftResultArchiveToZenodo_default_metadata_reaches_script():
-    import json
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert '"title": "Vaibify archive"' in sScript or (
-        "'title': 'Vaibify archive'" in sScript
-    )
-
-
-def test_ftResultArchiveToZenodo_first_publish_default_parent_zero():
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(mockDocker, "cid", "sandbox", ["/a.txt"])
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "_PARENT = 0" in sScript
-
-
-def test_ftResultArchiveToZenodo_versioned_uses_newversion_flow():
-    """When a parent deposit id is given, the script calls the newversion
-    helper on ``ZenodoClient`` (which internally POSTs ``actions/newversion``
-    and follows ``links.latest_draft``)."""
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-        iParentDepositId=491655,
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "_PARENT = 491655" in sScript
-    assert "client.fdictGetNewVersionDraft(_PARENT)" in sScript
-
-
-def test_ftResultArchiveToZenodo_versioned_deletes_inherited_files():
-    """Newversion flow must clear files inherited from the parent deposit
-    before new uploads; ``ZenodoClient.fnClearDraftFiles`` handles the
-    per-file DELETEs."""
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-        iParentDepositId=42,
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "client.fnClearDraftFiles(iDid)" in sScript
-
-
-def test_ftResultArchiveToZenodo_versioned_updates_metadata():
-    """Newversion flow must re-apply the vaibify metadata onto the new
-    draft; ``ZenodoClient.fnSetMetadata`` handles the PUT."""
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-        iParentDepositId=42,
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "client.fnSetMetadata(iDid, _META)" in sScript
-
-
-def test_ftResultArchiveToZenodo_parent_zero_same_as_no_parent():
-    """Explicit zero should behave identically to omitting the arg."""
-    mockDocker1 = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker1, "cid", "sandbox", ["/a.txt"],
-    )
-    mockDocker2 = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker2, "cid", "sandbox", ["/a.txt"],
-        iParentDepositId=0,
-    )
-    sA = _fsDecodeArchiveScript(
-        mockDocker1.ftResultExecuteCommand.call_args[0][1]
-    )
-    sB = _fsDecodeArchiveScript(
-        mockDocker2.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert sA == sB
-
-
-def test_ftResultArchiveToZenodo_surfaces_http_errors():
-    """HTTP failures raised by ZenodoClient must be caught and converted
-    into a ``sys.exit`` message that preserves the status + body. The
-    body-truncation logic itself now lives in ``ZenodoClient._fnCheckResponse``;
-    the archive script only needs to catch ``ZenodoError`` and abort
-    with cleanup."""
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "except ZenodoError" in sScript
-    assert "_abort(" in sScript
-    assert "sys.exit" in sScript
-
-
 # ----------------------------------------------------------------------
 # Phase 6 — error recovery / draft cleanup
 # ----------------------------------------------------------------------
-
-
-def test_archive_script_wraps_uploads_in_try_except():
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "except SystemExit" in sScript
-    assert "except Exception" in sScript
-
-
-def test_archive_script_defines_cleanup_and_abort_helpers():
-    """``_cleanup_draft`` must call ``ZenodoClient.fnDeleteDraft`` on the
-    known draft id so an aborted upload can't leave an orphan behind."""
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "def _cleanup_draft" in sScript
-    assert "def _abort" in sScript
-    assert "client.fnDeleteDraft(iDid)" in sScript
-
-
-def test_archive_script_cleanup_reports_both_success_and_failure():
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    # Success path mentions the draft id being deleted
-    assert "orphan draft" in sScript
-    # Failure path tells the user the draft is still on Zenodo
-    assert "still on Zenodo" in sScript
-
-
-def test_archive_script_cleanup_excepts_after_draft_is_known():
-    """The try/except must wrap uploads+publish, not draft creation.
-
-    Creating the draft can't orphan anything (nothing was made yet);
-    the cleanup scope starts after the first POST returns an id.
-    """
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    iCleanup = sScript.find("def _cleanup_draft")
-    iExceptSysExit = sScript.find("except SystemExit as _se:")
-    # Upload loop is delegated to ``client.fnUploadToBucket``.
-    iBucketPut = sScript.find("client.fnUploadToBucket(sBucket, _p)")
-    assert iCleanup > 0 and iExceptSysExit > 0 and iBucketPut > 0
-    assert iCleanup < iBucketPut < iExceptSysExit, (
-        "helpers, then bucket upload inside try, then except-block"
-    )
-
-
-def test_fdictCheckConnectivity_zenodo_probes_namespaced_slots():
-    from vaibify.gui.syncDispatcher import fdictCheckConnectivity
-    mockDocker = MagicMock()
-    dictResponses = {
-        "import keyring": [(0, "keyring.backends.kwallet KWallet")],
-        "zenodo_token_sandbox": [(0, "ok")],
-    }
-
-    def fnExecute(sContainerId, sCommand):
-        if "type(keyring.get_keyring())" in sCommand:
-            return dictResponses["import keyring"][0]
-        if "zenodo_token_sandbox" in sCommand:
-            return dictResponses["zenodo_token_sandbox"][0]
-        return (0, "missing")
-
-    mockDocker.ftResultExecuteCommand.side_effect = fnExecute
-    dictResult = fdictCheckConnectivity(mockDocker, "cid", "zenodo")
-    assert dictResult["bConnected"] is True
-
-
-def test_fdictCheckConnectivity_zenodo_no_token_anywhere():
-    from vaibify.gui.syncDispatcher import fdictCheckConnectivity
-    mockDocker = MagicMock()
-
-    def fnExecute(sContainerId, sCommand):
-        if "type(keyring.get_keyring())" in sCommand:
-            return (0, "keyring.backends.kwallet KWallet")
-        return (0, "missing")
-
-    mockDocker.ftResultExecuteCommand.side_effect = fnExecute
-    dictResult = fdictCheckConnectivity(mockDocker, "cid", "zenodo")
-    assert dictResult["bConnected"] is False
 
 
 # -----------------------------------------------------------------------
@@ -1091,19 +694,6 @@ def test_fdictBuildApiMetadata_includes_keywords_and_related_url():
     assert dictApi["related_identifiers"][0]["identifier"] == (
         "https://github.com/u/r"
     )
-
-
-def test_ftResultArchiveToZenodo_prints_zenodo_result_marker():
-    mockDocker = _fMockDocker(0, "")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", ["/a.txt"],
-    )
-    sScript = _fsDecodeArchiveScript(
-        mockDocker.ftResultExecuteCommand.call_args[0][1]
-    )
-    assert "ZENODO_RESULT=" in sScript
-    assert "'sDoi'" in sScript
-    assert "'sHtmlUrl'" in sScript
 
 
 # ----------------------------------------------------------------------

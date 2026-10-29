@@ -173,9 +173,12 @@ def testAsBuiltKeepsTheImageEntrypointAndVaibifysLaunchGrants():
 
 
 @pytest.mark.falsification
-def testCredentialsAreAttachedOnlyWhenTheAnswerIncludesThem():
+def testCredentialsAreAttachedOnlyWhenTheAnswerIncludesThem(monkeypatch):
     """Kills: attaching the credentials volume and agent bridge whatever
     the researcher answered."""
+    monkeypatch.setattr(
+        containerManager, "fbVolumeExists", lambda sVolumeName: True,
+    )
     saWithout = flistArguments(fdictPosture("as-built", False))
     saWith = flistArguments(fdictPosture("as-built", True))
     assert not any("python_keyring" in s for s in saWithout)

@@ -363,6 +363,11 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # it with the researcher's own token. Reaches no container; the
     # handler also refuses the agent lane by name.
     ("GET", "/api/bindings/{sContainerId}"),
+    # The Zenodo token panel: which slots moved out of the container,
+    # how the host-side validation went, and what Zenodo reports about
+    # a pending token. Reads host state only; the handler also refuses
+    # the agent lane by name.
+    ("GET", "/api/zenodo-tokens/{sContainerId}"),
     # The Files tab's free-space answer before a drop. Reads the free
     # bytes of the volume (or host directory) the files would land in
     # and the destination names that already exist; writes nothing,

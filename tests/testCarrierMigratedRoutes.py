@@ -6292,10 +6292,20 @@ S_ZENODO_BLOB_SHA_MARKER = "h = hashlib.sha1(); h.update(header)"
 
 
 def _fresponsePostZenodoArchive(client):
-    """Publish one file to Zenodo through the migrated archive route."""
+    """Publish one file to Zenodo through the migrated archive route.
+
+    The upload itself runs on the host since 2026-10-29 (no exec, and
+    a token this test does not hold), so it is stubbed to the success
+    line; the digest pass and the record save that follow are what
+    these tests observe.
+    """
     with patch(
         "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
         lambda sContainerId: None,
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 7, "sDoi": '
+                      '"10.5072/zenodo.7", "sConceptDoi": "", "sHtmlUrl": ""}'),
     ):
         return client.post(
             f"/api/zenodo/{S_CONTAINER_ID}/archive",

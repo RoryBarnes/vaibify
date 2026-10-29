@@ -1724,44 +1724,6 @@ def test_zenodo_download_file_not_in_record():
             client.fnDownloadFile(42, "missing.dat", "/tmp")
 
 
-def test_fsRetrieveToken_falls_back_to_legacy_slot():
-    from vaibify.reproducibility.zenodoClient import (
-        _fsRetrieveToken,
-    )
-    with patch(
-        "vaibify.config.secretManager.fbSecretExists",
-        side_effect=lambda sName, sBackend: sName == "zenodo_token",
-    ), patch(
-        "vaibify.config.secretManager.fsRetrieveSecret",
-        return_value="legacy_token",
-    ) as mockRetrieve:
-        sToken = _fsRetrieveToken("sandbox")
-    assert sToken == "legacy_token"
-    assert mockRetrieve.call_args[0][0] == "zenodo_token"
-
-
-def test_fsRetrieveToken_returns_empty_when_no_slot_exists():
-    """Absence is an answer: public-record reads need no token.
-
-    This used to raise KeyError out of the legacy retrieve, which is
-    how every HOST-side Zenodo verify died before any network call —
-    the researcher's token lives in the CONTAINER keyring, and a
-    published record is public anyway (live, 2026-08-27).
-    """
-    from vaibify.reproducibility.zenodoClient import (
-        _fsRetrieveToken,
-    )
-    with patch(
-        "vaibify.config.secretManager.fbSecretExists",
-        return_value=False,
-    ), patch(
-        "vaibify.config.secretManager.fsRetrieveSecret",
-    ) as mockRetrieve:
-        sToken = _fsRetrieveToken("sandbox")
-    assert sToken == ""
-    mockRetrieve.assert_not_called()
-
-
 def test_a_tokenless_client_sends_no_authorization_header():
     """``Bearer <empty>`` would 401 a public read; send nothing."""
     from vaibify.reproducibility.zenodoClient import (
@@ -1774,66 +1736,31 @@ def test_a_tokenless_client_sends_no_authorization_header():
     }
 
 
-def test_fsRetrieveToken_prefers_namespaced_sandbox_slot():
-    from vaibify.reproducibility.zenodoClient import (
-        _fsRetrieveToken,
-    )
-    with patch(
-        "vaibify.config.secretManager.fbSecretExists",
-        return_value=True,
-    ), patch(
-        "vaibify.config.secretManager.fsRetrieveSecret",
-        return_value="namespaced_sandbox",
-    ) as mockRetrieve:
-        sToken = _fsRetrieveToken("sandbox")
-    assert sToken == "namespaced_sandbox"
-    assert mockRetrieve.call_args[0][0] == "zenodo_token_sandbox"
-
-
-def test_fsRetrieveToken_prefers_namespaced_production_slot():
-    from vaibify.reproducibility.zenodoClient import (
-        _fsRetrieveToken,
-    )
-    with patch(
-        "vaibify.config.secretManager.fbSecretExists",
-        return_value=True,
-    ), patch(
-        "vaibify.config.secretManager.fsRetrieveSecret",
-        return_value="namespaced_prod",
-    ) as mockRetrieve:
-        sToken = _fsRetrieveToken("zenodo")
-    assert sToken == "namespaced_prod"
-    assert mockRetrieve.call_args[0][0] == "zenodo_token_production"
-
-
-def test_zenodo_client_lazy_token():
-    from vaibify.reproducibility.zenodoClient import ZenodoClient
-    client = ZenodoClient(sService="sandbox")
-    assert client._sToken is None
-    with patch(
-        "vaibify.reproducibility.zenodoClient._fsRetrieveToken",
-        return_value="lazy_token",
-    ) as mockRetrieve:
-        sToken = client._fsGetToken()
-    assert sToken == "lazy_token"
-    assert client._sToken == "lazy_token"
-    assert mockRetrieve.call_args[0][0] == "sandbox"
-
-
-def test_zenodo_client_passes_production_service_to_retriever():
-    from vaibify.reproducibility.zenodoClient import ZenodoClient
-    client = ZenodoClient(sService="zenodo")
-    with patch(
-        "vaibify.reproducibility.zenodoClient._fsRetrieveToken",
-        return_value="prod_token",
-    ) as mockRetrieve:
-        client._fsGetToken()
-    assert mockRetrieve.call_args[0][0] == "zenodo"
-
-
 def test_zenodo_client_cached_token():
     from vaibify.reproducibility.zenodoClient import ZenodoClient
     client = ZenodoClient(sService="sandbox")
     client._sToken = "cached"
     sToken = client._fsGetToken()
     assert sToken == "cached"
+
+
+def test_a_client_built_without_a_token_consults_no_keyring():
+    """The client never reaches into a keyring; the caller hands it a token.
+
+    Which token a caller may spend is decided from the project's ACTIVE
+    host slot (vaibify/gui/zenodoTokenAccess.py); a client that looked
+    one up itself would be a second authority on that question. A
+    tokenless client answers '' so public-record reads still work.
+    """
+    from vaibify.reproducibility.zenodoClient import ZenodoClient
+    with patch(
+        "vaibify.config.secretManager.fsRetrieveSecret",
+    ) as mockRetrieve, patch(
+        "vaibify.config.secretManager.fbSecretExists",
+    ) as mockExists:
+        assert ZenodoClient(sService="sandbox")._fsGetToken() == ""
+        assert ZenodoClient(sService="zenodo", sToken="given")._fsGetToken() == (
+            "given"
+        )
+    mockRetrieve.assert_not_called()
+    mockExists.assert_not_called()

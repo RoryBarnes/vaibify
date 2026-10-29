@@ -2403,21 +2403,18 @@ def _fsServiceRemediation(sService, sDetail=""):
 
 
 def _fnCleanupCredential(
-    syncDispatcher, connectionDocker, sContainerId, sService,
-    sZenodoInstance="",
+    dictCtx, sContainerId, sService, sZenodoInstance="",
 ):
     """Delete a just-stored credential after validation failure."""
-    sTokenName = f"{sService}_token"
     if sService == "overleaf":
-        _fnCleanupOverleafHostCredential(sTokenName)
+        _fnCleanupOverleafHostCredential("overleaf_token")
         return
-    if sService == "zenodo" and sZenodoInstance:
-        sTokenName = syncDispatcher.fsZenodoTokenNameForInstance(
-            sZenodoInstance
-        )
+    if sService != "zenodo":
+        return
+    from .. import zenodoTokenAccess
     try:
-        syncDispatcher.fnDeleteCredentialForProject(
-            connectionDocker, sContainerId, sTokenName,
+        zenodoTokenAccess.fnDeleteActiveZenodoToken(
+            dictCtx["docker"], sContainerId, sZenodoInstance or "sandbox",
         )
     except Exception:
         pass
@@ -2433,14 +2430,12 @@ def _fnCleanupOverleafHostCredential(sTokenName):
 
 
 def _fdictStoreCredentialSafely(
-    syncDispatcher, dictCtx, sContainerId, sService, sToken,
-    sZenodoInstance="",
+    dictCtx, sContainerId, sService, sToken, sZenodoInstance="",
 ):
     """Try to store; return a failure dict or None on success."""
     try:
         _fnDispatchStore(
-            syncDispatcher, dictCtx, sContainerId, sService, sToken,
-            sZenodoInstance,
+            dictCtx, sContainerId, sService, sToken, sZenodoInstance,
         )
     except Exception as error:
         return {
@@ -2451,21 +2446,24 @@ def _fdictStoreCredentialSafely(
 
 
 def _fnDispatchStore(
-    syncDispatcher, dictCtx, sContainerId, sService, sToken,
-    sZenodoInstance="",
+    dictCtx, sContainerId, sService, sToken, sZenodoInstance="",
 ):
-    """Route Overleaf to the host keyring; others to the container."""
+    """Overleaf goes to the host keyring's one slot; Zenodo to the project's.
+
+    Both land on the HOST. A Zenodo token goes to the project's ACTIVE
+    slot (:mod:`vaibify.gui.zenodoTokenAccess`): the researcher
+    entering it on the host is the confirmation, and nothing is written
+    into the container, whose keyring the agent can read.
+    """
     if sService == "overleaf":
         from vaibify.config.secretManager import fnStoreSecret
         fnStoreSecret("overleaf_token", sToken, "keyring")
         return
-    sTokenName = f"{sService}_token"
-    if sService == "zenodo":
-        sTokenName = syncDispatcher.fsZenodoTokenNameForInstance(
-            sZenodoInstance or "sandbox"
-        )
-    syncDispatcher.fnStoreCredentialForProject(
-        dictCtx["docker"], sContainerId, sTokenName, sToken,
+    if sService != "zenodo":
+        raise ValueError(f"{sService} keeps no stored credential")
+    from .. import zenodoTokenAccess
+    zenodoTokenAccess.fnStoreActiveZenodoToken(
+        dictCtx["docker"], sContainerId, sZenodoInstance or "sandbox", sToken,
     )
 
 
@@ -2475,29 +2473,23 @@ def _fdictStoreValidateCredential(
 ):
     """Store credential, verify connectivity, validate; roll back on failure.
 
-    Stage-validate-commit: the previously stored credential (when the
-    service keeps one on the host) is captured before the new token
-    overwrites it, and a validation failure RESTORES it instead of
-    deleting — a mistyped token or a transient network failure must
-    never destroy a credential that worked an hour earlier. Only when
-    no previous credential existed does the failure path delete the
-    freshly staged token. The response message states which happened
-    so the researcher is never left guessing what survived.
+    Stage-validate-commit: the previously stored credential is captured
+    before the new token overwrites it, and a validation failure
+    RESTORES it instead of deleting -- a mistyped token or a transient
+    network failure must never destroy a credential that worked an hour
+    earlier. Only when no previous credential existed does the failure
+    path delete the freshly staged token. The response message states
+    which happened so the researcher is never left guessing what
+    survived. Both services keep their token on the host, so the
+    capture is an in-process read and no secret crosses a boundary.
     """
-    from .. import syncDispatcher
-    sPreviousToken = _fsFetchPreviousHostCredential(sService)
-    tSlots = _ftSnapshotContainerCredential(
-        syncDispatcher, dictCtx, sContainerId, sService,
-        sZenodoInstance,
+    sPreviousToken = _fsFetchPreviousHostCredential(
+        dictCtx, sContainerId, sService, sZenodoInstance,
     )
     dictStoreFail = _fdictStoreCredentialSafely(
-        syncDispatcher, dictCtx, sContainerId, sService, sToken,
-        sZenodoInstance,
+        dictCtx, sContainerId, sService, sToken, sZenodoInstance,
     )
     if dictStoreFail is not None:
-        _fnDropContainerSnapshot(
-            syncDispatcher, dictCtx, sContainerId, tSlots[1],
-        )
         return dictStoreFail
     dictResult = _fdictValidateStoredCredential(
         dictCtx, sContainerId, sService, sProjectId,
@@ -2505,115 +2497,49 @@ def _fdictStoreValidateCredential(
     )
     if not dictResult["bConnected"]:
         _fnRollBackFailedCredential(
-            syncDispatcher, dictCtx, sContainerId, sService,
-            sZenodoInstance, sPreviousToken, dictResult, tSlots,
-        )
-    else:
-        _fnDropContainerSnapshot(
-            syncDispatcher, dictCtx, sContainerId, tSlots[1],
+            dictCtx, sContainerId, sService, sZenodoInstance,
+            sPreviousToken, dictResult,
         )
     return dictResult
 
 
-def _ftSnapshotContainerCredential(
-    syncDispatcher, dictCtx, sContainerId, sService, sZenodoInstance,
+def _fsFetchPreviousHostCredential(
+    dictCtx, sContainerId, sService, sZenodoInstance="",
 ):
-    """Copy the container token slot aside before a new token lands.
+    """Return the currently stored host token for the service, or None.
 
-    Returns ``(sPrimarySlot, sBackupSlot)``. ``sBackupSlot`` is None
-    when the service keeps no container-side credential (Overleaf's
-    token is host-side), when no previous token existed, or when the
-    snapshot attempt failed — the caller then falls back to the
-    historical delete-on-failure behavior for that attempt. The copy
-    runs entirely inside the container so the token value never
-    crosses the docker-exec boundary.
+    Any read error is treated as "nothing stored" so a broken keyring
+    cannot block the connect flow.
     """
-    if sService != "zenodo":
-        return (None, None)
-    sPrimarySlot = syncDispatcher.fsZenodoTokenNameForInstance(
-        sZenodoInstance or "sandbox",
-    )
-    sBackupSlot = sPrimarySlot + "_backup"
     try:
-        bCopied = syncDispatcher.fbCopyCredentialForProject(
-            dictCtx["docker"], sContainerId, sPrimarySlot, sBackupSlot,
-        )
-    except Exception:
-        return (sPrimarySlot, None)
-    return (sPrimarySlot, sBackupSlot if bCopied else None)
-
-
-def _fnDropContainerSnapshot(
-    syncDispatcher, dictCtx, sContainerId, sBackupSlot,
-):
-    """Best-effort removal of a no-longer-needed snapshot slot."""
-    if not sBackupSlot:
-        return
-    try:
-        syncDispatcher.fnDeleteCredentialForProject(
-            dictCtx["docker"], sContainerId, sBackupSlot,
-        )
-    except Exception:
-        pass
-
-
-def _fbRestoreContainerSnapshot(
-    syncDispatcher, dictCtx, sContainerId, tSlots,
-):
-    """Copy the snapshot back over the failed token; drop the snapshot."""
-    sPrimarySlot, sBackupSlot = tSlots
-    if not sBackupSlot:
-        return False
-    try:
-        bRestored = syncDispatcher.fbCopyCredentialForProject(
-            dictCtx["docker"], sContainerId, sBackupSlot, sPrimarySlot,
-        )
-    except Exception:
-        logger.warning(
-            "Failed to restore the previous container token after a "
-            "validation failure", exc_info=True,
-        )
-        return False
-    _fnDropContainerSnapshot(
-        syncDispatcher, dictCtx, sContainerId, sBackupSlot,
-    )
-    return bRestored
-
-
-def _fsFetchPreviousHostCredential(sService):
-    """Return the currently stored host-keyring token, or None.
-
-    Only Overleaf keeps its token in the host keyring; the container-
-    side services (Zenodo) would require echoing the secret through a
-    ``docker exec`` round trip to capture it, so they keep the
-    historical delete-on-failure behavior. Any read error is treated
-    as "nothing stored" so a broken keyring cannot block the connect
-    flow.
-    """
-    if sService != "overleaf":
-        return None
-    from vaibify.config.secretManager import fsRetrieveSecret
-    try:
-        return fsRetrieveSecret("overleaf_token", "keyring")
+        if sService == "overleaf":
+            from vaibify.config.secretManager import fsRetrieveSecret
+            return fsRetrieveSecret("overleaf_token", "keyring")
+        if sService == "zenodo":
+            from .. import zenodoTokenAccess
+            return zenodoTokenAccess.fsActiveZenodoToken(
+                dictCtx["docker"], sContainerId, sZenodoInstance or "sandbox",
+            ) or None
     except Exception:
         return None
+    return None
 
 
 def _fnRollBackFailedCredential(
-    syncDispatcher, dictCtx, sContainerId, sService,
-    sZenodoInstance, sPreviousToken, dictResult, tSlots=(None, None),
+    dictCtx, sContainerId, sService, sZenodoInstance, sPreviousToken,
+    dictResult,
 ):
     """Undo a failed-validation store: restore the previous token or delete.
 
-    Overleaf restores from the host keyring capture; container-side
-    services (Zenodo) restore from the in-container snapshot slot.
     Appends the disposition to the result message so the dashboard
     states plainly whether a previously saved token survived.
     """
-    if sPreviousToken is not None and sService == "overleaf":
-        from vaibify.config.secretManager import fnStoreSecret
+    if sPreviousToken is not None:
         try:
-            fnStoreSecret("overleaf_token", sPreviousToken, "keyring")
+            _fnDispatchStore(
+                dictCtx, sContainerId, sService, sPreviousToken,
+                sZenodoInstance,
+            )
             _fnAppendTokenDisposition(dictResult, bRestored=True)
             return
         except Exception:
@@ -2621,15 +2547,7 @@ def _fnRollBackFailedCredential(
                 "Failed to restore the previous %s token after a "
                 "validation failure", sService, exc_info=True,
             )
-    if _fbRestoreContainerSnapshot(
-        syncDispatcher, dictCtx, sContainerId, tSlots,
-    ):
-        _fnAppendTokenDisposition(dictResult, bRestored=True)
-        return
-    _fnCleanupCredential(
-        syncDispatcher, dictCtx["docker"],
-        sContainerId, sService, sZenodoInstance,
-    )
+    _fnCleanupCredential(dictCtx, sContainerId, sService, sZenodoInstance)
     _fnAppendTokenDisposition(dictResult, bRestored=False)
 
 
@@ -2766,7 +2684,9 @@ def _fnRegisterSyncRoutes(app, dictCtx):
                 request.sToken, request.sProjectId or "",
                 sZenodoInstance,
             )
-        if _fbServiceHasStoredCredential(request.sService):
+        if _fbServiceHasStoredCredential(
+            dictCtx, sContainerId, request.sService, sZenodoInstance,
+        ):
             return _fdictValidateStoredCredential(
                 dictCtx, sContainerId, request.sService,
                 request.sProjectId or "",
@@ -2825,12 +2745,21 @@ def _fnRegisterSyncRoutes(app, dictCtx):
     @app.get("/api/sync/{sContainerId}/has-credential/{sService}")
     async def fdictHasCredential(
         sContainerId: str, sService: str, requestHttp: Request,
+        sZenodoInstance: str = "",
     ):
         fnRejectAgentTokenLane(requestHttp)
         dictCtx["require"](sContainerId)
         syncDispatcher.fnValidateServiceName(sService)
+        if sZenodoInstance and (
+            sZenodoInstance not in syncDispatcher.SET_VALID_ZENODO_INSTANCES
+        ):
+            raise HTTPException(
+                400, "sZenodoInstance must be 'sandbox' or 'production'.",
+            )
         return {
-            "bHasCredential": _fbServiceHasStoredCredential(sService),
+            "bHasCredential": _fbServiceHasStoredCredential(
+                dictCtx, sContainerId, sService, sZenodoInstance,
+            ),
         }
 
     @app.post("/api/sync/{sContainerId}/track")
@@ -2858,12 +2787,24 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         return {"bSuccess": True}
 
 
-def _fbServiceHasStoredCredential(sService):
-    """Return True when the host keyring already has this service's token."""
-    from vaibify.config.secretManager import fbSecretExists
-    if sService != "overleaf":
+def _fbServiceHasStoredCredential(
+    dictCtx, sContainerId, sService, sZenodoInstance="",
+):
+    """Return True when the host already holds this service's token.
+
+    Overleaf keeps one host slot; Zenodo keeps one ACTIVE slot per
+    project and instance, so the project (through its container) and
+    the instance are part of the question.
+    """
+    if sService == "overleaf":
+        from vaibify.config.secretManager import fbSecretExists
+        return fbSecretExists("overleaf_token", "keyring")
+    if sService != "zenodo":
         return False
-    return fbSecretExists("overleaf_token", "keyring")
+    from .. import zenodoTokenAccess
+    return zenodoTokenAccess.fbHasActiveZenodoToken(
+        dictCtx["docker"], sContainerId, sZenodoInstance or "sandbox",
+    )
 
 
 def _fdictParseZenodoResult(sOut):

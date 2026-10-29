@@ -168,78 +168,13 @@ def test_credential_helper_args_reset_before_adding_helper():
     )
 
 
-def test_container_credential_copy_never_echoes_the_value():
-    """The in-container copy command must not print the secret.
-
-    The whole point of copying inside one in-container python process
-    is that the token never crosses the docker-exec boundary — the
-    only prints allowed are the 'copied'/'missing' markers.
-    """
-    from vaibify.gui.syncDispatcher import fbCopyCredentialInContainer
-    mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (0, "copied")
-    bResult = fbCopyCredentialInContainer(
-        mockDocker, "cid",
-        "zenodo_token_sandbox", "zenodo_token_sandbox_backup",
-    )
-    assert bResult is True
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "print(v" not in sCommand
-    assert "'copied'" in sCommand and "'missing'" in sCommand
-
-
-def test_container_credential_copy_reports_missing_source():
-    """A missing source entry returns False without failing."""
-    from vaibify.gui.syncDispatcher import fbCopyCredentialInContainer
-    mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (0, "missing")
-    assert fbCopyCredentialInContainer(
-        mockDocker, "cid",
-        "zenodo_token_sandbox", "zenodo_token_sandbox_backup",
-    ) is False
-
-
-def test_container_credential_copy_rejects_unknown_slots():
-    """Slot names outside the allowlist are rejected before any exec."""
-    import pytest
-    from vaibify.gui.syncDispatcher import fbCopyCredentialInContainer
-    mockDocker = MagicMock()
-    with pytest.raises(ValueError, match="Invalid token name"):
-        fbCopyCredentialInContainer(
-            mockDocker, "cid", "zenodo_token_sandbox", "evil_slot",
-        )
-    mockDocker.ftResultExecuteCommand.assert_not_called()
-
-
-def test_failed_snapshot_restore_reports_false_and_keeps_the_snapshot():
-    """A crashed snapshot copy must never claim the token was restored.
-
-    When copying the backup slot over the failed token raises, the
-    helper must return False (the caller words the researcher-facing
-    disposition from it) and must NOT delete the backup slot — the
-    snapshot is the only surviving copy of the previous token.
-    """
-    from vaibify.gui.routes.syncRoutes import _fbRestoreContainerSnapshot
-    mockDispatcher = MagicMock()
-    mockDispatcher.fbCopyCredentialForProject.side_effect = RuntimeError(
-        "exec failed",
-    )
-    bRestored = _fbRestoreContainerSnapshot(
-        mockDispatcher, {"docker": MagicMock()}, "cid",
-        ("zenodo_token_sandbox", "zenodo_token_sandbox_backup"),
-    )
-    assert bRestored is False
-    mockDispatcher.fnDeleteCredentialForProject.assert_not_called()
-
-
 def test_overleaf_rollback_restores_the_host_keyring_token():
     """An Overleaf rollback with a captured token restores via keyring.
 
     The service dispatch is string equality: for ``overleaf`` with a
     previous token the helper must store that token back in the host
     keyring and report the restored disposition — never fall through
-    to the container-snapshot lane (Overleaf keeps no snapshot slots,
-    so the fall-through would end in a false "not saved" message).
+    to the delete lane, which would end in a false "not saved" message.
     """
     from vaibify.gui.routes.syncRoutes import _fnRollBackFailedCredential
     dictResult = {"sMessage": "Validation failed"}
@@ -247,7 +182,7 @@ def test_overleaf_rollback_restores_the_host_keyring_token():
         "vaibify.config.secretManager.fnStoreSecret",
     ) as mockStore:
         _fnRollBackFailedCredential(
-            MagicMock(), {"docker": MagicMock()}, "cid", "overleaf",
+            {"docker": MagicMock()}, "cid", "overleaf",
             "", "previous-token", dictResult,
         )
     mockStore.assert_called_once_with(

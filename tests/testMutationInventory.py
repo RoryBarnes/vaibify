@@ -167,7 +167,11 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 272 -> 271 (2026-10-12): the test generator's unclassified conftest
 # write and the new marker-plugin writes share one classified confined
 # write site, _fnWriteTextConfined.
-I_UNCLASSIFIED_ROW_BUDGET = 267
+# 267 -> 261 (2026-10-29): the in-container Zenodo lane is gone (its
+# store, copy, archive and validation execs with it), and the two typed
+# reads that replaced it -- the host deposit's confined file read and
+# the migration's keyring read -- are classified.
+I_UNCLASSIFIED_ROW_BUDGET = 261
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -441,7 +445,9 @@ I_UNCLASSIFIED_ROW_BUDGET = 267
 # are excluded with their authority recorded (plan-built argv, first-
 # step action names only, agent lane rejected, machine-wide lock), and
 # the guards behind it are kill-confirmed.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 231
+# 231 -> 224 (2026-10-29): Zenodo tokens leave the container; the
+# store, copy, archive, validation and staged-client execs are gone.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 224
 
 
 # Every acquisition of a declared capability that still has no reviewed

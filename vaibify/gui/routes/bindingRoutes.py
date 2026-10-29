@@ -36,8 +36,9 @@ class BindingConfirmRequest(BaseModel):
     sCarryFromWorkflowKey: str = ""
 
 
-def _fdictFetchOverleafEvidence(dictTarget):
+def _fdictFetchOverleafEvidence(dictCtx, sContainerId, dictTarget):
     """Return what the host can say about an Overleaf project with its token."""
+    del dictCtx, sContainerId
     from .. import syncDispatcher
     sProjectId = dictTarget.get("sProjectId", "")
     if not sProjectId:
@@ -48,15 +49,23 @@ def _fdictFetchOverleafEvidence(dictTarget):
     return {"sState": "reachable", **dict(tRefresh[1])}
 
 
-def _fdictFetchZenodoEvidence(dictTarget):
-    """Return the title and owner Zenodo reports for the bound record."""
+def _fdictFetchZenodoEvidence(dictCtx, sContainerId, dictTarget):
+    """Return the title and owner Zenodo reports for the bound record.
+
+    Fetched with the project's ACTIVE token for the instance; a pending
+    migrated token is not spent here, because it is not yet the
+    researcher's to spend.
+    """
     from vaibify.reproducibility import zenodoClient
+    from .. import zenodoTokenAccess
     sInstance = dictTarget.get("sInstance", "")
     if not sInstance:
         return {"sState": "no target"}
-    sToken = zenodoClient._fsRetrieveToken(sInstance)
+    sToken = zenodoTokenAccess.fsActiveZenodoToken(
+        dictCtx["docker"], sContainerId, sInstance,
+    )
     if not sToken:
-        return {"sState": "no host token for this instance"}
+        return {"sState": "no active host token for this instance"}
     try:
         clientZenodo = zenodoClient.ZenodoClient(sInstance, sToken=sToken)
         if dictTarget.get("sDepositionId"):
@@ -98,7 +107,9 @@ def _fdictDescribeBindings(dictCtx, sContainerId, dictWorkflow):
         dictServices[sService] = {
             "dictProjectTarget": dictTargets[sService],
             "dictBinding": dictBound,
-            "dictFetched": _DICT_EVIDENCE_FETCHERS[sService](dictTargets[sService]),
+            "dictFetched": _DICT_EVIDENCE_FETCHERS[sService](
+                dictCtx, sContainerId, dictTargets[sService],
+            ),
             "bAgrees": _fbTargetsAgree(sService, dictTargets[sService], dictBound),
         }
     return {
@@ -157,7 +168,8 @@ def _fnRegisterConfirm(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow,
         )
         dictEvidence = await asyncio.to_thread(
-            _DICT_EVIDENCE_FETCHERS[request.sService], dictTarget,
+            _DICT_EVIDENCE_FETCHERS[request.sService], dictCtx, sContainerId,
+            dictTarget,
         )
         try:
             remoteBindings.fnConfirmBinding(

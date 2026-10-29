@@ -2259,33 +2259,26 @@ def testContainerUserUidIsOneThousand():
 def testContainerImageInstallsTheHelperCommandDependencies():
     """The image must pip-install what vaibify's OWN container code imports.
 
-    The Zenodo token validation is inline Python importing ``keyring``
-    and ``requests``, and the staged ``zenodoClient.py`` imports
-    ``requests``. These are vaibify dependencies, never the project's:
-    for months the Dockerfile installed only ``keyring``, so a project
-    whose own requirements did not happen to include ``requests``
-    could not validate a token or publish a deposit, and the
-    ``ModuleNotFoundError`` surfaced to the researcher as "token not
-    accepted — check that the token has deposit scopes".
+    Since 2026-10-29 no Zenodo call runs in the container. The one
+    vaibify-authored program that still imports a third-party module
+    there is the keyring typed read (``DockerConnection`` reads a token
+    an older container holds, to move it out to the host), and
+    ``keyring`` is a vaibify dependency, never the project's: for months
+    the Dockerfile installed nothing a project did not happen to
+    require itself, and the ``ModuleNotFoundError`` surfaced to the
+    researcher as a token problem.
 
-    Both halves are asserted: the sources still exert the force (they
-    import the module), and the Dockerfile still supplies it with an
+    Both halves are asserted: the source still exerts the force (it
+    imports the module), and the Dockerfile still supplies it with an
     explicit install. Either half changing alone fails here.
     """
-    sDispatcherSource = fsReadSource(
-        PACKAGE_DIR / "gui" / "syncDispatcher.py",
+    sConnectionSource = fsReadSource(
+        PACKAGE_DIR / "docker" / "dockerConnection.py",
     )
-    sClientSource = fsReadSource(
-        PACKAGE_DIR / "reproducibility" / "zenodoClient.py",
-    )
-    assert "import keyring, requests" in sDispatcherSource, (
-        "the inline Zenodo validation no longer imports keyring + "
-        "requests; update this invariant to whatever its transport "
-        "now is, and check the Dockerfile installs it"
-    )
-    assert "import requests" in sClientSource, (
-        "the staged zenodoClient no longer imports requests; update "
-        "this invariant to its new transport"
+    assert "import keyring,sys" in sConnectionSource, (
+        "the keyring typed read no longer imports keyring; update this "
+        "invariant to whatever its transport now is, and check the "
+        "Dockerfile installs it"
     )
     sDockerfileSource = fsReadSource(
         PACKAGE_DIR / "containerImage" / "Dockerfile",
@@ -2294,14 +2287,12 @@ def testContainerImageInstallsTheHelperCommandDependencies():
         sLine for sLine in sDockerfileSource.splitlines()
         if "pip install" in sLine
     )
-    for sPackage in ("keyring", "requests"):
-        assert re.search(rf"\b{sPackage}\b", sInstallLines), (
-            f"the Dockerfile has no explicit 'pip install {sPackage}' "
-            "while vaibify's in-container helpers import it — the "
-            "package is then present only when the researcher's own "
-            "requirements pull it in, and a project without it "
-            "cannot validate a Zenodo token or publish a deposit"
-        )
+    assert re.search(r"\bkeyring\b", sInstallLines), (
+        "the Dockerfile has no explicit 'pip install keyring' while "
+        "vaibify's keyring typed read imports it -- the package is then "
+        "present only when the researcher's own requirements pull it "
+        "in, and a token an older container holds cannot be moved out"
+    )
 
 
 def testManifestWriterKnowsEverySaPathListInGuiSource():
@@ -6356,7 +6347,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # invariant.
     # 3782 -> 3783 (2026-10-28): the agent-token comparison is constant-time.
     # 3783 -> 3784 (2026-10-29): the remote-binding routes are mounted.
-    "pipelineServer.py": 3784,
+    # 3784 -> 3792 (2026-10-29): the Zenodo token migration routes are
+    # mounted, and connect runs a migration pass.
+    "pipelineServer.py": 3792,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -7543,7 +7536,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1548 -> 1553 (2026-10-27): run-all says it runs every step's
     # tests, and the L2/L3 readiness descriptions name their criteria.
     # 1553 -> 1562 (2026-10-29): confirm-remote-binding, researcher-only.
-    "actionCatalog.py": 1562,
+    # 1562 -> 1580 (2026-10-29): the two researcher-only decisions about
+    # Zenodo tokens moved out of the container.
+    "actionCatalog.py": 1580,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8104,7 +8099,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # run and discard siblings.
     # 1193 -> 1198 (2026-10-24): the setup wizard's step route is declared browser-hub scoped, with why.
     # 1198 -> 1203 (2026-10-29): the remote-binding read is lease-enforced.
-    "routeScope.py": 1203,
+    # 1203 -> 1208 (2026-10-29): the Zenodo token panel's read is lease-enforced.
+    "routeScope.py": 1208,
 }
 
 
