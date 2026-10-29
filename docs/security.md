@@ -24,6 +24,12 @@ The defenses are designed to contain four things:
   unprivileged user, with no `sudo` and a minimal capability set.
 - **One container acting on another.** Each container's agent holds its
   own token, which authorizes that container and no other.
+- **The container forging what the dashboard reports.** The programs the
+  hub runs inside a container to hash files, read markers and probe
+  processes resolve through a fixed system PATH, run Python isolated
+  from the agent's user site, and read as a separate read-only user, so
+  a program the agent plants cannot answer in their place (see
+  [What the hub runs inside the container](#what-the-hub-runs-inside-the-container)).
 
 Credential theft is contained only **partially**: a secret you choose to
 mount into a container can be read by every process in it (see
@@ -101,6 +107,45 @@ files writable from inside the container (`project.json`, `state.json`,
 directory names, the dependency diagram) are treated as untrusted
 markup: wrongly typed fields are refused by name, the frontend escapes
 through one quote-safe function, and the diagram is shown as an image.
+
+## What the hub runs inside the container
+
+The hub performs its own work in a container through `docker exec`:
+git questions, the five-second poll's hashes, test-marker reads,
+containment probes. The image's `PATH` leads with the container user's
+`~/.local/bin` so that a researcher's pip-installed tools resolve from a
+step command, and that directory, like the user site-packages beside
+it, belongs to the in-container agent. Until 2026-10-28 the hub's
+programs resolved through it too, and two of them ran as root.
+
+Every exec the hub performs now declares one of three lanes
+(`vaibify/docker/execLane.py`):
+
+| Lane | Identity | Environment | Used for |
+|---|---|---|---|
+| hub-internal (default) | the container user | the fixed system PATH (`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, with `/opt/conda/bin` first in a conda image); Python runs as `python3 -I` | git operations, markers, directory probes, the containment probes (these run as root with the same PATH) |
+| integrity-read | UID 65532 in the container user's group, `HOME=/` | the hub-internal environment | everything the dashboard poll and the level gates read: the snapshot hasher, typed file reads, marker and plot digests, repository status |
+| researcher-command | the container user | the image's own environment, `~/.local/bin` included | step runs, test runs, the terminal, agent CLIs, and the probes that must see the researcher's installed packages |
+
+The read-only user needs no account in the image, so no image is
+rebuilt. What it buys is bounded, and stated: a process the agent
+controls cannot ptrace, signal or read the `/proc` entry of a program
+that hashes a file for the dashboard, and cannot alter the root-owned
+interpreter it runs. The agent can still change a file, which the
+dashboard reports as changed, or make one unreadable, which the
+dashboard reports as unknown and never as unchanged or deleted. Three
+typed reads stay with the container user because they read that
+user's private files: the container keyring, an agent login document
+and the size of `/tmp`. The set of execs that opt into the researcher
+lane is enumerated in `tests/testExecLaneInvariant.py`; adding one is
+a security decision.
+
+A file pulled out of a container (`vaibify pull`, or the dashboard's
+pull) is researcher-only. It is read through the confined reader as
+the container user, never through the daemon as root, and written on
+the host by a confined writer that opens the destination directory
+once and refuses a final name that is a link or a directory, so a
+read-write bind mount cannot redirect the researcher's copy.
 
 ## The per-container agent token
 
