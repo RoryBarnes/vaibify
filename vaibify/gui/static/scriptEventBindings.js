@@ -1124,7 +1124,7 @@ var VaibifyEventBindings = (function () {
             btnAdminEnvironmentInfo: function () {
                 VaibifyEnvironmentInfo.fnShow();
             },
-            btnAdminQuit: function () { window.close(); },
+            btnAdminQuit: VaibifyHubQuit.fnQuitVaibify,
         };
         for (var sId in dictActions) {
             var el = document.getElementById(sId);
@@ -1274,6 +1274,14 @@ var VaibifyEventBindings = (function () {
             elWorkflowNewWindow.addEventListener(
                 "click", VaibifyUtilities.fnSpawnNewSession);
         }
+        ["btnQuitVaibifyEnvironments", "btnQuitVaibifyProjects"].forEach(
+            function (sId) {
+                var elQuit = document.getElementById(sId);
+                if (elQuit) {
+                    elQuit.addEventListener(
+                        "click", VaibifyHubQuit.fnQuitVaibify);
+                }
+            });
         document.getElementById("activeWorkflowName")
             .addEventListener("click", function (event) {
                 event.stopPropagation();

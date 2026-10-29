@@ -1990,7 +1990,9 @@ def _fdictBeginObtaining(
     session is not released. The answer carries ``bConversionPending``
     and the path the page polls; its entry is still the HOST entry.
     """
+    from vaibify.config.mutationAdmission import fnAssertAdmissionGateOpen
     from . import conversionLifecycle
+    fnAssertAdmissionGateOpen("A containerization")
     _fnScaffoldWorkflowIfAbsent(dictProject["sDirectory"], sWorkflowName)
     try:
         dictView = conversionLifecycle.fdictBeginPendingConversion(

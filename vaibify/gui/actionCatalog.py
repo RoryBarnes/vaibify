@@ -1404,6 +1404,10 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # keep the researcher's credential alive past the attention it is
     # supposed to track. The route itself 403s the agent lane too.
     ("POST", "/api/session/renew"),
+    # Quit stops this hub and its child windows, and may stop the
+    # researcher's environments. An agent inside one of them must never
+    # end the hub it is talking to; the route refuses the agent lane too.
+    ("POST", "/api/session/quit"),
     ("POST", "/api/workflows/{sContainerId}/create"),
     # Docker-runtime retry — agents run inside the container that
     # needs Docker, so the UI is the only sensible caller.

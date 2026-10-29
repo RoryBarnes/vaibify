@@ -37708,4 +37708,105 @@ LIST_FALSIFICATIONS = [
         ),
         new='        pass\n',
     ),
+    # --- 2026-10-28: Quit vaibify from either hub ---
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testQuitIsRefusedDuringAPipelineRun'
+        ),
+        # The final re-check after the settlement is dropped.
+        source='vaibify/gui/hubQuit.py',
+        old='        listReasons = await _flistFinalReasons(app, dictCtx, listChildTrees)\n',
+        new='        listReasons = []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuitChildren.py::'
+            'testAnIdleParentIsRefusedWhileItsChildHoldsALiveRun'
+        ),
+        # The final check consults only the parent's own reasons.
+        source='vaibify/gui/hubQuit.py',
+        old='    listReasons.extend(_flistFlattenChildReasons(\n        await _fdictDescribeChildren(listChildTrees)))\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testARunOverAnAlreadyOpenSocketIsRefusedOnceTheGateCloses'
+        ),
+        # The gate check leaves the carrier, so only HTTP would see it.
+        source='vaibify/gui/commitCarrier.py',
+        old='    if fbAdmissionGateClosedForNewWork():\n        raise CommitRefusedError(S_SHUTTING_DOWN_REFUSAL + ".")\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testAStaleReopenLeavesANewerGateClosed'
+        ),
+        # The reopen ignores the gate id it is handed.
+        source='vaibify/config/mutationAdmission.py',
+        old='        if not sGateId or _dictAdmissionGate["sGateId"] != sGateId:\n            return\n        _dictAdmissionGate["sGateId"] = ""\n',
+        new='        _dictAdmissionGate["sGateId"] = ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testASlowCarrierMutationMakesQuitWaitThenSucceedOrFail'
+        ),
+        # In-flight carrier mutations are dropped from the busy reasons.
+        source='vaibify/gui/serverLifespan.py',
+        old='    for dictLive in commitCarrier.flistDescribeEveryLiveMutation(app.state):\n        listReasons.append(\n            f"{dictLive[\'sDescription\']} in \'{dictLive[\'sContainerName\']}\'"\n        )\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuitChildren.py::'
+            'testAChildKilledMidQuitFailsItAndEveryOtherGateReopens'
+        ),
+        # The reopen is removed from the Quit's finally.
+        source='vaibify/gui/hubQuit.py',
+        old='            await fnReopenEverything(app, sOwnGateId, listChildTrees)\n            fnStopLeaseRenewal(app)\n',
+        new='            fnStopLeaseRenewal(app)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuitChildren.py::'
+            'testAChildsGateStaysClosedPastItsLeaseUntilItExits'
+        ),
+        # The children's lease renewal is never started.
+        source='vaibify/gui/hubQuit.py',
+        old='        app.state.taskQuitLeaseRenewal = asyncio.ensure_future(\n            _fnRenewChildLeasesUntilStopped(app, listChildTrees))\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testANewWebSocketIsRefusedWhileTheGateIsClosed'
+        ),
+        # The socket gate answers authorized whatever the Quit gate says.
+        source='vaibify/gui/webSocketAuthorization.py',
+        old='        return I_REJECT_SHUTTING_DOWN\n    return I_REJECT_AUTHORIZED\n',
+        new='        return I_REJECT_AUTHORIZED\n    return I_REJECT_AUTHORIZED\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testTheAgentLaneCannotQuitOrReadThePreflight'
+        ),
+        # Quit and its preflight lose both agent-lane refusals.
+        source='vaibify/gui/routes/sessionRoutes.py',
+        old='    from ..routeContext import fnRejectAgentTokenLane\n    _fnRejectContainerAgentCallers(\n        request,\n        sDetail=f"{sAction} is the researcher\'s, never the in-container "\n        "agent\'s.",\n    )\n    fnRejectAgentTokenLane(request)\n',
+        new='    del request, sAction\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubQuit.py::'
+            'testAMutationIsRefusedWithItsOwnWordsWhileQuitting'
+        ),
+        # The route class's Quit-gate check never refuses.
+        source='vaibify/gui/routeScope.py',
+        old='    return fbAdmissionGateClosed()\n',
+        new='    return False\n',
+    ),
 ]

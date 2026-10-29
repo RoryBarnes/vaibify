@@ -4405,7 +4405,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     "appFactory.py": 802,
     # 892 -> 897 (2026-10-28): a live environment rename vetoes the idle
     # watchdog, on the conversion's terms.
-    "serverLifespan.py": 897,
+    # 897 -> 929 (2026-10-28): the idle watchdog's work vetoes become
+    # flistHubBusyReasons, the one predicate Quit asks too, naming every
+    # in-flight carrier mutation; both end the hub through one signal.
+    "serverLifespan.py": 929,
     # NEW at 823 (2026-10-09): the orphan terminator, which rebuilds a
     # dead hub's terminal records from the journal and ends them, and
     # the record-free group terminate-and-prove the CLI-shell lane
@@ -6341,7 +6344,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # invariant.
     # 3782 -> 3787 (2026-10-28): the post-save self-write bookkeeping
     # is one function, shared by the save and the project rename.
-    "pipelineServer.py": 3787,
+    # 3787 -> 3809 (2026-10-28): a run the carrier refuses while a Quit
+    # holds the gate says so, rather than calling it a busy container.
+    "pipelineServer.py": 3809,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6400,7 +6405,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # The join, its member bookkeeping and the join-aware busy question
     # are durable-launch semantics; they belong beside the launch.
     # 1317 -> 1321 (2026-10-01): type-only imports name the annotations.
-    "commitCarrier.py": 1321,
+    # 1321 -> 1359 (2026-10-28): the carrier's entry asks the Quit
+    # gate, and names every live item so a Quit can say what it waits for.
+    "commitCarrier.py": 1359,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -6463,7 +6470,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # that knows a hub holds the container.
     # 1070 -> 1078 (2026-10-28): the reconcile stop holds the name's
     # lifecycle lock, so it cannot interleave with a rename or a start.
-    "hostControlChannel.py": 1078,
+    # 1078 -> 1146 (2026-10-28): describe-busy, close-admissions and
+    # reopen-admissions, a parent's Quit reaching the hubs it spawned.
+    "hostControlChannel.py": 1146,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one
@@ -6603,7 +6612,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # ending an earlier hub's sessions says so, and a granted claim of a
     # running neverSleep container starts its session lane; the claim path
     # is the one place that holds the verdict, the state and the lock.
-    "sessionLifecycle.py": 1870,
+    # 1870 -> 1872 (2026-10-28): a claim is refused while a Quit settles.
+    "sessionLifecycle.py": 1872,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -7313,7 +7323,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2584 -> 2644 (2026-10-28): the environment rename route, whose
     # checks run in a fixed order before anything is written, and the
     # start refusal while a rename has not finished.
-    "registryRoutes.py": 2644,
+    # 2644 -> 2646 (2026-10-28): a containerization is refused while a
+    # Quit holds the admission gate.
+    "registryRoutes.py": 2646,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7533,7 +7545,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1553 -> 1557 (2026-10-28): the environment rename is excluded from
     # the agent catalog, with why.
     # 1557 -> 1568 (2026-10-28): the researcher-only rename-project entry.
-    "actionCatalog.py": 1568,
+    # 1568 -> 1572 (2026-10-28): Quit is excluded from the agent lane.
+    "actionCatalog.py": 1572,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8091,7 +8104,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # run and discard siblings.
     # 1193 -> 1198 (2026-10-24): the setup wizard's step route is declared browser-hub scoped, with why.
     # 1198 -> 1202 (2026-10-28): the environment rename's lifecycle scope.
-    "routeScope.py": 1202,
+    # 1202 -> 1251 (2026-10-28): every route answers a mutation 503
+    # while a Quit holds the gate; Quit and its preflight are scoped.
+    "routeScope.py": 1251,
 }
 
 

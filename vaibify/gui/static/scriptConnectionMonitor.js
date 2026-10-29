@@ -25,6 +25,10 @@ var VaibifyConnectionMonitor = (function () {
 
     var _bSurfaced = false;
     var _dictConsecutiveFailures = {};
+    /* Set while the researcher's own Quit is in flight. A server that
+       stops answering then is the Quit succeeding, not an outage, and
+       raising the connection-lost alarm over it would be false. */
+    var _bShutdownExpected = false;
 
     function _fbErrorIsDisconnectSignal(dictError) {
         if (!dictError) return false;
@@ -54,7 +58,7 @@ var VaibifyConnectionMonitor = (function () {
     }
 
     function fnReportPollFailure(sPoller, dictError) {
-        if (_bSurfaced) return;
+        if (_bSurfaced || _bShutdownExpected) return;
         if (VaibifyApi.fbErrorWasHandledByRecovery(dictError)) return;
         if (!_fbErrorIsDisconnectSignal(dictError)) {
             console.warn(
@@ -75,7 +79,7 @@ var VaibifyConnectionMonitor = (function () {
     }
 
     function fnReportWsLoss(dictEvent) {
-        if (_bSurfaced) return;
+        if (_bSurfaced || _bShutdownExpected) return;
         var iCode = dictEvent && dictEvent.iCode;
         if (iCode === 1000 || iCode === 1001) {
             return;
@@ -138,7 +142,7 @@ var VaibifyConnectionMonitor = (function () {
     }
 
     function fnSurfaceServerUnreachable(dictError) {
-        if (_bSurfaced) return;
+        if (_bSurfaced || _bShutdownExpected) return;
         _bSurfaced = true;
         _fnStopAllPolling();
         _fnCloseWebSocket();
@@ -232,6 +236,13 @@ var VaibifyConnectionMonitor = (function () {
             return _fsBuildUnauthorizedMessage(dictError);
         }
         if (dictError && dictError.sKind === "refused") {
+            if (dictError.iCode === 4505) {
+                return (
+                    "vaibify is shutting down, so it refused this " +
+                    "connection (code 4505). If the Quit was refused, " +
+                    "click to reload the dashboard."
+                );
+            }
             if (dictError.iCode === 4409) {
                 return (
                     "The server refused this connection: another live " +
@@ -261,6 +272,22 @@ var VaibifyConnectionMonitor = (function () {
         );
     }
 
+    function fnExpectShutdown() {
+        _bShutdownExpected = true;
+    }
+
+    function fnCancelExpectedShutdown() {
+        _bShutdownExpected = false;
+    }
+
+    function fnStopForShutdown() {
+        /* The Quit was accepted: stop asking a server that is leaving,
+           and say nothing about it going. */
+        _bShutdownExpected = true;
+        _fnStopAllPolling();
+        _fnCloseWebSocket();
+    }
+
     function fnReset() {
         _bSurfaced = false;
         _dictConsecutiveFailures = {};
@@ -277,5 +304,8 @@ var VaibifyConnectionMonitor = (function () {
         fnSurfaceServerUnreachable: fnSurfaceServerUnreachable,
         fnReset: fnReset,
         fbHasSurfaced: fbHasSurfaced,
+        fnExpectShutdown: fnExpectShutdown,
+        fnCancelExpectedShutdown: fnCancelExpectedShutdown,
+        fnStopForShutdown: fnStopForShutdown,
     };
 })();

@@ -193,6 +193,22 @@ def fnDetachFromClosedTerminal():
         os.close(iNullDescriptor)
 
 
+def _fnExitAfterGracefulShutdown(iSignal, _):
+    """End the process by unwinding, once uvicorn re-raises SIGTERM.
+
+    uvicorn 0.29 and later re-raise a captured SIGTERM after their
+    graceful shutdown, under whatever handler was installed before the
+    capture began. Under the default handler that killed the process on
+    the spot, so the caller's ``finally`` never ran: a hub stopped by
+    its idle watchdog, by Quit or by ``vaibify sessions stop`` left its
+    session slot file behind for the next start's reaper. Raising
+    ``SystemExit`` instead unwinds through that ``finally``. The
+    lifespan shutdown hooks have already run by then.
+    """
+    del iSignal
+    raise SystemExit(0)
+
+
 class ServerLoggingExitSignals(uvicorn.Server):
     """A uvicorn server that logs which signal ended the hub, and
     shuts down fully on a hang-up and on a second Ctrl-C.
@@ -251,10 +267,14 @@ class ServerLoggingExitSignals(uvicorn.Server):
                     yield
                 return
             fnPrevious = signal.signal(signal.SIGHUP, fnHandleHangup)
+            fnPreviousTerminate = signal.signal(
+                signal.SIGTERM, _fnExitAfterGracefulShutdown,
+            )
             try:
                 with fcontextCaptureSignals():
                     yield
             finally:
+                signal.signal(signal.SIGTERM, fnPreviousTerminate)
                 signal.signal(signal.SIGHUP, fnPrevious)
 
         self.handle_exit = fnHandleExitLogged

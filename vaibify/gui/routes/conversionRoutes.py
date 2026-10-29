@@ -20,6 +20,9 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
 from ...config import pendingConversions
+from ...config.mutationAdmission import (
+    fnAssertAdmissionGateOpen, fnReRaiseControlPlaneRefusal,
+)
 from .. import conversionLifecycle
 from ..routeContext import (
     fcontextHoldLifecycleLocksOrConflict, fnRejectAgentTokenLane,
@@ -71,6 +74,7 @@ def _fnRegisterRetry(app, dictCtx):
         fnRejectAgentTokenLane(requestHttp)
         _fnRequireSafeName(sHostName)
         _fdictRequireView(sHostName)
+        fnAssertAdmissionGateOpen("A containerization")
         try:
             await asyncio.to_thread(conversionLifecycle.fnRetryConversion, sHostName)
         except conversionLifecycle.ConversionRefusedError as error:
@@ -118,6 +122,7 @@ def _fnRegisterCancel(app, dictCtx):
         try:
             await asyncio.to_thread(conversionLifecycle.fnCancelConversion, sHostName)
         except Exception as error:  # noqa: BLE001 -- the sentence is the answer
+            fnReRaiseControlPlaneRefusal(error)
             raise HTTPException(409, detail={"sMessage": (
                 f"The containerization could not be cancelled cleanly: {error}"
             )}) from None

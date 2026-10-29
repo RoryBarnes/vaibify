@@ -41,7 +41,9 @@ from ...config.connectionAvailability import fbDockerReachable
 from ..backgroundTasks import fnKeepTaskReferenced
 from ...docker import daemonCapacity
 from ...docker import daemonDescription
-from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from ...config.mutationAdmission import (
+    fnAssertAdmissionGateOpen, fnReRaiseControlPlaneRefusal,
+)
 from ...reproducibility import imageAcquisition
 from ...reproducibility import reproductionReport
 from ...reproducibility.environmentSnapshot import (
@@ -184,6 +186,9 @@ def _fnRegisterRun(app, dictCtx):
     ):
         fnRejectAgentTokenLane(requestHttp)
         _fnRequireJob(sJobId)
+        # Before the job is consumed, so a refused Quit leaves the
+        # staged snapshot runnable.
+        fnAssertAdmissionGateOpen("A reproduction")
         if not fbDockerReachable(dictCtx.get("docker")):
             raise HTTPException(
                 409,
@@ -381,6 +386,7 @@ def _fnRegisterRetry(app, dictCtx):
         """
         fnRejectAgentTokenLane(requestHttp)
         _fnRequireJob(sJobId)
+        fnAssertAdmissionGateOpen("A reproduction")
         if not fbDockerReachable(dictCtx.get("docker")):
             raise HTTPException(
                 409,

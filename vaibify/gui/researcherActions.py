@@ -314,6 +314,9 @@ DICT_ROUTE_TO_HOST_COMMAND = {
     # The dashboard's "Set up Docker" wizard runs one step of the plan
     # `vaibify setup-docker` runs in a terminal.
     ("POST", "/api/runtime/setup/run"): "setup-docker",
+    # The hubs' Quit button; `vaibify sessions stop` stops a hub from a
+    # terminal.
+    ("POST", "/api/session/quit"): "sessions",
 }
 
 SET_GUI_ONLY_ROUTES = {

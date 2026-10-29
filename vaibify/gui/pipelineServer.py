@@ -1191,7 +1191,7 @@ async def fnPipelineMessageLoop(
         )
         if taskPipeline is None:
             await fnCallback(
-                _fdictBusyRefusalEvent(sAction, dictRequest),
+                _fdictLaunchRefusalEvent(sAction, dictRequest),
             )
             continue
         if dictPipelineTasks is not None:
@@ -1756,6 +1756,28 @@ def _fdictRemoteOverwriteEvent(
             "re-issue with bConfirmRemoteOverwrite=true "
             "(CLI: --confirm-remote-overwrite)."
         ),
+    }
+
+
+def _fdictLaunchRefusalEvent(sAction, dictRequest):
+    """Return the refusal for a run the carrier would not launch.
+
+    The carrier refuses for one of two reasons a researcher acts on
+    differently: the container is busy, or a Quit has closed the
+    admission gate. Naming a Quit as "already running" would send them
+    to the Kill button for a hub that is going away.
+    """
+    from vaibify.config.mutationAdmission import (
+        S_SHUTTING_DOWN_REFUSAL, fbAdmissionGateClosed,
+    )
+    if not fbAdmissionGateClosed():
+        return _fdictBusyRefusalEvent(sAction, dictRequest)
+    return {
+        "sType": "runRefused",
+        "sAction": sAction,
+        "listStepIndices": dictRequest.get("listStepIndices", []),
+        "sHolderProject": "",
+        "sMessage": f"Refused '{sAction}': {S_SHUTTING_DOWN_REFUSAL}.",
     }
 
 

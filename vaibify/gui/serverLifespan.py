@@ -23,6 +23,9 @@ __all__ = [
     "fnRegisterLifespanTask",
     "fnIncrementWebSocketCount",
     "fnDecrementWebSocketCount",
+    "flistHubBusyReasons",
+    "fiCountInFlightCarrierWork",
+    "fnSignalHubToShutDown",
 ]
 
 
@@ -483,44 +486,73 @@ def _fbHubShouldSelfExit(app, dictCtx, fTimeout):
         return False
     if getattr(app.state, "iActiveWebSockets", 0) > 0:
         return False
-    # Live council work vetoes self-exit exactly like a live socket or a
-    # busy held container (design section 21). The council is invisible
-    # to the other two signals by construction — it polls over HTTP
-    # rather than holding a WebSocket, and its runners are deliberately
-    # kept out of ``dictContainerOwners`` — so without this predicate a
-    # closed tab would let the clock go stale and SIGTERM a hub
-    # mid-turn. Fail-closed: absence of the registry is "no council work".
-    from . import agentCouncilRegistry
-    if agentCouncilRegistry.fbHubHasLiveCouncilWork(app):
-        return False
-    # A live reproduction vetoes self-exit for exactly the council's
-    # reason: it holds no WebSocket and no container in
-    # dictContainerOwners -- its shadow is created inside the worker
-    # and destroyed at the end -- so both other signals report an idle
-    # hub while somebody's reproduction is halfway through a workflow.
-    # A run that outlives its tab is the normal case here, which is
-    # what makes the blind spot reachable rather than theoretical.
-    from . import reproductionProgress
-    if reproductionProgress.fbHubHoldsLiveReproduction():
-        return False
-    # A LIVE containerization vetoes on the same terms (no socket, no
-    # owned container, a download that must outlive the browser); one
-    # waiting for a decision does not, since an idle exit only leaves
-    # it interrupted and resumable.
-    from . import conversionLifecycle
-    if conversionLifecycle.fbHubHoldsLiveConversion():
-        return False
-    # A rename is a hub-owned transaction on the same terms: no socket,
-    # no owned container, and a copy that must outlive the tab.
-    from . import environmentRename
-    if environmentRename.fbHubHoldsLiveRename():
-        return False
-    if _fbAnyHeldContainerBusy(app, dictCtx):
+    if flistHubBusyReasons(app, dictCtx):
         return False
     fLast = getattr(
         app.state, "fLastActivityMonotonic", time.monotonic(),
     )
     return (time.monotonic() - fLast) >= fTimeout
+
+
+def flistHubBusyReasons(app, dictCtx):
+    """Return, in a researcher's words, every piece of work this hub holds.
+
+    The one predicate both the idle watchdog and Quit ask: an empty list
+    means this hub may stop without cutting anything off. A live
+    WebSocket is NOT a reason here -- it is a watchdog-only veto, since
+    a researcher who clicks Quit is the open tab.
+
+    Each kind below is invisible to the others by construction. The
+    council polls over HTTP rather than holding a socket, and keeps its
+    runners out of ``dictContainerOwners`` (design section 21). A
+    reproduction holds no container either -- its shadow is created and
+    destroyed inside the worker -- and a run that outlives its tab is
+    the normal case. A LIVE containerization holds a download that must
+    outlive the browser; one waiting for a decision is not counted, since
+    stopping only leaves it interrupted and resumable. A rename is a
+    hub-owned transaction on the same terms, a copy that must outlive the
+    tab. And every
+    in-flight carrier mutation and live durable task is named by kind
+    and container, so a Quit that waits for one can say which.
+    """
+    from . import agentCouncilRegistry
+    from . import commitCarrier
+    from . import conversionLifecycle
+    from . import environmentRename
+    from . import reproductionProgress
+    listReasons = []
+    if agentCouncilRegistry.fbHubHasLiveCouncilWork(app):
+        listReasons.append("an Agent Council is working")
+    if reproductionProgress.fbHubHoldsLiveReproduction():
+        listReasons.append("a reproduction of a published project is running")
+    if conversionLifecycle.fbHubHoldsLiveConversion():
+        listReasons.append("a project is being containerized")
+    if environmentRename.fbHubHoldsLiveRename():
+        listReasons.append("an environment is being renamed")
+    if _fbAnyHeldContainerBusy(app, dictCtx):
+        listReasons.append("a pipeline is running in an open project")
+    for dictLive in commitCarrier.flistDescribeEveryLiveMutation(app.state):
+        listReasons.append(
+            f"{dictLive['sDescription']} in '{dictLive['sContainerName']}'"
+        )
+    return listReasons
+
+
+def fiCountInFlightCarrierWork(app):
+    """Return how many carrier mutations and durable tasks are live now."""
+    from . import commitCarrier
+    return len(commitCarrier.flistDescribeEveryLiveMutation(app.state))
+
+
+def fnSignalHubToShutDown():
+    """SIGTERM this process, so uvicorn runs every shutdown hook.
+
+    The idle watchdog and Quit both end the hub this way rather than
+    tearing it down directly: the graceful-shutdown hooks are what
+    release the container locks and the session slot, and terminate the
+    hub's spawned children.
+    """
+    os.kill(os.getpid(), signal.SIGTERM)
 
 
 def _fnPruneSpawnedChildrenForApp(app):
@@ -790,7 +822,7 @@ async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):
                     "browser, running work, or council; exiting",
                     fLiveTimeout,
                 )
-                os.kill(os.getpid(), signal.SIGTERM)
+                fnSignalHubToShutDown()
                 return
         except asyncio.CancelledError:
             return

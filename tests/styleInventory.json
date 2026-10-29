@@ -217,7 +217,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/sessionRoutes.py::_fbIsPortAcceptingConnections.sock", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/sessionRoutes.py::_fnPruneDeadChildren.child", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/sessionRoutes.py::_fnRegisterSpawn.fdictSpawnSession.child", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/sessionRoutes.py::_fnRegisterSpawnedChildShutdown.fnTerminateSpawnedChildren.child", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/settingsRoutes.py::_fnCommitSettingsUpdate.value", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/settingsRoutes.py::_fnRegisterLogRoutes.flistLogs.e", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fbRestoreContainerSnapshot::syncDispatcher", "sReason": ""},
@@ -340,7 +339,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 317,
+    "legacy-variable": 316,
     "legacy-yield": 0
   }
 }

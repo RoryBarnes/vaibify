@@ -77,6 +77,7 @@ __all__ = [
     "fsetNamesWithLiveMutationWork",
     "fbContainerHasLiveMutationWork",
     "fsDescribeLiveMutationWork",
+    "flistDescribeEveryLiveMutation",
 ]
 
 import asyncio
@@ -99,7 +100,9 @@ from vaibify.config.mutationAdmission import (
     S_ADMISSION_MODE_REQUEST,
     S_ADMISSION_MODE_SYNCHRONOUS,
     S_ADMISSION_MODE_DISPOSABLE,
+    S_SHUTTING_DOWN_REFUSAL,
     _fadmissionMintForCommitCarrier,
+    fbAdmissionGateClosedForNewWork,
     fnAssertOperationAdmittedByIdentity,
     fnDeactivateAdmission,
     fnResetEnforcedLane,
@@ -169,12 +172,24 @@ def _fdictDurableTaskRegistry(appState):
 
 
 def _fnAssertAdmissionsOpen(appState):
-    """Refuse a new guarded mutation once shutdown has begun."""
+    """Refuse a new guarded mutation once shutdown or a Quit has begun.
+
+    The Quit gate is asked HERE, at the entry of every carrier mode and
+    before anything is journaled, so a refusal leaves no record to
+    quarantine. Being the carrier's own check, it covers every lane that
+    reaches a carrier -- an HTTP route, a command over a pipeline socket
+    that was already open, a durable task's launch -- where a check on
+    the HTTP layer would see only the first. Work already granted
+    (anything started from inside a live admission) is let through, so
+    a running pipeline can finish while the Quit settles.
+    """
     if getattr(appState, "bMutationAdmissionsClosed", False):
         raise CommitRefusedError(
             "The hub is shutting down and admits no new guarded "
             "mutations; retry against the next hub."
         )
+    if fbAdmissionGateClosedForNewWork():
+        raise CommitRefusedError(S_SHUTTING_DOWN_REFUSAL + ".")
 
 
 # ---------------------------------------------------------------------
@@ -1198,6 +1213,29 @@ def fsetNamesWithLiveMutationWork(appState):
         if recordTask.taskAsync is None or not recordTask.taskAsync.done():
             setNames.add(sName)
     return setNames
+
+
+def flistDescribeEveryLiveMutation(appState):
+    """Return one ``{sContainerName, sDescription}`` per live carrier item.
+
+    Every in-flight lock-held supervisor and every live durable task,
+    named in a refusal's words, so a Quit that must wait or refuse can
+    say what it is waiting for and where.
+    """
+    listLive = [
+        {"sContainerName": supervisor.sName,
+         "sDescription": _fsDescribeSupervisorWork(supervisor)}
+        for supervisor in _fdictSupervisorRegistry(appState).values()
+        if supervisor.taskSupervisor is None
+        or not supervisor.taskSupervisor.done()
+    ]
+    for sName, recordTask in _fdictDurableTaskRegistry(appState).items():
+        if recordTask.taskAsync is None or not recordTask.taskAsync.done():
+            listLive.append({
+                "sContainerName": sName,
+                "sDescription": recordTask.sOperation,
+            })
+    return listLive
 
 
 def fsDescribeLiveMutationWork(appState, sName):
