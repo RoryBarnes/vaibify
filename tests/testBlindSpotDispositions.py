@@ -167,12 +167,21 @@ _S_COUNCIL_EGRESS_RATIONALE = (
     "council-labelled container on the daemon. It is one more label "
     "value composed from a server-owned name — no new SDK reach, no "
     "new caller text, and nothing about the proxy's posture or its "
-    "prove-absence teardown changes."
+    "prove-absence teardown changes. Re-reviewed 2026-10-29: the proxy "
+    "script, its allowlist validation and its argv composition moved "
+    "to vaibify/docker/egressProxy.py, shared with the project "
+    "containers' allowlist mode, and the council module re-exports them "
+    "unchanged; the launch gained _fsReadInternalNetworkSubnet, one "
+    "inspect_network read of the campaign's own internal network, whose "
+    "IPv4 subnet becomes the proxy's --bind-cidr so the proxy binds only "
+    "its internal address and never the default bridge. A daemon that "
+    "cannot report the subnet refuses the launch rather than widening "
+    "the bind. No new caller text reaches the SDK."
 )
 _LIST_COUNCIL_EGRESS_SYMBOLS = [
     "gui/agentCouncilEgress.py::S_NETWORK_NAME_PREFIX",
     "gui/agentCouncilEgress.py::S_PROXY_NAME_PREFIX",
-    "gui/agentCouncilEgress.py::S_PROXY_IMAGE",
+    "docker/egressProxy.py::S_PROXY_IMAGE",
     "gui/agentCouncilEgress.py::fnValidateCampaignIdOrRaise",
     "gui/agentCouncilRunner.py::S_COUNCIL_RESOURCE_LABEL",
 ]
@@ -193,6 +202,8 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
     "gui/agentCouncilDockerGateway.py|_fnKillContainerQuietly|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_RUNNER_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|_fsReadProxyInternalAddress|"
+    "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
+    "gui/agentCouncilDockerGateway.py|_fsReadInternalNetworkSubnet|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
     "gui/agentCouncilDockerGateway.py|_fsRemoveInternalNetwork|"
     "untraceable-docker-sdk-root|0": _DICT_COUNCIL_EGRESS_DISPOSITION,
@@ -355,7 +366,7 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     "gui/agentCouncilEgress.py::S_NETWORK_NAME_PREFIX":
         "557a6a74745678bf",
     "gui/agentCouncilEgress.py::S_PROXY_NAME_PREFIX": "b19a94061ae2d43f",
-    "gui/agentCouncilEgress.py::S_PROXY_IMAGE": "3af607254cf1d87f",
+    "docker/egressProxy.py::S_PROXY_IMAGE": "3af607254cf1d87f",
     "gui/agentCouncilEgress.py::fnValidateCampaignIdOrRaise":
         "87db3f8231c827f6",
     "gui/agentCouncilRunner.py::S_COUNCIL_LABEL": "a5575a22df9e26bf",

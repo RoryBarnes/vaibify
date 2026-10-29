@@ -804,7 +804,13 @@ DICT_UNRESOLVED_BUDGET = {
     # image; a commit rolled back after a crash drops the tag it had
     # just written. Without it the two names would stay forever, and a
     # rollback would leave an artifact it claims to have removed.
-    "untraceable-docker-sdk-root": 56,
+    # 56 -> 57 (2026-10-29) since _fsReadInternalNetworkSubnet: the
+    # council proxy launch reads its internal network's IPv4 subnet,
+    # through the same root as _fsRemoveInternalNetwork beside it, so the
+    # proxy binds only its internal address and never the default bridge;
+    # a daemon that cannot report the subnet refuses the launch. The
+    # site carries its ruling in tests/testBlindSpotDispositions.py.
+    "untraceable-docker-sdk-root": 57,
 }
 
 

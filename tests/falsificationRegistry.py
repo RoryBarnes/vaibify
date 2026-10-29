@@ -16387,7 +16387,7 @@ LIST_FALSIFICATIONS = [
             'tests/testCouncilRunnerAccess.py::'
             'testTheProxyRelayIsBoundedPerConnection'
         ),
-        source='vaibify/gui/agentCouncilEgress.py',
+        source='vaibify/docker/egressProxy.py',
         old='            baChunk = await readerSource.read(I_RELAY_CHUNK_BYTES)',
         new='            baChunk = await readerSource.read()',
     ),
@@ -38220,5 +38220,25 @@ LIST_FALSIFICATIONS = [
             '            x11Authorizations.fnReleaseAuthorizationQuietly(sContainerName)\n'
         ),
         new='',
+    ),
+    # --- 2026-10-29: the egress proxy is shared and hardened (security
+    # hardening plan, commit 9). ---
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testAnAllowedNameResolvingToANonPublicAddressIsRefused',
+        source='vaibify/docker/egressProxy.py',
+        old='        if fbIsNonPublicAddress(sAnswer):\n            raise NonPublicResolution(sAnswer)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testTheProxyBindsOnlyItsInternalAddress',
+        source='vaibify/docker/egressProxy.py',
+        old='        if ipaddress.ip_address(sCandidate) in networkBind:\n            return sCandidate\n',
+        new='        return "0.0.0.0"\n',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testTheProxyIsBoundToTheInternalSubnetTheDaemonReports',
+        source='vaibify/gui/agentCouncilDockerGateway.py',
+        old='    sBindCidr = _fsReadInternalNetworkSubnet(dockerCouncil, sNetworkName)\n',
+        new='    sBindCidr = ""\n',
     ),
 ]

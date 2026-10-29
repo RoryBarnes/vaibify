@@ -195,7 +195,8 @@ class _FakeLowLevelApi:
             raise RuntimeError("daemon did not answer the network inspect")
         if sNetworkName not in self._daemonFake.dictNetworksByName:
             raise _FakeNotFoundError(sNetworkName)
-        return {"Name": sNetworkName}
+        return {"Name": sNetworkName,
+                "IPAM": {"Config": [{"Subnet": self._daemonFake.sNetworkSubnet}]}}
 
 
 class _FakeCouncilDaemon:
@@ -241,6 +242,7 @@ class _FakeCouncilDaemon:
         self.iKillsBeforeStopping = 1
         self.iExtractExitCode = 0
         self.sProxyAddress = "10.9.8.7"
+        self.sNetworkSubnet = "10.9.8.0/24"
         self.errorOnExecInspect = None
         self.eventRelease = threading.Event()
         self.fnHandleTurn = lambda dictExec: (b"", 0)
@@ -941,6 +943,10 @@ def dictProxyTiming(monkeypatch):
 
 
 def fsLaunchProxy(dictGatewayState, saHostnames=("API.Example.org",)):
+    """Launch the proxy on its network, created first as the real flow does."""
+    sNetworkName = agentCouncilEgress.fsComposeNetworkName(S_CAMPAIGN_ID)
+    if sNetworkName not in dictGatewayState["dockerCouncil"].dictNetworksByName:
+        gateway.fsCreateCampaignInternalNetwork(dictGatewayState, S_CAMPAIGN_ID)
     return gateway.fsLaunchAllowlistProxy(
         dictGatewayState, S_CAMPAIGN_ID, list(saHostnames))
 
@@ -968,10 +974,36 @@ def testProxyLaunchesHardenedDualHomedAndReturnsItsInternalAddress(
         agentCouncilRunner.S_COUNCIL_RESOURCE_LABEL] == S_RESOURCE_NAME
     assert "api.example.org" in json.dumps(dictKeywords["command"])
     assert "API.Example.org" not in json.dumps(dictKeywords["command"])
+    iBindIndex = dictKeywords["command"].index("--bind-cidr")
+    assert dictKeywords["command"][iBindIndex + 1] == daemonFake.sNetworkSubnet
     sProxyId = daemonFake.listStartedIds[0]
     assert daemonFake.listPutArchives[0][:2] == (sProxyId, "/")
     assert daemonFake.listConnected == [(sProxyId, "bridge")]
     assert daemonFake.listPulled == []
+
+
+@pytest.mark.falsification
+def testTheProxyIsBoundToTheInternalSubnetTheDaemonReports(
+        daemonFake, dictGatewayState, dictProxyTiming):
+    """Bound to every interface, the proxy would serve the default bridge too.
+
+    Kills: launching the council proxy without its internal subnet.
+    """
+    daemonFake.listProxyLogs = [
+        agentCouncilEgress.S_PROXY_READY_LINE.encode("utf-8")]
+    fsLaunchProxy(dictGatewayState)
+    _sImage, dictKeywords = daemonFake.listCreateCalls[0]
+    iBindIndex = dictKeywords["command"].index("--bind-cidr")
+    assert dictKeywords["command"][iBindIndex + 1] == daemonFake.sNetworkSubnet
+
+
+def testAnUnreadableSubnetRefusesTheProxyLaunch(
+        daemonFake, dictGatewayState, dictProxyTiming):
+    daemonFake.setNetworkInspectFaults.add(
+        agentCouncilEgress.fsComposeNetworkName(S_CAMPAIGN_ID))
+    with pytest.raises(agentCouncilEgress.EgressSetupError, match="subnet"):
+        fsLaunchProxy(dictGatewayState)
+    assert daemonFake.listStartedIds == []
 
 
 def testProxyImageIsPulledOnlyOnAProvenMiss(

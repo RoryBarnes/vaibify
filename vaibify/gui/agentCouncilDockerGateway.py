@@ -763,6 +763,32 @@ def _fnAwaitProxyListening(dockerCouncil, sContainerId):
     )
 
 
+def _fsReadInternalNetworkSubnet(dockerCouncil, sNetworkName):
+    """Return the internal network's IPv4 subnet, for the proxy's bind address.
+
+    The proxy binds only its address on the internal network; bound to
+    every interface it would also serve the default bridge, where any
+    container on the daemon could use it. A daemon that cannot say what
+    the subnet is refuses the launch rather than widening the bind.
+    """
+    try:
+        dictNetwork = dockerCouncil.api.inspect_network(sNetworkName)
+        listConfig = (dictNetwork.get("IPAM") or {}).get("Config") or []
+        sSubnet = next(
+            (dictEntry["Subnet"] for dictEntry in listConfig
+             if ":" not in dictEntry.get("Subnet", "")), "")
+    except Exception as error:
+        raise agentCouncilEgress.EgressSetupError(
+            f"could not read the subnet of {sNetworkName}: "
+            f"{type(error).__name__}: {error}"
+        )
+    if not sSubnet:
+        raise agentCouncilEgress.EgressSetupError(
+            f"the internal network {sNetworkName} reports no IPv4 subnet, "
+            "so the egress proxy cannot be bound to it alone")
+    return sSubnet
+
+
 def _fsReadProxyInternalAddress(dockerCouncil, sContainerId, sNetworkName):
     """Return the proxy's numeric address on the internal network."""
     try:
@@ -851,11 +877,13 @@ def fsLaunchAllowlistProxy(dictGateway, sCampaignId, saAllowedHostnames,
     sProxyName = agentCouncilEgress.fsComposeProxyContainerName(sCampaignId)
     dockerCouncil = dictGateway["dockerCouncil"]
 
+    sBindCidr = _fsReadInternalNetworkSubnet(dockerCouncil, sNetworkName)
+
     def fcontainerCreateProxy():
         return dockerCouncil.containers.create(
             agentCouncilEgress.S_PROXY_IMAGE,
             command=agentCouncilEgress.flistComposeProxyCommand(
-                saHostnames, iaPorts, dictAddressMap),
+                saHostnames, iaPorts, dictAddressMap, sBindCidr),
             name=sProxyName,
             network=sNetworkName,
             user=agentCouncilRunner.S_COUNCIL_CONTAINER_USER,

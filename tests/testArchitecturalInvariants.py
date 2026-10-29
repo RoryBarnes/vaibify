@@ -4943,7 +4943,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reporting success (measured live).
     # +2 (2026-10-27): runner creation passes on whether the writable
     # mounts are executable; the runner module composes the options.
-    "agentCouncilDockerGateway.py": 1029,
+    # 1029 -> 1057 (2026-10-29): the proxy launch reads the internal
+    # network's subnet so the proxy binds only its internal address.
+    "agentCouncilDockerGateway.py": 1057,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
