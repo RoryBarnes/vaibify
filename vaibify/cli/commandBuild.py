@@ -325,6 +325,11 @@ def _fbResolveNoCache(config, bNoCache):
 _S_BUILD_HASH_DIRECTORY = os.path.expanduser("~/.vaibify/cache")
 
 
+def fsBuildArgHashPathFor(sProjectName):
+    """Return where a project's build-argument hash lives, present or not."""
+    return _fsBuildArgHashPath(sProjectName)
+
+
 def _fsBuildArgHashPath(sProjectName):
     """Return the cached build-arg hash file for sProjectName."""
     return os.path.join(

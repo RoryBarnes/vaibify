@@ -244,6 +244,13 @@ LIST_RESEARCHER_ACTIONS = [
         "tag the project owns. Args: {sConfirmation} -- the confirmation "
         "phrase the route asks for, typed out."),
     _fdictHubEntry(
+        "rename-environment", "container", "POST",
+        "/api/registry/{sName}/rename",
+        "Rename a stopped environment: its container, volumes (copied, "
+        "then verified), image tags, vaibify.yml name, host files and "
+        "registry entry all move. Args: {sNewName, bDryRun} -- bDryRun "
+        "true (the default) only lists what would move."),
+    _fdictHubEntry(
         "scan-host-dependencies", "containerize", "POST",
         "/api/registry/{sName}/scan-dependencies",
         "Suggest packages from a host project's own imports before "

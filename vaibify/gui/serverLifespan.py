@@ -510,6 +510,11 @@ def _fbHubShouldSelfExit(app, dictCtx, fTimeout):
     from . import conversionLifecycle
     if conversionLifecycle.fbHubHoldsLiveConversion():
         return False
+    # A rename is a hub-owned transaction on the same terms: no socket,
+    # no owned container, and a copy that must outlive the tab.
+    from . import environmentRename
+    if environmentRename.fbHubHoldsLiveRename():
+        return False
     if _fbAnyHeldContainerBusy(app, dictCtx):
         return False
     fLast = getattr(

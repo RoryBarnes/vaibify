@@ -237,6 +237,10 @@ DICT_CONTROL_PLANE_SCOPES = {
     # session cannot delete an environment another is working in.
     ("POST", "/api/registry/{sName}/delete-environment"):
         S_SCOPE_CONTAINER_LIFECYCLE,
+    # Renaming re-keys everything a name owns, so on the same terms as
+    # deletion: lease-enforced while the environment is owned, so one
+    # session cannot rename an environment another is working in.
+    ("POST", "/api/registry/{sName}/rename"): S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/containers/{sName}/settings"):
         S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/host-directories/create"): S_SCOPE_BROWSER_HUB,

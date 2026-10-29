@@ -123,6 +123,18 @@ def _fnReleaseOnceRunning(sProjectName, dictHeld):
     fnReleaseHeldLifecycleLock(dictHeld)
 
 
+def _fnRefuseWhileRenamePendingOrExit(sProjectName):
+    """Exit 1 while a rename that names this environment has not finished."""
+    from vaibify.gui.environmentRename import (
+        RenameRefusedError, fnRefuseWhileRenamePending,
+    )
+    try:
+        fnRefuseWhileRenamePending(sProjectName)
+    except RenameRefusedError as error:
+        click.echo(f"Error: {error}", err=True)
+        sys.exit(1)
+
+
 def _fnLaunchUnderLifecycleLock(config, sDockerDir, bDetach, sCommand):
     """Clear a stale container and start a new one, holding the name.
 
@@ -132,6 +144,7 @@ def _fnLaunchUnderLifecycleLock(config, sDockerDir, bDetach, sCommand):
     """
     dictHeld = fdictTakeLifecycleLockOrExit(config.sProjectName, "started")
     try:
+        _fnRefuseWhileRenamePendingOrExit(config.sProjectName)
         fnClearStoppedContainerBeforeLaunch(config)
         click.echo(f"Starting container {config.sProjectName} ...")
         if bDetach:

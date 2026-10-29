@@ -236,6 +236,11 @@ html, body {
     color: var(--color-red, #e74c3c);
 }
 
+.container-menu-item.disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
 /* The one menu item nothing can undo. Red alone no longer separates
    it: it sits directly beneath "Remove from list", which is
    reversible, and a pair of identically-painted controls with

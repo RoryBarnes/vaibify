@@ -346,7 +346,10 @@ SET_LIFECYCLE_PRIMITIVES = {
     "fnDestroyVolume", "fnRemoveVolume", "fbRemoveImage", "fnTagImage",
     "fnRemoveImageTag", "fnBuildImage", "fnAddProject",
     "fnPromoteHostProject", "fnConvertProjectToContainer",
-    "fsReturnProjectToHost", "fnRemoveProject",
+    "fsReturnProjectToHost", "fnRemoveProject", "fnCreateLabeledVolume",
+    "fnCommitEnvironmentRename", "fnClearRenameCommit",
+    # Deletion's proven container removal, which the rename reuses.
+    "_fbRemoveContainer",
 }
 SET_LOCK_TAKERS = {
     "ffileTakeLifecycleLock", "fcontextHoldLifecycleLock",
@@ -364,12 +367,24 @@ SET_HELPERS_UNDER_A_CALLER_LOCK = {
     ("cli/commandStart.py", "fnClearStoppedContainerBeforeLaunch"),
     ("gui/conversionLifecycle.py", "_fnWriteInOrder"),
     ("gui/conversionLifecycle.py", "_fnRecoverJournalLocked"),
-    ("gui/environmentDeletion.py", "_fbRemoveContainer"),
     ("gui/environmentDeletion.py", "_flistRemoveVolumes"),
     ("gui/environmentDeletion.py", "_flistRemoveImages"),
     ("gui/environmentDeletion.py", "_fbRemoveRegistryEntry"),
     ("gui/registryRoutes.py", "_fnRegisterNewProject"),
     ("gui/startReservation.py", "_fnClearStoppedIncarnation"),
+    # The rename's chain: fnRunRenameTransaction and _fnRecoverOneJournal
+    # take both names' locks; everything below them runs inside.
+    ("gui/environmentRename.py", "_fnCopyVolumes"),
+    ("gui/environmentRename.py", "_fnTagNewImages"),
+    ("gui/environmentRename.py", "_fnRunUpToTheCommit"),
+    ("gui/environmentRename.py", "_fnFinish"),
+    ("gui/environmentRename.py", "_fnRemoveOldDockerObjects"),
+    ("gui/environmentRename.py", "_fnRemoveContainerIfStillTheJournaledOne"),
+    ("gui/environmentRename.py", "_fnRemoveTagIfStillOurs"),
+    ("gui/environmentRename.py", "_fnRemoveThisTransactionsDockerObjects"),
+    ("gui/environmentRename.py", "_fnRollBack"),
+    ("gui/environmentRename.py", "_fnRollForward"),
+    ("gui/environmentRename.py", "_fnSettleUnderLocks"),
 }
 
 DICT_ALLOWED_WITHOUT_THE_LOCK = {
@@ -385,6 +400,10 @@ DICT_ALLOWED_WITHOUT_THE_LOCK = {
     ("gui/routes/remnantRoutes.py", "_fsRemoveStoppedContainer"):
         "removes an orphaned container by its id, never a registered "
         "environment's container",
+    ("gui/environmentRename.py", "_fnClearStampsWithoutAJournal"):
+        "clears a rename's stamp only once its journal is gone, which is "
+        "the step the rename itself takes last; doing it twice is "
+        "harmless",
     ("gui/conversionLifecycle.py", "_fnDropStagingTagQuietly"):
         "removes only the conversion's own <name>:vaibify-staging tag, "
         "which nothing else reads or writes, under the conversion's "
@@ -486,7 +505,15 @@ def _fdictParsePackage():
     }
 
 
-def _fbHelperCallersAllTakeTheLock(sFile, sHelper, dictTrees, setTakers):
+def _fbHelperCallersAllTakeTheLock(
+    sFile, sHelper, dictTrees, setTakers, setVisiting=frozenset(),
+):
+    """True when every same-file caller holds the lock, recursively.
+
+    A caller that is itself a listed helper is judged by ITS callers in
+    turn, so a chain is accepted only when it ends, on every path, in a
+    function that takes the lock.
+    """
     listCallers = [
         nodeFunction for nodeFunction in _flistFunctionsOf(dictTrees[sFile])
         if nodeFunction.name != sHelper
@@ -494,7 +521,11 @@ def _fbHelperCallersAllTakeTheLock(sFile, sHelper, dictTrees, setTakers):
     ]
     return bool(listCallers) and all(
         _fsetNamesReferencedIn(nodeCaller) & setTakers
-        or (sFile, nodeCaller.name) in SET_HELPERS_UNDER_A_CALLER_LOCK
+        or ((sFile, nodeCaller.name) in SET_HELPERS_UNDER_A_CALLER_LOCK
+            and nodeCaller.name not in setVisiting
+            and _fbHelperCallersAllTakeTheLock(
+                sFile, nodeCaller.name, dictTrees, setTakers,
+                setVisiting | {sHelper}))
         for nodeCaller in listCallers
     )
 
@@ -528,8 +559,11 @@ def testEveryAllowListEntryStillNamesARealSite():
         (sFile, nodeFunction.name)
         for sFile, nodeFunction, _ in _flistPrimitiveReferences(dictTrees)
     }
-    listStale = sorted(
-        (set(DICT_ALLOWED_WITHOUT_THE_LOCK)
-         | SET_HELPERS_UNDER_A_CALLER_LOCK) - setSites
-    )
+    setReferenced = {
+        (sFile, sName) for sFile, treeModule in dictTrees.items()
+        for nodeFunction in _flistFunctionsOf(treeModule)
+        for sName in _fsetNamesReferencedIn(nodeFunction)
+    }
+    listStale = sorted(set(DICT_ALLOWED_WITHOUT_THE_LOCK) - setSites) + sorted(
+        SET_HELPERS_UNDER_A_CALLER_LOCK - setReferenced)
     assert listStale == []

@@ -156,6 +156,8 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
     connectionCheckRoutes.fnRegisterAll(app, dictCtx)
     runtimeSetupRoutes.fnRegisterAll(app, dictCtx)
     conversionLifecycle.fnRegisterHubStartup(app, dictCtx)
+    from . import environmentRename
+    environmentRename.fnRegisterHubStartup(app, dictCtx)
     fnRegisterHostControlChannel(app, dictCtx)
     _fnRegisterHubShutdownStopKeepAlive(app)
     _fnRegisterHubLockLifecycle(app)

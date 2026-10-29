@@ -428,6 +428,29 @@ def fnReconcileCommand(container, bAssumeYes, sBreakGlassSha256,
     ))
 
 
+def _fnSettleUnfinishedRename(sContainerName):
+    """Finish or undo a rename a dead hub left that names this container.
+
+    The same recovery the hub runs at startup, so a researcher need not
+    start a hub to settle it. A rename it cannot settle without
+    guessing is left as found, and the hub log says why.
+    """
+    from vaibify.config import pendingRenames
+    from vaibify.gui import environmentRename
+    if not any(sContainerName in (d["sOldName"], d["sNewName"])
+               for d in pendingRenames.flistReadRenameJournals()):
+        return
+    click.echo(f"Settling an unfinished rename of '{sContainerName}' ...")
+    environmentRename.fnRecoverPendingRenamesAtStartup()
+    try:
+        environmentRename.fnRefuseWhileRenamePending(sContainerName)
+        click.echo("The rename is settled.")
+    except environmentRename.RenameRefusedError:
+        click.echo(
+            "The rename could not be settled without guessing and was "
+            "left as found; ~/.vaibify/vaibify.log says why.", err=True)
+
+
 def fiRunReconcileCommand(
     sContainerName, bAssumeYes, sBreakGlassSha256="",
     sForceAbandonOperationId="", sAbandonHostJournalSha256="",
@@ -439,6 +462,7 @@ def fiRunReconcileCommand(
             f"Error: invalid container name {sContainerName!r}.", err=True,
         )
         return 2
+    _fnSettleUnfinishedRename(sContainerName)
     dictDestructive = {
         "sBreakGlassSha256": sBreakGlassSha256,
         "sForceAbandonOperationId": sForceAbandonOperationId,

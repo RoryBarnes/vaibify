@@ -240,6 +240,10 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     fnRedirectDirectory(
         containerLock, "_S_LIFECYCLE_LOCK_DIRECTORY", "lifecycleLocks",
     )
+    from vaibify.config import pendingRenames
+    fnRedirectDirectory(
+        pendingRenames, "_S_PENDING_RENAMES_DIRECTORY", "pendingRenames",
+    )
     fnRedirectDirectory(
         stateWriteLock, "S_STATE_LOCK_DIRECTORY", "stateLocks",
     )

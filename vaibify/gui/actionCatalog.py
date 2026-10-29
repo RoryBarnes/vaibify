@@ -1345,6 +1345,10 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # the researcher's behalf. Excluded here AND the handler rejects the
     # agent token lane.
     ("POST", "/api/registry/{sName}/delete-environment"),
+    # Renaming an environment re-keys the lock, lease and journal and
+    # copies its volumes as root; researcher only. Excluded here AND the
+    # handler rejects the agent token lane.
+    ("POST", "/api/registry/{sName}/rename"),
     # Project-context import reads the HOST filesystem; an
     # agent-invokable host read would let a compromised in-container
     # agent exfiltrate home-directory files into a public repository.

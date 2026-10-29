@@ -37481,4 +37481,131 @@ LIST_FALSIFICATIONS = [
         old='    saRunArgs.extend(["-e", f"VC_PROJECT_NAME={config.sProjectName}"])\n',
         new='',
     ),
+    # --- 2026-10-28: the environment rename's orderings and identities ---
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testACrashAfterTheRegistrySwitchRollsForward'
+        ),
+        # Recovery decides committed-or-not from the journal's stage.
+        source='vaibify/gui/environmentRename.py',
+        old=(
+            '    if _fbCommitted(dictJournal):\n'
+            '        _fnRollForward(dictJournal, dockerClient)\n'
+        ),
+        new=(
+            '    if dictJournal.get("sStage") == S_STAGE_FINISHING:\n'
+            '        _fnRollForward(dictJournal, dockerClient)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testACrashWhileHostFilesMoveRollsBackToTheOldName'
+        ),
+        # The registry switch moves ahead of the host-file moves.
+        source='vaibify/gui/environmentRename.py',
+        old=(
+            '        _fnMoveHostFiles(\n'
+            '            dictJournal, dictJournal["sOldName"], dictJournal["sNewName"])\n'
+            '        registryManager.fnCommitEnvironmentRename(\n'
+            '            dictJournal["sOldName"], dictJournal["sNewName"],\n'
+            '            dictJournal["sTransactionId"])\n'
+        ),
+        new=(
+            '        registryManager.fnCommitEnvironmentRename(\n'
+            '            dictJournal["sOldName"], dictJournal["sNewName"],\n'
+            '            dictJournal["sTransactionId"])\n'
+            '        _fnMoveHostFiles(\n'
+            '            dictJournal, dictJournal["sOldName"], dictJournal["sNewName"])\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testARollbackRestoresTheExactConfigBytes'
+        ),
+        # A rollback that skips restoring vaibify.yml.
+        source='vaibify/gui/environmentRename.py',
+        old=(
+            '    _fnUndoHostFileMoves(dictJournal)\n'
+            '    _fnRestoreConfig(dictJournal)\n'
+        ),
+        new='    _fnUndoHostFileMoves(dictJournal)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testATagRepointedAfterItWasJournaledSurvivesCleanup'
+        ),
+        # Cleanup untags the old name's tags by name alone.
+        source='vaibify/gui/environmentRename.py',
+        old='    if dictImage["sId"] != dictTag["sImageId"]:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testTheOldNamesLockFilesOutliveTheRename'
+        ),
+        # Cleanup unlinks the old name's lock files.
+        source='vaibify/gui/environmentRename.py',
+        old=(
+            '    pendingRenames.fnRemoveRenameJournal(dictJournal["sOldName"])\n'
+            '    registryManager.fnClearRenameCommit(\n'
+        ),
+        new=(
+            '    os.unlink(containerLock.fsLockPathFor(dictJournal["sOldName"]))\n'
+            '    os.unlink(containerLock.fsLifecycleLockPathFor(\n'
+            '        dictJournal["sOldName"]))\n'
+            '    pendingRenames.fnRemoveRenameJournal(dictJournal["sOldName"])\n'
+            '    registryManager.fnClearRenameCommit(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentRename.py::'
+            'testAnSshEndpointIsTreatedAsAnotherMachine'
+        ),
+        # The locality predicate answers "this machine" for every endpoint.
+        source='vaibify/docker/dockerContext.py',
+        old='    sEndpoint = (sEndpoint or "").strip()\n    if not sEndpoint:\n',
+        new='    return True\n    if not sEndpoint:\n',
+    ),
+    # --- 2026-10-28: the environment rename's refusals ---
+    Falsification(
+        nodeid='tests/testEnvironmentRename.py::testAnUnfinishedRenameRefusesBothNames',
+        # The pending-rename refusal matches no journal.
+        source='vaibify/gui/environmentRename.py',
+        old='        if sName in (dictJournal["sOldName"], dictJournal["sNewName"]):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testEnvironmentRename.py::testTheGuiStartRefusesWhileARenameIsUnfinished',
+        # The start route skips the pending-rename refusal.
+        source='vaibify/gui/registryRoutes.py',
+        old='        environmentRename.fnRefuseWhileRenamePending(sName)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testEnvironmentRename.py::testTheCliStartRefusesWhileARenameIsUnfinished',
+        # CLI start skips the pending-rename refusal.
+        source='vaibify/cli/commandStart.py',
+        old='        fnRefuseWhileRenamePending(sProjectName)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testEnvironmentRename.py::testARenameClaimingTheSameNewNameIsRefused',
+        # No check for another unfinished transaction.
+        source='vaibify/gui/environmentRename.py',
+        old='    setNames = {sOldName, sNewName}\n',
+        new='    return\n',
+    ),
+    Falsification(
+        nodeid='tests/testEnvironmentRename.py::testARemoteDaemonRefusesTheRenameNamingTheEndpoint',
+        # The remote-daemon refusal returns without asking.
+        source='vaibify/gui/environmentRename.py',
+        old='    if dockerContext.fbEndpointIsOnThisMachine(sEndpoint):\n        return\n',
+        new='    return\n',
+    ),
 ]

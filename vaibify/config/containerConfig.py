@@ -242,6 +242,15 @@ def _fbReferenceEntryLandsIn(sLine, sDirectoryName):
         sName, sDestination)
 
 
+def fsRepositoryListPathFor(sProjectName):
+    """Return where one project's repository list lives, present or not."""
+    if not _REGEX_PROJECT_NAME.match(str(sProjectName or "")):
+        raise ValueError(
+            f"{sProjectName!r} is not a registry-safe project name"
+        )
+    return os.path.join(_S_REPOSITORY_LISTS_DIRECTORY, f"{sProjectName}.conf")
+
+
 def fsWriteRepositoryListForProject(sProjectName, sConfText):
     """Write the repository list one project's container starts with; return its path.
 
@@ -251,12 +260,8 @@ def fsWriteRepositoryListForProject(sProjectName, sConfText):
     everyone because the container user reads it as well as root; it
     holds only what the image already carries.
     """
-    if not _REGEX_PROJECT_NAME.match(str(sProjectName or "")):
-        raise ValueError(
-            f"{sProjectName!r} is not a registry-safe project name"
-        )
+    sPath = fsRepositoryListPathFor(sProjectName)
     os.makedirs(_S_REPOSITORY_LISTS_DIRECTORY, mode=0o700, exist_ok=True)
-    sPath = os.path.join(_S_REPOSITORY_LISTS_DIRECTORY, f"{sProjectName}.conf")
     iDescriptor, sTemporaryPath = tempfile.mkstemp(
         dir=_S_REPOSITORY_LISTS_DIRECTORY, suffix=".tmp",
     )

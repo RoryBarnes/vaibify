@@ -4400,7 +4400,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 885 -> 892 (2026-10-14): a live containerization vetoes the idle
     # self-exit beside the council's and the reproduction's vetoes, for
     # the same reason as both.
-    "serverLifespan.py": 892,
+    # NEW at 802 (2026-10-28): the hub registers the environment
+    # rename's startup recovery beside the conversion's.
+    "appFactory.py": 802,
+    # 892 -> 897 (2026-10-28): a live environment rename vetoes the idle
+    # watchdog, on the conversion's terms.
+    "serverLifespan.py": 897,
     # NEW at 823 (2026-10-09): the orphan terminator, which rebuilds a
     # dead hub's terminal records from the journal and ends them, and
     # the record-free group terminate-and-prove the CLI-shell lane
@@ -7300,7 +7305,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # stop, claim, un-register, create, convert and promote each hold
     # (or refuse on) the name's lock, and the bodies they wrap gained a
     # level of indentation; the routes stay where the operations are.
-    "registryRoutes.py": 2584,
+    # 2584 -> 2644 (2026-10-28): the environment rename route, whose
+    # checks run in a fixed order before anything is written, and the
+    # start refusal while a rename has not finished.
+    "registryRoutes.py": 2644,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7517,7 +7525,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1544 -> 1548 (2026-10-24): the setup wizard's step route is excluded from the agent catalog, with why.
     # 1548 -> 1553 (2026-10-27): run-all says it runs every step's
     # tests, and the L2/L3 readiness descriptions name their criteria.
-    "actionCatalog.py": 1553,
+    # 1553 -> 1557 (2026-10-28): the environment rename is excluded from
+    # the agent catalog, with why.
+    "actionCatalog.py": 1557,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8074,7 +8084,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-10-14): the reproduction retry's scope row, beside its
     # run and discard siblings.
     # 1193 -> 1198 (2026-10-24): the setup wizard's step route is declared browser-hub scoped, with why.
-    "routeScope.py": 1198,
+    # 1198 -> 1202 (2026-10-28): the environment rename's lifecycle scope.
+    "routeScope.py": 1202,
 }
 
 

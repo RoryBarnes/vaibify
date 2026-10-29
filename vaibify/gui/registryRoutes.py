@@ -250,6 +250,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterConvertToContainer(app, dictCtx)
     _fnRegisterPinnedEnvironment(app, dictCtx)
     _fnRegisterPromoteToHostProject(app, dictCtx)
+    _fnRegisterRenameEnvironment(app, dictCtx)
     _fnRegisterCreateHostDirectory(app, dictCtx)
     _fnRegisterClaimContainer(app, dictCtx)
     _fnRegisterReleaseContainer(app, dictCtx)
@@ -288,6 +289,8 @@ def _fnRegisterGetRegistry(app, dictCtx):
         _fnAnnotatePinnedImageObtainable(listContainers)
         from . import conversionLifecycle
         conversionLifecycle.fnAnnotateListingWithPendingConversions(listContainers)
+        from . import environmentRename
+        environmentRename.fnAnnotateListingWithPendingRenames(listContainers)
         from .remnantScanner import fdictSummarizeForPoll
         return {
             "listContainers": listContainers,
@@ -797,6 +800,7 @@ def _fnRegisterStartContainer(app, dictCtx):
         _fnRejectInvalidProjectName(sName)
         dictProject = _fdictRequireProject(sName)
         _fnRefuseWhileLifecycleOperation(sName)
+        _fnRefuseWhileRenamePending(sName)
         iStatusCode, dictBody = await startReservation.ftBeginStart(
             app.state, sName, _fsBrowserSessionFor(app, request),
             _fconfigLoadForProject(dictProject),
@@ -870,6 +874,66 @@ def _fnRefuseWhileLifecycleOperation(sName):
         fnRefuseWhileLifecycleLockHeld(sName)
     except LifecycleLockedError as error:
         raise HTTPException(409, detail={"sMessage": str(error)})
+
+
+def _fnRefuseWhileRenamePending(sName):
+    """409 while a rename that names this environment has not finished."""
+    from . import environmentRename
+    try:
+        environmentRename.fnRefuseWhileRenamePending(sName)
+    except environmentRename.RenameRefusedError as error:
+        raise HTTPException(
+            error.iStatusCode, detail={"sMessage": str(error)})
+
+
+class RenameEnvironmentRequest(BaseModel):
+    """Body of ``POST /api/registry/{sName}/rename``."""
+
+    sNewName: str
+    bDryRun: bool = True
+
+
+def _fnRegisterRenameEnvironment(app, dictCtx):
+    """Register POST /api/registry/{sName}/rename (rulings D1-D3).
+
+    Every check runs before anything is written, in the order the plan
+    fixes; a dry run returns there with what would move. An apply
+    releases the caller's own session and starts the hub-owned
+    transaction in ``environmentRename``, which takes the locks and
+    runs the checks again before its first write.
+    """
+
+    @app.post("/api/registry/{sName}/rename")
+    @ffnDeclareCarrierMode(S_CARRIER_LIFECYCLE_TRANSACTION)
+    async def fdictRenameEnvironment(
+        requestHttp: Request, sName: str, request: RenameEnvironmentRequest,
+    ):
+        from fastapi.responses import JSONResponse
+        from . import environmentRename
+        fnRejectAgentTokenLane(requestHttp)
+        dictProject = _fdictRequireProject(sName)
+        _fnRequireValidProjectName(
+            request.sNewName, dictProject.get("sMode", "container"))
+        try:
+            await asyncio.to_thread(
+                environmentRename.fnRunPreconditionChecks,
+                dictProject, request.sNewName)
+        except environmentRename.RenameRefusedError as error:
+            raise HTTPException(
+                error.iStatusCode, detail={"sMessage": str(error)})
+        if request.bDryRun:
+            # The scope authority admitted this request, so an owner
+            # record here is the CALLER's own: a courtesy check only.
+            if not app.state.dictContainerOwners.get(sName):
+                await _fnRefuseBusyProject(app, sName, dictCtx, "rename")
+            return await asyncio.to_thread(
+                environmentRename.fdictDescribeRename,
+                dictProject, request.sNewName)
+        await _fnReleaseCallerOwnedSession(app, sName, requestHttp)
+        await _fnRefuseBusyProject(app, sName, dictCtx, "rename")
+        return JSONResponse(status_code=202, content=(
+            environmentRename.fdictBeginRename(
+                sName, request.sNewName, getattr(app.state, "iHubPort", 0))))
 
 
 def _fsBrowserSessionFor(app, request):
@@ -2278,23 +2342,19 @@ def _fnRewriteConfigForPromotion(sConfigPath, sNewName):
     already-registered, home-rooted one -- so this adds no traversal
     vector.
     """
-    import yaml
-    from vaibify.config.projectConfig import (
-        fbValidateConfig,
-        fconfigFromYamlDict,
-        fnSaveToFile,
-    )
-    with open(sConfigPath, "r", encoding="utf-8") as fileHandle:
-        dictExisting = yaml.safe_load(fileHandle) or {}
-    dictMerged = dict(dictExisting)
-    dictMerged["projectName"] = sNewName
-    if not fbValidateConfig(dictMerged):
+    from vaibify.config.projectConfig import fbaRenderConfigWithProjectName
+    with open(sConfigPath, "rb") as fileHandle:
+        baConfig = fileHandle.read()
+    try:
+        baRewritten = fbaRenderConfigWithProjectName(baConfig, sNewName)
+    except ValueError:
         raise HTTPException(
             400,
             "The promoted configuration is invalid; the project name "
             "must be a valid host-safe name.",
         )
-    fnSaveToFile(fconfigFromYamlDict(dictMerged), sConfigPath)
+    with open(sConfigPath, "wb") as fileHandle:
+        fileHandle.write(baRewritten)
 
 
 def _fnScaffoldWorkflowIfAbsent(sDirectory, sProjectName):

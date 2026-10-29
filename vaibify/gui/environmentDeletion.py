@@ -46,6 +46,7 @@ import logging
 from vaibify.config import containerLock, registryManager
 from vaibify.config.keepAliveManager import fnStopKeepAlive
 from vaibify.docker import containerManager, imageBuilder, volumeManager
+from vaibify.gui import environmentResources
 
 logger = logging.getLogger(__name__)
 
@@ -139,9 +140,8 @@ def _fbRemoveContainer(sContainerName, listFailures):
 def _flistRemoveVolumes(sProjectName, listFailures):
     """Remove the workspace and credentials volumes that still exist."""
     listRemoved = []
-    for sVolumeName in (
-        volumeManager.fsWorkspaceVolumeNameForProject(sProjectName),
-        volumeManager.fsCredentialsVolumeNameForProject(sProjectName),
+    for sVolumeName in environmentResources.flistVolumeNamesOwnedBy(
+        sProjectName,
     ):
         if not volumeManager.fbVolumeExists(sVolumeName):
             continue
