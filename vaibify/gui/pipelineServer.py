@@ -3211,10 +3211,12 @@ def fbHasAgentToken(websocket: WebSocket, sExpectedToken):
         if sKey.lower() == sHeaderName:
             sHeaderToken = sVal
             break
-    if sHeaderToken and sHeaderToken == sExpectedToken:
+    if sHeaderToken and secrets.compare_digest(sHeaderToken, sExpectedToken):
         return True
     sQueryToken = websocket.query_params.get("sToken", "")
-    return bool(sQueryToken) and sQueryToken == sExpectedToken
+    return bool(sQueryToken) and secrets.compare_digest(
+        sQueryToken, sExpectedToken,
+    )
 
 
 # ---------------------------------------------------------------

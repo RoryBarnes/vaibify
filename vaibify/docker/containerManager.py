@@ -576,6 +576,7 @@ def flistBuildRunArgs(
     _fnAddCapabilityDrops(saRunArgs, bRestricted)
     _fnAddCpuAllocation(config, saRunArgs)
     _fnAddMemoryAllocation(config, saRunArgs)
+    _fnAddPidsLimit(config, saRunArgs)
     _fnAddVolumeMount(config, saRunArgs)
     if bCredentials:
         _fnAddCredentialsVolume(config, saRunArgs)
@@ -984,6 +985,18 @@ def _fnAddMemoryAllocation(config, saRunArgs):
     if sMemoryArgument is not None:
         saRunArgs.extend([
             "--memory", sMemoryArgument, "--memory-swap", sMemoryArgument])
+
+
+def _fnAddPidsLimit(config, saRunArgs):
+    """Add the process ceiling ``pidsLimit`` declares (default 16384).
+
+    A fork storm inside the container otherwise competes with the host
+    for its process table. A configuration built without the field (a
+    test double, an older in-memory config) gets the default too.
+    """
+    from vaibify.config.projectConfig import I_DEFAULT_PIDS_LIMIT
+    iPidsLimit = getattr(config, "iPidsLimit", I_DEFAULT_PIDS_LIMIT)
+    saRunArgs.extend(["--pids-limit", str(iPidsLimit)])
 
 
 _F_DOCKER_UPDATE_TIMEOUT_SECONDS = 30.0

@@ -22,6 +22,11 @@ from .bindMountValidator import (
 # to this value is built from it, never from the floating tag.
 S_DEFAULT_BASE_IMAGE = "ubuntu:24.04"
 
+# The container's process ceiling (``docker run --pids-limit``). A fork
+# storm inside a container otherwise exhausts the host's process table;
+# the default leaves a parallel science run ample room.
+I_DEFAULT_PIDS_LIMIT = 16384
+
 
 def fbBaseImageUsesDockerfilePin(sBaseImage):
     """Return True when baseImage is unset or the shipped default."""
@@ -117,6 +122,7 @@ class ProjectConfig:
     iDashboardPort: int = 0
     iCpuLimit: int = 0
     fMemoryLimitGigabytes: float = 0.0
+    iPidsLimit: int = I_DEFAULT_PIDS_LIMIT
 
 
 # Mapping from camelCase YAML keys to Hungarian dataclass fields
@@ -144,6 +150,7 @@ _YAML_TO_HUNGARIAN = {
     "dashboardPort": "iDashboardPort",
     "cpuLimit": "iCpuLimit",
     "memoryLimitGigabytes": "fMemoryLimitGigabytes",
+    "pidsLimit": "iPidsLimit",
 }
 
 _HUNGARIAN_TO_YAML = {v: k for k, v in _YAML_TO_HUNGARIAN.items()}
@@ -754,7 +761,24 @@ def _fbValidateResourceLimits(dictConfig):
         fMemory, (int, float)
     ):
         return False
-    return fMemory == 0 or fMemory >= 0.25
+    if not (fMemory == 0 or fMemory >= 0.25):
+        return False
+    return _fbValidatePidsLimit(dictConfig)
+
+
+def _fbValidatePidsLimit(dictConfig):
+    """Check that pidsLimit, if present, is a positive integer.
+
+    The limit bounds how many processes the container may hold, which
+    is what stops a fork storm from taking the host down with it. There
+    is no "unlimited" spelling: the default is generous (a 63-worker
+    pool whose workers each run 63 BLAS threads needs about 4,000), and
+    a researcher who needs more raises the number.
+    """
+    iPidsLimit = dictConfig.get("pidsLimit", I_DEFAULT_PIDS_LIMIT)
+    if not isinstance(iPidsLimit, int) or isinstance(iPidsLimit, bool):
+        return False
+    return iPidsLimit > 0
 
 
 def _fbValidateFeatures(dictConfig):
@@ -857,6 +881,7 @@ def _fdictScalarFieldsToYaml(config):
         "dashboardPort": config.iDashboardPort,
         "cpuLimit": config.iCpuLimit,
         "memoryLimitGigabytes": config.fMemoryLimitGigabytes,
+        "pidsLimit": config.iPidsLimit,
     }
 
 

@@ -26796,8 +26796,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testContainerOwnership.py::test_fbAgentTokenAuthorizesContainerId_is_per_container',
         source='vaibify/gui/containerOwnership.py',
-        old='            and recordOwner.sAgentToken == sPresentedToken\n            and recordOwner.sContainerId == sContainerId\n',
-        new='            and recordOwner.sAgentToken == sPresentedToken\n',
+        old='            and secrets.compare_digest(recordOwner.sAgentToken, sPresentedToken)\n            and recordOwner.sContainerId == sContainerId\n',
+        new='            and secrets.compare_digest(recordOwner.sAgentToken, sPresentedToken)\n',
     ),
     # --- A revoked session credential no longer validates ---
     Falsification(
@@ -26845,8 +26845,18 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineServerAgentAuth.py::test_fbHasAgentToken_wrong_header_and_wrong_query_is_false',
         source='vaibify/gui/pipelineServer.py',
-        old='    if sHeaderToken and sHeaderToken == sExpectedToken:\n        return True\n    sQueryToken = websocket.query_params.get("sToken", "")\n    return bool(sQueryToken) and sQueryToken == sExpectedToken\n',
+        old='    if sHeaderToken and secrets.compare_digest(sHeaderToken, sExpectedToken):\n        return True\n    sQueryToken = websocket.query_params.get("sToken", "")\n    return bool(sQueryToken) and secrets.compare_digest(\n        sQueryToken, sExpectedToken,\n    )\n',
         new='    if sHeaderToken:\n        return True\n    sQueryToken = websocket.query_params.get("sToken", "")\n    return bool(sQueryToken)\n',
+    ),
+    # --- 2026-10-28: the process ceiling ---
+    Falsification(
+        nodeid=(
+            'tests/testSmallHardeningItems.py::'
+            'testThePidLimitMustBeAPositiveInteger'
+        ),
+        source='vaibify/config/projectConfig.py',
+        old='    return iPidsLimit > 0\n',
+        new='    return True\n',
     ),
     # --- Writes under the VCS directory are denylisted ---
     Falsification(

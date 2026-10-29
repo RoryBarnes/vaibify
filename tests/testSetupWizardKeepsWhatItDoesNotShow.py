@@ -86,6 +86,7 @@ def _fdictEveryKeyConfigured(tmp_path, monkeypatch):
         "neverSleep": True,
         "dashboardPort": 8123,
         "cpuLimit": 3,
+        "pidsLimit": 4096,
         "memoryLimitGigabytes": 6.5,
     }
 
