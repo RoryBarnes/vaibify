@@ -69,23 +69,6 @@ def testAFailedPullDoesNotNameTheHostPath(
 
 
 @pytest.mark.falsification
-def testACappedPullStopsAndLeavesNoPartialFile(tmp_path):
-    """Kills: ignoring ``iMaxBytes`` while streaming the pulled file."""
-    connection = MockDockerTransfer()
-    connection._dictFiles["/workspace/big.bin"] = b"x" * 5000
-    sDestination = str(tmp_path / "big.bin")
-    with pytest.raises(fileRoutes.PullTooLargeError):
-        fileRoutes._fsPullContainerFileToHost(
-            connection, "cid", "/workspace/big.bin", sDestination,
-            iMaxBytes=4000)
-    assert not os.path.exists(sDestination)
-    sLanded = fileRoutes._fsPullContainerFileToHost(
-        connection, "cid", "/workspace/big.bin", sDestination,
-        iMaxBytes=5000)
-    assert os.path.getsize(sLanded) == 5000
-
-
-@pytest.mark.falsification
 def testANonLatinOneFilenameDownloadsWithItsExactName(clientHttp):
     """Kills: putting the raw filename into the header (500 on non-Latin-1)."""
     _fnConnectToContainer(clientHttp)

@@ -3689,15 +3689,6 @@ LIST_FALSIFICATIONS = [
         new='    return',
     ),
     Falsification(
-        # docker cp runs on the HOST, so an unconfined agent-lane pull
-        # writes agent-authored bytes into a shell profile or an
-        # authorized-keys file -- code execution out of the sandbox.
-        nodeid='tests/testAgentLaneEnforcement.py::testAgentPullMustLandInTheExportDirectory',
-        source='vaibify/gui/routes/fileRoutes.py',
-        old='        if fbRequestRidesAgentLane(requestHttp):',
-        new='        if False:',
-    ),
-    Falsification(
         # Writing .git/hooks/pre-commit is code execution on the next
         # commit; writing .vaibify/ defeats the metadata-integrity
         # contract the PROOF truth system rests on.
@@ -6951,20 +6942,17 @@ LIST_FALSIFICATIONS = [
             'testTheHostFilePullReachesNoMutatingContainerPrimitive'
         ),
         source='vaibify/gui/routes/fileRoutes.py',
+        # Re-anchored 2026-10-28: the pull reads through the confined
+        # reader; the mutation reads through the general exec instead.
         old=(
-            '    iWritten = 0\n'
-            '    with open(sTargetPath, "wb") as fileTarget:\n'
-            '        for baChunk in connectionDocker.fiterStreamFile(\n'
-            '            sContainerId, sContainerPath,\n'
-            '        ):\n'
+            '        connectionDocker.fiterReadFileConfined(\n'
+            '            sContainerId, sContainerPath, sAuthorizedRoot=sAuthorizedRoot,\n'
+            '        ),\n'
         ),
         new=(
-            '    iWritten = 0\n'
-            '    iExit, sOut = connectionDocker.ftResultExecuteCommand(\n'
-            '        sContainerId, "cat " + sContainerPath,\n'
-            '    )\n'
-            '    with open(sTargetPath, "wb") as fileTarget:\n'
-            '        for baChunk in (sOut.encode("utf-8"),):\n'
+            '        iter([connectionDocker.ftResultExecuteCommand(\n'
+            '            sContainerId, "cat " + sContainerPath,\n'
+            '        )[1].encode("utf-8")]),\n'
         ),
     ),
 
@@ -25887,12 +25875,6 @@ LIST_FALSIFICATIONS = [
         new='',
     ),
     Falsification(
-        nodeid='tests/testFileEdgesAreSafe.py::testACappedPullStopsAndLeavesNoPartialFile',
-        source='vaibify/gui/routes/fileRoutes.py',
-        old='            if iMaxBytes is not None and iWritten > iMaxBytes:',
-        new='            if False:',
-    ),
-    Falsification(
         nodeid='tests/testFileEdgesAreSafe.py::testANonLatinOneFilenameDownloadsWithItsExactName',
         source='vaibify/gui/routes/downloadRoutes.py',
         old='    return {"Content-Disposition": fsBuildContentDisposition(sFilename)}',
@@ -26940,8 +26922,47 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testCoverageRoutesAFileRoutes.py::testAPullOfAPathOutsideTheWorkspaceIsRefused',
         source='vaibify/gui/routes/fileRoutes.py',
-        old='        fsValidatePathWithinRoot(\n            request.sContainerPath,\n            projectRoots.fsResolveProjectRoot(\n                sContainerId, sWorkspaceRoot,\n            ),\n        )\n',
+        old='        fsValidatePathWithinRoot(request.sContainerPath, sPullRoot)\n',
         new='',
+    ),
+    # --- 2026-10-28: pull-file is researcher-only; the host write is confined ---
+    Falsification(
+        # The pull writes the researcher's machine with agent-authored
+        # bytes; the agent lane is refused by the catalog, which the
+        # middleware enforces server-side.
+        nodeid=(
+            'tests/testAgentLaneEnforcement.py::'
+            'testAgentPullIsRefusedAsAUserOnlyAction'
+        ),
+        source='vaibify/gui/actionCatalog.py',
+        old=(
+            '     "sPath": "/api/files/{sContainerId}/pull",\n'
+            '     "bAgentSafe": False,\n'
+        ),
+        new=(
+            '     "sPath": "/api/files/{sContainerId}/pull",\n'
+            '     "bAgentSafe": True,\n'
+        ),
+    ),
+    Falsification(
+        # A parent swapped for a link between walk steps redirects the
+        # write when the walk follows links.
+        nodeid=(
+            'tests/testHostConfinedWrite.py::'
+            'testAParentSwappedForALinkMidWalkIsRefusedAndNothingLandsOutside'
+        ),
+        source='vaibify/host/hostConfinedRead.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConfinedWrite.py::'
+            'testAFinalNameThatIsALinkIsRefusedAndTheTargetUntouched'
+        ),
+        source='vaibify/host/hostConfinedWrite.py',
+        old='    if stat.S_ISLNK(iMode) or stat.S_ISDIR(iMode):\n',
+        new='    if False:\n',
     ),
     # --- Path jail call sites: fileRoutes write ---
     Falsification(

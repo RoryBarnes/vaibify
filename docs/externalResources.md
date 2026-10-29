@@ -73,6 +73,7 @@ something public under your name are researcher-only.
 | Publish to Zenodo, edit Zenodo metadata, Make Permanent | No |
 | Verify any remote, refresh the Overleaf mirror, read the manuscript back | Yes |
 | Configure arXiv, declare an extra Zenodo record | Yes |
+| Pull a file from the container onto the host | No. The agent authors the bytes and the write lands on your machine, so it asks you to pull the file from the dashboard or with `vaibify pull` |
 
 Run `vaibify-do --list` inside a container for the complete catalog.
 

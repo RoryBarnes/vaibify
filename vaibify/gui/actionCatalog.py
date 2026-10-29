@@ -1101,13 +1101,12 @@ LIST_AGENT_ACTIONS = [
     {"sName": "pull-file", "sCategory": "files",
      "sMethod": "POST",
      "sPath": "/api/files/{sContainerId}/pull",
-     "bAgentSafe": True,
-     "sDescription": "Copy a file from the container to the host. "
-                     "Agent-lane pulls may only land under "
-                     "~/.vaibify/exports/<container>/ — the host write "
-                     "is otherwise arbitrary agent-authored content in "
-                     "the researcher's home directory. Tell the "
-                     "researcher where the file landed."},
+     "bAgentSafe": False,
+     "sDescription": "Copy a file from the container to a host path the "
+                     "researcher chooses. USER-ONLY: the write lands on "
+                     "the researcher's own machine and the agent authors "
+                     "the bytes, so an agent asks the researcher to pull "
+                     "the file from the dashboard or with `vaibify pull`."},
     {"sName": "upload-file", "sCategory": "files",
      "sMethod": "POST",
      "sPath": "/api/files/{sContainerId}/upload",

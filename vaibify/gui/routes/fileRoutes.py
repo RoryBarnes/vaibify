@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import List
 
 from ..actionCatalog import ffnAgentAction
+from ...docker.confinedRead import ContainerReadRefusedError
 from ...docker.confinedWrite import ContainerWriteRefusedError
 from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeContext import (
@@ -90,37 +91,40 @@ def _fnValidateHostDestination(sResolvedPath):
             403, "Destination outside home directory")
 
 
-I_AGENT_PULL_MAX_BYTES = 1024 * 1024 * 1024
-
-
-class PullTooLargeError(OSError):
-    """A pulled file grew past the cap the caller allowed."""
-
-
 class PullSourceIsDirectoryError(IsADirectoryError):
     """The pull named a container directory; the message is authored."""
 
 
 def _fsPullContainerFileToHost(
     connectionDocker, sContainerId, sContainerPath, sHostDestination,
-    iMaxBytes=None,
+    sAuthorizedRoot=None,
 ):
-    """Stream one container file onto the host; return where it landed.
+    """Copy one container file onto the host; return where it landed.
 
     This replaces a ``docker cp`` the route module assembled itself.
     ``docker cp`` is bidirectional as a primitive -- the argv decides
     which way the bytes travel -- so a route holding it holds a container
-    WRITE, whatever this particular call site happened to do with it. The
-    gateway's streaming read cannot travel the other way.
+    WRITE, whatever this particular call site happened to do with it.
+
+    Both ends are confined. The container side is read by the confined
+    reader (:meth:`fiterReadFileConfined`), which runs as the container
+    user and refuses a component an agent swapped for a link, where the
+    daemon's ``get_archive`` read as root and followed it. The host side
+    is written by :mod:`vaibify.host.hostConfinedWrite`: the destination
+    directory is resolved once, when the researcher picks it, and the
+    file lands under a private name relative to that directory's
+    descriptor, so a link planted at the final name -- which a read-write
+    bind mount lets an agent do -- is refused rather than followed.
 
     Two behaviours of ``docker cp`` are reproduced deliberately rather
     than dropped. A destination that is an existing DIRECTORY receives
     the source's basename, and the path returned is where the file
     actually landed rather than what the caller asked for -- the old
     route reported the directory. A DIRECTORY source is REFUSED, because
-    the gateway's single-file stream would otherwise skip the directory
-    entry, pull the first regular file inside it, and report success.
+    a single-file stream would otherwise skip the directory entry, pull
+    the first regular file inside it, and report success.
     """
+    from vaibify.host import hostConfinedWrite
     _fnRefuseDirectorySource(
         connectionDocker, sContainerId, sContainerPath,
     )
@@ -129,33 +133,13 @@ def _fsPullContainerFileToHost(
         sTargetPath = os.path.join(
             sTargetPath, posixpath.basename(sContainerPath),
         )
-    _fnStreamContainerFileInto(
-        connectionDocker, sContainerId, sContainerPath, sTargetPath,
-        iMaxBytes,
+    sRealRoot = os.path.realpath(os.path.dirname(sTargetPath))
+    return hostConfinedWrite.fsWriteFileInsideRoot(
+        sRealRoot, os.path.join(sRealRoot, os.path.basename(sTargetPath)),
+        connectionDocker.fiterReadFileConfined(
+            sContainerId, sContainerPath, sAuthorizedRoot=sAuthorizedRoot,
+        ),
     )
-    return sTargetPath
-
-
-def _fnStreamContainerFileInto(
-    connectionDocker, sContainerId, sContainerPath, sTargetPath,
-    iMaxBytes,
-):
-    """Write the stream to the target; delete the partial file on overflow."""
-    iWritten = 0
-    with open(sTargetPath, "wb") as fileTarget:
-        for baChunk in connectionDocker.fiterStreamFile(
-            sContainerId, sContainerPath,
-        ):
-            iWritten += len(baChunk)
-            if iMaxBytes is not None and iWritten > iMaxBytes:
-                break
-            fileTarget.write(baChunk)
-        else:
-            return
-    os.remove(sTargetPath)
-    raise PullTooLargeError(
-        f"The file is larger than the {iMaxBytes}-byte limit on "
-        "files an agent may pull.")
 
 
 def _fnRefuseDirectorySource(
@@ -396,44 +380,17 @@ def _fnCommitUploadedFile(
     )
 
 
-S_AGENT_EXPORT_DIRECTORY = os.path.join("~", ".vaibify", "exports")
-
-
-def _fsPrepareAgentExportRoot(sContainerId):
-    """Create and return this container's agent-lane export directory.
-
-    A file pull runs ``docker cp`` on the HOST, and the in-container
-    agent authors the bytes it is copying, so an unrestricted
-    destination is arbitrary agent-authored content landing anywhere
-    under ``$HOME`` — a shell profile, an SSH authorized-keys file, a
-    launch agent. Confining the agent lane to one inert, per-container
-    export directory keeps the capability (the researcher can still
-    collect what the agent produced) without letting it write anywhere
-    the host would later execute.
-    """
-    sBasename = posixpath.basename(sContainerId) or "unknown"
-    sRoot = os.path.realpath(os.path.expanduser(
-        os.path.join(S_AGENT_EXPORT_DIRECTORY, sBasename),
-    ))
-    os.makedirs(sRoot, mode=0o700, exist_ok=True)
-    return sRoot
-
-
-def _fnValidateAgentPullDestination(sResolvedPath, sContainerId):
-    """Raise 403 when an agent-lane pull lands outside the export root."""
-    sRoot = _fsPrepareAgentExportRoot(sContainerId)
-    if sResolvedPath == sRoot:
-        return
-    if not sResolvedPath.startswith(sRoot + os.sep):
-        raise HTTPException(
-            403,
-            "Agent file pulls must land under "
-            f"{S_AGENT_EXPORT_DIRECTORY}/<container>/",
-        )
-
-
 def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
-    """Register POST /api/files/{id}/pull."""
+    """Register POST /api/files/{id}/pull.
+
+    Researcher-only since 2026-10-28. A pull writes the researcher's own
+    machine with bytes the in-container agent authored, and the earlier
+    answer -- an agent lane confined to ``~/.vaibify/exports`` -- still
+    let an agent put arbitrary content on the host; the catalog now
+    marks the action ``bAgentSafe: False``, which the agent-lane
+    middleware enforces with a 403, and the researcher collects what the
+    agent produced from the dashboard or with ``vaibify pull``.
+    """
 
     @ffnAgentAction("pull-file")
     # separate-authority, not typed-read. Nothing this route does to
@@ -443,10 +400,10 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
     # any reader would take it to mean the route writes nothing. It
     # writes to the researcher's own machine. What governs it is
     # therefore not the commit carrier but the host-side authorities:
-    # ``fsValidatePathWithinRoot`` on the container side,
-    # ``_fnValidateHostDestination`` on the host side, and for the agent
-    # lane the narrower export root ``_fnValidateAgentPullDestination``
-    # enforces. Ruling 2026-08-05.
+    # ``fsValidatePathWithinRoot`` and the confined reader on the
+    # container side, ``_fnValidateHostDestination`` and the confined
+    # writer on the host side. Ruling 2026-08-05; agent lane withdrawn
+    # 2026-10-28.
     @app.post("/api/files/{sContainerId}/pull")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictHandlePullFile(
@@ -455,29 +412,22 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
     ):
         import asyncio
         dictCtx["require"](sContainerId)
-        fsValidatePathWithinRoot(
-            request.sContainerPath,
-            projectRoots.fsResolveProjectRoot(
-                sContainerId, sWorkspaceRoot,
-            ),
-        )
+        sPullRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, sWorkspaceRoot)
+        fsValidatePathWithinRoot(request.sContainerPath, sPullRoot)
         sHostDest = os.path.realpath(
             os.path.expanduser(request.sHostDestination))
         _pipelineServer._fnValidateHostDestination(sHostDest)
-        if fbRequestRidesAgentLane(requestHttp):
-            _fnValidateAgentPullDestination(sHostDest, sContainerId)
-        iMaxBytes = (I_AGENT_PULL_MAX_BYTES
-                     if fbRequestRidesAgentLane(requestHttp) else None)
         try:
             sLandedPath = await asyncio.to_thread(
                 _pipelineServer._fsPullContainerFileToHost,
                 dictCtx["docker"], sContainerId,
-                request.sContainerPath, sHostDest, iMaxBytes,
+                request.sContainerPath, sHostDest, sPullRoot,
             )
-        except PullTooLargeError as error:
-            raise HTTPException(status_code=413, detail=str(error))
         except PullSourceIsDirectoryError as error:
             raise HTTPException(status_code=500, detail=str(error))
+        except (ContainerReadRefusedError, ContainerWriteRefusedError) as error:
+            raise HTTPException(status_code=403, detail=str(error))
         except OSError as error:
             raise HTTPException(
                 status_code=500,

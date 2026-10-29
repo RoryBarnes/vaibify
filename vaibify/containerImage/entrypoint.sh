@@ -1127,7 +1127,7 @@ Usage:
 - "run unit tests on step A09" → `vaibify-do run-unit-tests A09`
 - "run all tests" → `vaibify-do run-all-tests`
 - "commit the current state" → `vaibify-do commit-canonical`
-- "pull a file from the container" → `vaibify-do pull-file sContainerPath=<absolute path under /workspace> sHostDestination='~/.vaibify/exports/<VAIBIFY_CONTAINER_ID>/'` (the only place an agent pull may land; quote the `~` so the host, not your shell, expands it, and tell the researcher the `sHostPath` it reports)
+- "pull a file from the container" → USER-ONLY — the pull writes the researcher's own machine with bytes you authored, so surface the request: name the container path and ask the researcher to pull it from the dashboard or with `vaibify pull <path> <destination>` on the host; do not run `vaibify-do pull-file`
 - "make step A09's figures the standard" → `vaibify-do accept-plots-as-standard A09` (USER-ONLY — surface the request, do not run)
 - "push these output files to GitHub" → `vaibify-do push-to-github listFilePaths='["<repo-relative path>", ...]'` (not a general `git push`: to push commits, run `git push`, then `vaibify-do reconcile-remote-state`)
 - "push to Overleaf / Zenodo" → USER-ONLY — surface the request, do not run

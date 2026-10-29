@@ -140,7 +140,6 @@
 "vaibify/gui/routes/environmentArchiveRoutes.py::_fsValidateArchiveAnswer",
 "vaibify/gui/routes/falsificationRoutes.py::_fnRefuseIfRunInFlight",
 "vaibify/gui/routes/fileRoutes.py::_fnRefuseDirectorySource",
-"vaibify/gui/routes/fileRoutes.py::_fnValidateAgentPullDestination",
 "vaibify/gui/routes/fileRoutes.py::_fnValidateHostDestination",
 "vaibify/gui/routes/levelRoutes.py::_fnRefuseDuplicateAiDeclarationStep",
 "vaibify/gui/routes/levelRoutes.py::_fnRejectDirectoryDisagreeingWithName",

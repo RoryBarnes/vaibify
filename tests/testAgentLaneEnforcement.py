@@ -71,7 +71,7 @@ class MockDockerConnection(TypedHashFromServedBytes):
             "sImage": "ubuntu:24.04",
         }]
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         if "git rev-parse --show-toplevel" in sCommand:
             return (0, "/workspace\n")
         if "find" in sCommand and ".vaibify/workflows" in sCommand:
@@ -80,7 +80,7 @@ class MockDockerConnection(TypedHashFromServedBytes):
             return (1, "")
         return (0, "")
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath.endswith(".json"):
@@ -95,7 +95,7 @@ class MockDockerConnection(TypedHashFromServedBytes):
         self._dictFiles[sPath] = baContent
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         from types import SimpleNamespace
         return SimpleNamespace(iExitCode=0, sStdout="ok", sStderr="")
@@ -426,60 +426,38 @@ def sHomeDirectory(tmp_path, monkeypatch):
 
 
 @pytest.mark.falsification
-def testAgentPullMustLandInTheExportDirectory(
-    clientAgent, sHomeDirectory,
-):
-    """An agent-lane pull may not write arbitrary host paths.
+def testAgentPullIsRefusedAsAUserOnlyAction(clientAgent, sHomeDirectory):
+    """An agent cannot pull a file onto the host at all (2026-10-28 ruling).
 
-    The pull writes on the HOST and the agent authors the bytes, so
-    an unrestricted destination is agent-authored content landing in a
-    shell profile or an authorized-keys file -- host code execution out
-    of the sandbox.
+    The pull writes the researcher's machine and the agent authors the
+    bytes, so even a destination confined to an export directory was
+    agent-authored content landing on the host. The action is
+    researcher-only: the catalog says so and the agent-lane middleware
+    refuses before the handler runs, so nothing is written and the
+    agent is told whom to ask.
 
-    Kills: fileRoutes.fdictPullFile: the agent-lane branch
-    `if fbRequestRidesAgentLane(requestHttp):` neutralized to
-    `if False:`.
+    Kills: marking pull-file ``bAgentSafe: True`` in the action catalog.
     """
     with patch.object(
         pipelineServer, "_fsPullContainerFileToHost",
-    ):
-        responseEscape = clientAgent.post(
-            f"/api/files/{S_CONTAINER_ID}/pull",
-            json={
-                "sContainerPath": "/workspace/payload",
-                "sHostDestination": os.path.join(
-                    sHomeDirectory, ".zshrc"),
-            },
-        )
-    assert responseEscape.status_code == 403
-    assert "exports" in responseEscape.text
-
-
-def testAgentPullIntoTheExportDirectoryIsAllowed(
-    clientAgent, sHomeDirectory,
-):
-    """The capability survives: the agent may still export its outputs."""
-    sDestination = os.path.join(
-        sHomeDirectory, ".vaibify", "exports",
-        S_CONTAINER_ID, "result.csv",
-    )
-    with patch.object(
-        pipelineServer, "_fsPullContainerFileToHost",
-    ):
+    ) as mockPull:
         responseHttp = clientAgent.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json={
                 "sContainerPath": "/workspace/result.csv",
-                "sHostDestination": sDestination,
+                "sHostDestination": os.path.join(
+                    sHomeDirectory, "result.csv"),
             },
         )
-    assert responseHttp.status_code == 200
+    assert responseHttp.status_code == 403
+    assert "User-only action" in responseHttp.text
+    mockPull.assert_not_called()
 
 
-def testBrowserPullIsNotConfinedToTheExportDirectory(
+def testBrowserPullKeepsItsFullHomeDirectoryRange(
     clientBrowser, sHomeDirectory,
 ):
-    """The researcher's own pull keeps its full home-directory range."""
+    """The researcher's own pull is the lane that remains, and it is unchanged."""
     _fnConnectAsOwner(clientBrowser)
     with patch.object(
         pipelineServer, "_fsPullContainerFileToHost",

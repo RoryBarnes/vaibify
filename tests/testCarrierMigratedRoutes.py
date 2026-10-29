@@ -270,6 +270,13 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         self.listTypedPathProbes.append(sPath)
         raise FileNotFoundError(f"Not a directory: {sPath}")
 
+    def fiterReadFileConfined(
+        self, sContainerId, sPath, sAuthorizedRoot=None,
+    ):
+        """The confined read the pull now uses; a read, so ungated here too."""
+        del sAuthorizedRoot
+        yield from self.fiterStreamFile(sContainerId, sPath)
+
     def fiterStreamFile(
         self, sContainerId, sPath, iChunkSizeBytes=1048576,
     ):
