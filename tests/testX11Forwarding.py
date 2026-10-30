@@ -382,9 +382,11 @@ def test_configureMac_when_clients_are_blocked_enables_them_and_asks_for_a_resta
 
 
 @patch.dict("os.environ", {"DISPLAY": S_MACPORTS_DISPLAY, "USER": "alice"})
+@pytest.mark.falsification
 def test_configureMac_passes_no_display_when_no_authorization_could_be_made(
     monkeypatch, capsys,
 ):
+    """Kills: passing DISPLAY and the mount when no authorization could be made."""
     listRuns = _fnInstallConfigureFakes(
         monkeypatch, DICT_MACPORTS_SERVER, bListening=True)
     _fnInstallPrepareFake(monkeypatch, listRuns, sOutcome="serverUnreachable")

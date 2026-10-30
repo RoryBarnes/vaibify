@@ -53,7 +53,9 @@ DICT_GENERATED = {"sOutcome": x11Authority.S_OUTCOME_GENERATED, "iAuthorizationI
 DICT_COPIED = {"sOutcome": x11Authority.S_OUTCOME_COPIED}
 
 
+@pytest.mark.falsification
 def testAPreparedAuthorizationIsRecordedWithoutItsCookie(fixtureX11Home, monkeypatch):
+    """Kills: writing the record world-readable."""
     helper = _fhelperInstall(monkeypatch, {"generate": DICT_GENERATED})
     dictOutcome = x11Authorizations.fdictPrepareAuthorization(
         S_NAME, S_UUID, "/tmp/launchd/org.xquartz:0", "localhost:0", "0",
@@ -84,7 +86,9 @@ def testTheAuthorizationIsMountedReadOnly():
     assert f"XAUTHORITY={x11Authorizations.S_CONTAINER_AUTHORITY_PATH}" in listArguments
 
 
+@pytest.mark.falsification
 def testAServerWithoutSecurityFallsBackToItsOwnCookieAndSaysSo(fixtureX11Home, monkeypatch):
+    """Kills: staying silent about a copied server cookie, which is full display access."""
     helper = _fhelperInstall(monkeypatch, {
         "generate": {"sOutcome": x11Authority.S_OUTCOME_SECURITY_UNSUPPORTED},
         "copy-server-cookie": DICT_COPIED,
@@ -134,7 +138,9 @@ def testAReleaseRevokesTheRecordedIdThenForgetsTheContainer(fixtureX11Home, monk
     assert S_NAME not in x11Authorizations.fdictReadAuthorizations()
 
 
+@pytest.mark.falsification
 def testAReleaseAgainstAnUnreachableServerKeepsTheRecordForARetry(fixtureX11Home, monkeypatch):
+    """Kills: dropping the record although the server could not be asked to revoke."""
     _fhelperInstall(monkeypatch, {
         "generate": DICT_GENERATED,
         "revoke": {"sOutcome": x11Authority.S_OUTCOME_SERVER_UNREACHABLE},
@@ -219,7 +225,9 @@ def testReconcileReleasesTheGoneAndRenewsTheLiving(fixtureX11Home, monkeypatch):
     assert helper.flistOperations()[-2:] == ["revoke", "probe"]
 
 
+@pytest.mark.falsification
 def testAContainerNameThatIsNotOneIsRefused(fixtureX11Home):
+    """Kills: building the authorization directory from an unvalidated name."""
     with pytest.raises(ValueError):
         x11Authorizations.fsAuthorizationDirectory("../escape")
     with pytest.raises(ValueError):
@@ -269,3 +277,12 @@ def testTheRecordFileNeverHoldsACookieValue(fixtureX11Home, monkeypatch):
         sRecord = fileRecord.read()
     json.loads(sRecord)
     assert "\\u0001" not in sRecord and "Xauthority" not in sRecord
+
+
+@pytest.mark.falsification
+def testTheContainerNameRuleRefusesATraversal():
+    """Kills: accepting any string as a container name."""
+    for sName in ("../escape", "", "a b", "/absolute", "x" * 129):
+        with pytest.raises(ValueError):
+            x11Authorizations._fnValidateContainerName(sName)
+    x11Authorizations._fnValidateContainerName("demo_env.1-a")

@@ -36,8 +36,12 @@ def testNothingIsProbedWhileNoServerCouldAnswer(fixtureX11Home, monkeypatch):
     assert listCalls == []
 
 
+@pytest.mark.falsification
 def testAMacWithItsServerQuitIsLeftAlone(fixtureX11Home, monkeypatch):
-    """Connecting to the launchd socket would start the server; the hub never does that."""
+    """Connecting to the launchd socket would start the server; the hub never does that.
+
+    Kills: probing the display while the Mac's X server is not running.
+    """
     _fnRecordOne(monkeypatch)
     monkeypatch.setattr(x11Lifecycle.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(x11Forwarding, "fbMacXServerIsRunning", lambda: False)
@@ -50,6 +54,7 @@ def testAMacWithItsServerQuitIsLeftAlone(fixtureX11Home, monkeypatch):
 
 
 def testTheReconcileAsksTheDaemonWhetherEachContainerStillExists(fixtureX11Home, monkeypatch):
+    """Kills: probing the display while the Mac's X server is not running."""
     _fnRecordOne(monkeypatch)
     dictSeen = {}
 

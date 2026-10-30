@@ -38363,4 +38363,75 @@ LIST_FALSIFICATIONS = [
         old='                    sNetworkMode: sNetworkMode,\n',
         new='',
     ),
+    # --- 2026-10-29: the guard functions of commits 8 and 10, each anchored. ---
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testTheContainerNameRuleRefusesATraversal',
+        source='vaibify/docker/x11Authorizations.py',
+        old='    if not _RE_CONTAINER_NAME.match(sContainerName or ""):\n        raise ValueError(',
+        new='    if False:\n        raise ValueError(',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testAContainerNameThatIsNotOneIsRefused',
+        source='vaibify/docker/x11Authorizations.py',
+        old='    _fnValidateContainerName(sContainerName)\n    sDirectory = os.path.join(fsX11Root(), sContainerName)\n',
+        new='    sDirectory = os.path.join(fsX11Root(), sContainerName)\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testAPreparedAuthorizationIsRecordedWithoutItsCookie',
+        source='vaibify/docker/x11Authorizations.py',
+        old='        iMode=0o600,\n',
+        new='        iMode=0o644,\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testAReleaseAgainstAnUnreachableServerKeepsTheRecordForARetry',
+        source='vaibify/docker/x11Authorizations.py',
+        old='    if dictOutcome["sOutcome"] == x11Authority.S_OUTCOME_SERVER_UNREACHABLE:\n        _fnUpdateRecord(',
+        new='    if False:\n        _fnUpdateRecord(',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testAServerWithoutSecurityFallsBackToItsOwnCookieAndSaysSo',
+        source='vaibify/docker/x11Authorizations.py',
+        old='        listLines.append(S_SERVER_COOKIE_NOTICE)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11OptIn.py::testAnOptedInProjectWhoseAuthorizationFailedStartsWithoutADisplay',
+        source='vaibify/docker/x11Authorizations.py',
+        old=(
+            '    return dictOutcome.get("sOutcome") in (\n'
+            '        x11Authority.S_OUTCOME_GENERATED, x11Authority.S_OUTCOME_COPIED,\n'
+            '    )\n'
+        ),
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_configureMac_passes_no_display_when_no_authorization_could_be_made',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    if not fbAuthorizationUsable(dictOutcome):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Lifecycle.py::testAMacWithItsServerQuitIsLeftAlone',
+        source='vaibify/gui/x11Lifecycle.py',
+        old='    if not fbXServerAvailable():\n        return {}\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Findings.py::testTheDoctorReportsACopiedServerCookieAsFullAccess',
+        source='vaibify/cli/doctorX11Checks.py',
+        old='    for sLine in flistDescribeAuthorization(sContainerName):\n',
+        new='    for sLine in []:\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testAnIdentityThatIsNotOneNamesNoResource',
+        source='vaibify/docker/projectEgress.py',
+        old='    if not _RE_PROJECT_UUID.match(sProjectUuid or ""):\n        raise EgressSetupError(',
+        new='    if False:\n        raise EgressSetupError(',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testTheRefusedDestinationsAreTalliedFromTheProxyLog',
+        source='vaibify/docker/projectEgress.py',
+        old='        if dictDecision is None or dictDecision["bAllowed"]:\n            continue\n',
+        new='        if dictDecision is None:\n            continue\n',
+    ),
 ]

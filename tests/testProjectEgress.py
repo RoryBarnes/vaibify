@@ -166,7 +166,9 @@ def testTheReconcileReleasesOnlyIdentitiesWithoutAContainer(docker):
     assert ["rm", "-f", S_PROXY] not in docker.listCommands
 
 
+@pytest.mark.falsification
 def testTheRefusedDestinationsAreTalliedFromTheProxyLog(docker):
+    """Kills: counting allowed destinations among the refused."""
     docker.dictAnswers["logs"] = (0, "\n".join([
         "vaibify-egress: listening on 172.30.0.2:8888",
         "vaibify-egress: CONNECT api.anthropic.com:443 allowed",
@@ -192,7 +194,9 @@ def testAnAbsentProxyIsSaidToBeAbsentAndADeadOneDown(docker):
     assert projectEgress.fsProxyState(S_UUID) == "down"
 
 
+@pytest.mark.falsification
 def testAnIdentityThatIsNotOneNamesNoResource():
+    """Kills: naming a network or proxy after an unvalidated identity."""
     with pytest.raises(egressProxy.EgressSetupError):
         projectEgress.fsNetworkName("../escape")
     with pytest.raises(egressProxy.EgressSetupError):

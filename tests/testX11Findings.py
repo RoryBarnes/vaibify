@@ -199,3 +199,24 @@ def test_doctor_passes_a_matching_container_and_declines_to_guess():
         config, JSON_LINUX_FORWARDED)[0].sLevel == S_LEVEL_OK
     assert doctorX11Checks.flistCheckX11Container(
         config, {})[0].sLevel == S_LEVEL_NOT_CHECKED
+
+
+@pytest.mark.falsification
+def testTheDoctorReportsACopiedServerCookieAsFullAccess(tmp_path, monkeypatch):
+    """Kills: a doctor that says nothing about a container holding the server's own cookie."""
+    from vaibify.docker import x11Authorizations
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(
+        x11Authorizations, "fdictRunHelper",
+        lambda listArguments, fTimeoutSeconds=15.0: {
+            "sOutcome": "securityUnsupported"} if listArguments[0] == "generate"
+        else {"sOutcome": "copied"})
+    x11Authorizations.fdictPrepareAuthorization("demoEnv", "a" * 32, ":0", ":0", "0")
+    listResults = doctorX11Checks.flistCheckX11Container(
+        SimpleNamespace(bX11Forwarding=True, sProjectName="demoEnv"), JSON_LINUX_FORWARDED)
+    listAuthorization = [
+        preflight for preflight in listResults
+        if preflight.sName == "x11-container-authorization"]
+    assert len(listAuthorization) == 1
+    assert listAuthorization[0].sLevel == S_LEVEL_INFO
+    assert "full display access" in listAuthorization[0].sMessage

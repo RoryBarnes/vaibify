@@ -88,9 +88,11 @@ def testAnOptedInLinuxProjectGetsTheDisplayTheSocketAndItsOwnAuthorization(
     assert "xhost" not in " ".join(saRunArgs)
 
 
+@pytest.mark.falsification
 def testAnOptedInProjectWhoseAuthorizationFailedStartsWithoutADisplay(
     fixtureLinuxHost, monkeypatch, capsys,
 ):
+    """Kills: reading a failed authorization as usable."""
     monkeypatch.setattr(
         x11Authorizations, "fdictRunHelper",
         lambda listArguments, fTimeoutSeconds=15.0: {
@@ -111,7 +113,8 @@ def testAnOptedInProjectWhoseAuthorizationFailedStartsWithoutADisplay(
 def testForwardingBesideNetworkIsolationIsRefusedNamingBothKeys(
     fixtureLinuxHost,
 ):
-    """Kills: forwarding a display into a container sealed with --network none."""
+    """Kills: forwarding a display into a container sealed with --network none.
+    """
     config = _fconfigForLaunch(bX11Forwarding=True, bNetworkIsolation=True)
     with pytest.raises(RuntimeError) as errorRaised:
         containerManager.flistBuildRunArgs(config)

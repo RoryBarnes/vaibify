@@ -5444,7 +5444,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 820 -> 826 (2026-10-29): the readiness lines carry the container's
     # own X11 authorization sentences (a copied cookie, a failed setup).
     # 826 -> 857 (2026-10-29): the readiness payload carries the Network row (mode, proxy state, refused destinations).
-    "routes/systemRoutes.py": 857,
+    # 857 -> 858 (2026-10-29): the Network row reads the mode defensively.
+    "routes/systemRoutes.py": 858,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record

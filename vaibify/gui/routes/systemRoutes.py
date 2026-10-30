@@ -496,9 +496,10 @@ def _fdictDescribeNetwork(connectionDocker, sContainerId):
     configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
     if configProject is None:
         return {"sMode": "unknown", "sProxyState": "unknown", "listRefused": []}
-    dictNetwork = {"sMode": configProject.sNetworkMode, "sName": "",
+    sMode = getattr(configProject, "sNetworkMode", "") or "open"
+    dictNetwork = {"sMode": sMode, "sName": "",
                    "sProxyState": "not-applicable", "listRefused": []}
-    if configProject.sNetworkMode != "allowlist":
+    if sMode != "allowlist":
         return dictNetwork
     try:
         dictNetwork["sName"] = fsContainerNameForId(connectionDocker, sContainerId)
