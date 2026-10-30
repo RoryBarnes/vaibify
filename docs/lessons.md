@@ -697,3 +697,24 @@ correct approach.
   general form: before a test confirms that two things agree, ask what
   would have to differ between them in the world, and whether the test
   ever lets it.
+- **A test hub swept the researcher's live secret files.** Every hub
+  runs the `ephemeralSecretFiles` reaper at startup, and the browser
+  lane's hub ran it against the real `~/.vaibify/tmp` with a fake
+  daemon that reported nothing mounted. Every `vc_secret_<name>_*.tmp`
+  older than an hour was then deleted, including the file behind a
+  live container's `/run/secrets/<name>` mount. Running one browser
+  test with a scratch `HOME` showed the lane deleting such files; it is
+  not proven to be the deleter in the incident that surfaced it. That
+  incident read as an unrelated failure: on Colima 0.10.3 (virtiofs)
+  with Docker Engine 28.4.0, once a `--mount` source is gone, every
+  `get_archive` out of the container fails with "Could not find the
+  file" while `exec` keeps working, so Verify L3 blamed an intact
+  `/workspace/<repo>`. Other runtimes may behave differently, and
+  `tests/testArchiveReadNamesAMissingMountLive.py` records what each
+  one does. Two fixes followed. The suite resolves the ephemeral root
+  into a private directory for the whole session, and the browser fake
+  now reports every path as mounted. A failed archive read now names a
+  deleted managed secret, but only on positive evidence. The general
+  form: a test double that answers "nothing is in use" turns any sweep
+  it feeds into a deletion, so a test that runs a real sweep must also
+  redirect what that sweep can reach.

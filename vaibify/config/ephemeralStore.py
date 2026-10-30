@@ -31,8 +31,11 @@ __all__ = [
 # that consumed it: on macOS the Colima daemon lazily re-resolves
 # bind-mount sources during later operations, so unlinking one
 # mid-session breaks that container (see
-# ``containerManager.fsStartContainerDetached``). What makes a file
-# garbage is therefore that NO container mounts it, which only the
+# ``containerManager.fsStartContainerDetached``). On Colima 0.10.3
+# (virtiofs) with Docker Engine 28.4.0 a deleted source also stops
+# every ``get_archive`` out of that container while ``exec`` keeps
+# working (measured 2026-10-30; other runtimes may differ). What makes
+# a file garbage is therefore that NO container mounts it, which only the
 # daemon can say; the grace below only keeps a file that was written
 # a moment ago, for a ``docker run`` still being composed, out of the
 # sweep's reach.
