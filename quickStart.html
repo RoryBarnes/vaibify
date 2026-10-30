@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.2.3.dev33 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.2.3.dev36 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=709b6284"></script>
+      <script src="_static/documentation_options.js?v=2892fc3a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -105,7 +105,7 @@
              
   <section id="quickstart">
 <h1>QuickStart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
-<p>In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author’s. Thus, you will then recreate the author’s computing environment inside your computer and verify that you reproduce the results exactly. This latter step requires that you have <a class="reference internal" href="install.html"><span class="std std-doc">Docker installed</span></a> on your computer.</p>
+<p>In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author’s. Thus, you will then recreate the author’s computing environment inside your computer and verify that you reproduce the results exactly (usually). This latter step requires that you have <a class="reference internal" href="install.html"><span class="std std-doc">Docker installed</span></a> on your computer.</p>
 <section id="install">
 <h2>1. Install<a class="headerlink" href="#install" title="Link to this heading"></a></h2>
 <p>You need Python 3.9 or later to run <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>.</p>
@@ -113,8 +113,7 @@
 vaibify
 </pre></div>
 </div>
-<p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> with no arguments in any directory to start the <strong>Environments Hub</strong> —
-a local web server on <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8050</span></code> — in your browser. You
+<p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> with no arguments in any directory to start a local web server on <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8050</span></code> that launches the <strong>Environments Hub</strong> in your browser. You
 should see the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> logo, the motto, and an empty <strong>Environments</strong>
 list.</p>
 </section>
@@ -123,11 +122,11 @@ list.</p>
 <p>Return to the terminal and run</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/RoryBarnes/aigreenhouse.git
 <span class="nb">cd</span><span class="w"> </span>aigreenhouse
-pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>.vaibify/requirements.txt<span class="w">                   </span><span class="c1"># Install the project's dependencies</span>
+pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>.vaibify/requirements.txt<span class="w">            </span><span class="c1"># Install the project's dependencies</span>
 </pre></div>
 </div>
 <p>This repository contains the data to generate two figures from the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> paper (Barnes 2026): estimates for how long it will be before the waste heat from AI
-data centers becomes large enough for Earth to begin losing water permanently to space. The Project consists of two
+data centers becomes large enough to start driving permanent water loss to space. The Project consists of two
 computational steps, a figure from each, three tiers of tests, and a
 declaration of which AI models helped write it. It is published at <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF
 Level 3</span></a>, which means its author committed a manifest of every artifact’s
@@ -251,13 +250,8 @@ bytes your own computer produced.</p></li>
 <li><p>From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong>. This time every step runs inside the author’s environment,
 and the run log notes that it used the date the author recorded, so
 any figure with a date inside it comes out the same. Each step’s Researcher marker now reads stale because the plot’s bytes changed. Click it once and the badge reads “Passed”.</p></li>
-<li><p>Choose <strong>Check Files Against Manifest</strong> again. On a processor like
-the author’s, every file now matches: in the author’s environment,
-your run produced the author’s bytes. On a different processor, a
-few data files and figures can still differ in their last digits,
-because math libraries choose their fastest code for the processor
-they find; the verification below judges those by the author’s
-published comparisons, the tests that ship with the project.</p></li>
+<li><p>Choose <strong>Check Files Against Manifest</strong> again. The files
+will very likely match because the author choose to prioritize reproducibility over speed. In some cases, however, you may find that all of your regenerated files are not an exact match. In that case, you can use an AI agent to explore what could be the difference.</p></li>
 </ol>
 <p>Finally, from the <strong>Run</strong> menu choose <strong>Verify Level 3
 Reproducibility</strong>. It makes a throwaway copy of the container from

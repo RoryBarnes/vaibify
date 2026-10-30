@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.2.3.dev33 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.2.3.dev36 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=709b6284"></script>
+      <script src="_static/documentation_options.js?v=2892fc3a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -263,6 +263,19 @@ lane, which runs nightly — so drift between the fake and a real
 container is caught up to a day late. The browser lane failing blocks
 merge; the container-acceptance lane failing blocks the next release,
 not retroactively.</p>
+<p><strong>Legibility is measured, in two places.</strong> <code class="docutils literal notranslate"><span class="pre">tests/testPaletteContrast.py</span></code>
+reads the <code class="docutils literal notranslate"><span class="pre">:root</span></code> palette of each stylesheet and holds every text-grade
+token to the WCAG 2.1 text minimum (4.5:1) on every opaque surface
+token, and requires the base link rule that keeps an unstyled link off
+the browser’s default dark blue; a pair below the minimum is recorded
+with its reason and may only leave the record.
+<code class="docutils literal notranslate"><span class="pre">tests/browser/testVisibleTextIsLegible.py</span></code> sweeps the rendered hub,
+wizard and workflow (with the Zenodo token banner rendered), compositing
+each text color over the layers behind it; text over a gradient or an
+image is reported as unmeasured, never counted legible, and text dim on
+purpose is allowed by selector with a reason. The sweep sees only the
+screens the lane renders: a surface that appears only against a real
+container is still checked by eye.</p>
 <section id="the-manual-check">
 <h3>The manual check<a class="headerlink" href="#the-manual-check" title="Link to this heading"></a></h3>
 <p>Still the right tool when you are working on something the lane does not
