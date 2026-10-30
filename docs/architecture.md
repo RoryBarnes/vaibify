@@ -3888,6 +3888,44 @@ and a request waits for it at most 45 seconds before answering that
 it is still running, since an in-container agent's client gives up at
 60 and used to report a busy host as an unreachable one.
 
+## Sealed networks and display authorizations beside the lifecycle gateway
+
+Two per-container resources live on the host and are made and removed
+by the container's lifecycle, never by anything inside it. Each has a
+pure module and a host-state module, split the way the Agent Council's
+egress is split, so the part that composes arguments can be tested
+without a daemon and the part that touches the daemon is one place.
+
+- **The egress boundary** (`networkMode: allowlist`).
+  `vaibify/docker/egressProxy.py` is the proxy script and its argv and
+  environment composition, shared with the council;
+  `vaibify/docker/egressAllowlist.py` computes the base allowlist from
+  the project's configuration with every entry's reason beside it;
+  `vaibify/docker/projectEgress.py` makes the project's internal
+  network (gateway mode `isolated`, Engine 28) and proxy sidecar with
+  `docker` commands on the host, keyed by the project's stable identity,
+  and reads the proxy's log back for the dashboard's Network row.
+  `containerManager` calls it immediately before composing the run
+  arguments, because the container's proxy variables need the sidecar's
+  address, and releases it when the stopped container is removed;
+  `vaibify/gui/projectEgressLifecycle.py` reconciles at the hub's start
+  and on the remnant reaper's cadence. There is no fallback to a
+  gatewayed network: an engine that leaves the bridge an address is
+  refused by name.
+- **The X authorization** (`x11Forwarding: true`).
+  `vaibify/host/x11Authority.py` is the helper process that makes every
+  X call (an Xlib I/O error ends the process it happens in, so never the
+  hub's); `vaibify/docker/x11Authorizations.py` keeps the record under
+  `~/.vaibify/x11` and the probe-then-revoke discipline, because a
+  restarted X server reuses authorization ids; `x11Forwarding.py` owns
+  what is known about the host's X server; `vaibify/gui/x11Lifecycle.py`
+  reconciles at start, probes on a cadence and withdraws the `xhost`
+  grants earlier versions made. The authorization directory is mounted,
+  not the file, so a renewed cookie reaches a running container.
+
+Both records hold no secret: the cookie lives only in the mounted
+directory, the proxy's allowlist only in the sidecar's argv.
+
 ## JavaScript frontend
 
 The frontend lives under `vaibify/gui/static/` and uses the IIFE
