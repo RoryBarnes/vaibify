@@ -40,7 +40,8 @@ def fsConnect(sHost, iPort, bViaProxy):
         sProxy = os.environ["HTTPS_PROXY"].split("//", 1)[1]
         s = socket.create_connection((sProxy.split(":")[0], int(sProxy.split(":")[1])), timeout=15)
         s.sendall(("CONNECT %s:%d HTTP/1.1\r\n\r\n" % (sHost, iPort)).encode())
-        return s.recv(65536).decode("latin-1").split("\r\n")[0]
+        sReply = s.recv(65536).decode("latin-1")
+        return sReply.split("\r\n")[0] + " | " + sReply.split("\r\n\r\n", 1)[-1].strip()
     try:
         socket.create_connection((sHost, iPort), timeout=5).close()
         return "CONNECTED"
@@ -67,6 +68,14 @@ class _HubStandIn(http.server.BaseHTTPRequestHandler):
         return
 
 
+def _fiEngineMajorVersion(clientDocker):
+    """Return the daemon's major version; 0 when it cannot be parsed."""
+    try:
+        return int(str(clientDocker.version().get("Version", "0")).split(".")[0])
+    except (ValueError, AttributeError):
+        return 0
+
+
 @pytest.fixture(scope="module")
 def dictLive():
     fnRequireDaemonReachable()
@@ -86,13 +95,22 @@ def dictLive():
                                  bAntigravity=False, bOpenCode=False, bCline=False,
                                  bOpenHands=False, bPi=False),
     )
+    # Skip on the ENGINE VERSION alone, never on the refusal itself: a
+    # refusal from an engine that does support the mode is the failure
+    # these tests exist to show (and the kill a mutated create must be).
+    if _fiEngineMajorVersion(clientDocker) < 28:
+        serverHub.shutdown()
+        pytest.skip("allowlist mode needs Docker Engine 28 (gateway_mode_ipv4=isolated)")
+    # A refused seal is carried to the TESTS, which fail on it in their
+    # call phase: an error raised here would be a fixture error, which a
+    # kill-confirmation does not count as the test catching the mutation.
     try:
         dictEgress = projectEgress.fdictPrepareProjectEgress(config, sUuid, iHubPort)
     except egressProxy.EgressSetupError as error:
         serverHub.shutdown()
-        if "28.0.0" in str(error):
-            pytest.skip(str(error))
-        raise
+        yield {"errorEgress": error, "sUuid": sUuid}
+        projectEgress.fnReleaseProjectEgressQuietly(sUuid)
+        return
     try:
         clientDocker.images.get(S_CLIENT_IMAGE)
     except docker.errors.ImageNotFound:
@@ -112,6 +130,12 @@ def dictLive():
         serverHub.shutdown()
 
 
+def _fnRequireTheSeal(dictLive):
+    """Fail, in the test, when the sealed network or proxy could not be made."""
+    assert "errorEgress" not in dictLive, (
+        f"the seal could not be made: {dictLive.get('errorEgress')}")
+
+
 def _fsProbe(dictLive, *listArguments, bWithProxyEnvironment=True):
     dictEnvironment = {} if bWithProxyEnvironment else {
         sKey: "" for sKey in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy")}
@@ -123,6 +147,7 @@ def _fsProbe(dictLive, *listArguments, bWithProxyEnvironment=True):
 @pytest.mark.falsification
 def testTheSealedContainerHasNoRouteToTheDaemonHost(dictLive):
     """Kills: creating the network without the isolated gateway mode (a gateway appears)."""
+    _fnRequireTheSeal(dictLive)
     sNetworkName = dictLive["dictEgress"]["sNetworkName"]
     dictConfig = dictLive["clientDocker"].api.inspect_network(sNetworkName)["IPAM"]["Config"][0]
     assert "Gateway" not in dictConfig or not dictConfig.get("Gateway")
@@ -134,6 +159,7 @@ def testTheSealedContainerHasNoRouteToTheDaemonHost(dictLive):
 
 def testAnOrdinaryInternalNetworkDoesGetAGateway(dictLive):
     """The negative control: without the isolated option the bridge has an address."""
+    _fnRequireTheSeal(dictLive)
     clientDocker = dictLive["clientDocker"]
     networkPlain = clientDocker.networks.create(
         f"vaibifyEgressControl{secrets.token_hex(4)}", driver="bridge", internal=True,
@@ -145,25 +171,31 @@ def testAnOrdinaryInternalNetworkDoesGetAGateway(dictLive):
 
 
 def testTheProxyTunnelsAnAllowedHostAndRefusesTheRest(dictLive):
+    _fnRequireTheSeal(dictLive)
     assert _fsProbe(dictLive, "pypi.org:443:proxy").startswith("HTTP/1.1 200")
-    assert _fsProbe(dictLive, "example.com:443:proxy").startswith("HTTP/1.1 403")
-    assert _fsProbe(dictLive, "93.184.216.34:443:proxy").startswith("HTTP/1.1 403")
-    assert _fsProbe(dictLive, "pypi.org:80:proxy").startswith("HTTP/1.1 403")
+    assert "host not on allowlist" in _fsProbe(dictLive, "example.com:443:proxy")
+    assert "raw-address" in _fsProbe(dictLive, "93.184.216.34:443:proxy")
+    assert "port not on allowlist" in _fsProbe(dictLive, "pypi.org:80:proxy")
 
 
 @pytest.mark.falsification
 def testTheHubIsReachedOnItsPortAloneForHttpAndConnect(dictLive):
     """Kills: pinning the hub's host name without its port, which opens every host service."""
+    _fnRequireTheSeal(dictLive)
     iHubPort = dictLive["iHubPort"]
     assert _fsProbe(dictLive, "host.docker.internal:%d:proxy" % iHubPort).startswith(
         "HTTP/1.1 200")
-    assert _fsProbe(dictLive, "host.docker.internal:%d:proxy" % (iHubPort + 1)).startswith(
-        "HTTP/1.1 403")
+    # Refused BY THE PIN, not merely by the non-public rule behind it: the
+    # host gateway is a private address, so a pin that let any port
+    # through would still answer 403, with a different reason.
+    sOtherPort = _fsProbe(dictLive, "host.docker.internal:%d:proxy" % (iHubPort + 1))
+    assert sOtherPort.startswith("HTTP/1.1 403") and "only the hub's port" in sOtherPort
     assert _fsProbe(dictLive, "hub-http", "http://host.docker.internal:%d/api/ping" % iHubPort
                     ) == "hub-stand-in /api/ping"
 
 
 def testTheRefusalsAreReadBackForTheDashboard(dictLive):
+    _fnRequireTheSeal(dictLive)
     listRefused = projectEgress.flistReadRefusedDestinations(dictLive["sUuid"])
     assert any(dictEntry["sHost"] == "example.com" for dictEntry in listRefused)
     assert projectEgress.fsProxyState(dictLive["sUuid"]) == "running"
