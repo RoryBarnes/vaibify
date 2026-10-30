@@ -37643,7 +37643,7 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/docker/containerManager.py',
         # a -v for a volume that does not exist makes Docker create it
-        old='    if not fbVolumeExists(sVolumeName):\n        return\n',
+        old='    if not bVolumeExists:\n        return\n',
         new='    if False:\n        return\n',
     ),
     Falsification(
