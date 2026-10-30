@@ -38434,4 +38434,26 @@ LIST_FALSIFICATIONS = [
         old='        if dictDecision is None or dictDecision["bAllowed"]:\n            continue\n',
         new='        if dictDecision is None:\n            continue\n',
     ),
+    # --- 2026-10-30: every text token and every rendered link is legible ---
+    Falsification(
+        nodeid='tests/testPaletteContrast.py::testEveryTextGradeTokenIsLegibleOnEveryOpaqueSurface',
+        # The muted token goes back to its pre-2026-10-30 value, 3.6:1 on a modal.
+        source='vaibify/gui/static/styleMain.css',
+        old='    --text-muted: #9494b0;\n',
+        new='    --text-muted: #8080a0;\n',
+    ),
+    Falsification(
+        nodeid='tests/testPaletteContrast.py::testALinkWithNoRuleOfItsOwnTakesATextGradeColor',
+        # The base link rule is gone; an unstyled link falls to the browser default.
+        source='vaibify/gui/static/styleMain.css',
+        old='a:where([href]) {\n    color: var(--highlight-color);\n}\n',
+        new='\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testVisibleTextIsLegible.py::testTheWorkflowAndItsTokenBannerReadLegibly',
+        # The same removal, measured on the rendered banner's links.
+        source='vaibify/gui/static/styleMain.css',
+        old='a:where([href]) {\n    color: var(--highlight-color);\n}\n',
+        new='\n',
+    ),
 ]

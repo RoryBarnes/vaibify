@@ -1,6 +1,6 @@
 # QuickStart
 
-In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author's. Thus, you will then recreate the author's computing environment inside your computer and verify that you reproduce the results exactly. This latter step requires that you have [Docker installed](install.md) on your computer.
+In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author's. Thus, you will then recreate the author's computing environment inside your computer and verify that you reproduce the results exactly (usually). This latter step requires that you have [Docker installed](install.md) on your computer.
 
 ## 1. Install
 
@@ -11,8 +11,7 @@ pip install vaibify
 vaibify
 ```
 
-Run `vaibify` with no arguments in any directory to start the **Environments Hub** —
-a local web server on `http://127.0.0.1:8050` — in your browser. You
+Run `vaibify` with no arguments in any directory to start a local web server on `http://127.0.0.1:8050` that launches the **Environments Hub** in your browser. You
 should see the `vaibify` logo, the motto, and an empty **Environments**
 list.
 
@@ -23,11 +22,11 @@ Return to the terminal and run
 ```bash
 git clone https://github.com/RoryBarnes/aigreenhouse.git
 cd aigreenhouse
-pip install -r .vaibify/requirements.txt                   # Install the project's dependencies
+pip install -r .vaibify/requirements.txt            # Install the project's dependencies
 ```
 
 This repository contains the data to generate two figures from the `vaibify` paper (Barnes 2026): estimates for how long it will be before the waste heat from AI
-data centers becomes large enough for Earth to begin losing water permanently to space. The Project consists of two
+data centers becomes large enough to start driving permanent water loss to space. The Project consists of two
 computational steps, a figure from each, three tiers of tests, and a
 declaration of which AI models helped write it. It is published at [PROOF
 Level 3](proofLadder.md), which means its author committed a manifest of every artifact's
@@ -145,13 +144,8 @@ environment.
 2. From the **Run** menu, choose **Run All Steps**. This time every step runs inside the author's environment,
    and the run log notes that it used the date the author recorded, so
    any figure with a date inside it comes out the same. Each step's Researcher marker now reads stale because the plot's bytes changed. Click it once and the badge reads "Passed".
-3. Choose **Check Files Against Manifest** again. On a processor like
-   the author's, every file now matches: in the author's environment,
-   your run produced the author's bytes. On a different processor, a
-   few data files and figures can still differ in their last digits,
-   because math libraries choose their fastest code for the processor
-   they find; the verification below judges those by the author's
-   published comparisons, the tests that ship with the project.
+3. Choose **Check Files Against Manifest** again. The files 
+  will very likely match because the author choose to prioritize reproducibility over speed. In some cases, however, you may find that all of your regenerated files are not an exact match. In that case, you can use an AI agent to explore what could be the difference.
 
 Finally, from the **Run** menu choose **Verify Level 3
 Reproducibility**. It makes a throwaway copy of the container from
