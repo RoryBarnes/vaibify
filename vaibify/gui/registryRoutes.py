@@ -104,6 +104,10 @@ class CreateProjectRequest(BaseModel):
     bUseGithubAuth: bool = True
     bNeverSleep: bool = False
     bNetworkIsolation: bool = False
+    # The network mode (ruling D1); empty means "as bNetworkIsolation says",
+    # for a client that predates the mode. New projects default to allowlist
+    # in the wizard (ruling D2), which sends the value explicitly.
+    sNetworkMode: str = ""
     bX11Forwarding: bool = False
     bClaudeAutoUpdate: bool = True
     bCodexAutoUpdate: bool = True
@@ -145,6 +149,10 @@ class ConvertToContainerRequest(BaseModel):
     bUseGithubAuth: bool = True
     bNeverSleep: bool = False
     bNetworkIsolation: bool = False
+    # The network mode (ruling D1); empty means "as bNetworkIsolation says",
+    # for a client that predates the mode. New projects default to allowlist
+    # in the wizard (ruling D2), which sends the value explicitly.
+    sNetworkMode: str = ""
     bX11Forwarding: bool = False
     bClaudeAutoUpdate: bool = True
     bCodexAutoUpdate: bool = True
@@ -212,6 +220,7 @@ class ScanDependenciesRequest(BaseModel):
 class ContainerSettingsRequest(BaseModel):
     bNeverSleep: Optional[bool] = None
     bX11Forwarding: Optional[bool] = None
+    sNetworkMode: Optional[str] = None
     bClaudeAutoUpdate: Optional[bool] = None
     bCodexAutoUpdate: Optional[bool] = None
     bGeminiAutoUpdate: Optional[bool] = None
@@ -239,6 +248,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterStartContainer(app, dictCtx)
     _fnRegisterStopContainer(app, dictCtx)
     _fnRegisterContainerSettings(app, dictCtx)
+    _fnRegisterAllowHost(app, dictCtx)
     _fnRegisterWritableLayerPreview(app, dictCtx)
     _fnRegisterHostDirectories(app, dictCtx)
     _fnRegisterProjectGitRemote(app, dictCtx)
@@ -1066,6 +1076,8 @@ def _fnRegisterContainerSettings(app, dictCtx):
             "bNeverSleep": configProject.bNeverSleep,
             "bX11Forwarding": configProject.bX11Forwarding,
             "bNetworkIsolation": configProject.bNetworkIsolation,
+            "sNetworkMode": configProject.sNetworkMode,
+            "listAllowedHosts": list(configProject.listAllowedHosts),
             "iCpuLimit": configProject.iCpuLimit,
             "fMemoryLimitGigabytes":
                 configProject.fMemoryLimitGigabytes,
@@ -1122,6 +1134,10 @@ def _fnRegisterContainerSettings(app, dictCtx):
                     fnApplySessionLaneSetting,
                     app.state, dictCtx, sName, request.bNeverSleep,
                 )
+        if request.sNetworkMode is not None:
+            bRestartRequired = _fbApplyNetworkMode(
+                dictProject["sConfigPath"], request.sNetworkMode,
+            ) or bRestartRequired
         if request.bX11Forwarding is not None:
             bRestartRequired = _fbApplyX11Forwarding(
                 dictProject["sConfigPath"], request.bX11Forwarding,
@@ -1199,16 +1215,46 @@ def _fnRegisterWritableLayerPreview(app, dictCtx):
         )
 
 
+def _fbApplyNetworkMode(sConfigPath, sNewMode):
+    """Apply the network mode; return True when it changed (ruling D1).
+
+    Both spellings are written so they agree. A sealing mode is refused
+    while X11 forwarding is on (ruling D4), as X11 is refused the other
+    way round. The change applies when the container is created again.
+    """
+    from vaibify.config.projectConfig import (
+        S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN, T_NETWORK_MODES,
+        fconfigLoadFromFile,
+    )
+    if sNewMode not in T_NETWORK_MODES:
+        raise HTTPException(
+            400, f"networkMode must be one of {', '.join(T_NETWORK_MODES)}")
+    configProject = fconfigLoadFromFile(sConfigPath)
+    if configProject.sNetworkMode == sNewMode:
+        return False
+    if sNewMode != S_NETWORK_MODE_OPEN and configProject.bX11Forwarding:
+        raise HTTPException(
+            409,
+            f"networkMode {sNewMode} cannot be combined with X11 forwarding. "
+            "Turn x11Forwarding off first.",
+        )
+    _fnUpdateYamlScalarField(sConfigPath, "networkMode", sNewMode)
+    _fnUpdateYamlBoolField(
+        sConfigPath, "networkIsolation", sNewMode == S_NETWORK_MODE_ISOLATED)
+    return True
+
+
 def _fbApplyX11Forwarding(sConfigPath, bNewValue, sContainerName):
     """Apply the X11 forwarding opt-in; return True when it changed.
 
-    Refuses to turn forwarding on for a project that seals its network:
-    the two cannot coexist, and the launch would refuse it later.
-    Turning it off revokes the running container's X authorization at
-    once; DISPLAY stays set until the container is created again, and
-    the readiness banner says so.
+    Refuses to turn forwarding on for a project that seals its network
+    (isolation or allowlist mode, ruling D4): the two cannot coexist,
+    and the launch would refuse it later. Turning it off revokes the
+    running container's X authorization at once; DISPLAY stays set
+    until the container is created again, and the readiness banner says
+    so.
     """
-    from vaibify.config.projectConfig import fconfigLoadFromFile
+    from vaibify.config.projectConfig import S_NETWORK_MODE_OPEN, fconfigLoadFromFile
     from vaibify.docker.x11Authorizations import fnReleaseAuthorizationQuietly
     configProject = fconfigLoadFromFile(sConfigPath)
     if configProject.bX11Forwarding == bNewValue:
@@ -1218,6 +1264,12 @@ def _fbApplyX11Forwarding(sConfigPath, bNewValue, sContainerName):
             409,
             "X11 forwarding cannot be combined with network isolation. "
             "Turn networkIsolation off in vaibify.yml first.",
+        )
+    if bNewValue and configProject.sNetworkMode != S_NETWORK_MODE_OPEN:
+        raise HTTPException(
+            409,
+            f"X11 forwarding cannot be combined with networkMode "
+            f"{configProject.sNetworkMode}. Set networkMode to open first.",
         )
     _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)
     if not bNewValue:
@@ -1256,6 +1308,78 @@ def _fnUpdateFeaturesBoolField(sConfigPath, sKey, bValue):
             dictConfig, fileHandle,
             default_flow_style=False, sort_keys=False,
         )
+
+
+class AllowHostRequest(BaseModel):
+    sHost: str
+
+
+def _fnRegisterAllowHost(app, dictCtx):
+    """Register POST /api/containers/{sName}/network/allow-host (ruling D8).
+
+    Researcher-only: an agent that could extend its own allowlist would
+    have no allowlist. The host is appended to ``allowedHosts`` in the
+    project's vaibify.yml and takes effect when the container is
+    created again; the answer says so.
+    """
+    from .routeContext import fnRejectAgentTokenLane
+
+    @app.post("/api/containers/{sName}/network/allow-host")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictAllowNetworkHost(
+        sName: str, request: AllowHostRequest, requestHttp: Request,
+    ):
+        fnRejectAgentTokenLane(requestHttp)
+        dictProject = _fdictRequireProject(sName)
+        listAllowed = _flistAllowHost(dictProject["sConfigPath"], request.sHost)
+        return {"bSuccess": True, "bRestartRequired": True,
+                "listAllowedHosts": listAllowed}
+
+
+def _flistAllowHost(sConfigPath, sHost):
+    """Append one validated host entry to allowedHosts; return the new list."""
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    from vaibify.docker.egressAllowlist import fbIsAllowedHostEntry, ftSplitHostEntry
+    if not fbIsAllowedHostEntry(sHost):
+        raise HTTPException(
+            400, f"{sHost!r} is not a host or host:port entry")
+    sHostName, iPort = ftSplitHostEntry(sHost)
+    sEntry = sHostName if iPort == 443 else f"{sHostName}:{iPort}"
+    configProject = fconfigLoadFromFile(sConfigPath)
+    if sEntry in configProject.listAllowedHosts:
+        return list(configProject.listAllowedHosts)
+    _fnAppendYamlListItem(sConfigPath, "allowedHosts", sEntry)
+    return fconfigLoadFromFile(sConfigPath).listAllowedHosts
+
+
+def _fnAppendYamlListItem(sConfigPath, sKey, sItem):
+    """Append one item to a top-level YAML list, preserving the rest of the file.
+
+    Line-based like the scalar updater: an empty inline list
+    (``key: []``) becomes a block list, an existing block list gains a
+    line after its last item, and an absent key is appended.
+    """
+    with open(sConfigPath, "r", encoding="utf-8") as fileHandle:
+        listLines = fileHandle.readlines()
+    sRendered = f"- {sItem}\n"
+    for iIndex, sLine in enumerate(listLines):
+        if not sLine.startswith(f"{sKey}:"):
+            continue
+        if sLine.split(":", 1)[1].strip() in ("[]", ""):
+            iEnd = iIndex + 1
+            while iEnd < len(listLines) and listLines[iEnd].startswith("- "):
+                iEnd += 1
+            listLines[iIndex] = f"{sKey}:\n"
+            listLines.insert(iEnd, sRendered)
+            break
+        raise HTTPException(
+            409, f"{sKey} in vaibify.yml is not a list vaibify can extend; edit it by hand")
+    else:
+        if listLines and not listLines[-1].endswith("\n"):
+            listLines[-1] += "\n"
+        listLines.extend([f"{sKey}:\n", sRendered])
+    with open(sConfigPath, "w", encoding="utf-8") as fileHandle:
+        fileHandle.writelines(listLines)
 
 
 def _fnUpdateYamlBoolField(sConfigPath, sKey, bValue):
@@ -2564,12 +2688,28 @@ def _fdictBuildYamlFromRequest(request):
         "features": dictFeatures,
         "secrets": _flistSecretsFromAuthFlag(request.bUseGithubAuth),
         "neverSleep": request.bNeverSleep,
-        "networkIsolation": request.bNetworkIsolation,
+        "networkMode": fsNetworkModeOfRequest(request),
+        "allowedHosts": [],
         "x11Forwarding": request.bX11Forwarding,
     }
     _fnAttachOptionalPackages(dictYaml, request)
     _fnAttachResourceLimits(dictYaml, request)
     return dictYaml
+
+
+def fsNetworkModeOfRequest(request):
+    """Return the mode a wizard request asks for, reading the old boolean too."""
+    from vaibify.config.projectConfig import (
+        S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN, T_NETWORK_MODES,
+    )
+    sMode = getattr(request, "sNetworkMode", "") or ""
+    if sMode:
+        if sMode not in T_NETWORK_MODES:
+            raise HTTPException(
+                400, f"networkMode must be one of {', '.join(T_NETWORK_MODES)}")
+        return sMode
+    return (S_NETWORK_MODE_ISOLATED if getattr(request, "bNetworkIsolation", False)
+            else S_NETWORK_MODE_OPEN)
 
 
 def _fnAttachResourceLimits(dictYaml, request):

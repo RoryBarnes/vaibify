@@ -4399,7 +4399,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # rename's startup recovery beside the conversion's.
     # 802 -> 803 (2026-10-29): the X11 authorization lifecycle is
     # registered beside the rename recovery.
-    "appFactory.py": 803,
+    # 803 -> 804 (2026-10-29): the project egress lifecycle is registered beside the X11 one.
+    "appFactory.py": 804,
     # 892 -> 897 (2026-10-28): a live environment rename vetoes the idle
     # watchdog, on the conversion's terms.
     # 897 -> 929 (2026-10-28): the idle watchdog's work vetoes become
@@ -5442,7 +5443,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # with vaibify.yml, in the module that owns that comparison.
     # 820 -> 826 (2026-10-29): the readiness lines carry the container's
     # own X11 authorization sentences (a copied cookie, a failed setup).
-    "routes/systemRoutes.py": 826,
+    # 826 -> 857 (2026-10-29): the readiness payload carries the Network row (mode, proxy state, refused destinations).
+    "routes/systemRoutes.py": 857,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -7368,7 +7370,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # Quit holds the admission gate.
     # 2646 -> 2653 (2026-10-29): turning x11Forwarding off revokes the
     # running container's X authorization at once.
-    "registryRoutes.py": 2653,
+    # 2653 -> 2793 (2026-10-29): the network mode in the wizard and settings, the allow-host route and the YAML list append.
+    "registryRoutes.py": 2793,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7594,7 +7597,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # Zenodo tokens moved out of the container.
     # 1572 + 1580 -> 1599 (2026-10-29): the two
     # lines of work above, merged.
-    "actionCatalog.py": 1599,
+    # 1599 -> 1603 (2026-10-29): allow-network-host is excluded from the agent lane, with why.
+    "actionCatalog.py": 1603,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8161,7 +8165,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1203 -> 1208 (2026-10-29): the Zenodo token panel's read is lease-enforced.
     # 1251 + 1208 -> 1261 (2026-10-29): the two
     # lines of work above, merged.
-    "routeScope.py": 1261,
+    # 1261 -> 1265 (2026-10-29): the allow-host route's lifecycle scope.
+    "routeScope.py": 1265,
 }
 
 

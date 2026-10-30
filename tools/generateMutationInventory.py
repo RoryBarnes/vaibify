@@ -365,6 +365,12 @@ DICT_PRIMITIVE_ACCESS = {
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,
+    # The allowlist network mode's egress boundary, made before the
+    # container's own launch: a sealed network and a proxy sidecar on
+    # the daemon, through projectEgress. Lifecycle authority on the same
+    # terms as the launch it precedes; it never execs into the project
+    # container.
+    "fdictPrepareEgressForLaunch": S_ACCESS_LIFECYCLE,
     "fsCreateContainerForReservation": S_ACCESS_LIFECYCLE,
     "fnStartCreatedContainer": S_ACCESS_LIFECYCLE,
     "fnStopContainer": S_ACCESS_LIFECYCLE,

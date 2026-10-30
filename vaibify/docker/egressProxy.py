@@ -132,6 +132,12 @@ SET_ALLOWED_HOSTNAMES = set()
 SET_ALLOWED_PORTS = set()
 DICT_HOSTNAME_ADDRESS_MAP = {}
 DICT_STATE = {"iOpenTunnels": 0}
+# The one (host, port) a sealed container may reach on the host: its hub.
+# Resolved through this container's own hosts file (the host-gateway
+# entry), exempt from the non-public refusal because the gateway IS
+# non-public, and served for plain HTTP as well as CONNECT because the
+# hub speaks http:// and a client given HTTP_PROXY sends it that way.
+DICT_HUB_GATEWAY = {"sHost": "", "iPort": 0}
 NETWORK_CARRIER_GRADE_NAT = ipaddress.ip_network("100.64.0.0/10")
 
 
@@ -168,6 +174,22 @@ def fsSelectBindAddress(sBindCidr):
         if ipaddress.ip_address(sCandidate) in networkBind:
             return sCandidate
     raise SystemExit("vaibify-egress: no interface address inside " + sBindCidr)
+
+
+def fbIsHubGateway(sHost, iPort):
+    return bool(DICT_HUB_GATEWAY["sHost"]) and (sHost, iPort) == (
+        DICT_HUB_GATEWAY["sHost"], DICT_HUB_GATEWAY["iPort"])
+
+
+def fsSelectBridgeAddress(sBindCidr):
+    if not sBindCidr:
+        return "0.0.0.0"
+    networkBind = ipaddress.ip_network(sBindCidr, strict=False)
+    for tInfo in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+        sCandidate = tInfo[4][0]
+        if ipaddress.ip_address(sCandidate) not in networkBind:
+            return sCandidate
+    return "0.0.0.0"
 
 
 def fnLogDecision(sHost, iPort, sDecision, sReason=""):
@@ -212,6 +234,8 @@ async def fsResolveAllowlistedHost(sHost, iPort):
         loopRunning.getaddrinfo(sHost, iPort),
         I_UPSTREAM_DIAL_TIMEOUT_SECONDS,
     )
+    if fbIsHubGateway(sHost, iPort):
+        return listAnswers[0][4][0]
     for tAnswer in listAnswers:
         sAnswer = tAnswer[4][0]
         if fbIsNonPublicAddress(sAnswer):
@@ -222,9 +246,12 @@ async def fsResolveAllowlistedHost(sHost, iPort):
 async def fsJudgeTarget(sHostLower, iPort):
     if fbLooksLikeRawAddress(sHostLower):
         return "raw-address CONNECT target refused"
-    if sHostLower not in SET_ALLOWED_HOSTNAMES:
+    if DICT_HUB_GATEWAY["sHost"] and sHostLower == DICT_HUB_GATEWAY["sHost"]:
+        if iPort != DICT_HUB_GATEWAY["iPort"]:
+            return "only the hub's port is served on the host"
+    elif sHostLower not in SET_ALLOWED_HOSTNAMES:
         return "host not on allowlist"
-    if iPort not in SET_ALLOWED_PORTS:
+    elif iPort not in SET_ALLOWED_PORTS:
         return "port not on allowlist"
     if DICT_STATE["iOpenTunnels"] >= I_MAXIMUM_CONCURRENT_TUNNELS:
         return "too many open tunnels"
@@ -244,19 +271,76 @@ async def fnRelayTunnel(readerClient, writerClient, readerUpstream, writerUpstre
         DICT_STATE["iOpenTunnels"] -= 1
 
 
+def ftParseHubRequestTarget(sUrl):
+    """Return ``(sHost, iPort, sOriginForm)`` of an absolute http URL, or None."""
+    if not sUrl.lower().startswith("http://"):
+        return None
+    sAuthority, sSeparator, sRest = sUrl[len("http://"):].partition("/")
+    sHost, sColon, sPort = sAuthority.rpartition(":")
+    if not sColon:
+        sHost, sPort = sAuthority, "80"
+    if not sPort.isdigit():
+        return None
+    return sHost.lower(), int(sPort), "/" + sRest
+
+
+async def fnForwardHubRequest(readerClient, writerClient, saParts, listHeaderLines):
+    """Serve one plain-HTTP request addressed to the hub, and only the hub."""
+    tTarget = ftParseHubRequestTarget(saParts[1])
+    if tTarget is None or not fbIsHubGateway(tTarget[0], tTarget[1]):
+        await fnRefuse(writerClient, "HTTP/1.1 405 Method Not Allowed",
+                       "only CONNECT is served")
+        return
+    sHost, iPort, sOriginForm = tTarget
+    try:
+        sAddress = await fsResolveAllowlistedHost(sHost, iPort)
+        readerUpstream, writerUpstream = await asyncio.wait_for(
+            asyncio.open_connection(sAddress, iPort),
+            I_UPSTREAM_DIAL_TIMEOUT_SECONDS,
+        )
+    except (OSError, asyncio.TimeoutError, NonPublicResolution):
+        fnLogDecision(sHost, iPort, "refused", "upstream dial failed")
+        await fnRefuse(writerClient, "HTTP/1.1 502 Bad Gateway",
+                       "upstream dial failed")
+        return
+    fnLogDecision(sHost, iPort, "allowed", "hub http")
+    sVersion = saParts[2] if len(saParts) > 2 else "HTTP/1.1"
+    writerUpstream.write((saParts[0] + " " + sOriginForm + " " + sVersion
+                          + "\r\n").encode("latin-1"))
+    for baHeaderLine in listHeaderLines:
+        if not baHeaderLine.lower().startswith(b"proxy-"):
+            writerUpstream.write(baHeaderLine)
+    writerUpstream.write(b"\r\n")
+    await writerUpstream.drain()
+    DICT_STATE["iOpenTunnels"] += 1
+    try:
+        await asyncio.gather(
+            fnPumpOneDirection(readerClient, writerUpstream),
+            fnPumpOneDirection(readerUpstream, writerClient),
+        )
+    finally:
+        DICT_STATE["iOpenTunnels"] -= 1
+
+
 async def fnServeOneClient(readerClient, writerClient):
     try:
         baRequestLine = await asyncio.wait_for(
             readerClient.readline(), I_HANDSHAKE_TIMEOUT_SECONDS)
         saParts = baRequestLine.decode("latin-1").split()
+        listHeaderLines = []
         for _ in range(I_MAXIMUM_HEADER_LINES):
             baHeaderLine = await asyncio.wait_for(
                 readerClient.readline(), I_HANDSHAKE_TIMEOUT_SECONDS)
             if baHeaderLine in (b"\r\n", b"\n", b""):
                 break
-        if len(saParts) < 2 or saParts[0] != "CONNECT":
-            await fnRefuse(writerClient, "HTTP/1.1 405 Method Not Allowed",
-                           "only CONNECT is served")
+            listHeaderLines.append(baHeaderLine)
+        if len(saParts) < 2:
+            await fnRefuse(writerClient, "HTTP/1.1 400 Bad Request",
+                           "no request line")
+            return
+        if saParts[0] != "CONNECT":
+            await fnForwardHubRequest(readerClient, writerClient, saParts,
+                                      listHeaderLines)
             return
         sHost, sSeparator, sPort = saParts[1].rpartition(":")
         if not sSeparator or not sPort.isdigit():
@@ -302,14 +386,61 @@ async def fnServeOneClient(readerClient, writerClient):
             pass
 
 
-async def fnRunProxyForever(iListenPort, sBindCidr):
+def ffnForwardTo(sTargetHost, iTargetPort):
+    """Return a client handler relaying raw TCP to one target, resolved per connection."""
+    async def fnForwardOneClient(readerClient, writerClient):
+        try:
+            loopRunning = asyncio.get_running_loop()
+            listAnswers = await asyncio.wait_for(
+                loopRunning.getaddrinfo(sTargetHost, iTargetPort),
+                I_UPSTREAM_DIAL_TIMEOUT_SECONDS)
+            readerUpstream, writerUpstream = await asyncio.wait_for(
+                asyncio.open_connection(listAnswers[0][4][0], iTargetPort),
+                I_UPSTREAM_DIAL_TIMEOUT_SECONDS)
+        except (OSError, asyncio.TimeoutError):
+            writerClient.close()
+            return
+        await asyncio.gather(
+            fnPumpOneDirection(readerClient, writerUpstream),
+            fnPumpOneDirection(readerUpstream, writerClient),
+        )
+
+    return fnForwardOneClient
+
+
+async def fnRunProxyForever(iListenPort, sBindCidr, listForwards):
     sBindAddress = fsSelectBindAddress(sBindCidr)
+    sBridgeAddress = fsSelectBridgeAddress(sBindCidr)
     serverProxy = await asyncio.start_server(
         fnServeOneClient, host=sBindAddress, port=iListenPort)
+    # Published ports: the forwards listen on the bridge side, where
+    # Docker's port publishing lands, and relay to the sealed container.
+    listForwardServers = [
+        await asyncio.start_server(
+            ffnForwardTo(sTargetHost, iTargetPort), host=sBridgeAddress,
+            port=iListenHere)
+        for iListenHere, sTargetHost, iTargetPort in listForwards
+    ]
     print("vaibify-egress: listening on", sBindAddress + ":" + str(iListenPort),
           flush=True)
     async with serverProxy:
+        for serverForward in listForwardServers:
+            await serverForward.start_serving()
         await serverProxy.serve_forever()
+
+
+def flistParseForwards(sForwards):
+    """Parse ``PORT=HOST:PORT,...`` into ``(iListen, sHost, iPort)`` triples."""
+    listForwards = []
+    for sEntry in sForwards.split(","):
+        if "=" not in sEntry:
+            continue
+        sListen, sTarget = sEntry.split("=", 1)
+        sTargetHost, sColon, sTargetPort = sTarget.rpartition(":")
+        if sColon and sListen.strip().isdigit() and sTargetPort.isdigit():
+            listForwards.append((int(sListen), sTargetHost.strip().lower(),
+                                 int(sTargetPort)))
+    return listForwards
 
 
 def main():
@@ -319,7 +450,13 @@ def main():
     parserArguments.add_argument("--allowed-ports", default="443")
     parserArguments.add_argument("--address-map", default="")
     parserArguments.add_argument("--bind-cidr", default="")
+    parserArguments.add_argument("--hub-gateway", default="")
+    parserArguments.add_argument("--forward", default="")
     namespaceArguments = parserArguments.parse_args()
+    if namespaceArguments.hub_gateway:
+        sHubHost, _sColon, sHubPort = namespaceArguments.hub_gateway.rpartition(":")
+        DICT_HUB_GATEWAY["sHost"] = sHubHost.strip().lower()
+        DICT_HUB_GATEWAY["iPort"] = int(sHubPort)
     SET_ALLOWED_HOSTNAMES.update(
         sHost.strip().lower()
         for sHost in namespaceArguments.allowlist.split(",") if sHost.strip())
@@ -332,7 +469,8 @@ def main():
             DICT_HOSTNAME_ADDRESS_MAP[sHost.strip().lower()] = sAddress.strip()
     try:
         asyncio.run(fnRunProxyForever(
-            namespaceArguments.listen_port, namespaceArguments.bind_cidr))
+            namespaceArguments.listen_port, namespaceArguments.bind_cidr,
+            flistParseForwards(namespaceArguments.forward)))
     except KeyboardInterrupt:
         sys.exit(0)
 
@@ -378,12 +516,17 @@ def fnValidateAllowlistOrRaise(saAllowedHostnames, iaAllowedPorts,
 
 
 def flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
-                             dictHostnameAddressMap, sBindCidr=""):
+                             dictHostnameAddressMap, sBindCidr="",
+                             sHubGateway="", listForwards=()):
     """Compose the argv the proxy container runs, from server-owned values.
 
     ``sBindCidr`` is the internal network's subnet; given, the proxy
     binds only its address on that network. Validated as a network
     here, so a value that is not one never reaches the script's argv.
+    ``sHubGateway`` is the one ``host:port`` on the host a sealed
+    container may reach (its hub); ``listForwards`` are
+    ``(iListen, sTargetHost, iTargetPort)`` triples the proxy relays
+    from its bridge side, for the container's published ports.
     """
     saCommand = [
         "python", S_PROXY_SCRIPT_CONTAINER_PATH,
@@ -403,6 +546,18 @@ def flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
         saCommand.extend([
             "--bind-cidr", str(ipaddress.ip_network(sBindCidr, strict=False)),
         ])
+    if sHubGateway:
+        sHubHost, _sColon, sHubPort = sHubGateway.rpartition(":")
+        if not _RE_HOSTNAME.match(sHubHost) or not sHubPort.isdigit():
+            raise EgressSetupError(f"hub gateway {sHubGateway!r} is not host:port")
+        saCommand.extend(["--hub-gateway", f"{sHubHost.lower()}:{int(sHubPort)}"])
+    if listForwards:
+        for iListen, sTargetHost, iTargetPort in listForwards:
+            if not _RE_HOSTNAME.match(sTargetHost):
+                raise EgressSetupError(f"forward target {sTargetHost!r} is not a hostname")
+        saCommand.extend(["--forward", ",".join(
+            f"{int(iListen)}={sTargetHost}:{int(iTargetPort)}"
+            for iListen, sTargetHost, iTargetPort in listForwards)])
     return saCommand
 
 

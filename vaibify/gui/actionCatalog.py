@@ -1495,6 +1495,10 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # the daemon. Control plane, human-only; each handler rejects the
     # agent lane by name as well.
     ("POST", "/api/containers/{sName}/acquire-image"),
+    # Allowing a network host widens the allowlist that seals the agent
+    # in; an agent that could extend it would have none. Human-only, and
+    # the handler rejects the agent lane by name as well.
+    ("POST", "/api/containers/{sName}/network/allow-host"),
     ("POST", "/api/containers/{sName}/switch-to-building"),
     ("POST", "/api/containers/{sName}/switch-to-pinned-image"),
     ("POST", "/api/containers/{sName}/start"),

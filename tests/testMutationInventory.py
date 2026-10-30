@@ -458,7 +458,13 @@ I_UNCLASSIFIED_ROW_BUDGET = 260
 # validated values, which touches no container and reaches only the
 # researcher's own X server. The row is excluded with its authority
 # recorded; the guards behind it are kill-confirmed.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 226
+# 226 -> 227 (2026-10-29), a NEW reach on the researcher's own machine,
+# named: the allowlist network mode's docker commands
+# (projectEgress._fprocessDocker), which make, probe and remove a
+# project's sealed network and proxy sidecar and never exec into the
+# project container. The row is excluded with its authority recorded;
+# the seal is proven live (tests/testProjectEgressLive.py).
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 227
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -771,7 +777,12 @@ DICT_UNRESOLVED_BUDGET = {
     # validated values _flistCommonArguments builds) and prefixes the
     # fixed `sys.executable -I -m vaibify.host.x11Authority`; the row
     # carries a reviewed disposition.
-    "opaque-subprocess-command": 25,
+    # 25 -> 26 (2026-10-29), NEW host reach, named: the allowlist network
+    # mode's one docker launcher, projectEgress._fprocessDocker, which
+    # takes the docker arguments as a parameter (built by the module's
+    # own argument composers from validated values); the row carries a
+    # reviewed disposition.
+    "opaque-subprocess-command": 26,
     # 52 since fsImageState (2026-09-18): a gateway image lookup, read
     # through the same SDK root as flistGetRunningContainers beside it.
     # 53 since fdictSweepSurvivorsOfVanishedResources (2026-09-21): the
@@ -2104,6 +2115,9 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # Pure argument/flag assembly for a later launch; no daemon call.
     "flistBuildRunArgs",
     "flistMountSecrets",
+    # Reads the project's network mode off its configuration, with the
+    # old networkIsolation spelling as the fallback; no daemon call.
+    "fsNetworkModeOf",
     # Writes the start-time notice naming each secret this host could
     # not resolve. Reads a probe that materializes nothing and calls
     # the hub logger; no daemon call.

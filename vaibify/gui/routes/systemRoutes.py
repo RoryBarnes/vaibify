@@ -482,6 +482,34 @@ def _ftDescribeX11Findings(connectionDocker, sContainerId):
         return [], []
 
 
+def _fdictDescribeNetwork(connectionDocker, sContainerId):
+    """Return the Network row: the mode, the proxy's state, what it refused.
+
+    The mode is the file's, the rest is the daemon's; a project that is
+    not in allowlist mode has no proxy and says so (``not-applicable``).
+    Every failure to establish a fact answers ``unknown`` rather than a
+    guess (ruling D8: a dead proxy is shown, never silent).
+    """
+    from vaibify.config.registryManager import fdictGetProject
+    from vaibify.docker import projectEgress
+    from ..pipelineServer import fsContainerNameForId
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    if configProject is None:
+        return {"sMode": "unknown", "sProxyState": "unknown", "listRefused": []}
+    dictNetwork = {"sMode": configProject.sNetworkMode, "sName": "",
+                   "sProxyState": "not-applicable", "listRefused": []}
+    if configProject.sNetworkMode != "allowlist":
+        return dictNetwork
+    try:
+        dictNetwork["sName"] = fsContainerNameForId(connectionDocker, sContainerId)
+        dictProject = fdictGetProject(dictNetwork["sName"]) or {}
+        dictNetwork.update(projectEgress.fdictDescribeProjectEgress(
+            dictProject.get("sProjectUuid") or ""))
+    except Exception:
+        dictNetwork["sProxyState"] = "unknown"
+    return dictNetwork
+
+
 def _flistDescribeBindMountDrift(connectionDocker, sContainerId):
     """Return the lines saying the container's mount modes differ from vaibify.yml.
 
@@ -600,6 +628,9 @@ def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
     )
     dictReadiness["listResourceAdvisories"] = (
         _flistDescribeResourceAdvisories(connectionDocker, sContainerId)
+    )
+    dictReadiness["dictNetwork"] = _fdictDescribeNetwork(
+        connectionDocker, sContainerId,
     )
     listSecretWarnings = _flistDescribeUnresolvableSecrets(
         connectionDocker, sContainerId,

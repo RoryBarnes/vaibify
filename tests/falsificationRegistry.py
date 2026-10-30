@@ -25904,8 +25904,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testImageTrustGuardsTheLaunch.py::testEveryLaunchFunctionRefusesAnUnansweredDigest',
         source='vaibify/docker/containerManager.py',
-        old='    dictPosture = fdictResolveLaunchPosture(config.sProjectName)\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture)\n',
-        new='    dictPosture = None\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture)\n',
+        old='    dictPosture = fdictResolveLaunchPosture(config.sProjectName)\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture,\n',
+        new='    dictPosture = None\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture,\n',
     ),
     Falsification(
         nodeid='tests/testImageTrustGuardsTheLaunch.py::testTheStartRouteAsksBeforeCreatingAnything',
@@ -38240,5 +38240,127 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/agentCouncilDockerGateway.py',
         old='    sBindCidr = _fsReadInternalNetworkSubnet(dockerCouncil, sNetworkName)\n',
         new='    sBindCidr = ""\n',
+    ),
+    # --- 2026-10-29: allowlist network mode (security hardening plan,
+    # commit 10): one setting with an old spelling, the sealed network,
+    # the pinned hub, the researcher-only allowlist. ---
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAFileWhoseTwoSpellingsDisagreeIsRefused',
+        source='vaibify/config/projectConfig.py',
+        old='    return fbNetworkKeysAgree(dictConfig)\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAllowlistModeJoinsTheSealedNetworkBehindTheProxy',
+        source='vaibify/docker/containerManager.py',
+        old=(
+            '    saRunArgs.extend(egressProxy.flistBuildSealedNetworkArguments(\n'
+            '        dictEgress["sNetworkName"]))\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAllowlistModeWithoutAPreparedProxyIsRefusedNotStartedOpen',
+        source='vaibify/docker/containerManager.py',
+        old='    if not dictEgress or not dictEgress.get("sProxyAddress"):\n        raise RuntimeError(\n',
+        new='    if False:\n        raise RuntimeError(\n',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testX11WithAllowlistModeIsRefusedEverywhereItIsAsked',
+        source='vaibify/docker/containerManager.py',
+        old=(
+            '    if fsNetworkModeOf(config) == S_NETWORK_MODE_ALLOWLIST:\n'
+            '        raise RuntimeError(\n'
+            '            f"\'{config.sProjectName}\' sets x11Forwarding with networkMode: "\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise RuntimeError(\n'
+            '            f"\'{config.sProjectName}\' sets x11Forwarding with networkMode: "\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testTheNetworkIsInternalIsolatedAndWithoutIPv6',
+        source='vaibify/docker/projectEgress.py',
+        old='        "--opt", S_ISOLATED_GATEWAY_OPTION,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testAnEngineThatLeavesAGatewayIsRefusedWithNoFallback',
+        source='vaibify/docker/projectEgress.py',
+        old='    if bGateway or sOption.strip() != "isolated":\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testAllowHostRoute.py::testAllowingAHostAppendsItAndAsksForARestart',
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    _fnAppendYamlListItem(sConfigPath, "allowedHosts", sEntry)\n'
+            '    return fconfigLoadFromFile(sConfigPath).listAllowedHosts\n'
+        ),
+        new='    return list(configProject.listAllowedHosts) + [sEntry]\n',
+    ),
+    Falsification(
+        nodeid='tests/testAllowHostRoute.py::testTheAgentLaneCannotAllowAHost',
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictProject = _fdictRequireProject(sName)\n'
+            '        listAllowed = _flistAllowHost('
+        ),
+        new=(
+            '        dictProject = _fdictRequireProject(sName)\n'
+            '        listAllowed = _flistAllowHost('
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testAllowHostRoute.py::testChangingTheModeWritesBothSpellingsInAgreement',
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    _fnUpdateYamlBoolField(\n'
+            '        sConfigPath, "networkIsolation", sNewMode == S_NETWORK_MODE_ISOLATED)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testAllowHostRoute.py::testASealingModeIsRefusedBesideX11AndX11BesideASealingMode',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if sNewMode != S_NETWORK_MODE_OPEN and configProject.bX11Forwarding:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testVaibifyDoProxyTunnel.py::testWithAProxyTheHubIsReachedThroughAConnectTunnel',
+        source='vaibify/containerImage/vaibifyDo.py',
+        old='    if tProxy is None:\n        return socket.create_connection((sHost, iPort), timeout=F_CONNECT_TIMEOUT)\n',
+        new='    if True:\n        return socket.create_connection((sHost, iPort), timeout=F_CONNECT_TIMEOUT)\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgressLive.py::testTheSealedContainerHasNoRouteToTheDaemonHost',
+        source='vaibify/docker/projectEgress.py',
+        # the option kept, the inspect-time verification dropped: a daemon
+        # that ignored the option would then seal nothing
+        old='        "network", "create", "--internal", "--ipv6=false",\n',
+        new='        "network", "create", "--ipv6=false",\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgressLive.py::testTheHubIsReachedOnItsPortAloneForHttpAndConnect',
+        source='vaibify/docker/egressProxy.py',
+        old=(
+            '        if iPort != DICT_HUB_GATEWAY["iPort"]:\n'
+            '            return "only the hub\'s port is served on the host"\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndAllowlistAndExcludesThePair',
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old='        dictData.sNetworkMode = "allowlist";\n',
+        new='        dictData.sNetworkMode = "open";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheSettingsDialogSendsTheChosenNetworkMode',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                    sNetworkMode: sNetworkMode,\n',
+        new='',
     ),
 ]

@@ -259,6 +259,10 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/registry/{sName}/rename"): S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/containers/{sName}/settings"):
         S_SCOPE_CONTAINER_LIFECYCLE,
+    # Allowing a network host rewrites the project's vaibify.yml, on the
+    # settings route's terms.
+    ("POST", "/api/containers/{sName}/network/allow-host"):
+        S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/host-directories/create"): S_SCOPE_BROWSER_HUB,
     ("PUT", "/api/preferences/host-warning-acknowledged"):
         S_SCOPE_BROWSER_HUB,

@@ -132,8 +132,9 @@ Each check reports `ok`, `warn`, `fail`, or `not checked` (with the
 reason; never counted as ok). Every `warn` and `fail` names a next step
 for the runtime this machine actually uses. For a running container,
 doctor also reports whether it was created consistently with
-`x11Forwarding`, which is fixed when a container is created (see
-[Security Model](security.md)). `--quiet` hides the `ok`
+`x11Forwarding`, which is fixed when a container is created, and
+what its network mode is (an allowlist-mode container reaches the
+network only through its proxy; see [Security Model](security.md)). `--quiet` hides the `ok`
 lines, `--json` emits the results as JSON, and `--explain CHECK`
 prints how one check decides and nothing else.
 

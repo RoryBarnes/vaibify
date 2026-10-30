@@ -83,6 +83,8 @@ def _fdictEveryKeyConfigured(tmp_path, monkeypatch):
             },
         },
         "networkIsolation": True,
+        "networkMode": "isolated",
+        "allowedHosts": ["data.example.org"],
         "neverSleep": True,
         "dashboardPort": 8123,
         "cpuLimit": 3,

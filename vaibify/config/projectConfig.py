@@ -26,6 +26,11 @@ S_DEFAULT_BASE_IMAGE = "ubuntu:24.04"
 # storm inside a container otherwise exhausts the host's process table;
 # the default leaves a parallel science run ample room.
 I_DEFAULT_PIDS_LIMIT = 16384
+S_NETWORK_MODE_OPEN = "open"
+S_NETWORK_MODE_ALLOWLIST = "allowlist"
+S_NETWORK_MODE_ISOLATED = "isolated"
+T_NETWORK_MODES = (S_NETWORK_MODE_OPEN, S_NETWORK_MODE_ALLOWLIST,
+                   S_NETWORK_MODE_ISOLATED)
 
 
 def fbBaseImageUsesDockerfilePin(sBaseImage):
@@ -116,6 +121,11 @@ class ProjectConfig:
     reproducibility: ReproducibilityConfig = field(
         default_factory=ReproducibilityConfig
     )
+    # networkMode is the setting (ruling D1); bNetworkIsolation is its
+    # old spelling, kept in agreement with it by the loader so every
+    # reader of either sees one truth.
+    sNetworkMode: str = S_NETWORK_MODE_OPEN
+    listAllowedHosts: List[str] = field(default_factory=list)
     bNetworkIsolation: bool = False
     bX11Forwarding: bool = False
     bNeverSleep: bool = False
@@ -145,6 +155,8 @@ _YAML_TO_HUNGARIAN = {
     "secrets": "listSecrets",
     "reproducibility": "reproducibility",
     "networkIsolation": "bNetworkIsolation",
+    "networkMode": "sNetworkMode",
+    "allowedHosts": "listAllowedHosts",
     "x11Forwarding": "bX11Forwarding",
     "neverSleep": "bNeverSleep",
     "dashboardPort": "iDashboardPort",
@@ -218,7 +230,14 @@ def fconfigLoadFromFile(sFilePath):
         Validated configuration dataclass instance.
     """
     dictRaw = _fdictReadYaml(sFilePath)
-    dictMerged = _fdictMergeWithDefaults(dictRaw)
+    if not fbNetworkKeysAgree(dictRaw):
+        raise ValueError(
+            f"Configuration validation failed for '{sFilePath}': networkMode "
+            f"{dictRaw.get('networkMode')!r} and networkIsolation "
+            f"{dictRaw.get('networkIsolation')!r} disagree; keep one, or make "
+            "them agree (isolated is the only mode networkIsolation: true names)."
+        )
+    dictMerged = _fdictMergeWithDefaults(fdictReconcileNetworkKeys(dictRaw))
     _fnValidateBindMountsForFile(dictMerged, sFilePath)
     if not fbValidateConfig(dictMerged):
         raise ValueError(
@@ -305,8 +324,37 @@ def fconfigFromYamlDict(dictRaw):
     ProjectConfig
         Fully-populated configuration dataclass instance.
     """
-    dictMerged = _fdictMergeWithDefaults(dictRaw)
+    dictMerged = _fdictMergeWithDefaults(fdictReconcileNetworkKeys(dictRaw))
     return _fconfigFromYamlDict(dictMerged)
+
+
+def fdictReconcileNetworkKeys(dictRaw):
+    """Return the dict with ``networkMode`` and ``networkIsolation`` agreeing.
+
+    Ruling D1: a file that names only the old key is read as it always
+    was (``true`` is isolated, ``false`` is open); a file that names
+    only the new key gets the old one derived; a file that names both
+    is left alone here and refused by validation when they disagree.
+    """
+    dictResult = dict(dictRaw)
+    bHasMode = "networkMode" in dictResult
+    bHasIsolation = "networkIsolation" in dictResult
+    if bHasIsolation and not bHasMode:
+        dictResult["networkMode"] = (
+            S_NETWORK_MODE_ISOLATED if dictResult["networkIsolation"] is True
+            else S_NETWORK_MODE_OPEN)
+    elif bHasMode and not bHasIsolation:
+        dictResult["networkIsolation"] = (
+            dictResult["networkMode"] == S_NETWORK_MODE_ISOLATED)
+    return dictResult
+
+
+def fbNetworkKeysAgree(dictConfig):
+    """False only when both network keys are present and contradict each other."""
+    if "networkMode" not in dictConfig or "networkIsolation" not in dictConfig:
+        return True
+    return dictConfig["networkIsolation"] is (
+        dictConfig["networkMode"] == S_NETWORK_MODE_ISOLATED)
 
 
 def fbValidateConfig(dictConfig):
@@ -322,8 +370,26 @@ def fbValidateConfig(dictConfig):
         _fbValidateFeatures,
         _fbValidateDashboardPort,
         _fbValidateResourceLimits,
+        _fbValidateNetworkMode,
     ]
     return all(fnCheck(dictConfig) for fnCheck in listChecks)
+
+
+def _fbValidateNetworkMode(dictConfig):
+    """Check networkMode, allowedHosts and their agreement with networkIsolation."""
+    sMode = dictConfig.get("networkMode", S_NETWORK_MODE_OPEN)
+    if sMode not in T_NETWORK_MODES:
+        return False
+    if not isinstance(dictConfig.get("networkIsolation", False), bool):
+        return False
+    listAllowedHosts = dictConfig.get("allowedHosts", [])
+    if not isinstance(listAllowedHosts, list):
+        return False
+    from vaibify.docker.egressAllowlist import fbIsAllowedHostEntry
+    if not all(isinstance(sEntry, str) and fbIsAllowedHostEntry(sEntry)
+               for sEntry in listAllowedHosts):
+        return False
+    return fbNetworkKeysAgree(dictConfig)
 
 
 # A repository ``name`` is a path basename (the clone directory); a
@@ -826,6 +892,8 @@ def _fconfigFromYamlDict(dictYaml):
     )
     dictHungarian["features"] = featuresConfig
     dictHungarian["reproducibility"] = reproConfig
+    dictHungarian["bNetworkIsolation"] = (
+        dictHungarian.get("sNetworkMode", S_NETWORK_MODE_OPEN) == S_NETWORK_MODE_ISOLATED)
     return ProjectConfig(**dictHungarian)
 
 
@@ -897,6 +965,8 @@ def _fdictScalarFieldsToYaml(config):
         "bindMounts": config.listBindMounts,
         "secrets": config.listSecrets,
         "networkIsolation": config.bNetworkIsolation,
+        "networkMode": config.sNetworkMode,
+        "allowedHosts": list(config.listAllowedHosts),
         "x11Forwarding": config.bX11Forwarding,
         "neverSleep": config.bNeverSleep,
         "dashboardPort": config.iDashboardPort,

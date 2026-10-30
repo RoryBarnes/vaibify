@@ -324,7 +324,9 @@ Keys are camelCase. Every field except `projectName` has a default.
 | `workspaceRoot` | string | `/workspace` | Absolute path where the workspace volume mounts |
 | `packageManager` | string | `pip` | `pip`, `conda`, or `mamba` (the last two install Miniforge) |
 | `pipInstallFlags` | string | `--prefer-binary` | Extra `pip install` flags for the image build; `--prefer-binary` is always kept |
-| `networkIsolation` | boolean | `false` | Block all network traffic in and out of the container |
+| `networkMode` | string | `open` | `open`, `allowlist` or `isolated`. `allowlist` seals the container behind vaibify's allowlisting proxy (the wizard's default for a new project; needs Docker Engine 28); `isolated` is `--network none`. Neither sealing mode can be combined with `x11Forwarding`. Takes effect when the container is created (see [Security Model](security.md)) |
+| `allowedHosts` | list | `[]` | In allowlist mode, extra `host` or `host:port` entries the container may reach, beside the computed base list. Host names only, never addresses |
+| `networkIsolation` | boolean | `false` | The old spelling of `networkMode: isolated`; still read, and refused when it disagrees with `networkMode` |
 | `x11Forwarding` | boolean | `false` | Let graphical programs in the container open windows on your display. The container gets its own untrusted X authorization, revoked when it stops; on a server without the SECURITY extension (XQuartz, MacPorts X11) it holds a copy of the server's cookie instead, which is full display access (see [Security Model](security.md)). Refused with `networkIsolation: true`. Takes effect when the container is created |
 | `neverSleep` | boolean | `false` | Keep the Mac awake (`caffeinate`) while the container runs. Ignored elsewhere |
 | `dashboardPort` | integer | `0` | Port for the single-project viewer started from the command line ([CLI Reference](cli.md)). `0` means unassigned: the first launch picks a free port and writes it here. Otherwise 1024–65535 |

@@ -1470,6 +1470,9 @@ var VaibifyWorkflowManager = (function () {
         dictData.bUseGithubAuth = true;
         dictData.bNeverSleep = _fbIsMacOs();
         dictData.bNetworkIsolation = false;
+        /* Ruling D2: a NEW project is sealed behind the allowlisting
+           proxy unless the researcher chooses otherwise. */
+        dictData.sNetworkMode = "allowlist";
         dictData.bX11Forwarding = false;
         dictData.iCpuLimit = 0;
         dictData.fMemoryLimitGigabytes = 0;
@@ -2558,7 +2561,7 @@ var VaibifyWorkflowManager = (function () {
             ? _fsRenderNeverSleepRow() : "";
         return '<div class="form-group">' +
             '<label>Runtime options</label>' +
-            sNeverSleep + _fsRenderNetworkIsolationRow() +
+            sNeverSleep + _fsRenderNetworkModeRow() +
             _fsRenderX11ForwardingRow() + '</div>' +
             _fsRenderResourceLimitsSection();
     }
@@ -2595,26 +2598,37 @@ var VaibifyWorkflowManager = (function () {
             'during long builds</span></label>';
     }
 
-    function _fsRenderNetworkIsolationRow() {
-        var bChecked = _dictWizardData.bNetworkIsolation === true;
+    var _LIST_NETWORK_MODES = [
+        ["allowlist", "Allowlist: only the agents' services, GitHub, " +
+            "the package indexes and hosts you allow"],
+        ["open", "Open: the whole network"],
+        ["isolated", "Isolated: no network at all"],
+    ];
+
+    function _fsRenderNetworkModeRow() {
+        var sMode = _dictWizardData.sNetworkMode || "open";
         var bBlocked = _dictWizardData.bX11Forwarding === true;
-        return '<label class="wizard-toggle-row" title="Blocks all ' +
-            'outbound network traffic from the container.">' +
-            '<input type="checkbox" id="wizardNetworkIsolation"' +
-            (bChecked ? " checked" : "") +
+        return '<label class="wizard-toggle-row" title="What the ' +
+            'container may reach. Allowlist and isolated seal it; a ' +
+            'sealed container cannot forward a display.">' +
+            '<span>Network mode</span> ' +
+            '<select id="wizardNetworkMode"' +
             (bBlocked ? " disabled" : "") + '>' +
-            '<span>Network isolation ' +
-            '(block outbound traffic)</span></label>';
+            _LIST_NETWORK_MODES.map(function (tMode) {
+                return '<option value="' + tMode[0] + '"' +
+                    (tMode[0] === sMode ? " selected" : "") + '>' +
+                    VaibifyUtilities.fnEscapeHtml(tMode[1]) + '</option>';
+            }).join("") + '</select></label>';
     }
 
     function _fsRenderX11ForwardingRow() {
         var bChecked = _dictWizardData.bX11Forwarding === true;
-        var bBlocked = _dictWizardData.bNetworkIsolation === true;
+        var bBlocked = (_dictWizardData.sNetworkMode || "open") !== "open";
         return '<label class="wizard-toggle-row" title="Lets ' +
             'graphical programs in the container open windows on ' +
-            'your screen. A connected program can read the screen ' +
-            'and send input, so it is off by default and cannot be ' +
-            'combined with network isolation.">' +
+            'your screen. A connected program can draw on it, so it ' +
+            'is off by default, and a sealed network (allowlist or ' +
+            'isolated) cannot carry a display channel.">' +
             '<input type="checkbox" id="wizardX11Forwarding"' +
             (bChecked ? " checked" : "") +
             (bBlocked ? " disabled" : "") + '>' +
@@ -2623,15 +2637,18 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _fnWireX11AndIsolationExclusion() {
-        var elIsolation = document.getElementById(
-            "wizardNetworkIsolation");
+        /* Ruling D4: a display channel and a sealed network exclude
+           each other. Choosing X11 forces the mode open and locks it;
+           choosing a sealing mode locks X11 off. */
+        var elMode = document.getElementById("wizardNetworkMode");
         var elForwarding = document.getElementById("wizardX11Forwarding");
-        if (!elIsolation || !elForwarding) return;
-        elIsolation.addEventListener("change", function () {
-            elForwarding.disabled = elIsolation.checked;
+        if (!elMode || !elForwarding) return;
+        elMode.addEventListener("change", function () {
+            elForwarding.disabled = elMode.value !== "open";
         });
         elForwarding.addEventListener("change", function () {
-            elIsolation.disabled = elForwarding.checked;
+            if (elForwarding.checked) elMode.value = "open";
+            elMode.disabled = elForwarding.checked;
         });
     }
 
@@ -2982,8 +2999,7 @@ var VaibifyWorkflowManager = (function () {
             ? _fsSummaryRow("Prevent macOS sleep",
                 _dictWizardData.bNeverSleep ? "Yes" : "No") : "";
         return sNeverSleep + _fsSummaryRow(
-            "Network isolation",
-            _dictWizardData.bNetworkIsolation ? "Yes" : "No") +
+            "Network mode", _dictWizardData.sNetworkMode || "open") +
             _fsSummaryRow("X11 display forwarding",
                 _dictWizardData.bX11Forwarding ? "Yes" : "No") +
             _fsSummaryResourceLimitLines();
@@ -3057,8 +3073,12 @@ var VaibifyWorkflowManager = (function () {
         }
         _fnReadCheckboxInto("wizardUseGithubAuth", "bUseGithubAuth");
         _fnReadCheckboxInto("wizardNeverSleep", "bNeverSleep");
-        _fnReadCheckboxInto("wizardNetworkIsolation",
-            "bNetworkIsolation");
+        var elNetworkMode = document.getElementById("wizardNetworkMode");
+        if (elNetworkMode) {
+            _dictWizardData.sNetworkMode = elNetworkMode.value;
+            _dictWizardData.bNetworkIsolation =
+                elNetworkMode.value === "isolated";
+        }
         _fnReadCheckboxInto("wizardX11Forwarding", "bX11Forwarding");
         _fnReadPositiveNumberInto(
             "wizardCpuLimit", "iCpuLimit", true);

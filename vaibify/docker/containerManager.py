@@ -34,6 +34,11 @@ from . import fnRunDockerCommand
 from .volumeManager import (
     fbVolumeExists, fsGetCredentialsVolumeName, fsGetVolumeName,
 )
+from vaibify.config.projectConfig import (
+    S_NETWORK_MODE_ALLOWLIST, S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN,
+)
+
+from . import egressProxy, projectEgress
 from .x11Authorizations import fnReleaseAuthorizationQuietly
 from .x11Forwarding import flistConfigureX11Args
 
@@ -82,7 +87,9 @@ def fnStartContainer(config, sDockerDir, saCommand=None):
     """
     listCleanupFiles = []
     dictPosture = fdictResolveLaunchPosture(config.sProjectName)
-    saRunArgs = flistBuildRunArgs(config, dictPosture=dictPosture)
+    saRunArgs = flistBuildRunArgs(
+        config, dictPosture=dictPosture,
+        dictEgress=fdictPrepareEgressForLaunch(config))
     listUnresolvable = flistMountSecrets(
         config, saRunArgs, listCleanupFiles, dictPosture,
     )
@@ -122,7 +129,8 @@ def fsStartContainerDetached(config, sDockerDir):
     listCleanupFiles = []
     dictPosture = fdictResolveLaunchPosture(config.sProjectName)
     saRunArgs = flistBuildRunArgs(
-        config, bDetached=True, dictPosture=dictPosture)
+        config, bDetached=True, dictPosture=dictPosture,
+        dictEgress=fdictPrepareEgressForLaunch(config))
     listUnresolvable = flistMountSecrets(
         config, saRunArgs, listCleanupFiles, dictPosture,
     )
@@ -147,7 +155,8 @@ def fsCreateContainerForReservation(
     fnValidateReservationIdOrRaise(sReservationId)
     dictPosture = fdictResolveLaunchPosture(config.sProjectName)
     saRunArgs = flistBuildRunArgs(
-        config, bCreateOnly=True, dictPosture=dictPosture)
+        config, bCreateOnly=True, dictPosture=dictPosture,
+        dictEgress=fdictPrepareEgressForLaunch(config))
     fnAnnounceUnresolvableSecrets(
         config, flistMountSecrets(config, saRunArgs, [], dictPosture),
     )
@@ -548,6 +557,7 @@ def fsRecreateContainerDetachedFromImage(config, sImageReference):
 
 def flistBuildRunArgs(
     config, bDetached=False, bCreateOnly=False, dictPosture=None,
+    dictEgress=None,
 ):
     """Build list of docker run arguments from project config.
 
@@ -595,7 +605,7 @@ def flistBuildRunArgs(
     saRunArgs.extend(flistBuildAgentTerminalEnvironmentArguments())
     if bCredentials:
         _fnAddAgentHostBridge(config, saRunArgs)
-    _fnAddNetworkIsolation(config, saRunArgs)
+    _fnAddNetworkIsolation(config, saRunArgs, dictEgress)
     _fnAddX11Forwarding(config, saRunArgs)
     _fnAdmitObtainedImageOrRefuse(config, saRunArgs)
     _fnMountRepositoryListWithoutSeededFolder(config, saRunArgs, dictPosture)
@@ -1196,13 +1206,71 @@ def _fnAddAgentUpdateEnvs(config, saRunArgs):
         saRunArgs.extend(["-e", f"VAIBIFY_{sAgent}_AUTO_UPDATE={sFlag}"])
 
 
-def _fnAddNetworkIsolation(config, saRunArgs):
-    """Add network isolation flag if enabled in config."""
-    if config.bNetworkIsolation:
+def _fnAddNetworkIsolation(config, saRunArgs, dictEgress=None):
+    """Add the network-mode arguments: none, the sealed network, or nothing.
+
+    ``isolated`` is ``--network none``. ``allowlist`` joins the project's
+    internal network with its resolver black-holed and every HTTP client
+    pointed at the proxy sidecar, whose address ``dictEgress`` carries
+    from :func:`projectEgress.fdictPrepareProjectEgress`; a launch in
+    allowlist mode with no prepared egress is refused, never started
+    open. ``NO_PROXY`` names only the container itself: the hub is
+    reached THROUGH the proxy, which pins it.
+    """
+    sMode = fsNetworkModeOf(config)
+    if sMode == S_NETWORK_MODE_ISOLATED:
         saRunArgs.extend([
             "--network", "none",
             "-e", "VAIBIFY_NETWORK_ISOLATED=true",
         ])
+        return
+    if sMode != S_NETWORK_MODE_ALLOWLIST:
+        return
+    if not dictEgress or not dictEgress.get("sProxyAddress"):
+        raise RuntimeError(
+            f"'{config.sProjectName}' sets networkMode: allowlist, but no "
+            "network proxy was prepared for this launch; the container is "
+            "not started open.")
+    saRunArgs.extend(egressProxy.flistBuildSealedNetworkArguments(
+        dictEgress["sNetworkName"]))
+    for sKey, sValue in egressProxy.fdictBuildProxyEnvironment(
+            dictEgress["sProxyAddress"]).items():
+        saRunArgs.extend(["-e", f"{sKey}={sValue}"])
+    saRunArgs.extend([
+        "-e", "NO_PROXY=localhost,127.0.0.1", "-e", "no_proxy=localhost,127.0.0.1",
+        "-e", "VAIBIFY_NETWORK_MODE=allowlist",
+        "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+    ])
+
+
+def fsNetworkModeOf(config):
+    """Return the project's network mode, reading the old spelling too."""
+    sMode = getattr(config, "sNetworkMode", "")
+    if sMode:
+        return sMode
+    return (S_NETWORK_MODE_ISOLATED if getattr(config, "bNetworkIsolation", False)
+            else S_NETWORK_MODE_OPEN)
+
+
+def fdictPrepareEgressForLaunch(config):
+    """Make the sealed network and proxy for an allowlist-mode launch; else None.
+
+    The hub's port is the one destination on the host the container may
+    reach; it is read from the hub's own record, which a hub persists
+    at launch. A project the registry does not know has no identity to
+    key the egress by, and allowlist mode is refused for it.
+    """
+    if fsNetworkModeOf(config) != S_NETWORK_MODE_ALLOWLIST:
+        return None
+    from vaibify.config.hubPortRegistry import fiReadPersistedHubPort
+    sProjectUuid = _fsProjectUuidOrEmpty(config.sProjectName)
+    if not sProjectUuid:
+        raise RuntimeError(
+            f"'{config.sProjectName}' sets networkMode: allowlist, but it is "
+            "not a registered project, so its network cannot be named; "
+            "register it or set networkMode to open.")
+    return projectEgress.fdictPrepareProjectEgress(
+        config, sProjectUuid, fiReadPersistedHubPort())
 
 
 def _fnAddX11Forwarding(config, saRunArgs):
@@ -1221,6 +1289,12 @@ def _fnAddX11Forwarding(config, saRunArgs):
             f"'{config.sProjectName}' sets both x11Forwarding and "
             "networkIsolation. A sealed container cannot use a display "
             "channel; set one of them to false in vaibify.yml."
+        )
+    if fsNetworkModeOf(config) == S_NETWORK_MODE_ALLOWLIST:
+        raise RuntimeError(
+            f"'{config.sProjectName}' sets x11Forwarding with networkMode: "
+            "allowlist. A sealed container cannot use a display channel; "
+            "set networkMode to open or x11Forwarding to false in vaibify.yml."
         )
     saRunArgs.extend(flistConfigureX11Args(
         config.sProjectName, _fsProjectUuidOrEmpty(config.sProjectName),
@@ -1254,8 +1328,12 @@ def _fnAddAgentHostBridge(config, saRunArgs):
 
 
 def _fbAgentBridgeRequired(config):
-    """Return True when the agent host bridge should be wired up."""
-    if getattr(config, "bNetworkIsolation", False):
+    """Return True when the agent host bridge should be wired up.
+
+    Not in allowlist mode either: the sealed network has no route to
+    the host, and the proxy pins the hub for the agent instead.
+    """
+    if fsNetworkModeOf(config) != S_NETWORK_MODE_OPEN:
         return False
     features = getattr(config, "features", None)
     if features is None:
@@ -1509,6 +1587,7 @@ def fnRemoveStopped(sProjectName):
         logger.warning("secret-file release after removal failed",
                        exc_info=True)
     fnReleaseAuthorizationQuietly(sProjectName)
+    projectEgress.fnReleaseProjectEgressQuietly(_fsProjectUuidOrEmpty(sProjectName))
 
 
 def fbContainerIsRunning(sProjectName):

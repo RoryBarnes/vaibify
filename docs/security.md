@@ -18,8 +18,13 @@ The defenses are designed to contain four things:
 - **Escape to the host file system.** No wholesale host mount and no
   Docker socket. The host paths that *are* mounted are listed under
   [Container isolation](#container-isolation).
-- **Exfiltration over the network.** Optional network isolation blocks
-  all traffic in and out.
+- **Exfiltration over the network.** The network mode decides what the
+  container can reach: `allowlist` (the default for a new project) gives
+  it no route off the host and one way out, a proxy that serves only the
+  hosts the project needs and the hosts you allow; `isolated` blocks
+  all traffic in and out; `open` is the whole network (see
+  [Network modes](#network-modes)). An allowed host is still a channel:
+  an agent allowed to reach GitHub can push to its own fork.
 - **Privilege escalation inside the container.** Your code runs as an
   unprivileged user, with no `sudo` and a minimal capability set.
 - **One container acting on another.** Each container's agent holds its
@@ -35,9 +40,20 @@ Credential theft is contained only **partially**: a secret you choose to
 mount into a container can be read by every process in it (see
 [How secrets are handled](#how-secrets-are-handled)).
 
-vaibify does **not** defend against kernel-level container escapes. For
-high-security workloads, run vaibify inside a virtual machine or use a
-hardened container runtime such as gVisor.
+vaibify does **not** defend against kernel-level container escapes, and
+every control here rests on the container runtime being current:
+`runc` and Docker Engine have each had container-breakout fixes, and an
+engine behind those fixes makes the seal a courtesy. `vaibify doctor`
+reports the engine version; keep it patched. For high-security
+workloads, run vaibify inside a virtual machine or use a hardened
+container runtime such as gVisor.
+
+**What stays readable inside the container**, by design: the GitHub
+token when the project declares that secret (a researcher is not kept
+from any repository they normally reach), the coding agents' own
+logins and settings on the workspace volume, every `secrets` entry you
+declare, and the per-container session token `vaibify-do` uses. Zenodo
+and Overleaf tokens are not among them; they never enter the container.
 
 ## Container isolation
 
@@ -51,10 +67,10 @@ these restrictions:
 | Root only at startup, then `gosu` | The entrypoint starts as root to write a few system paths and fix workspace ownership, then `exec`s itself through `gosu` as the container user. Root exists at container start, but nothing you or an agent run inherits it. |
 | Minimal capabilities | The container starts with `--cap-drop ALL` and adds back only the five capabilities the entrypoint needs for that ownership fix and the `gosu` drop. `no-new-privileges` is set, so no setuid binary can regain privileges after the drop. |
 | No Docker socket | The daemon socket is never mounted. A bind mount that resolves to a Docker endpoint, is a socket, or contains one is refused (see below). |
-| Few host mounts | Files enter and leave through vaibify's own transfer commands, not a shared host directory. Four kinds of host path can be mounted: resolved secret files (read-only, under `/run/secrets`), the repository list a container started on a pinned image syncs from (read-only, at `/etc/vaibify/container.conf`), any `bindMounts` you declare in `vaibify.yml` (read-only unless an entry sets `readWrite: true`), and, only for a project that opts in, the Linux X11 socket (read-only). |
+| Few host mounts | Files enter and leave through vaibify's own transfer commands, not a shared host directory. Four kinds of host path can be mounted: resolved secret files (read-only, under `/run/secrets`), the repository list a container started on a pinned image syncs from (read-only, at `/etc/vaibify/container.conf`), any `bindMounts` you declare in `vaibify.yml` (read-only unless an entry sets `readWrite: true`), and, only for a project that opts in to `x11Forwarding`, that container's own X authorization directory (read-only) and, on Linux, the X11 socket directory (read-only). |
 | Workspace volume | A Docker named volume holds `/workspace` (or your configured `workspaceRoot`). It is not part of the host directory tree. |
 | Loopback-only ports | Every forwarded container port is bound to `127.0.0.1` unless that port's entry sets `lanExpose: true`. |
-| Optional network isolation | `networkIsolation: true` in `vaibify.yml` starts the container with `--network none`, blocking all traffic in and out. It cannot be combined with `x11Forwarding`. |
+| Network modes | `networkMode: allowlist` (the wizard's default for a new project) seals the container behind an allowlisting proxy: only the enabled agents' services, GitHub, the package indexes, the project's repositories and the hosts you allow, and nothing on the host, the VM or the LAN. `isolated` (the old `networkIsolation: true`) starts the container with `--network none`. `open` is the whole network. Neither sealing mode can be combined with `x11Forwarding`. |
 
 ### Declared bind mounts
 
@@ -236,6 +252,67 @@ coding agent's login and settings live on the workspace volume. All
 agents run as the same container user, so file permissions isolate
 nothing between them: treat "one agent was compromised" as "every
 configured provider's session was exposed."
+
+## Network modes
+
+A project's `networkMode` in `vaibify.yml` is `open`, `allowlist` or
+`isolated`; `networkIsolation: true` is the old spelling of `isolated`
+and is still read (a file that sets the two to disagree is refused).
+The creation wizard proposes `allowlist` for a new project; an existing
+project keeps `open` until you change it, because the mode applies when
+the container is created and a published project's files are not
+edited for you.
+
+**Allowlist mode** gives the container no route off the host at all and
+one way out: an HTTP CONNECT proxy that vaibify runs beside it.
+
+- **The network.** The container joins a Docker network created
+  `--internal` with the bridge's gateway mode `isolated` (Docker Engine
+  28 or later; an older engine refuses allowlist mode by name, and there
+  is no fallback to a gatewayed network). `--internal` alone is not the
+  seal: such a network's bridge has an address, and every host service
+  listening on `0.0.0.0` answers on it. In `isolated` mode the bridge
+  has no address and the container no route, so a direct dial to your
+  machine, the VM, the LAN or another container fails before a packet
+  leaves the machine. The container's resolver points at an address
+  that is never routed, so it cannot even look names up.
+- **The proxy sidecar.** A digest-pinned `python:3.10-slim` container
+  running vaibify's own proxy script (`vaibify/docker/egressProxy.py`,
+  shared with the Agent Council) from a read-only bind mount, as an
+  unprivileged user with every capability dropped, a read-only root and
+  memory, CPU and PID bounds. It sits on the sealed network, bound to
+  its address there alone, and on the default bridge. It serves
+  `CONNECT` to the allowlisted names on the allowed ports, and refuses:
+  anything else, a raw address, an unlisted host or port, an allowed
+  name that resolves to a loopback, private, link-local, carrier-grade
+  NAT or multicast address, and a tunnel past its concurrency cap.
+- **The allowlist** is computed, with every entry's reason in
+  `vaibify/docker/egressAllowlist.py`: the enabled agents' login and API
+  hosts (the four secondary agents get only their login hosts), GitHub,
+  PyPI, the conda channels when the package manager is conda, the npm
+  registry when an agent auto-updates, every repository the project
+  clones, and `allowedHosts` (`host` or `host:port`). Zenodo, Overleaf
+  and arXiv are absent on purpose: those operations run on the host.
+- **The hub.** `vaibify-do` reaches the hub through the proxy, which
+  pins exactly `host.docker.internal:<hub port>`: no other port on that
+  name, no raw address, and the port is the one the hub recorded when
+  it launched. The container's published ports (`ports`, Jupyter) are
+  published on the sidecar and relayed to the container.
+- **The dashboard** shows the Network row: the mode, whether the proxy
+  is up (a dead proxy is said in so many words, never silent), and the
+  destinations the proxy refused recently with their counts. The
+  researcher-only **Allow host** action adds one to `allowedHosts`
+  (also `vaibify do allow-network-host`); it takes effect when the
+  container is created again. Agents cannot extend the allowlist.
+- **What it does not close.** Allowed hosts are multi-tenant: an agent
+  can push to its own GitHub fork, or send data to the model API it is
+  allowed to use.
+- **What breaks.** Tools that ignore the proxy variables cannot reach
+  the network; git over SSH to hosts other than GitHub is not relayed
+  (use HTTPS); a data archive not on the list must be allowed first.
+  A pinned image whose `vaibify-do` predates this release cannot stream
+  pipeline runs from inside an allowlist-mode container until the image
+  is rebuilt; its plain HTTP actions work through the proxy unchanged.
 
 ## X11 display forwarding
 
