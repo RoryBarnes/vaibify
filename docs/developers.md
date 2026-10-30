@@ -148,6 +148,20 @@ Cleanup is tested in `tests/testEphemeralStore.py`,
 `tests/testSecretFilesFollowTheirContainer.py` and
 `tests/testSecretFilesStayOutOfTheResearchersHome.py`.
 
+**Legibility is measured, in two places.** `tests/testPaletteContrast.py`
+reads the `:root` palette of each stylesheet and holds every text-grade
+token to the WCAG 2.1 text minimum (4.5:1) on every opaque surface
+token, and requires the base link rule that keeps an unstyled link off
+the browser's default dark blue; a pair below the minimum is recorded
+with its reason and may only leave the record.
+`tests/browser/testVisibleTextIsLegible.py` sweeps the rendered hub,
+wizard and workflow (with the Zenodo token banner rendered), compositing
+each text color over the layers behind it; text over a gradient or an
+image is reported as unmeasured, never counted legible, and text dim on
+purpose is allowed by selector with a reason. The sweep sees only the
+screens the lane renders: a surface that appears only against a real
+container is still checked by eye.
+
 ### The manual check
 
 Still the right tool when you are working on something the lane does not
