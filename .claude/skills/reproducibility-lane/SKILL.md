@@ -941,13 +941,24 @@ premise of vaibify — never a baffling debugging session.
 `tests/browser/testVerifyWarnsBeforeCopyingTheProject.py` asserts the
 ORDER (no POST before the confirm), not the wording.
 
-**Two container facts this lane depends on, both found the hard way.**
+**Three container facts this lane depends on, all found the hard way.**
 `get_archive` cannot read out of a **tmpfs** mount — it answers 404 for
 a directory an exec in the same container lists happily. It reads out
 of a named **volume** fine, which is what real project repos live in
 (verified live). And `DockerConnection` execs `/bin/bash`, so an image
 without bash fails with a non-zero exit and empty stderr, which reads
-like a broken program rather than a missing shell.
+like a broken program rather than a missing shell. Third, and so far
+measured on ONE runtime (Colima 0.10.3, virtiofs, Docker Engine
+28.4.0): once the host file behind a `--mount` is deleted, every
+`get_archive` out of that container fails with "Could not find the
+file" while `exec` keeps working, so the export behind Verify L3 blames
+an intact `/workspace/<repo>`. The usual deleted source is a
+`/run/secrets/<name>` file. A failed directory archive read now names a
+deleted vaibify-managed secret on positive evidence only, and the remedy
+it names is Restart Container (`vaibify stop && vaibify start`), never
+`docker restart`, which reuses the missing file.
+`tests/testArchiveReadNamesAMissingMountLive.py` records what other
+runtimes do, and requires the failure only where it was measured.
 
 **The disposable lifecycle is SHARED with the Agent Council.**
 `vaibify/docker/disposableContainer.py` (the SDK authority),

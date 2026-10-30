@@ -141,7 +141,12 @@ rendering, or the sync panel. Those belong to the container-acceptance
 lane, which runs nightly — so drift between the fake and a real
 container is caught up to a day late. The browser lane failing blocks
 merge; the container-acceptance lane failing blocks the next release,
-not retroactively.
+not retroactively. Nor does the lane test secret-file cleanup: its hub
+sweeps a redirected ephemeral root, never `~/.vaibify/tmp`, and the
+fake reports every path as mounted, so the sweep keeps every file.
+Cleanup is tested in `tests/testEphemeralStore.py`,
+`tests/testSecretFilesFollowTheirContainer.py` and
+`tests/testSecretFilesStayOutOfTheResearchersHome.py`.
 
 **Legibility is measured, in two places.** `tests/testPaletteContrast.py`
 reads the `:root` palette of each stylesheet and holds every text-grade

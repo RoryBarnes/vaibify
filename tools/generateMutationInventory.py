@@ -197,6 +197,9 @@ DICT_PRIMITIVE_ACCESS = {
     # Every container's bind-mount sources, running or stopped: the
     # proof the credential-file sweep acts on. Daemon metadata, no exec.
     "fsetListMountSourcesOfAllContainers": S_ACCESS_TYPED_READ,
+    # One container's bind sources and the managed secrets among them a
+    # host lstat finds missing: cached daemon metadata, no exec.
+    "fdictInspectBindMountSources": S_ACCESS_TYPED_READ,
     # Whether a local image tag exists: a daemon lookup that runs no
     # program anywhere, over a tag the caller composes from a validated
     # project name. The start guard that asks may refuse only on its

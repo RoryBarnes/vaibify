@@ -20,6 +20,7 @@ import time
 __all__ = [
     "F_SECRET_FILE_GRACE_SECONDS",
     "S_SECRET_FILE_PREFIX",
+    "fbIsManagedSecretSource",
     "fiReleaseSecretSources",
     "fiSweepUnmountedEphemeralFiles",
     "fsGetEphemeralRoot",
@@ -30,8 +31,11 @@ __all__ = [
 # that consumed it: on macOS the Colima daemon lazily re-resolves
 # bind-mount sources during later operations, so unlinking one
 # mid-session breaks that container (see
-# ``containerManager.fsStartContainerDetached``). What makes a file
-# garbage is therefore that NO container mounts it, which only the
+# ``containerManager.fsStartContainerDetached``). On Colima 0.10.3
+# (virtiofs) with Docker Engine 28.4.0 a deleted source also stops
+# every ``get_archive`` out of that container while ``exec`` keeps
+# working (measured 2026-10-30; other runtimes may differ). What makes
+# a file garbage is therefore that NO container mounts it, which only the
 # daemon can say; the grace below only keeps a file that was written
 # a moment ago, for a ``docker run`` still being composed, out of the
 # sweep's reach.
@@ -44,9 +48,19 @@ F_SECRET_FILE_GRACE_SECONDS = 60 * 60
 S_SECRET_FILE_PREFIX = "vc_secret_"
 
 
+def _fsResolveHomeDirectory():
+    """Return the home directory the ephemeral root lives under.
+
+    The one seam every caller reaches, however it imported
+    :func:`fsGetEphemeralRoot`; the test suite redirects it so no test
+    resolves the researcher's live secret files.
+    """
+    return os.path.expanduser("~")
+
+
 def fsGetEphemeralRoot():
     """Return ``~/.vaibify/tmp`` (created mode 0700) for ephemeral writes."""
-    sRoot = os.path.join(os.path.expanduser("~"), ".vaibify", "tmp")
+    sRoot = os.path.join(_fsResolveHomeDirectory(), ".vaibify", "tmp")
     os.makedirs(sRoot, mode=0o700, exist_ok=True)
     return sRoot
 
@@ -99,6 +113,19 @@ def _fiUnlinkQuietly(sPath):
     return 1
 
 
+def fbIsManagedSecretSource(sSource):
+    """Return True when a mount source is a secret file vaibify wrote.
+
+    Managed means directly inside the ephemeral root and named with the
+    secret prefix. The release below and the archive-failure diagnosis
+    both ask this, because they must agree on what a managed secret is.
+    """
+    return (
+        os.path.dirname(sSource or "") == fsGetEphemeralRoot()
+        and os.path.basename(sSource).startswith(S_SECRET_FILE_PREFIX)
+    )
+
+
 def fiReleaseSecretSources(listMountSources, setStillMountedSources):
     """Delete a removed container's secret files; return how many.
 
@@ -108,12 +135,9 @@ def fiReleaseSecretSources(listMountSources, setStillMountedSources):
     a secret file inside the ephemeral root and no surviving container
     mounts it, so a file shared by two containers outlives the first.
     """
-    sRoot = fsGetEphemeralRoot()
     iRemoved = 0
     for sSource in listMountSources:
-        if os.path.dirname(sSource) != sRoot:
-            continue
-        if not os.path.basename(sSource).startswith(S_SECRET_FILE_PREFIX):
+        if not fbIsManagedSecretSource(sSource):
             continue
         if sSource in setStillMountedSources:
             continue

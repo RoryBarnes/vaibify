@@ -15,8 +15,11 @@ the helper deliberately does not stop it.
 """
 
 import json
+import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -56,14 +59,24 @@ def _fbPortIsFree(iPort):
 
 @pytest.fixture
 def processHelper():
-    """Run the helper, yield it, and always clean up its hub."""
+    """Run the helper in its own home, yield it, and clean up its hub.
+
+    The helper starts a real hub that inherits its environment, and a
+    hub runs the secret sweep and writes its session state under
+    ``HOME``. The suite's in-process redirects cannot reach a child, so
+    the child gets a home of its own: short, under ``/tmp``, because the
+    hub's control socket lives beneath it and macOS caps a Unix socket
+    path at 104 bytes.
+    """
     if not _fbPortIsFree(I_TEST_PORT):
         pytest.skip(f"port {I_TEST_PORT} is already in use")
+    sHome = tempfile.mkdtemp(prefix="vrh", dir="/tmp")
     process = subprocess.Popen(
         [sys.executable, "-m", "vaibify", "remote-helper",
          "--port", str(I_TEST_PORT)],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True,
+        env=dict(os.environ, HOME=sHome),
     )
     try:
         yield process
@@ -77,6 +90,7 @@ def processHelper():
         # The hub is detached, so its exit is not this process's to
         # await; give the socket a moment to clear for the next test.
         time.sleep(1.0)
+        shutil.rmtree(sHome, ignore_errors=True)
 
 
 def test_the_helper_starts_a_hub_and_its_capability_redeems(

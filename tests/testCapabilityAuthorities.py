@@ -92,7 +92,8 @@ SET_RAW_EFFECT_CAPABILITIES = frozenset({
 # time as though they were clients would bury the real ones. The class
 # once held five members across the GUI poll lanes; they were replaced
 # by the gateway predicate ``fbErrorMeansContainerUnreachable``, whose
-# single lazy APIError import is now the class's one member.
+# lazy APIError import is one of the class's two members; the other is
+# ``fbErrorIsDockerNotFound``'s lazy NotFound import, beside it.
 #
 # The scanner deliberately over-records (safe direction) and its
 # vocabulary is kill-confirm-covered, so this is recorded as a reviewed
@@ -460,8 +461,18 @@ DICT_NAMED_AUTHORITIES = {
             "The substrate-failure predicate's lazy binding of the SDK's "
             "APIError, used only in an isinstance test. It replaced the "
             "five except-clause acquisitions the GUI poll lanes held, so "
-            "the exception-type class now has one member, inside the "
-            "gateway that owns the docker capability.",
+            "the exception-type class lives inside the gateway that owns "
+            "the docker capability.",
+        ),
+    "docker/dockerConnection.py|fbErrorIsDockerNotFound|"
+    "docker-client|docker.errors.NotFound|import-from|0":
+        _fdictAuthority(
+            [S_LANE_EXCEPTION_TYPE],
+            "The archive-failure predicate's lazy binding of the SDK's "
+            "NotFound, used only in an isinstance test. The gateway's "
+            "directory-archive explainer and the council's snapshot "
+            "capture both ask it, so neither names the SDK's type and "
+            "no Docker-client acquisition enters vaibify/gui/.",
         ),
     "docker/dockerConnection.py|_ftExchangeWithExecSocket|docker-client|"
     "docker.utils.socket.STDERR|import-from|0":

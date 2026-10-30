@@ -22,6 +22,10 @@ gpu``, and ``sudo systemctl start docker`` to a rootless daemon whose
 unit is a ``--user`` one. Those answers now come from
 ``runtimeRemedies``, which asks the classifier; this module keeps the
 PATTERN MATCHING, which is what it is actually good at.
+
+**A sentence this module composes about a failed archive read quotes no
+host bind-source path**: every source the container mounts is replaced
+in the daemon's words before they are bounded.
 """
 
 
@@ -30,7 +34,8 @@ import re
 
 __all__ = [
     "fdictDiagnoseDockerError", "fdictDiagnoseContainerOperationError",
-    "fsExplainContainerOperationFailure", "flistDecisiveBuildLines",
+    "fsExplainContainerOperationFailure", "fsExplainArchiveReadFailure",
+    "flistDecisiveBuildLines",
     "fdictDiagnoseBuildFailure", "fsExplainBuildFailure",
     "fbErrorIsDiskFull", "fdictDiagnoseDaemonDiskFull",
 ]
@@ -415,6 +420,45 @@ def fsExplainContainerOperationFailure(sOperation, sProjectName, sRawError):
     if dictDiagnosis["sCommand"]:
         sSentence += f" Command: {dictDiagnosis['sCommand']}"
     return f"{sSentence} (Docker said: {sRaw})"
+
+
+S_REDACTED_HOST_PATH = "<host path>"
+
+
+def fsExplainArchiveReadFailure(
+    sWhat, sPath, sRawError, listMissingSecretTargets, listHostSources,
+):
+    """Return the sentence a researcher reads for a failed archive read.
+
+    With no missing secret it is the sentence the read always raised.
+    With one or more, it names them as the LIKELY cause, because the
+    archive behavior behind it was measured on one runtime, and names
+    the control that replaces them. Each host source is replaced before
+    the daemon's words are bounded: a bound taken first can cut a path
+    into a fragment that no replacement matches.
+    """
+    sRedacted = _fsRedactHostSources(sRawError, listHostSources)
+    if not listMissingSecretTargets:
+        return f"Cannot read {sWhat} from container: {sPath}: {sRedacted}"
+    sQuoted = " ".join(sRedacted.split())[:240]
+    return (
+        f"Cannot read {sPath} from the container. A file it mounts from "
+        f"this computer is missing ({', '.join(listMissingSecretTargets)}), "
+        "which is the likely cause: on some Docker runtimes a missing mount "
+        "source stops every copy out of a container. Use Restart Container "
+        "in vaibify (or `vaibify stop && vaibify start`), which starts a "
+        "new container with a fresh copy; `docker restart` reuses the "
+        f"missing file. (Docker said: {sQuoted})"
+    )
+
+
+def _fsRedactHostSources(sText, listHostSources):
+    """Return ``sText`` with every host source replaced, longest first."""
+    sRedacted = sText or ""
+    for sSource in sorted(set(listHostSources), key=len, reverse=True):
+        if sSource:
+            sRedacted = sRedacted.replace(sSource, S_REDACTED_HOST_PATH)
+    return sRedacted
 
 
 _RE_BUILDKIT_LINE_PREFIX = re.compile(r"^#\d+\s+(?:\d+\.\d+\s+)?")

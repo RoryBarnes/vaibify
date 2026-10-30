@@ -25,8 +25,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 from vaibify.config import mutationAdmission
+from vaibify.config.ephemeralStore import fbIsManagedSecretSource
 from vaibify.docker import confinedRead
 from vaibify.docker import confinedWrite
+from vaibify.docker.dockerErrorDiagnosis import fsExplainArchiveReadFailure
 from vaibify.docker.execArgumentBudget import (
     I_EXEC_ARGUMENT_BUDGET_BYTES,
     flistBatchPathsForOneExec,
@@ -344,6 +346,38 @@ def _fnEnsureDockerHost():
     if sHost:
         os.environ["DOCKER_HOST"] = sHost
         fnRecordDockerHostExportedByVaibify(sHost)
+
+
+def _fbDockerHostIsLocalSocket():
+    """Return True when DOCKER_HOST names this host's own Unix socket.
+
+    Empty means docker-py's default, the local socket. Asked once, as a
+    connection is built, because that is when ``from_env`` read it: a
+    later context change must not relabel a connection still talking to
+    the daemon it was built for.
+    """
+    import os
+    sDockerHost = os.environ.get("DOCKER_HOST", "")
+    return not sDockerHost or sDockerHost.startswith("unix://")
+
+
+def _fbManagedSecretSourceIsMissing(sSource):
+    """Return True only when a managed secret's host file is positively gone.
+
+    ``FileNotFoundError`` is the one answer that means missing. Any other
+    ``OSError``, a permission failure say, means unknown and is never
+    reported as missing, which ``os.path.exists`` would not distinguish.
+    """
+    import os
+    if not fbIsManagedSecretSource(sSource):
+        return False
+    try:
+        os.lstat(sSource)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return False
 
 
 # The complete set of programs the audited-read exemption will run,
@@ -1988,6 +2022,7 @@ class DockerConnection:
         self._clientDocker = _fmoduleGetDocker().from_env(
             timeout=I_DOCKER_CLIENT_TIMEOUT_SECONDS,
         )
+        self._bDaemonOnLocalSocket = _fbDockerHostIsLocalSocket()
         _fnTuneDockerSessionPool(self._clientDocker)
         self._dictContainers = {}
 
@@ -2082,6 +2117,37 @@ class DockerConnection:
                 if sSource:
                     setSources.add(sSource)
         return setSources
+
+    def fdictInspectBindMountSources(self, sContainerId):
+        """Return a container's bind sources and its missing managed secrets.
+
+        Metadata only: it reads the ``Mounts`` of the container object
+        this connection already holds and makes no new daemon call, since
+        a container's mounts never change after create.
+        ``listHostSources`` is every bind's host source, for redacting a
+        quoted daemon error. ``listMissingSecretTargets`` is the
+        container path of each bind whose source is a vaibify-managed
+        secret this host positively cannot find. Only a connection to
+        this host's own socket may say so: a VM-backed daemon can mount
+        sources that exist only inside its VM, but a managed secret is
+        one vaibify wrote on this host, under $HOME so the daemon sees
+        it at the same path.
+        """
+        container = self.fcontainerGetById(sContainerId)
+        listBinds = [
+            dictMount
+            for dictMount in (container.attrs or {}).get("Mounts") or []
+            if dictMount.get("Type") == "bind" and dictMount.get("Source")
+        ]
+        return {
+            "listHostSources": [dictMount["Source"] for dictMount in listBinds],
+            "listMissingSecretTargets": [
+                dictMount.get("Destination") or ""
+                for dictMount in listBinds
+                if self._bDaemonOnLocalSocket
+                and _fbManagedSecretSourceIsMissing(dictMount["Source"])
+            ],
+        }
 
     def fcontainerGetById(self, sContainerId):
         """Return the container object, refreshing if needed.
@@ -3204,14 +3270,39 @@ class DockerConnection:
         try:
             tStreamStat = container.get_archive(sDirectoryPath)
         except Exception as error:
-            raise FileNotFoundError(
-                "Cannot read directory from container: "
-                f"{sDirectoryPath}: {error}"
-            )
+            raise FileNotFoundError(self._fsExplainDirectoryArchiveFailure(
+                sContainerId, sDirectoryPath, error,
+            ))
         iterTarStream, _ = tStreamStat
         return _fbaCollectBoundedTarStream(
             iterTarStream, iMaxBytes, sDirectoryPath,
         )
+
+    def _fsExplainDirectoryArchiveFailure(
+        self, sContainerId, sDirectoryPath, error,
+    ):
+        """Return the message a failed directory archive read raises.
+
+        A deleted managed secret is named only for the SDK's ``NotFound``,
+        recognized by class and never by "404"; every bind source is
+        redacted from the daemon's words on any failure. If reading the
+        mounts or composing the sentence fails, the message is exactly
+        the one this read raised before it could explain anything.
+        """
+        try:
+            dictMounts = self.fdictInspectBindMountSources(sContainerId)
+            return fsExplainArchiveReadFailure(
+                "directory", sDirectoryPath, str(error),
+                dictMounts["listMissingSecretTargets"]
+                if fbErrorIsDockerNotFound(error) else [],
+                dictMounts["listHostSources"],
+            )
+        except Exception as errorDiagnosis:  # noqa: BLE001 -- never hides the error
+            mutationAdmission.fnReRaiseControlPlaneRefusal(errorDiagnosis)
+            return (
+                "Cannot read directory from container: "
+                f"{sDirectoryPath}: {error}"
+            )
 
     def fdictWeighRepository(self, sContainerId, sRepositoryPath):
         """Return ``{iFileCount, iTotalBytes, bTruncated}`` for a repo.
@@ -4015,6 +4106,22 @@ def fbErrorMeansContainerUnreachable(error):
     except ImportError:
         return False
     return isinstance(error, APIError)
+
+
+def fbErrorIsDockerNotFound(error):
+    """Return True when an error is the Docker SDK's ``NotFound``.
+
+    Recognized by CLASS, never by a "404" in the text, because an
+    unreachable daemon carries 404s from other causes. A deleted mount
+    source surfaces as this on the runtime where it was measured, so
+    the archive-failure diagnosis asks it, in the gateway and in the
+    council alike, without either naming the SDK's type itself.
+    """
+    try:
+        from docker.errors import NotFound
+    except ImportError:
+        return False
+    return isinstance(error, NotFound)
 
 
 def _fbaCollectBoundedTarStream(iterTarStream, iMaxBytes, sDirectoryPath):

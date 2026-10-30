@@ -4746,7 +4746,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # caused names the ways to narrow the snapshot.
     # 1429 -> 1437 (2026-10-26): the manifest records the runner sizes
     # the capture was bounded by, for the member's execution note.
-    "agentCouncilContext.py": 1437,
+    # 1437 -> 1471 (2026-10-30, approved by Rory): both archive reads
+    # refuse by name when a deleted managed secret explains a NotFound,
+    # rather than raise the SDK error inside the carrier worker.
+    "agentCouncilContext.py": 1471,
     # NEW at 837 (2026-08-26): the store crossed the default cap when
     # the durable provenance sidecar landed — the evidence ledger's
     # recorded state and the turn counter now survive a hub restart

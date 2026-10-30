@@ -133,7 +133,7 @@ import shutil
 import tarfile
 from datetime import datetime, timezone
 
-from vaibify.docker import dockerConnection
+from vaibify.docker import dockerConnection, dockerErrorDiagnosis
 from vaibify.gui import (
     agentCouncilCapacity,
     agentCouncilSnapshotScope,
@@ -573,7 +573,12 @@ def _fdictStreamValidatedArchive(
     is validated here before a byte of it is kept.
     """
     container = connectionDocker.fcontainerGetById(sContainerId)
-    iterTarStream, _ = container.get_archive(sRepoRoot)
+    try:
+        iterTarStream, _ = container.get_archive(sRepoRoot)
+    except Exception as error:
+        _fnRefuseWhenAManagedSecretIsMissing(
+            connectionDocker, sContainerId, sRepoRoot, error)
+        raise
     sPartialPath = os.path.join(
         sSnapshotDirectory, S_SNAPSHOT_ARCHIVE_BASENAME + _S_PARTIAL_SUFFIX,
     )
@@ -643,8 +648,8 @@ def _fdictStreamTrackedArchive(
             for sRelative in sorted(dictEligible):
                 _fnAddParentDirectories(fileTarOutput, sRelative, setParents)
                 _fnFetchOneTrackedMember(
-                    container, sRepoRoot, sRootComponent, sRelative,
-                    fileTarOutput, dictCapture)
+                    connectionDocker, sContainerId, container, sRepoRoot,
+                    sRootComponent, sRelative, fileTarOutput, dictCapture)
     finally:
         fileArchiveOutput.close()
     return dictCapture
@@ -673,16 +678,22 @@ def _fnAddParentDirectories(fileTarOutput, sRelative, setParents):
         fileTarOutput.addfile(infoDirectory)
 
 
-def _fnFetchOneTrackedMember(container, sRepoRoot, sRootComponent,
-                             sRelative, fileTarOutput, dictCapture):
+def _fnFetchOneTrackedMember(connectionDocker, sContainerId, container,
+                             sRepoRoot, sRootComponent, sRelative,
+                             fileTarOutput, dictCapture):
     """Fetch ONE eligible path; refuse anything but its single member.
 
     The header arrives before any payload, so a path that became a
     directory, or a file that grew past the bounds, is refused before
     its contents are consumed: the race costs at most one member bound.
     """
-    iterTarStream, _ = container.get_archive(
-        posixpath.join(sRepoRoot, sRelative))
+    sPath = posixpath.join(sRepoRoot, sRelative)
+    try:
+        iterTarStream, _ = container.get_archive(sPath)
+    except Exception as error:
+        _fnRefuseWhenAManagedSecretIsMissing(
+            connectionDocker, sContainerId, sPath, error)
+        raise
     try:
         filePipe = dockerConnection._BytesGeneratorPipe(iterTarStream)
         with tarfile.open(fileobj=filePipe, mode="r|") as fileTarSource:
@@ -701,6 +712,29 @@ def _fnFetchOneTrackedMember(container, sRepoRoot, sRootComponent,
                     sRootComponent, dictCapture)
     finally:
         _fnCloseArchiveStream(iterTarStream)
+
+
+def _fnRefuseWhenAManagedSecretIsMissing(
+        connectionDocker, sContainerId, sPath, error):
+    """Refuse an archive read that a deleted managed secret explains.
+
+    The SDK's error escaping this carrier worker would poison its journal
+    record, where a refusal is carried back as a 409. Every other failure,
+    and one whose mounts cannot be read, returns for the caller to
+    re-raise unchanged.
+    """
+    if not dockerConnection.fbErrorIsDockerNotFound(error):
+        return
+    try:
+        dictMounts = connectionDocker.fdictInspectBindMountSources(sContainerId)
+    except Exception:  # noqa: BLE001 -- the caller re-raises the SDK's error
+        return
+    if dictMounts["listMissingSecretTargets"]:
+        raise SnapshotRefusedError(
+            dockerErrorDiagnosis.fsExplainArchiveReadFailure(
+                "path", sPath, str(error),
+                dictMounts["listMissingSecretTargets"],
+                dictMounts["listHostSources"])) from error
 
 
 def _fnRaiseSnapshotRefusal(sReason):

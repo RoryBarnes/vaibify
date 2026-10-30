@@ -226,6 +226,17 @@ class UnmodelledContainerCall(RuntimeError):
     """Raised when the fake is asked something its contract omits."""
 
 
+class EveryPathMountedSet(set):
+    """A mount-source answer under which every host path is mounted.
+
+    The secret sweep only ever asks membership, so this protects every
+    file it could reach; it enumerates nothing.
+    """
+
+    def __contains__(self, sPath):
+        return True
+
+
 class FailClosedDockerAdapter:
     """A Docker stand-in that refuses to invent answers."""
 
@@ -360,8 +371,17 @@ class FailClosedDockerAdapter:
     # journey seeds the scan itself; an unmodelled call would be recorded
     # as a failed cleanup and paint the glyph red for a reason that has
     # nothing to do with the behaviour under test.
+    # Every path reads as mounted, so the secret sweep keeps every file.
+    # The lane's hub resolves a redirected root (tests/conftest.py), and
+    # this is the second layer: an empty answer told a hub running
+    # against the researcher's real ~/.vaibify/tmp that no live
+    # container mounted anything, and it deleted their secret files.
+    # The cost is stated, not hidden: THE BROWSER LANE DOES NOT TEST
+    # CLEANUP. Cleanup is tested in tests/testEphemeralStore.py,
+    # tests/testSecretFilesFollowTheirContainer.py and
+    # tests/testSecretFilesStayOutOfTheResearchersHome.py.
     def fsetListMountSourcesOfAllContainers(self):
-        return set()
+        return EveryPathMountedSet()
 
     def flistListAllContainers(self):
         return [{
