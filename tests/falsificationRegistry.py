@@ -4017,6 +4017,126 @@ LIST_FALSIFICATIONS = [
         old='        return EveryPathMountedSet()\n',
         new='        return set()\n',
     ),
+    # --- 2026-10-30: a failed archive read names a deleted managed
+    # secret, only on positive evidence, and quotes no host path ---
+    Falsification(
+        nodeid=(
+            'tests/testArchiveReadNamesAMissingMount.py::'
+            'testAMissingManagedSecretIsNamedAsTheLikelyCause'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        os.lstat(sSource)\n'
+            '    except FileNotFoundError:\n'
+            '        return True\n'
+        ),
+        new=(
+            '        os.lstat(sSource)\n'
+            '    except FileNotFoundError:\n'
+            '        return False\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveReadNamesAMissingMount.py::'
+            'testAMissingSourceVaibifyDidNotWriteMakesNoClaim'
+        ),
+        source='vaibify/config/ephemeralStore.py',
+        old=(
+            '    return (\n'
+            '        os.path.dirname(sSource or "") == fsGetEphemeralRoot()\n'
+            '        and os.path.basename(sSource).startswith('
+            'S_SECRET_FILE_PREFIX)\n'
+            '    )\n'
+        ),
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveReadNamesAMissingMount.py::'
+            'testAnInaccessibleSourceIsNotReportedAsMissing'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='        os.lstat(sSource)\n    except FileNotFoundError:\n',
+        new='        os.lstat(sSource)\n    except OSError:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveReadNamesAMissingMount.py::'
+            'testADaemonOffTheLocalSocketIsNeverDiagnosed'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '                if self._bDaemonOnLocalSocket\n'
+            '                and _fbManagedSecretSourceIsMissing('
+            'dictMount["Source"])\n'
+        ),
+        new=(
+            '                if _fbManagedSecretSourceIsMissing('
+            'dictMount["Source"])\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveReadNamesAMissingMount.py::'
+            'testTheEndpointIsTheFailingConnectionsOwn'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='                if self._bDaemonOnLocalSocket\n',
+        new='                if _fbDockerHostIsLocalSocket()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveReadNamesAMissingMount.py::'
+            'testAFailedDiagnosisKeepsTheOriginalError'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '            mutationAdmission.fnReRaiseControlPlaneRefusal('
+            'errorDiagnosis)\n'
+            '            return (\n'
+            '                "Cannot read directory from container: "\n'
+        ),
+        new=(
+            '            raise\n'
+            '            return (\n'
+            '                "Cannot read directory from container: "\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveReadNamesAMissingMount.py::'
+            'testNoHostBindSourceIsQuoted'
+        ),
+        source='vaibify/docker/dockerErrorDiagnosis.py',
+        old='    sRedacted = _fsRedactHostSources(sRawError, listHostSources)\n',
+        new='    sRedacted = sRawError or ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveReadNamesAMissingMount.py::'
+            'testRedactionPrecedesTheBound'
+        ),
+        source='vaibify/docker/dockerErrorDiagnosis.py',
+        old='    sQuoted = " ".join(sRedacted.split())[:240]\n',
+        new=(
+            '    sQuoted = _fsRedactHostSources(\n'
+            '        " ".join((sRawError or "").split())[:240], '
+            'listHostSources)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveReadNamesAMissingMount.py::'
+            'testTheCouncilRefusesInsteadOfRaisingTheSdkError'
+        ),
+        source='vaibify/gui/agentCouncilContext.py',
+        old=(
+            '    if dictMounts["listMissingSecretTargets"]:\n'
+            '        raise SnapshotRefusedError(\n'
+        ),
+        new='    if False:\n        raise SnapshotRefusedError(\n',
+    ),
 
     # ── Documented hard rules that no test could previously falsify ──
     # (2026-07-26 audit). Mutation testing cannot reach this class: it

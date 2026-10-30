@@ -2168,6 +2168,10 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # substrate gave no answer" for the poll lanes. Same shape — an
     # isinstance test over an exception object, no daemon call.
     "fbErrorMeansContainerUnreachable",
+    # The same kind of predicate over an already-raised error: is it
+    # the SDK's NotFound? The archive-failure diagnosis asks it in the
+    # gateway and in the council. No daemon call.
+    "fbErrorIsDockerNotFound",
     # Reads the DAEMON's memory and CPU count through the client's
     # ``info`` for sizing council runners; it names no container and
     # makes no mutation. It is the module-level body that

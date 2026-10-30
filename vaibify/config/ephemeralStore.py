@@ -20,6 +20,7 @@ import time
 __all__ = [
     "F_SECRET_FILE_GRACE_SECONDS",
     "S_SECRET_FILE_PREFIX",
+    "fbIsManagedSecretSource",
     "fiReleaseSecretSources",
     "fiSweepUnmountedEphemeralFiles",
     "fsGetEphemeralRoot",
@@ -109,6 +110,19 @@ def _fiUnlinkQuietly(sPath):
     return 1
 
 
+def fbIsManagedSecretSource(sSource):
+    """Return True when a mount source is a secret file vaibify wrote.
+
+    Managed means directly inside the ephemeral root and named with the
+    secret prefix. The release below and the archive-failure diagnosis
+    both ask this, because they must agree on what a managed secret is.
+    """
+    return (
+        os.path.dirname(sSource or "") == fsGetEphemeralRoot()
+        and os.path.basename(sSource).startswith(S_SECRET_FILE_PREFIX)
+    )
+
+
 def fiReleaseSecretSources(listMountSources, setStillMountedSources):
     """Delete a removed container's secret files; return how many.
 
@@ -118,12 +132,9 @@ def fiReleaseSecretSources(listMountSources, setStillMountedSources):
     a secret file inside the ephemeral root and no surviving container
     mounts it, so a file shared by two containers outlives the first.
     """
-    sRoot = fsGetEphemeralRoot()
     iRemoved = 0
     for sSource in listMountSources:
-        if os.path.dirname(sSource) != sRoot:
-            continue
-        if not os.path.basename(sSource).startswith(S_SECRET_FILE_PREFIX):
+        if not fbIsManagedSecretSource(sSource):
             continue
         if sSource in setStillMountedSources:
             continue
