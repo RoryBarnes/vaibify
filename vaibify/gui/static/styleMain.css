@@ -28,9 +28,13 @@
     --bg-hover: #333358;
     --bg-modal: #2a2a48;
 
+    /* Every text token keeps the WCAG text minimum, 4.5:1, on every
+       resting surface (tests/testPaletteContrast.py measures them).
+       --text-muted was #8080a0 until 2026-10-30, at 3.6:1 on a modal
+       and 3.8:1 on a panel: dim by design, and below the minimum. */
     --text-primary: #e0e0e8;
     --text-secondary: #a0a0b8;
-    --text-muted: #8080a0;
+    --text-muted: #9494b0;
 
     --border-color: #3a3a58;
     --border-radius: 6px;
@@ -62,6 +66,15 @@ html, body {
     font-family: "STIX Two Text", "STIXGeneral", Georgia, serif;
     font-size: 14px;
     overflow: hidden;
+}
+
+/* A link with no rule of its own is still legible. The browser's
+   default link color is a dark blue drawn for white pages; on this
+   theme it reads at about 1.7:1 (the Zenodo token banner's links,
+   2026-10-30). The :where() keeps this at element specificity, so
+   every class rule that colors a link still wins over it. */
+a:where([href]) {
+    color: var(--highlight-color);
 }
 
 /* --- Layout --- */
@@ -1937,7 +1950,9 @@ pre.quarantine-remedy {
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background: #1a3a5c;
+    /* The chip's fill sits under pale-blue text: #1a3a5c read at 4.46:1,
+       just under the text minimum (2026-10-30). */
+    background: #183552;
     color: var(--highlight-color);
     font-size: 10px;
     font-weight: 700;
@@ -1945,7 +1960,8 @@ pre.quarantine-remedy {
 }
 
 .step-item.interactive .step-number {
-    background: rgba(255, 165, 0, 0.15);
+    /* A 0.15 tint under orange text read at 4.31:1 (2026-10-30). */
+    background: rgba(255, 165, 0, 0.12);
     color: var(--color-orange);
 }
 
@@ -8669,7 +8685,9 @@ details.proof-legend-section {
    now", but live so its click can explain itself. A truly disabled
    button swallows the click and the researcher learns nothing. */
 #btnAgentCouncil.council-blocked {
-    opacity: 0.55;
+    /* Dimmed, but a live control's label stays legible: 0.55 read at
+       4.39:1 against the panel (2026-10-30). */
+    opacity: 0.6;
     cursor: help;
 }
 
