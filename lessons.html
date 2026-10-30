@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lessons from past sessions &mdash; Vaibify 0.2.3.dev36 documentation</title>
+  <title>Lessons from past sessions &mdash; Vaibify 0.2.3.dev41 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=2892fc3a"></script>
+      <script src="_static/documentation_options.js?v=06055b6a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -805,6 +805,27 @@ second run of its own. The
 general form: before a test confirms that two things agree, ask what
 would have to differ between them in the world, and whether the test
 ever lets it.</p></li>
+<li><p><strong>A test hub swept the researcher’s live secret files.</strong> Every hub
+runs the <code class="docutils literal notranslate"><span class="pre">ephemeralSecretFiles</span></code> reaper at startup, and the browser
+lane’s hub ran it against the real <code class="docutils literal notranslate"><span class="pre">~/.vaibify/tmp</span></code> with a fake
+daemon that reported nothing mounted. Every <code class="docutils literal notranslate"><span class="pre">vc_secret_&lt;name&gt;_*.tmp</span></code>
+older than an hour was then deleted, including the file behind a
+live container’s <code class="docutils literal notranslate"><span class="pre">/run/secrets/&lt;name&gt;</span></code> mount. Running one browser
+test with a scratch <code class="docutils literal notranslate"><span class="pre">HOME</span></code> showed the lane deleting such files; it is
+not proven to be the deleter in the incident that surfaced it. That
+incident read as an unrelated failure: on Colima 0.10.3 (virtiofs)
+with Docker Engine 28.4.0, once a <code class="docutils literal notranslate"><span class="pre">--mount</span></code> source is gone, every
+<code class="docutils literal notranslate"><span class="pre">get_archive</span></code> out of the container fails with “Could not find the
+file” while <code class="docutils literal notranslate"><span class="pre">exec</span></code> keeps working, so Verify L3 blamed an intact
+<code class="docutils literal notranslate"><span class="pre">/workspace/&lt;repo&gt;</span></code>. Other runtimes may behave differently, and
+<code class="docutils literal notranslate"><span class="pre">tests/testArchiveReadNamesAMissingMountLive.py</span></code> records what each
+one does. Two fixes followed. The suite resolves the ephemeral root
+into a private directory for the whole session, and the browser fake
+now reports every path as mounted. A failed archive read now names a
+deleted managed secret, but only on positive evidence. The general
+form: a test double that answers “nothing is in use” turns any sweep
+it feeds into a deletion, so a test that runs a real sweep must also
+redirect what that sweep can reach.</p></li>
 </ul>
 </section>
 

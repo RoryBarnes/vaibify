@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.2.3.dev36 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.2.3.dev41 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=2892fc3a"></script>
+      <script src="_static/documentation_options.js?v=06055b6a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -262,7 +262,12 @@ rendering, or the sync panel. Those belong to the container-acceptance
 lane, which runs nightly — so drift between the fake and a real
 container is caught up to a day late. The browser lane failing blocks
 merge; the container-acceptance lane failing blocks the next release,
-not retroactively.</p>
+not retroactively. Nor does the lane test secret-file cleanup: its hub
+sweeps a redirected ephemeral root, never <code class="docutils literal notranslate"><span class="pre">~/.vaibify/tmp</span></code>, and the
+fake reports every path as mounted, so the sweep keeps every file.
+Cleanup is tested in <code class="docutils literal notranslate"><span class="pre">tests/testEphemeralStore.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">tests/testSecretFilesFollowTheirContainer.py</span></code> and
+<code class="docutils literal notranslate"><span class="pre">tests/testSecretFilesStayOutOfTheResearchersHome.py</span></code>.</p>
 <p><strong>Legibility is measured, in two places.</strong> <code class="docutils literal notranslate"><span class="pre">tests/testPaletteContrast.py</span></code>
 reads the <code class="docutils literal notranslate"><span class="pre">:root</span></code> palette of each stylesheet and holds every text-grade
 token to the WCAG 2.1 text minimum (4.5:1) on every opaque surface
