@@ -3976,6 +3976,47 @@ LIST_FALSIFICATIONS = [
             '            continue'
         ),
     ),
+    # --- 2026-10-30: no test resolves or sweeps the researcher's live
+    # secret root. A browser-lane hub swept the real ~/.vaibify/tmp with
+    # a fake reporting nothing mounted. Every mutation below leaves a hub
+    # sweeping a REAL root, so each test's double protects every path
+    # but its own canary, and the browser fake protects every path. ---
+    Falsification(
+        nodeid=(
+            'tests/testSecretFilesStayOutOfTheResearchersHome.py::'
+            'testEveryEphemeralRootResolverAvoidsTheResearchersHome'
+        ),
+        source='tests/conftest.py',
+        old='        return sPrivateHome\n',
+        new='        return sHomeAtSessionStart\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSecretFilesStayOutOfTheResearchersHome.py::'
+            'testAHubStartedUnderTestSweepsOnlyItsIsolatedRoot'
+        ),
+        source='tests/conftest.py',
+        old='        return sPrivateHome\n',
+        new='        return sHomeAtSessionStart\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLaneNeverResolvesTheResearchersSecretRoot.py::'
+            'testTheHubResolvesTheSecretRootOutsideTheResearchersHome'
+        ),
+        source='tests/conftest.py',
+        old='        return sPrivateHome\n',
+        new='        return sHomeAtSessionStart\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBrowserLaneContract.py::'
+            'testTheFakeDaemonReportsEveryPathMounted'
+        ),
+        source='tests/browser/fakeDockerAdapter.py',
+        old='        return EveryPathMountedSet()\n',
+        new='        return set()\n',
+    ),
 
     # ── Documented hard rules that no test could previously falsify ──
     # (2026-07-26 audit). Mutation testing cannot reach this class: it

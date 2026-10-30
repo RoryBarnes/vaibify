@@ -13,6 +13,7 @@ installed.
 """
 
 import inspect
+import os
 
 import pytest
 
@@ -118,6 +119,27 @@ def testEveryModelledCommandIsActuallyMatched():
         "Declared in LIST_MODELLED_COMMANDS but never dispatched on: "
         f"{listUnmatched}"
     )
+
+
+@pytest.mark.falsification
+def testTheFakeDaemonReportsEveryPathMounted():
+    """Kills: the fake answering the mount-source read with ``set()``.
+
+    The lane's hub sweeps the ephemeral secret root at startup, and an
+    empty answer reads as "no container mounts anything", so every
+    secret file past its grace is deleted. That answer, against the
+    researcher's real root, is how the lane deleted live secret files
+    (2026-10-30). Every path must read as mounted, including one under
+    the real secret root and one nobody has ever written.
+    """
+    setMounted = (
+        fakeDockerAdapter.FailClosedDockerAdapter()
+        .fsetListMountSourcesOfAllContainers()
+    )
+    sRealSecretFile = os.path.join(
+        os.path.expanduser("~"), ".vaibify", "tmp", "vc_secret_name_x.tmp")
+    assert sRealSecretFile in setMounted
+    assert "/an/arbitrary/path/never/written" in setMounted
 
 
 def testTheFakeKeepsContainerNameDistinctFromId():

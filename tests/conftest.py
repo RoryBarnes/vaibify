@@ -118,6 +118,49 @@ def fnKeepTheSuiteFromLaunchingCaffeinate():
 
 
 @pytest.fixture(scope="session", autouse=True)
+def fnKeepSecretFilesOutOfTheResearchersHome():
+    """Resolve the ephemeral secret root into a private directory.
+
+    Every hub a test boots runs the ``ephemeralSecretFiles`` reaper at
+    startup, and a test hub's Docker double reports what it was told to,
+    not what the researcher's daemon mounts. Against the real
+    ``~/.vaibify/tmp`` that deletes the host file behind a live
+    container's secret mount, after which a VM-backed daemon can refuse
+    every copy out of that container (2026-10-30). So the root's home
+    resolves to a private directory beneath the home-visible scratch
+    root, which the daemon can still see when a live test mounts a
+    secret from it.
+
+    A test that set its own ``HOME`` (or patched ``expanduser``) is
+    honored, because the resolver's own tests assert exactly that.
+    Session scope, because the module-scoped browser hubs run their
+    first reaper pass before any function fixture. Yields the private
+    home, so a test can plant a file where the redirected sweep looks.
+    """
+    from unittest.mock import patch
+    from tests.homeVisibleTempRoot import fpathHomeVisibleTempRoot
+    from vaibify.config import ephemeralStore
+    pathScratchRoot = fpathHomeVisibleTempRoot()
+    pathScratchRoot.mkdir(parents=True, exist_ok=True)
+    sPrivateHome = tempfile.mkdtemp(
+        prefix="secretRoot", dir=str(pathScratchRoot))
+    sHomeAtSessionStart = os.path.expanduser("~")
+
+    def fsResolveIsolatedHome():
+        if os.path.expanduser("~") != sHomeAtSessionStart:
+            return os.path.expanduser("~")
+        return sPrivateHome
+
+    try:
+        with patch.object(
+            ephemeralStore, "_fsResolveHomeDirectory", fsResolveIsolatedHome,
+        ):
+            yield sPrivateHome
+    finally:
+        shutil.rmtree(sPrivateHome, ignore_errors=True)
+
+
+@pytest.fixture(scope="session", autouse=True)
 def fnSweepContainersLeftByAKilledLiveLane(request):
     """Reclaim labelled throwaway containers at both ends of a session.
 
@@ -338,10 +381,10 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
         promptRecordManager, "fsResolveDigestKeyPath",
         lambda: os.path.join(sHome, "promptRecordDigestKey"),
     )
-    # ephemeralStore is deliberately NOT redirected here: it computes
-    # its root from os.path.expanduser("~") at call time (no import-time
-    # constant to patch), and its own tests exercise that real behaviour
-    # — a blanket patch here broke them. It carries its own isolation.
+    # The ephemeral secret root is redirected once per session, by
+    # fnKeepSecretFilesOutOfTheResearchersHome above, not here: the
+    # browser hubs sweep it before any function fixture runs, and that
+    # fixture's rule honors a test that set its own HOME.
     yield sHome
 
 

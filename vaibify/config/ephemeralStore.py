@@ -44,9 +44,19 @@ F_SECRET_FILE_GRACE_SECONDS = 60 * 60
 S_SECRET_FILE_PREFIX = "vc_secret_"
 
 
+def _fsResolveHomeDirectory():
+    """Return the home directory the ephemeral root lives under.
+
+    The one seam every caller reaches, however it imported
+    :func:`fsGetEphemeralRoot`; the test suite redirects it so no test
+    resolves the researcher's live secret files.
+    """
+    return os.path.expanduser("~")
+
+
 def fsGetEphemeralRoot():
     """Return ``~/.vaibify/tmp`` (created mode 0700) for ephemeral writes."""
-    sRoot = os.path.join(os.path.expanduser("~"), ".vaibify", "tmp")
+    sRoot = os.path.join(_fsResolveHomeDirectory(), ".vaibify", "tmp")
     os.makedirs(sRoot, mode=0o700, exist_ok=True)
     return sRoot
 
