@@ -32,6 +32,7 @@ import sys
 import click
 
 from .configLoader import ConfigLoadFailedExit, fconfigResolveProject
+from .doctorMountChecks import flistCheckBindMountModes
 from .doctorX11Checks import flistCheckX11Container, flistCheckX11Host
 from .preflightChecks import (
     fpreflightColimaHostagentLog,
@@ -363,9 +364,9 @@ def _flistContainerScopeChecks(config, bOnline):
     listResults = flistDiagnoseContainerNetwork(
         config, sContainerName, connectionDocker, bOnline,
     )
-    listResults.extend(flistCheckX11Container(
-        config, fjsonInspectContainer(sContainerName),
-    ))
+    jsonInspect = fjsonInspectContainer(sContainerName)
+    listResults.extend(flistCheckX11Container(config, jsonInspect))
+    listResults.extend(flistCheckBindMountModes(config, jsonInspect))
     return listResults
 
 

@@ -390,7 +390,7 @@ class _ContainerAnsweringProbes:
     def fnWriteTextAtomic(self, sRelPath, sText):
         self.dictWritten[sRelPath] = sText
 
-    def ftRunCommand(self, saCommand, fTimeoutSeconds):
+    def ftRunCommand(self, saCommand, fTimeoutSeconds, sLane=None):
         self.listCommands.append(list(saCommand))
         if self.iProbeExit:
             return self.iProbeExit, "", "no such container"

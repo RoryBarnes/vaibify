@@ -71,15 +71,14 @@ def fnAddFigure(sClone):
 # ── commit and push ──────────────────────────────────────────────
 
 
-def testAPushRecordsTheMirrorShaAndReportsTheNewHead(
-    tRemoteAndClone, capsys,
-):
-    """The commit names the mirror snapshot; HEAD_SHA is the remote's head."""
+def testAPushRecordsTheMirrorShaAndReportsTheNewHead(tRemoteAndClone):
+    """The commit names the mirror snapshot; the head reported is the remote's."""
     sBare, sClone = tRemoteAndClone
     fnAddFigure(sClone)
-    overleafSync._fnCommitAndPush(sClone, sMirrorSha="0123456789abcdef")
-    sOutput = capsys.readouterr().out
+    tOutcome = overleafSync._ftCommitAndPush(sClone, sMirrorSha="0123456789abcdef")
     sRemoteHead = fsRunGit(["rev-parse", "HEAD"], sBare)
+    assert tOutcome == ("pushed", sRemoteHead)
+    sOutput = overleafSync.fsFormatPushOutput(*tOutcome)
     assert "PUSH_STATUS=pushed\n" in sOutput
     assert f"HEAD_SHA={sRemoteHead}\n" in sOutput
     assert fsRunGit(["log", "-1", "--format=%s"], sBare) == (
@@ -87,14 +86,14 @@ def testAPushRecordsTheMirrorShaAndReportsTheNewHead(
     )
 
 
-def testARateLimitedPushRaisesTheRateLimitError(tRemoteAndClone, capsys):
+def testARateLimitedPushRaisesTheRateLimitError(tRemoteAndClone):
     """A remote answering 'rate limit' is its own error, not a generic one."""
     sBare, sClone = tRemoteAndClone
     fnInstallRefusingHook(sBare, "rate limit exceeded, try later")
     fnAddFigure(sClone)
-    with pytest.raises(overleafSync.OverleafRateLimitError):
-        overleafSync._fnCommitAndPush(sClone)
-    assert "PUSH_STATUS=pushed" not in capsys.readouterr().out
+    with pytest.raises(overleafSync.OverleafRateLimitError) as infoError:
+        overleafSync._ftCommitAndPush(sClone)
+    assert overleafSync.fiExitCodeForError(infoError.value) == 4
 
 
 def testAnyOtherRefusedPushIsAGenericOverleafError(tRemoteAndClone):
@@ -103,27 +102,26 @@ def testAnyOtherRefusedPushIsAGenericOverleafError(tRemoteAndClone):
     fnInstallRefusingHook(sBare, "branch is protected")
     fnAddFigure(sClone)
     with pytest.raises(overleafSync.OverleafError) as infoError:
-        overleafSync._fnCommitAndPush(sClone)
+        overleafSync._ftCommitAndPush(sClone)
     assert type(infoError.value) is overleafSync.OverleafError
     assert "git push failed" in str(infoError.value)
     assert "branch is protected" in str(infoError.value)
 
 
-def testNoGitOnPathEmitsNoHeadSha(monkeypatch, tmp_path, capsys):
-    """A missing git binary means no HEAD line, never a fabricated one."""
+def testNoGitOnPathReadsNoHeadSha(monkeypatch, tmp_path):
+    """A missing git binary means no head, never a fabricated one."""
     def fnRaiseNotFound(listCommand, **kwargs):
         raise FileNotFoundError("git")
 
     monkeypatch.setattr(overleafSync.subprocess, "run", fnRaiseNotFound)
-    overleafSync._fnEmitHeadSha(str(tmp_path))
-    assert capsys.readouterr().out == ""
+    assert overleafSync.fsReadHeadSha(str(tmp_path)) == ""
+    assert "HEAD_SHA" not in overleafSync.fsFormatPushOutput("pushed", "")
 
 
-def testADirectoryWithNoHeadEmitsNoHeadSha(tmp_path, capsys):
-    """A failing rev-parse (no commit yet) prints nothing."""
+def testADirectoryWithNoHeadReadsNoHeadSha(tmp_path):
+    """A failing rev-parse (no commit yet) answers ''."""
     fsRunGit(["init", "-q"], str(tmp_path))
-    overleafSync._fnEmitHeadSha(str(tmp_path))
-    assert capsys.readouterr().out == ""
+    assert overleafSync.fsReadHeadSha(str(tmp_path)) == ""
 
 
 # ── copy guards ──────────────────────────────────────────────────

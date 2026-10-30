@@ -3029,6 +3029,13 @@ async def fdictHandleConnect(
             fnCaptureLiveImageIdentityAtConnect, dictCtx, sContainerId,
             dictWorkflow,
         )
+        # Zenodo tokens leave the container at every connect until each
+        # slot is finished; a pass that fails is retried, never the
+        # connect's failure.
+        from .zenodoTokenMigration import fnRunMigrationPassQuietly
+        await asyncio.to_thread(
+            fnRunMigrationPassQuietly, dictCtx["docker"], sContainerId,
+        )
         _fnLaunchDependencyScan(
             dictCtx, sContainerId, dictWorkflow,
         )
@@ -3234,10 +3241,12 @@ def fbHasAgentToken(websocket: WebSocket, sExpectedToken):
         if sKey.lower() == sHeaderName:
             sHeaderToken = sVal
             break
-    if sHeaderToken and sHeaderToken == sExpectedToken:
+    if sHeaderToken and secrets.compare_digest(sHeaderToken, sExpectedToken):
         return True
     sQueryToken = websocket.query_params.get("sToken", "")
-    return bool(sQueryToken) and sQueryToken == sExpectedToken
+    return bool(sQueryToken) and secrets.compare_digest(
+        sQueryToken, sExpectedToken,
+    )
 
 
 # ---------------------------------------------------------------
@@ -3681,6 +3690,8 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.levelRoutes.fnRegisterAll(app, dictCtx)
     routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
     routes.committedFileRoutes.fnRegisterAll(app, dictCtx)
+    routes.bindingRoutes.fnRegisterAll(app, dictCtx)
+    routes.zenodoTokenRoutes.fnRegisterAll(app, dictCtx)
     routes.environmentArchiveRoutes.fnRegisterAll(app, dictCtx)
     routes.promotionRecoveryRoutes.fnRegisterAll(app, dictCtx)
     routes.reproductionRoutes.fnRegisterAll(app, dictCtx)

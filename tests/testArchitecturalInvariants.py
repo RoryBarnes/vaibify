@@ -1312,6 +1312,7 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     """
     import inspect
 
+    from vaibify.docker import dockerConnection as dockerConnectionModule
     from vaibify.docker.dockerConnection import DockerConnection
     sBytesEntrySource = inspect.getsource(DockerConnection.fnWriteFileViaTar)
     assert "self.fnWriteFileFromStream(" in sBytesEntrySource, (
@@ -1337,8 +1338,11 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
         "the confined write must take the exec-creation default, which "
         "is the resolved unprivileged container user, never a chosen one"
     )
-    assert "_fsResolveContainerUser" in inspect.getsource(
+    assert "_fsResolveExecUser" in inspect.getsource(
         DockerConnection.fsExecCreate
+    )
+    assert "_fsResolveContainerUser" in inspect.getsource(
+        dockerConnectionModule._fsResolveExecUser
     )
     listTarBuilders = []
     for pathFile in PACKAGE_DIR.rglob("*.py"):
@@ -2255,33 +2259,26 @@ def testContainerUserUidIsOneThousand():
 def testContainerImageInstallsTheHelperCommandDependencies():
     """The image must pip-install what vaibify's OWN container code imports.
 
-    The Zenodo token validation is inline Python importing ``keyring``
-    and ``requests``, and the staged ``zenodoClient.py`` imports
-    ``requests``. These are vaibify dependencies, never the project's:
-    for months the Dockerfile installed only ``keyring``, so a project
-    whose own requirements did not happen to include ``requests``
-    could not validate a token or publish a deposit, and the
-    ``ModuleNotFoundError`` surfaced to the researcher as "token not
-    accepted — check that the token has deposit scopes".
+    Since 2026-10-29 no Zenodo call runs in the container. The one
+    vaibify-authored program that still imports a third-party module
+    there is the keyring typed read (``DockerConnection`` reads a token
+    an older container holds, to move it out to the host), and
+    ``keyring`` is a vaibify dependency, never the project's: for months
+    the Dockerfile installed nothing a project did not happen to
+    require itself, and the ``ModuleNotFoundError`` surfaced to the
+    researcher as a token problem.
 
-    Both halves are asserted: the sources still exert the force (they
-    import the module), and the Dockerfile still supplies it with an
+    Both halves are asserted: the source still exerts the force (it
+    imports the module), and the Dockerfile still supplies it with an
     explicit install. Either half changing alone fails here.
     """
-    sDispatcherSource = fsReadSource(
-        PACKAGE_DIR / "gui" / "syncDispatcher.py",
+    sConnectionSource = fsReadSource(
+        PACKAGE_DIR / "docker" / "dockerConnection.py",
     )
-    sClientSource = fsReadSource(
-        PACKAGE_DIR / "reproducibility" / "zenodoClient.py",
-    )
-    assert "import keyring, requests" in sDispatcherSource, (
-        "the inline Zenodo validation no longer imports keyring + "
-        "requests; update this invariant to whatever its transport "
-        "now is, and check the Dockerfile installs it"
-    )
-    assert "import requests" in sClientSource, (
-        "the staged zenodoClient no longer imports requests; update "
-        "this invariant to its new transport"
+    assert "import keyring,sys" in sConnectionSource, (
+        "the keyring typed read no longer imports keyring; update this "
+        "invariant to whatever its transport now is, and check the "
+        "Dockerfile installs it"
     )
     sDockerfileSource = fsReadSource(
         PACKAGE_DIR / "containerImage" / "Dockerfile",
@@ -2290,14 +2287,12 @@ def testContainerImageInstallsTheHelperCommandDependencies():
         sLine for sLine in sDockerfileSource.splitlines()
         if "pip install" in sLine
     )
-    for sPackage in ("keyring", "requests"):
-        assert re.search(rf"\b{sPackage}\b", sInstallLines), (
-            f"the Dockerfile has no explicit 'pip install {sPackage}' "
-            "while vaibify's in-container helpers import it — the "
-            "package is then present only when the researcher's own "
-            "requirements pull it in, and a project without it "
-            "cannot validate a Zenodo token or publish a deposit"
-        )
+    assert re.search(r"\bkeyring\b", sInstallLines), (
+        "the Dockerfile has no explicit 'pip install keyring' while "
+        "vaibify's keyring typed read imports it -- the package is then "
+        "present only when the researcher's own requirements pull it "
+        "in, and a token an older container holds cannot be moved out"
+    )
 
 
 def testManifestWriterKnowsEverySaPathListInGuiSource():
@@ -2879,10 +2874,10 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
     from vaibify.gui.fileStatusManager import _fdictDetectAndInvalidate
 
     class _FakeDocker:
-        def ftResultExecuteCommand(self, sId, sCmd):
+        def ftResultExecuteCommand(self, sId, sCmd, sLane=None):
             return (1, "")
 
-        def fbaFetchFile(self, sId, sPath, iMaxBytes=None):
+        def fbaFetchFile(self, sId, sPath, iMaxBytes=None, sLane=None):
             # The pipeline-state read is a typed read, and the typed-read
             # adapter spells "absent" as FileNotFoundError rather than a
             # non-zero exit code.
@@ -4402,7 +4397,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the same reason as both.
     # NEW at 802 (2026-10-28): the hub registers the environment
     # rename's startup recovery beside the conversion's.
-    "appFactory.py": 802,
+    # 802 -> 803 (2026-10-29): the X11 authorization lifecycle is
+    # registered beside the rename recovery.
+    # 803 -> 804 (2026-10-29): the project egress lifecycle is registered beside the X11 one.
+    "appFactory.py": 804,
     # 892 -> 897 (2026-10-28): a live environment rename vetoes the idle
     # watchdog, on the conversion's terms.
     # 897 -> 929 (2026-10-28): the idle watchdog's work vetoes become
@@ -4502,7 +4500,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # {sFigureType} as the host does, so a templated plot is hashed;
     # the plugin cannot import the host resolver, so its mirror lives
     # in the template it belongs to.
-    "conftestManager.py": 1487,
+    # 1487 -> 1488 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    "conftestManager.py": 1488,
     # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
     # when the ownership IDENTITY joined it — the recorded
     # (prior-owner, lease, generation, session) tuple an in-flight
@@ -4943,7 +4944,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reporting success (measured live).
     # +2 (2026-10-27): runner creation passes on whether the writable
     # mounts are executable; the runner module composes the options.
-    "agentCouncilDockerGateway.py": 1029,
+    # 1029 -> 1057 (2026-10-29): the proxy launch reads the internal
+    # network's subnet so the proxy binds only its internal address.
+    "agentCouncilDockerGateway.py": 1057,
     # NEW at 817 (2026-08-21): the launch-time credential PRESENCE
     # probe and the credential-specific read cap join the adapter that
     # already owns every other credential-lane rule. One cohesive
@@ -5428,7 +5431,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4345 -> 4353 (2026-10-24): the file-status poll carries the
     # researcher notices the tab has not acknowledged and what last
     # advanced the workflow epoch (researcherNotices holds the logic).
-    "routes/pipelineRoutes.py": 4353,
+    # 4353 -> 4355 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    # 4355 -> 4357 (2026-10-28): the integrity-read lane on the test-marker
+    # read.
+    "routes/pipelineRoutes.py": 4357,
+    # NEW at 820 (2026-10-28): systemRoutes.py crossed the cap with the
+    # bind-mount mode drift finding beside the X11 and limit findings it
+    # already renders; one more comparison of the running container
+    # with vaibify.yml, in the module that owns that comparison.
+    # 820 -> 826 (2026-10-29): the readiness lines carry the container's
+    # own X11 authorization sentences (a copied cookie, a failed setup).
+    # 826 -> 857 (2026-10-29): the readiness payload carries the Network row (mode, proxy state, refused destinations).
+    # 857 -> 858 (2026-10-29): the Network row reads the mode defensively.
+    "routes/systemRoutes.py": 858,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5466,7 +5483,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # state and its lock live in gui/archiveProgress.py.
     # 1019 -> 1041 (2026-10-27): a settled deposit or promotion is
     # logged by its version DOI, as its failure already was.
-    "routes/environmentArchiveRoutes.py": 1041,
+    # 1041 -> 1048 (2026-10-29): the deposit requires the confirmed Zenodo instance.
+    "routes/environmentArchiveRoutes.py": 1048,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5692,7 +5710,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # logged, requested and outcome, by public identifiers only.
     # 3743 -> 3755 (2026-10-27, review): a logged Zenodo site is
     # one the client's table knows, so it cannot forge log lines.
-    "routes/syncRoutes.py": 3755,
+    # 3755 -> 3774 (2026-10-29): token-bearing Overleaf and Zenodo actions read their target from the confirmed host binding, and a deposit moves it.
+    "routes/syncRoutes.py": 3774,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5767,7 +5786,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # left to the content check, not re-judged by timestamp each poll.
     # 2654 -> 2658 (2026-10-24): the researcher-notice maps and the
     # workflow-epoch origins join the container-keyed sweep list.
-    "fileStatusManager.py": 2658,
+    # 2658 -> 2692 (2026-10-29): the unattended auto-archive takes its
+    # Overleaf and Zenodo targets from the host-side binding record.
+    "fileStatusManager.py": 2692,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -5929,7 +5950,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2967 -> 2994 (2026-10-28): the save's in-memory preparation is
     # its own function, so the project rename's dry run previews the
     # exact bytes a save writes; the save gains a write-keyword pass-through.
-    "workflowManager.py": 2994,
+    # 2967 -> 2968 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    # 2994 + 2968 -> 2995 (2026-10-29): the two
+    # lines of work above, merged.
+    "workflowManager.py": 2995,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5999,7 +6025,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # temporary join the auto-managed .gitignore body, and a marker over
     # the batched read's ceiling is read alone, so one large marker
     # makes its own step unknown instead of failing the poll for all.
-    "stateManager.py": 1302,
+    # 1302 -> 1316 (2026-10-28): a marker the read-only user cannot
+    # open is reported unknown, never missing (the UnreadableSmallFile
+    # sentinel).
+    "stateManager.py": 1316,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -6346,7 +6375,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # is one function, shared by the save and the project rename.
     # 3787 -> 3809 (2026-10-28): a run the carrier refuses while a Quit
     # holds the gate says so, rather than calling it a busy container.
-    "pipelineServer.py": 3809,
+    # 3782 -> 3783 (2026-10-28): the agent-token comparison is constant-time.
+    # 3783 -> 3784 (2026-10-29): the remote-binding routes are mounted.
+    # 3784 -> 3792 (2026-10-29): the Zenodo token migration routes are
+    # mounted, and connect runs a migration pass.
+    # 3809 + 3792 -> 3820 (2026-10-29): the two
+    # lines of work above, merged.
+    "pipelineServer.py": 3820,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6901,7 +6936,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # token.
     # 2140 -> 2141 (2026-10-12): the poll's discovery script counts the
     # conftest loader as an installed conftest.
-    "syncDispatcher.py": 2141,
+    # 2141 -> 2142 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    # 2142 -> 2144 (2026-10-28): the integrity-read lane on the digest read.
+    "syncDispatcher.py": 2144,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -6995,7 +7034,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # each output was produced (design I7), and the run-context set-up
     # beside the execution settings. The record lives in
     # outputProvenance; the runner says only WHEN a section completed.
-    "pipelineRunner.py": 1955,
+    # 1955 -> 1958 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    # 1958 -> 1960 (2026-10-28): the integrity-read lane import for the
+    # remote-data hasher.
+    "pipelineRunner.py": 1960,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -7325,7 +7369,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # start refusal while a rename has not finished.
     # 2644 -> 2646 (2026-10-28): a containerization is refused while a
     # Quit holds the admission gate.
-    "registryRoutes.py": 2646,
+    # 2646 -> 2653 (2026-10-29): turning x11Forwarding off revokes the
+    # running container's X authorization at once.
+    # 2653 -> 2793 (2026-10-29): the network mode in the wizard and settings, the allow-host route and the YAML list append.
+    "registryRoutes.py": 2793,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7546,7 +7593,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the agent catalog, with why.
     # 1557 -> 1568 (2026-10-28): the researcher-only rename-project entry.
     # 1568 -> 1572 (2026-10-28): Quit is excluded from the agent lane.
-    "actionCatalog.py": 1572,
+    # 1553 -> 1562 (2026-10-29): confirm-remote-binding, researcher-only.
+    # 1562 -> 1580 (2026-10-29): the two researcher-only decisions about
+    # Zenodo tokens moved out of the container.
+    # 1572 + 1580 -> 1599 (2026-10-29): the two
+    # lines of work above, merged.
+    # 1599 -> 1603 (2026-10-29): allow-network-host is excluded from the agent lane, with why.
+    "actionCatalog.py": 1603,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7976,7 +8029,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the analysis stack every image carries.
     # 2400 -> 2404 (2026-10-27): the image-origin facts are named as
     # facts, not readiness gaps.
-    "routes/reproducibilityRoutes.py": 2404,
+    # 2404 -> 2406 (2026-10-28): the exec lane import, and the
+    # researcher-command declaration on the exec that runs the
+    # researcher's own program (execLane holds the rule).
+    "routes/reproducibilityRoutes.py": 2406,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
@@ -8106,7 +8162,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1198 -> 1202 (2026-10-28): the environment rename's lifecycle scope.
     # 1202 -> 1251 (2026-10-28): every route answers a mutation 503
     # while a Quit holds the gate; Quit and its preflight are scoped.
-    "routeScope.py": 1251,
+    # 1198 -> 1203 (2026-10-29): the remote-binding read is lease-enforced.
+    # 1203 -> 1208 (2026-10-29): the Zenodo token panel's read is lease-enforced.
+    # 1251 + 1208 -> 1261 (2026-10-29): the two
+    # lines of work above, merged.
+    # 1261 -> 1265 (2026-10-29): the allow-host route's lifecycle scope.
+    "routeScope.py": 1265,
 }
 
 

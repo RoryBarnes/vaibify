@@ -23,12 +23,23 @@ import subprocess
 import tarfile
 import time
 
+from vaibify.config.bindMountValidator import (
+    fbBindMountIsReadWrite, fnValidateBindMountList,
+)
 from vaibify.config.agentTerminalEnvironment import (
     flistBuildAgentTerminalEnvironmentArguments,
 )
 
 from . import fnRunDockerCommand
-from .volumeManager import fsGetCredentialsVolumeName, fsGetVolumeName
+from .volumeManager import (
+    fbVolumeExists, fsGetCredentialsVolumeName, fsGetVolumeName,
+)
+from vaibify.config.projectConfig import (
+    S_NETWORK_MODE_ALLOWLIST, S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN,
+)
+
+from . import egressProxy, projectEgress
+from .x11Authorizations import fnReleaseAuthorizationQuietly
 from .x11Forwarding import flistConfigureX11Args
 
 # The immutable label a reservation-owned container carries. Cleanup
@@ -76,7 +87,9 @@ def fnStartContainer(config, sDockerDir, saCommand=None):
     """
     listCleanupFiles = []
     dictPosture = fdictResolveLaunchPosture(config.sProjectName)
-    saRunArgs = flistBuildRunArgs(config, dictPosture=dictPosture)
+    saRunArgs = flistBuildRunArgs(
+        config, dictPosture=dictPosture,
+        dictEgress=fdictPrepareEgressForLaunch(config))
     listUnresolvable = flistMountSecrets(
         config, saRunArgs, listCleanupFiles, dictPosture,
     )
@@ -116,7 +129,8 @@ def fsStartContainerDetached(config, sDockerDir):
     listCleanupFiles = []
     dictPosture = fdictResolveLaunchPosture(config.sProjectName)
     saRunArgs = flistBuildRunArgs(
-        config, bDetached=True, dictPosture=dictPosture)
+        config, bDetached=True, dictPosture=dictPosture,
+        dictEgress=fdictPrepareEgressForLaunch(config))
     listUnresolvable = flistMountSecrets(
         config, saRunArgs, listCleanupFiles, dictPosture,
     )
@@ -141,7 +155,8 @@ def fsCreateContainerForReservation(
     fnValidateReservationIdOrRaise(sReservationId)
     dictPosture = fdictResolveLaunchPosture(config.sProjectName)
     saRunArgs = flistBuildRunArgs(
-        config, bCreateOnly=True, dictPosture=dictPosture)
+        config, bCreateOnly=True, dictPosture=dictPosture,
+        dictEgress=fdictPrepareEgressForLaunch(config))
     fnAnnounceUnresolvableSecrets(
         config, flistMountSecrets(config, saRunArgs, [], dictPosture),
     )
@@ -542,6 +557,7 @@ def fsRecreateContainerDetachedFromImage(config, sImageReference):
 
 def flistBuildRunArgs(
     config, bDetached=False, bCreateOnly=False, dictPosture=None,
+    dictEgress=None,
 ):
     """Build list of docker run arguments from project config.
 
@@ -578,6 +594,7 @@ def flistBuildRunArgs(
     _fnAddCapabilityDrops(saRunArgs, bRestricted)
     _fnAddCpuAllocation(config, saRunArgs)
     _fnAddMemoryAllocation(config, saRunArgs)
+    _fnAddPidsLimit(config, saRunArgs)
     _fnAddVolumeMount(config, saRunArgs)
     if bCredentials:
         _fnAddCredentialsVolume(config, saRunArgs)
@@ -588,7 +605,7 @@ def flistBuildRunArgs(
     saRunArgs.extend(flistBuildAgentTerminalEnvironmentArguments())
     if bCredentials:
         _fnAddAgentHostBridge(config, saRunArgs)
-    _fnAddNetworkIsolation(config, saRunArgs)
+    _fnAddNetworkIsolation(config, saRunArgs, dictEgress)
     _fnAddX11Forwarding(config, saRunArgs)
     _fnAdmitObtainedImageOrRefuse(config, saRunArgs)
     _fnMountRepositoryListWithoutSeededFolder(config, saRunArgs, dictPosture)
@@ -636,7 +653,6 @@ def _fnMountRepositoryListWithoutSeededFolder(config, saRunArgs, dictPosture):
     )
     saRunArgs.extend(["--mount", _fsBuildBindMountSpec({
         "host": sHostPath, "container": S_IMAGE_REPOSITORY_LIST_PATH,
-        "readOnly": True,
     })])
 
 
@@ -989,6 +1005,18 @@ def _fnAddMemoryAllocation(config, saRunArgs):
             "--memory", sMemoryArgument, "--memory-swap", sMemoryArgument])
 
 
+def _fnAddPidsLimit(config, saRunArgs):
+    """Add the process ceiling ``pidsLimit`` declares (default 16384).
+
+    A fork storm inside the container otherwise competes with the host
+    for its process table. A configuration built without the field (a
+    test double, an older in-memory config) gets the default too.
+    """
+    from vaibify.config.projectConfig import I_DEFAULT_PIDS_LIMIT
+    iPidsLimit = getattr(config, "iPidsLimit", I_DEFAULT_PIDS_LIMIT)
+    saRunArgs.extend(["--pids-limit", str(iPidsLimit)])
+
+
 _F_DOCKER_UPDATE_TIMEOUT_SECONDS = 30.0
 
 
@@ -1045,17 +1073,28 @@ def _fnAddVolumeMount(config, saRunArgs):
 
 
 def _fnAddCredentialsVolume(config, saRunArgs):
-    """Mount the credentials volume at the container keyring data dir.
+    """Mount an EXISTING credentials volume at the container keyring data dir.
 
-    Persists ``PlaintextKeyring`` passwords across container
-    recreations. The Dockerfile pre-creates
-    ``~/.local/share/python_keyring/`` with mode 700 and the
-    container user as owner; Docker's copy-on-mount behaviour
-    copies that empty directory into the named volume the first
-    time the container runs, so subsequent rebuilds reuse
-    whatever was stored.
+    The volume persisted ``PlaintextKeyring`` passwords across
+    container recreations while Zenodo tokens lived in the container.
+    Since 2026-10-29 they live on the host and nothing new is written
+    into the container keyring, so no volume is created for a new
+    container -- and Docker creates a named volume on first use, which
+    is why the existence check comes first. One that already exists is
+    still mounted: it may hold a token the migration
+    (``vaibify/gui/zenodoTokenMigration.py``) has not yet moved out,
+    and a recreate that dropped the mount would strand that token in
+    the volume. A host whose docker CLI cannot be run mounts nothing:
+    the launch these arguments are for fails on that same missing CLI
+    a moment later, with its own message.
     """
     sVolumeName = fsGetCredentialsVolumeName(config)
+    try:
+        bVolumeExists = fbVolumeExists(sVolumeName)
+    except OSError:
+        return
+    if not bVolumeExists:
+        return
     sUser = getattr(config, "sContainerUser", "researcher")
     sContainerPath = f"/home/{sUser}/.local/share/python_keyring"
     saRunArgs.extend(["-v", f"{sVolumeName}:{sContainerPath}"])
@@ -1110,12 +1149,24 @@ def _fnAddBindMounts(config, saRunArgs):
     an empty directory in place of the data. That is the correct
     behaviour and it will surprise existing projects.
     """
-    from vaibify.config.bindMountValidator import (
-        fnValidateBindMountList,
+    fnValidateBindMountList(
+        config.listBindMounts,
+        sProjectDirectory=_fsRegisteredProjectDirectory(config),
     )
-    fnValidateBindMountList(config.listBindMounts)
     for dictMount in config.listBindMounts:
         saRunArgs.extend(["--mount", _fsBuildBindMountSpec(dictMount)])
+
+
+def _fsRegisteredProjectDirectory(config):
+    """Return the host directory of this project's vaibify.yml, or ``""``.
+
+    A read-write bind mount may not cover it. An unregistered project
+    (a test double, a config built in memory) has no directory to
+    protect, and the loader already applied the rule to a file it read.
+    """
+    from vaibify.config.registryManager import fdictGetProject
+    dictProject = fdictGetProject(getattr(config, "sProjectName", "") or "")
+    return (dictProject or {}).get("sDirectory", "") or ""
 
 
 def _fsBuildBindMountSpec(dictMount):
@@ -1131,7 +1182,7 @@ def _fsBuildBindMountSpec(dictMount):
         'type=bind,"source=' + dictMount["host"] + '"'
         + ',"target=' + dictMount["container"] + '"'
     )
-    if dictMount.get("readOnly", False):
+    if not fbBindMountIsReadWrite(dictMount):
         sSpec += ",readonly"
     return sSpec
 
@@ -1161,13 +1212,71 @@ def _fnAddAgentUpdateEnvs(config, saRunArgs):
         saRunArgs.extend(["-e", f"VAIBIFY_{sAgent}_AUTO_UPDATE={sFlag}"])
 
 
-def _fnAddNetworkIsolation(config, saRunArgs):
-    """Add network isolation flag if enabled in config."""
-    if config.bNetworkIsolation:
+def _fnAddNetworkIsolation(config, saRunArgs, dictEgress=None):
+    """Add the network-mode arguments: none, the sealed network, or nothing.
+
+    ``isolated`` is ``--network none``. ``allowlist`` joins the project's
+    internal network with its resolver black-holed and every HTTP client
+    pointed at the proxy sidecar, whose address ``dictEgress`` carries
+    from :func:`projectEgress.fdictPrepareProjectEgress`; a launch in
+    allowlist mode with no prepared egress is refused, never started
+    open. ``NO_PROXY`` names only the container itself: the hub is
+    reached THROUGH the proxy, which pins it.
+    """
+    sMode = fsNetworkModeOf(config)
+    if sMode == S_NETWORK_MODE_ISOLATED:
         saRunArgs.extend([
             "--network", "none",
             "-e", "VAIBIFY_NETWORK_ISOLATED=true",
         ])
+        return
+    if sMode != S_NETWORK_MODE_ALLOWLIST:
+        return
+    if not dictEgress or not dictEgress.get("sProxyAddress"):
+        raise RuntimeError(
+            f"'{config.sProjectName}' sets networkMode: allowlist, but no "
+            "network proxy was prepared for this launch; the container is "
+            "not started open.")
+    saRunArgs.extend(egressProxy.flistBuildSealedNetworkArguments(
+        dictEgress["sNetworkName"]))
+    for sKey, sValue in egressProxy.fdictBuildProxyEnvironment(
+            dictEgress["sProxyAddress"]).items():
+        saRunArgs.extend(["-e", f"{sKey}={sValue}"])
+    saRunArgs.extend([
+        "-e", "NO_PROXY=localhost,127.0.0.1", "-e", "no_proxy=localhost,127.0.0.1",
+        "-e", "VAIBIFY_NETWORK_MODE=allowlist",
+        "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+    ])
+
+
+def fsNetworkModeOf(config):
+    """Return the project's network mode, reading the old spelling too."""
+    sMode = getattr(config, "sNetworkMode", "")
+    if sMode:
+        return sMode
+    return (S_NETWORK_MODE_ISOLATED if getattr(config, "bNetworkIsolation", False)
+            else S_NETWORK_MODE_OPEN)
+
+
+def fdictPrepareEgressForLaunch(config):
+    """Make the sealed network and proxy for an allowlist-mode launch; else None.
+
+    The hub's port is the one destination on the host the container may
+    reach; it is read from the hub's own record, which a hub persists
+    at launch. A project the registry does not know has no identity to
+    key the egress by, and allowlist mode is refused for it.
+    """
+    if fsNetworkModeOf(config) != S_NETWORK_MODE_ALLOWLIST:
+        return None
+    from vaibify.config.hubPortRegistry import fiReadPersistedHubPort
+    sProjectUuid = _fsProjectUuidOrEmpty(config.sProjectName)
+    if not sProjectUuid:
+        raise RuntimeError(
+            f"'{config.sProjectName}' sets networkMode: allowlist, but it is "
+            "not a registered project, so its network cannot be named; "
+            "register it or set networkMode to open.")
+    return projectEgress.fdictPrepareProjectEgress(
+        config, sProjectUuid, fiReadPersistedHubPort())
 
 
 def _fnAddX11Forwarding(config, saRunArgs):
@@ -1187,7 +1296,24 @@ def _fnAddX11Forwarding(config, saRunArgs):
             "networkIsolation. A sealed container cannot use a display "
             "channel; set one of them to false in vaibify.yml."
         )
-    saRunArgs.extend(flistConfigureX11Args())
+    if fsNetworkModeOf(config) == S_NETWORK_MODE_ALLOWLIST:
+        raise RuntimeError(
+            f"'{config.sProjectName}' sets x11Forwarding with networkMode: "
+            "allowlist. A sealed container cannot use a display channel; "
+            "set networkMode to open or x11Forwarding to false in vaibify.yml."
+        )
+    saRunArgs.extend(flistConfigureX11Args(
+        config.sProjectName, _fsProjectUuidOrEmpty(config.sProjectName),
+    ))
+
+
+def _fsProjectUuidOrEmpty(sProjectName):
+    """Return the registered project's identity; '' for a name the registry lacks."""
+    from vaibify.config.registryManager import fsProjectUuidFor
+    try:
+        return fsProjectUuidFor(sProjectName)
+    except (KeyError, OSError, ValueError):
+        return ""
 
 
 def _fnAddAgentHostBridge(config, saRunArgs):
@@ -1208,8 +1334,12 @@ def _fnAddAgentHostBridge(config, saRunArgs):
 
 
 def _fbAgentBridgeRequired(config):
-    """Return True when the agent host bridge should be wired up."""
-    if getattr(config, "bNetworkIsolation", False):
+    """Return True when the agent host bridge should be wired up.
+
+    Not in allowlist mode either: the sealed network has no route to
+    the host, and the proxy pins the hub for the agent instead.
+    """
+    if fsNetworkModeOf(config) != S_NETWORK_MODE_OPEN:
         return False
     features = getattr(config, "features", None)
     if features is None:
@@ -1443,7 +1573,9 @@ def fnRemoveStopped(sProjectName):
     """Remove a stopped container if it still exists.
 
     Its secret files are released once the daemon confirms the removal;
-    see :func:`_fnReleaseSecretSourcesIfRemoved`.
+    see :func:`_fnReleaseSecretSourcesIfRemoved`. Its X authorization,
+    if it had one, is revoked: a stopped container draws nothing, and
+    a cookie that outlives its container admits whoever holds a copy.
     """
     listMountSources = _flistMountSourcesOfContainer(sProjectName)
     saCommand = ["docker", "rm", sProjectName]
@@ -1460,6 +1592,8 @@ def fnRemoveStopped(sProjectName):
     except Exception:  # noqa: BLE001 -- a removal never fails on its cleanup
         logger.warning("secret-file release after removal failed",
                        exc_info=True)
+    fnReleaseAuthorizationQuietly(sProjectName)
+    projectEgress.fnReleaseProjectEgressQuietly(_fsProjectUuidOrEmpty(sProjectName))
 
 
 def fbContainerIsRunning(sProjectName):

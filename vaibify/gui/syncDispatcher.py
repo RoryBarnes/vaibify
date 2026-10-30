@@ -3,11 +3,13 @@
 import json
 import posixpath
 import re
-import shlex
 import subprocess
 import uuid
 
 from vaibify.reproducibility import zenodoClient
+from vaibify.docker.execLane import (
+    S_EXEC_LANE_INTEGRITY_READ, S_HUB_PYTHON_COMMAND,
+)
 from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
 from vaibify.reproducibility.manifestPaths import (
     flistStepScriptRepoPaths,
@@ -32,7 +34,7 @@ from .pipelineUtils import fsShellQuote
 __all__ = [
     "fbValidateOverleafCredentials",
     "fbValidateZenodoToken",
-    "fsClassifyZenodoValidationFailure",
+    "fsDescribeZenodoValidationOutcome",
     "ftResultValidateZenodoToken",
     "fsZenodoInstanceToService",
     "fsZenodoTokenNameForInstance",
@@ -49,11 +51,7 @@ __all__ = [
     "flistExtractAllScriptPaths",
     "flistGetDirtyFiles",
     "flistListOverleafTree",
-    "fbCopyCredentialForProject",
-    "fnDeleteCredentialForProject",
     "fnDeleteCredentialFromContainer",
-    "fnStoreCredentialForProject",
-    "fnStoreCredentialInContainer",
     "fnValidateOverleafProjectId",
     "fnValidateServiceName",
     "fsBuildDagDot",
@@ -92,13 +90,6 @@ _DICT_ZENODO_INSTANCE_TO_SERVICE = {
     "sandbox": "sandbox",
     "production": "zenodo",
 }
-_LIST_ZENODO_TOKEN_NAMES = [
-    "zenodo_token_sandbox",
-    "zenodo_token_production",
-    "zenodo_token",
-]
-
-
 def fsZenodoInstanceToService(sZenodoInstance):
     """Map a UI instance name to the ZenodoClient service key."""
     if sZenodoInstance not in SET_VALID_ZENODO_INSTANCES:
@@ -237,25 +228,61 @@ def ftResultPushToOverleaf(
     dictWorkflow=None, sGithubBaseUrl="", sDoi="",
     sTexFilename="main.tex", sMirrorSha="",
 ):
-    """Push figures to Overleaf, optionally annotating the TeX.
+    """Push figures to Overleaf from the HOST; return ``(iExitCode, sOutput)``.
 
-    When ``sMirrorSha`` is provided, the container CLI is invoked with
-    ``--mirror-sha <short>`` so the commit message on Overleaf records
-    which mirror snapshot the push was built on. The command's stdout
-    now contains a ``HEAD_SHA=<40hex>`` line alongside the ``ok``
-    marker; callers that care about the post-push head should consult
-    :func:`fsParseHeadShaFromOutput`.
+    The figures leave the container through the confined reader into a
+    private host scratch directory and are committed and pushed from
+    there by :mod:`vaibify.reproducibility.overleafSync` in this
+    process, with the host keyring's token; no container program runs
+    and the token never enters the container. When ``sMirrorSha`` is
+    provided the commit message on Overleaf records which mirror
+    snapshot the push was built on. The output carries the
+    ``PUSH_STATUS=`` and ``HEAD_SHA=`` lines the command line prints,
+    so :func:`fsParseHeadShaFromOutput` and
+    :func:`fsParsePushStatusFromOutput` read it unchanged.
     """
+    from vaibify.reproducibility import overleafSync
     fnValidateOverleafProjectId(sProjectId)
-    if dictWorkflow and sGithubBaseUrl:
-        return _ftResultAnnotatedPush(
-            connectionDocker, sContainerId, listFilePaths,
-            sProjectId, sTargetDirectory, dictWorkflow,
-            sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha,
+    sToken = _fsFetchOverleafToken()
+    if not sToken:
+        return (overleafSync.fiExitCodeForError(overleafSync.OverleafAuthError()),
+                S_NO_OVERLEAF_TOKEN_MESSAGE)
+    sScratchDirectory = _fsCreateHostScratchDirectory()
+    try:
+        listLocalPaths = _flistStageFilesOnHost(
+            connectionDocker, sContainerId, listFilePaths, sScratchDirectory,
         )
-    return _ftResultPlainPush(
-        connectionDocker, sContainerId, listFilePaths,
-        sProjectId, sTargetDirectory, sMirrorSha,
+        tOutcome = _ftPushStagedFigures(
+            overleafSync, listLocalPaths, sProjectId, sTargetDirectory, sToken,
+            dictWorkflow, sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha,
+        )
+    except overleafSync.OverleafError as error:
+        return (overleafSync.fiExitCodeForError(error), str(error))
+    except (OSError, ValueError) as error:
+        return (1, "LOCAL-FILE-ERROR (not an Overleaf problem): " + repr(error))
+    finally:
+        _fnRemoveScratchDirectory(sScratchDirectory)
+    return (0, overleafSync.fsFormatPushOutput(*tOutcome))
+
+
+S_NO_OVERLEAF_TOKEN_MESSAGE = (
+    "No Overleaf token is stored on this host; connect Overleaf from the "
+    "Repos panel (authentication required)."
+)
+
+
+def _ftPushStagedFigures(
+    overleafSync, listLocalPaths, sProjectId, sTargetDirectory, sToken,
+    dictWorkflow, sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha,
+):
+    """Push the staged copies, annotating the TeX when a GitHub base is known."""
+    if dictWorkflow and sGithubBaseUrl:
+        return overleafSync.ftPushAnnotatedToOverleaf(
+            listLocalPaths, sProjectId, sTargetDirectory, dictWorkflow,
+            sGithubBaseUrl, sDoi, sToken, sTexFilename, sMirrorSha,
+        )
+    return overleafSync.ftPushFiguresToOverleaf(
+        listLocalPaths, sProjectId, sTargetDirectory, sToken, sMirrorSha,
     )
 
 
@@ -277,127 +304,100 @@ def fsParsePushStatusFromOutput(sOutput):
     return ""
 
 
-_S_OVERLEAF_SCRIPT = "/usr/share/vaibify/overleafSync.py"
-_S_OVERLEAF_MODULE = "vaibify.reproducibility.overleafSync"
-
-
-def _flistOverleafProgramWords(sResourceId):
-    """Return the words that invoke the Overleaf CLI for this resource.
-
-    The container image installs the script at a fixed path under
-    ``/usr/share/vaibify``, which is a path that exists nowhere on the
-    researcher's machine. On the host the same code is an ordinary
-    module of the installed package, so it is invoked as one -- which
-    also means the import machinery finds its dependencies instead of
-    a ``sys.path`` entry having to.
-    """
-    listInterpreter = shlex.split(fsResolveHelperInterpreter(sResourceId))
-    if fbIsHostProject(sResourceId):
-        return listInterpreter + ["-m", _S_OVERLEAF_MODULE]
-    return listInterpreter + [_S_OVERLEAF_SCRIPT]
-
-
-def _flistOverleafCliWords(
-    sSubcommand, sProjectId, sResourceId,
-    sTargetDirectory=None, sMirrorSha="",
-):
-    """Build the argument vector of an overleafSync CLI call.
-
-    A list, never shell text: the call is made with the credential on
-    its standard input, and an exact vector means no quoting layer can
-    turn a project id or a path into syntax.
-    """
-    listParts = _flistOverleafProgramWords(sResourceId) + [
-        sSubcommand, "--project", sProjectId,
-    ]
-    if sTargetDirectory is not None:
-        listParts += ["--target", sTargetDirectory]
-    if sMirrorSha:
-        listParts += ["--mirror-sha", sMirrorSha]
-    return listParts
-
-
-def _ftRunOverleafCli(
-    connectionDocker, sContainerId, listCliWords, sStdinText,
-):
-    """Run the Overleaf CLI with ``sStdinText`` on its standard input.
-
-    The token is the first stdin line. It crosses to the program on the
-    exec's stdin only, so it is in neither the command line, ``docker
-    inspect`` nor a process listing. Returns ``(iExitCode, sOutput)``.
-    """
-    tExecResult = connectionDocker.ftRunProgramWithStdin(
-        sContainerId, listCliWords, sStdinText.encode("utf-8"),
-    )
-    return (
-        tExecResult.iExitCode, tExecResult.sStdout + tExecResult.sStderr,
-    )
-
-
 def _fsFetchOverleafToken():
-    """Fetch the Overleaf token from the host keyring for per-push use."""
+    """Return the host keyring's Overleaf token, or '' when none is stored."""
     from vaibify.config.secretManager import fsRetrieveSecret
-    return fsRetrieveSecret("overleaf_token", "keyring")
-
-
-def _fsPrependToken(sToken, sPayload):
-    """Prepend the token as the first stdin line before a payload."""
-    return sToken + "\n" + sPayload
-
-
-def _ftResultPlainPush(
-    connectionDocker, sContainerId,
-    listFilePaths, sProjectId, sTargetDirectory, sMirrorSha="",
-):
-    """Push figures without TeX annotation."""
-    sStdin = _fsPrependToken(
-        _fsFetchOverleafToken(), "\n".join(listFilePaths))
-    return _ftRunOverleafCli(
-        connectionDocker, sContainerId,
-        _flistOverleafCliWords(
-            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha),
-        sStdin,
-    )
-
-
-def _ftResultAnnotatedPush(
-    connectionDocker, sContainerId, listFilePaths,
-    sProjectId, sTargetDirectory, dictWorkflow,
-    sGithubBaseUrl, sDoi, sTexFilename, sMirrorSha="",
-):
-    """Push figures and annotate the TeX with source links."""
-    sPayload = json.dumps({
-        "listFigurePaths": listFilePaths,
-        "dictWorkflow": dictWorkflow,
-    })
-    sStdin = _fsPrependToken(_fsFetchOverleafToken(), sPayload)
-    listCliWords = _flistOverleafCliWords(
-        "push-annotated", sProjectId, sContainerId,
-        sTargetDirectory, sMirrorSha,
-    ) + [
-        "--github-base-url", sGithubBaseUrl,
-        "--doi", sDoi,
-        "--tex-filename", sTexFilename,
-    ]
-    return _ftRunOverleafCli(
-        connectionDocker, sContainerId, listCliWords, sStdin,
-    )
+    try:
+        return fsRetrieveSecret("overleaf_token", "keyring") or ""
+    except KeyError:
+        return ""
 
 
 def ftResultPullFromOverleaf(
     connectionDocker, sContainerId,
-    sProjectId, listPullPaths, sTargetDirectory,
+    sProjectId, listPullPaths, sTargetDirectory, sProjectRepoPath="",
 ):
-    """Pull TeX files from Overleaf inside the container."""
+    """Pull TeX sources from Overleaf on the HOST and land them in the project.
+
+    The clone runs on the host with the host keyring's token, into a
+    private scratch directory; the files then enter the container
+    through the confined tree write, as the container user, confined
+    to ``sTargetDirectory`` with the write deny list, or land in a host
+    project through the host confined writer. ``sProjectRepoPath`` is
+    the root the target directory is created below (the target's
+    parent when not given). No container program runs and the token
+    never enters the container.
+    """
+    from vaibify.reproducibility import overleafSync
     fnValidateOverleafProjectId(sProjectId)
-    sStdin = _fsPrependToken(
-        _fsFetchOverleafToken(), "\n".join(listPullPaths))
-    return _ftRunOverleafCli(
-        connectionDocker, sContainerId,
-        _flistOverleafCliWords(
-            "pull", sProjectId, sContainerId, sTargetDirectory),
-        sStdin,
+    sToken = _fsFetchOverleafToken()
+    if not sToken:
+        return (overleafSync.fiExitCodeForError(overleafSync.OverleafAuthError()),
+                S_NO_OVERLEAF_TOKEN_MESSAGE)
+    sScratchDirectory = _fsCreateHostScratchDirectory()
+    try:
+        overleafSync.fnPullTexFromOverleaf(
+            sProjectId, listPullPaths, sScratchDirectory, sToken,
+        )
+        _fnLandPulledSources(
+            connectionDocker, sContainerId, sScratchDirectory, sTargetDirectory,
+            sProjectRepoPath or posixpath.dirname(sTargetDirectory),
+        )
+    except overleafSync.OverleafError as error:
+        return (overleafSync.fiExitCodeForError(error), str(error))
+    except OSError as error:
+        return (1, "LOCAL-FILE-ERROR (not an Overleaf problem): " + repr(error))
+    finally:
+        _fnRemoveScratchDirectory(sScratchDirectory)
+    return (0, "ok\n")
+
+
+def _fnLandPulledSources(
+    connectionDocker, sContainerId, sScratchDirectory, sTargetDirectory,
+    sCreationRoot,
+):
+    """Write the pulled files into the project's manuscript directory.
+
+    A container project receives them through the confined tree write:
+    the target is created one component at a time below the project
+    (``.git`` refused by name; ``.vaibify`` is where the manuscript copy
+    lives), then the files land rooted at the target so a planted link
+    cannot redirect them and the deny list still refuses vaibify's own
+    metadata names below it. A host project receives them through the
+    host confined writer.
+    """
+    import os
+    listLocalPaths = sorted(
+        os.path.join(sScratchDirectory, sName)
+        for sName in os.listdir(sScratchDirectory)
     )
+    if fbIsHostProject(sContainerId):
+        _fnLandPulledSourcesOnHost(listLocalPaths, sTargetDirectory)
+        return
+    from .pipelineServer import T_WRITE_DENYLISTED_NAMES
+    connectionDocker.fnMakeDirectory(
+        sContainerId, sTargetDirectory, sAuthorizedRoot=sCreationRoot,
+        tForbiddenNames=(".git",),
+    )
+    connectionDocker.fnWriteTreeViaTar(
+        sContainerId, sTargetDirectory, listLocalPaths,
+        sAuthorizedRoot=sTargetDirectory,
+        tForbiddenNames=T_WRITE_DENYLISTED_NAMES, bCreateDestination=False,
+    )
+
+
+def _fnLandPulledSourcesOnHost(listLocalPaths, sTargetDirectory):
+    import os
+    from vaibify.host.hostConfinedWrite import fsWriteFileInsideRoot
+    os.makedirs(sTargetDirectory, exist_ok=True)
+    sRealRoot = os.path.realpath(sTargetDirectory)
+    for sLocalPath in listLocalPaths:
+        with open(sLocalPath, "rb") as fileLocal:
+            fsWriteFileInsideRoot(
+                sRealRoot,
+                os.path.join(sRealRoot, os.path.basename(sLocalPath)),
+                iter(lambda: fileLocal.read(65536), b""),
+            )
 
 
 _DICT_ZENODO_API_BASE = {
@@ -410,116 +410,172 @@ def ftResultArchiveToZenodo(
     connectionDocker, sContainerId, sZenodoService, listFilePaths,
     dictMetadata=None, iParentDepositId=0,
 ):
-    """Upload files to Zenodo inside the container.
+    """Deposit files on Zenodo from the HOST; return ``(iExitCode, sOutput)``.
 
-    ``sZenodoService`` is the ZenodoClient service key
-    (``"sandbox"`` or ``"zenodo"``). ``dictMetadata`` is the
-    vaibify-side metadata block; it is translated to Zenodo API
-    shape and embedded (base64) so user-supplied strings cannot
-    break shell or Python quoting. ``iParentDepositId`` drives the
-    versioning flow: when 0 (or absent) the command creates a fresh
-    deposit; when a positive int, it calls the parent's
-    ``actions/newversion``, clears inherited files, updates the
-    metadata, uploads the new files, and publishes. Returns the
-    same ``(iExitCode, sOutput)`` tuple for both paths.
+    ``sZenodoService`` is the ZenodoClient service key (``"sandbox"`` or
+    ``"zenodo"``). The token is the project's ACTIVE host slot
+    (:mod:`vaibify.gui.zenodoTokenAccess`): nothing in the container
+    holds one any more, and no in-container program runs. The selected
+    files leave the container through the confined reader into a
+    private host scratch directory, each is hashed immediately before
+    its own upload, and the draft is asked what it holds BEFORE the
+    publish, while it is still discardable. ``iParentDepositId`` drives
+    the versioning flow: 0 creates a fresh deposit; a positive id takes
+    the parent's ``newversion`` draft, clears the inherited files and
+    updates the metadata.
+
+    The tuple and its message vocabulary (``HTTP ...``,
+    ``ARCHIVE-MISMATCH``, ``LOCAL-FILE-ERROR``, ``orphan draft``) are
+    the in-container script's, so ``fdictClassifyError`` and the
+    dashboard read them unchanged. Nothing here raises for a failed
+    deposit: a carrier worker that raised would quarantine the
+    container over a rejected token.
     """
+    from .zenodoTokenAccess import (
+        ZenodoTokenUnavailable, fsRequireActiveZenodoToken,
+    )
     if sZenodoService not in _DICT_ZENODO_API_BASE:
         raise ValueError(
             f"Invalid Zenodo service: {sZenodoService}"
         )
-    fnEnsureStagedClientCurrent(connectionDocker, sContainerId)
     _fnValidateArchiveFilePaths(listFilePaths)
     dictApi = _fdictBuildApiMetadata(dictMetadata or {})
     _fnValidateApiMetadata(dictApi)
-    sBaseApi = _DICT_ZENODO_API_BASE[sZenodoService]
-    sSlot = (
-        "zenodo_token_sandbox"
-        if sZenodoService == "sandbox"
-        else "zenodo_token_production"
+    try:
+        sToken = fsRequireActiveZenodoToken(
+            connectionDocker, sContainerId, sZenodoService,
+        )
+    except ZenodoTokenUnavailable as error:
+        return (1, "no-token: " + error.sMessage)
+    sScratchDirectory = _fsCreateHostScratchDirectory()
+    try:
+        listLocalPaths = _flistStageFilesOnHost(
+            connectionDocker, sContainerId, listFilePaths, sScratchDirectory,
+        )
+    except (OSError, ValueError) as error:
+        _fnRemoveScratchDirectory(sScratchDirectory)
+        return (1, "LOCAL-FILE-ERROR (not a Zenodo problem): " + repr(error))
+    try:
+        return _ftDepositStagedFiles(
+            zenodoClient.ZenodoClient(sZenodoService, sToken=sToken),
+            listLocalPaths, dictApi, int(iParentDepositId or 0),
+        )
+    finally:
+        _fnRemoveScratchDirectory(sScratchDirectory)
+
+
+def _fsCreateHostScratchDirectory():
+    """Return a fresh private directory under ``~/.vaibify`` for one operation."""
+    from vaibify.reproducibility.imageDeposit import (
+        fsResolveDepositScratchDirectory,
     )
-    return connectionDocker.ftResultExecuteCommand(
-        sContainerId,
-        _fsBuildZenodoArchiveCommand(
-            sBaseApi, sSlot, listFilePaths, dictApi, sContainerId,
-            iParentDepositId,
-        ),
-    )
+    return fsResolveDepositScratchDirectory()
 
 
-# The archive script imports these from /usr/share/vaibify inside the
-# container. The image COPYs them at BUILD time, so a long-lived
-# container drifts behind the host dispatcher whose generated script
-# names the current symbols -- measured live (2026-09-16): a 14-day
-# container answered ``ImportError: cannot import name
-# 'fdictDescribeLocalFileForDeposit'`` to a Make Permanent click.
-# ``_hashing`` is deliberately NOT staged: its only in-module use is a
-# download-hash path the deposit script never takes, and the client's
-# own deposit-side hashing is duplicated flat for exactly this reason.
-# The Overleaf/LaTeX siblings COPYed beside these can adopt the same
-# staging when their lanes need a new symbol.
-_TUPLE_STAGED_CLIENT_MODULES = (
-    "credentialRedactor.py",
-    "zenodoClient.py",
-)
-_S_STAGED_CLIENT_DIRECTORY = "/usr/share/vaibify"
+def _fnRemoveScratchDirectory(sScratchDirectory):
+    import shutil
+    shutil.rmtree(sScratchDirectory, ignore_errors=True)
 
 
-def fnEnsureStagedClientCurrent(connectionDocker, sContainerId):
-    """Restage the container-side client modules when the host's differ.
+def _flistStageFilesOnHost(
+    connectionDocker, sContainerId, listFilePaths, sScratchDirectory,
+):
+    """Stream each selected file out through the confined reader; return host paths.
 
-    Hash-compared first, so the ordinary case is one typed read per
-    module and no write; the write runs under the archive worker's
-    own admission, which is the lane this is called from. The staged
-    copy is runtime tooling, not project state: it lives outside the
-    workspace, is pinned by no manifest, and the shadow rerun builds
-    from the pinned IMAGE, so restaging changes nothing any level
-    compares.
+    A Zenodo deposit and an Overleaf figure directory are both flat, so
+    a file lands under its basename and a second file with the same
+    basename is refused here as a local error rather than silently
+    overwriting the first on the way out.
     """
-    import hashlib
-    from pathlib import Path
-    import vaibify.reproducibility as moduleReproducibility
-    if fbIsHostProject(sContainerId):
-        # A host project's script imports from the host package
-        # directly (_fsZenodoClientDirectory) -- there is no staged
-        # copy to refresh, and /usr/share/vaibify is nobody's path
-        # on a researcher's machine.
-        return
-    # hasattr, not bound callables: a getattr-held primitive turns
-    # this row into a passed-callable the inventory can never
-    # attribute (the to_thread lesson), and the direct calls below
-    # keep the expression the ledger records.
-    if not hasattr(connectionDocker, "fsHashContainerFileSha256") or (
-        not hasattr(connectionDocker, "fnWriteFile")
-    ):
-        # An adapter without the typed hash and the write surface
-        # cannot stage; the exec then answers with the ImportError
-        # itself, which at least names the module.
-        return
-    pathPackage = Path(moduleReproducibility.__file__).parent
-    for sName in _TUPLE_STAGED_CLIENT_MODULES:
-        baHostCopy = (pathPackage / sName).read_bytes()
-        sContainerPath = _S_STAGED_CLIENT_DIRECTORY + "/" + sName
-        try:
-            sContainerSha = connectionDocker.fsHashContainerFileSha256(
-                sContainerId, sContainerPath,
+    import os
+    from vaibify.host.hostConfinedWrite import fsWriteFileInsideRoot
+    from .projectRoots import fsResolveProjectRoot
+    sProjectRoot = fsResolveProjectRoot(sContainerId, "/workspace")
+    listLocalPaths = []
+    setBasenames = set()
+    for sFilePath in listFilePaths:
+        sBasename = posixpath.basename(sFilePath)
+        if not sBasename or sBasename in setBasenames:
+            raise ValueError(
+                f"two selected files share the name {sBasename!r}; a "
+                "Zenodo deposit is flat"
             )
-        except AttributeError:
-            # The hasattr guard above answers for the ROUTER; a test
-            # double behind it may still lack the staging surface,
-            # and the AttributeError surfaces here. An adapter that
-            # cannot stage is left alone -- the exec then reports a
-            # genuinely stale client as its own ImportError.
-            return
-        except OSError:
-            sContainerSha = ""
-        if sContainerSha == hashlib.sha256(baHostCopy).hexdigest():
-            continue
-        try:
-            connectionDocker.fnWriteFile(
-                sContainerId, sContainerPath, baHostCopy,
+        setBasenames.add(sBasename)
+        listLocalPaths.append(fsWriteFileInsideRoot(
+            sScratchDirectory, os.path.join(sScratchDirectory, sBasename),
+            connectionDocker.fiterReadFileConfined(
+                sContainerId, sFilePath, sAuthorizedRoot=sProjectRoot,
+            ),
+        ))
+    return listLocalPaths
+
+
+def _ftDepositStagedFiles(clientZenodo, listLocalPaths, dictApi, iParent):
+    """Open the draft, upload, compare, publish; abort the draft on any failure."""
+    import requests
+    try:
+        iDepositId, sBucketUrl = _ftOpenArchiveDraft(clientZenodo, dictApi, iParent)
+    except zenodoClient.ZenodoError as error:
+        return (1, "HTTP " + str(error))
+    except requests.RequestException as error:
+        return (1, repr(error))
+    try:
+        listExpected = []
+        for sLocalPath in listLocalPaths:
+            # Hashed immediately before its own upload, so the digest
+            # describes the bytes this call is about to send.
+            listExpected.append(
+                zenodoClient.fdictDescribeLocalFileForDeposit(sLocalPath),
             )
-        except AttributeError:
-            return
+            clientZenodo.fnUploadToBucket(sBucketUrl, sLocalPath)
+        dictDraftNow = clientZenodo.fdictGetDeposit(iDepositId)
+        listProblems = (
+            zenodoClient.flistDescribeDepositDisagreement(dictDraftNow, listExpected)
+            + zenodoClient.flistDescribeUnexpectedDepositFiles(
+                dictDraftNow, listExpected,
+            )
+        )
+        if listProblems:
+            return _ftAbortArchiveDraft(clientZenodo, iDepositId, (
+                "ARCHIVE-MISMATCH (nothing was published): Zenodo does not "
+                "hold what vaibify uploaded: " + " ".join(listProblems)
+            ))
+        dictPublished = clientZenodo.fdictPublishDraft(iDepositId)
+    except (FileNotFoundError, PermissionError, IsADirectoryError) as error:
+        return _ftAbortArchiveDraft(clientZenodo, iDepositId, (
+            "LOCAL-FILE-ERROR (not a Zenodo problem): " + repr(error)
+        ))
+    except zenodoClient.ZenodoError as error:
+        return _ftAbortArchiveDraft(clientZenodo, iDepositId, "HTTP " + str(error))
+    except requests.RequestException as error:
+        return _ftAbortArchiveDraft(clientZenodo, iDepositId, repr(error))
+    return (0, "ZENODO_RESULT=" + json.dumps({
+        "iDepositId": iDepositId,
+        "sDoi": dictPublished.get("doi", ""),
+        "sConceptDoi": dictPublished.get("conceptdoi", ""),
+        "sHtmlUrl": (dictPublished.get("links") or {}).get("html", ""),
+    }))
+
+
+def _ftOpenArchiveDraft(clientZenodo, dictApi, iParent):
+    """Return ``(iDepositId, sBucketUrl)`` for a fresh or new-version draft."""
+    if iParent > 0:
+        dictDraft = clientZenodo.fdictGetNewVersionDraft(iParent)
+        clientZenodo.fnClearDraftFiles(dictDraft["id"])
+        clientZenodo.fnSetMetadata(dictDraft["id"], dictApi)
+    else:
+        dictDraft = clientZenodo.fdictCreateDraft(dictApi)
+    return dictDraft["id"], dictDraft["links"]["bucket"]
+
+
+def _ftAbortArchiveDraft(clientZenodo, iDepositId, sMessage):
+    """Discard the unpublished draft and say whether that worked."""
+    import requests
+    try:
+        clientZenodo.fnDeleteDraft(iDepositId)
+    except (zenodoClient.ZenodoError, requests.RequestException):
+        return (1, f"{sMessage} | draft {iDepositId} still on Zenodo; discard manually")
+    return (1, f"{sMessage} | orphan draft {iDepositId} deleted")
 
 
 def _fdictBuildApiMetadata(dictMetadata):
@@ -554,150 +610,6 @@ def _fnValidateArchiveFilePaths(listFilePaths):
             raise ValueError(
                 f"Null byte in archive path: {sPath!r}"
             )
-
-
-_S_ARCHIVE_SCRIPT_TEMPLATE = '''import json, sys
-import keyring
-sys.path.insert(0, %(clientdir)s)
-from zenodoClient import (ZenodoClient, ZenodoError,
-                          fdictDescribeLocalFileForDeposit,
-                          flistDescribeDepositDisagreement,
-                          flistDescribeUnexpectedDepositFiles)
-
-_SLOT = %(slot)s
-_BASE = %(base)s
-_META = json.loads(%(meta)s)
-_PARENT = %(parent)s
-_PATHS = %(paths)s
-
-_t = (keyring.get_password('vaibify', _SLOT)
-      or keyring.get_password('vaibify', 'zenodo_token')
-      or sys.exit('no-token'))
-
-client = ZenodoClient(sToken=_t, sBaseUrl=_BASE)
-
-if _PARENT:
-    _draft = client.fdictGetNewVersionDraft(_PARENT)
-    iDid = _draft['id']
-    client.fnClearDraftFiles(iDid)
-    client.fnSetMetadata(iDid, _META)
-    sBucket = _draft['links']['bucket']
-else:
-    _draft = client.fdictCreateDraft(_META)
-    iDid = _draft['id']
-    sBucket = _draft['links']['bucket']
-
-
-class _ArchiveMismatch(Exception):
-    """The draft does not hold what was just uploaded to it."""
-
-
-def _cleanup_draft():
-    try:
-        client.fnDeleteDraft(iDid)
-        return True
-    except Exception:
-        return False
-
-
-def _abort(sOrig):
-    if _cleanup_draft():
-        sys.exit(str(sOrig) + ' | orphan draft ' + str(iDid)
-                 + ' deleted')
-    sys.exit(str(sOrig) + ' | draft ' + str(iDid)
-             + ' still on Zenodo; discard manually')
-
-
-try:
-    _expected = []
-    for _p in _PATHS:
-        # Hashed immediately before its own upload, so the digest
-        # describes the bytes this call is about to send.
-        _expected.append(fdictDescribeLocalFileForDeposit(_p))
-        client.fnUploadToBucket(sBucket, _p)
-    # BEFORE the publish, while the deposit is still discardable.
-    # Zenodo computes each file's md5 as the bucket receives it,
-    # so the draft can be asked what it holds for the cost of one
-    # small request. Verifying after the publish would mean
-    # failing with a DOI already minted -- an orphan nothing on
-    # this path can clean up.
-    _draftNow = client.fdictGetDeposit(iDid)
-    _problems = (flistDescribeDepositDisagreement(_draftNow, _expected)
-                 + flistDescribeUnexpectedDepositFiles(_draftNow,
-                                                       _expected))
-    if _problems:
-        raise _ArchiveMismatch(' '.join(_problems))
-    _r = client.fdictPublishDraft(iDid)
-except SystemExit as _se:
-    _abort(_se.code)
-except _ArchiveMismatch as _am:
-    _abort('ARCHIVE-MISMATCH (nothing was published): Zenodo does '
-           'not hold what vaibify uploaded: ' + str(_am))
-except (FileNotFoundError, PermissionError, IsADirectoryError) as _fe:
-    # A local file problem, marked as one. Without the marker the
-    # FileNotFoundError text ("No such file or directory") matched the
-    # remote not-found patterns and the researcher was told to check
-    # their DOI. Narrow types on purpose: requests' ConnectionError is
-    # an OSError too, and a network drop must not be labelled local.
-    _abort('LOCAL-FILE-ERROR (not a Zenodo problem): ' + repr(_fe))
-except ZenodoError as _ze:
-    _abort('HTTP ' + str(_ze))
-except Exception as _e:
-    _abort(repr(_e))
-
-print('ZENODO_RESULT=' + json.dumps({
-    'iDepositId': iDid,
-    'sDoi': _r.get('doi', ''),
-    'sConceptDoi': _r.get('conceptdoi', ''),
-    'sHtmlUrl': _r.get('links', {}).get('html', ''),
-}))
-'''
-
-
-def _fsBuildZenodoArchiveCommand(
-    sBaseApi, sSlot, listFilePaths, dictApiMetadata, sResourceId,
-    iParentDepositId=0,
-):
-    """Build a command that runs the base64-encoded archive script.
-
-    The script itself is parameterized via ``%%(name)s`` substitutions
-    filled with ``repr()``-quoted Python literals, then base64-encoded
-    and executed inside the container via ``exec``. Every user-provided
-    value travels as opaque data; no shell or Python quoting depends
-    on the input contents.
-
-    ``zenodoClient`` is found where this resource keeps it: the image
-    stages a copy under ``/usr/share/vaibify``, and on the host it is
-    a module of the installed package, whose directory this asks for
-    by importing it rather than walking up from a file.
-    """
-    import base64
-    iParent = int(iParentDepositId or 0)
-    sScript = _S_ARCHIVE_SCRIPT_TEMPLATE % {
-        "clientdir": repr(_fsZenodoClientDirectory(sResourceId)),
-        "slot": repr(sSlot),
-        "base": repr(sBaseApi),
-        "meta": repr(json.dumps(dictApiMetadata)),
-        "parent": repr(iParent if iParent > 0 else 0),
-        "paths": repr(list(listFilePaths)),
-    }
-    sScriptB64 = base64.b64encode(
-        sScript.encode("utf-8")
-    ).decode("ascii")
-    return (
-        fsResolveHelperInterpreter(sResourceId)
-        + " -c \"import base64; "
-        f"exec(base64.b64decode('{sScriptB64}').decode())\""
-    )
-
-
-def _fsZenodoClientDirectory(sResourceId):
-    """Return the directory holding ``zenodoClient`` for this resource."""
-    if not fbIsHostProject(sResourceId):
-        return "/usr/share/vaibify"
-    import os
-    from vaibify.reproducibility import zenodoClient
-    return os.path.dirname(os.path.abspath(zenodoClient.__file__))
 
 
 def _fsGithubHardeningFlags():
@@ -907,24 +819,34 @@ def fdictCheckConnectivity(
 
 
 def _fdictCheckZenodoKeyring(connectionDocker, sContainerId):
-    """Return Connected if any Zenodo token slot is populated."""
-    if fbIsHostProject(sContainerId):
-        for sName in _LIST_ZENODO_TOKEN_NAMES:
-            dictProbe = _fdictCheckHostKeyring(sName)
-            if dictProbe["bConnected"]:
-                return dictProbe
-        return {"bConnected": False, "sMessage": "Token not found"}
-    if not _fbKeyringBackendHealthy(connectionDocker, sContainerId):
+    """Return Connected if an ACTIVE host slot holds a token for this project."""
+    from vaibify.config import zenodoTokenSlots
+    from .zenodoTokenAccess import fsProjectUuidForContainer
+    sProjectUuid = fsProjectUuidForContainer(connectionDocker, sContainerId)
+    if not sProjectUuid:
         return {
             "bConnected": False,
-            "sMessage": S_KEYRING_BACKEND_FAIL_MESSAGE,
+            "sMessage": (
+                "This container is not a registered project, so no "
+                "Zenodo token is stored for it."
+            ),
         }
-    for sName in _LIST_ZENODO_TOKEN_NAMES:
-        dictProbe = _fdictProbeKeyringToken(
-            connectionDocker, sContainerId, sName,
-        )
-        if dictProbe["bConnected"]:
-            return dictProbe
+    try:
+        for sInstance in zenodoTokenSlots.T_ZENODO_INSTANCES:
+            if zenodoTokenSlots.fbHasActiveToken(sInstance, sProjectUuid):
+                return {"bConnected": True, "sMessage": "Connected"}
+        bPending = bool(zenodoTokenSlots.flistPendingSlotsFor(sProjectUuid))
+    except zenodoTokenSlots.TokenStoreUnreadable as error:
+        # Could not check is not "not connected": the sentence says so.
+        return {"bConnected": False, "sMessage": f"Could not check: {error}"}
+    if bPending:
+        return {
+            "bConnected": False,
+            "sMessage": (
+                "A Zenodo token moved out of this project's container "
+                "awaits your confirmation before it can be used."
+            ),
+        }
     return {"bConnected": False, "sMessage": "Token not found"}
 
 
@@ -1116,155 +1038,6 @@ def _fdictCheckKeyring(
     )
 
 
-def fnStoreCredentialInContainer(
-    connectionDocker, sContainerId, sName, sValue,
-):
-    """Store a credential in the container's keyring via temp file."""
-    if sName not in SET_VALID_TOKEN_NAMES:
-        raise ValueError(f"Invalid token name: {sName}")
-    sTempPath = f"/tmp/_vc_cred_{uuid.uuid4().hex[:12]}"
-    sCommand = fsPythonCommand(
-        "import keyring",
-        f"keyring.set_password('vaibify', {repr(sName)}, "
-        f"open({repr(sTempPath)}).read().strip())",
-        sContainerId,
-    )
-    connectionDocker.fnWriteFile(
-        sContainerId, sTempPath, sValue.encode("utf-8")
-    )
-    try:
-        iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-            sContainerId, sCommand
-        )
-        if iExitCode != 0:
-            raise RuntimeError(
-                f"Keyring storage failed: {(sOutput or '').strip()}"
-            )
-    finally:
-        connectionDocker.ftResultExecuteCommand(
-            sContainerId, f"rm -f {fsShellQuote(sTempPath)}"
-        )
-
-
-# ---------------------------------------------------------------------
-# Which keyring holds this project's credentials.
-#
-# A container project's tokens live in the container's keyring, which
-# is thrown away with the container and is reachable only from inside
-# it. A host project has no container: its tokens belong in the
-# researcher's own OS keyring, which is where Overleaf's token has
-# always gone -- that service keeps a host-side token in BOTH modes,
-# because the Overleaf push runs on the host.
-#
-# The dispatchers below are what callers use. The ``InContainer``
-# functions beneath them keep their names and their behaviour, because
-# that is exactly what they do.
-# ---------------------------------------------------------------------
-
-
-def fnStoreCredentialForProject(
-    connectionDocker, sContainerId, sName, sValue,
-):
-    """Store one credential in whichever keyring this project uses."""
-    if fbIsHostProject(sContainerId):
-        from vaibify.config.secretManager import fnStoreSecret
-        _fnRefuseUnknownTokenName(sName)
-        fnStoreSecret(sName, sValue, "keyring")
-        return
-    fnStoreCredentialInContainer(
-        connectionDocker, sContainerId, sName, sValue,
-    )
-
-
-def fbCopyCredentialForProject(
-    connectionDocker, sContainerId, sSourceName, sTargetName,
-):
-    """Copy one credential slot to another; True iff the source existed.
-
-    On the host the value passes through this process rather than
-    through a shell, which is strictly less exposure than the
-    container leg's in-container python: nothing is written, nothing
-    is quoted, and the secret never becomes command text.
-    """
-    if fbIsHostProject(sContainerId):
-        from vaibify.config.secretManager import (
-            fbSecretExists, fnStoreSecret, fsRetrieveSecret,
-        )
-        for sName in (sSourceName, sTargetName):
-            _fnRefuseUnknownTokenName(sName)
-        if not fbSecretExists(sSourceName, "keyring"):
-            return False
-        fnStoreSecret(
-            sTargetName, fsRetrieveSecret(sSourceName, "keyring"),
-            "keyring",
-        )
-        return True
-    return fbCopyCredentialInContainer(
-        connectionDocker, sContainerId, sSourceName, sTargetName,
-    )
-
-
-def fnDeleteCredentialForProject(connectionDocker, sContainerId, sName):
-    """Delete one credential from whichever keyring this project uses.
-
-    An absent credential is not an error in either lane, matching the
-    container leg's tolerance of ``PasswordDeleteError``: every caller
-    of this is a rollback or a cleanup, and a failure there would
-    replace the error the researcher needs to read.
-    """
-    if fbIsHostProject(sContainerId):
-        from vaibify.config.secretManager import fnDeleteSecret
-        _fnRefuseUnknownTokenName(sName)
-        try:
-            fnDeleteSecret(sName, "keyring")
-        except Exception:  # noqa: BLE001 -- absent is not an error
-            pass
-        return
-    fnDeleteCredentialFromContainer(
-        connectionDocker, sContainerId, sName,
-    )
-
-
-def _fnRefuseUnknownTokenName(sName):
-    """Refuse a token slot outside the closed vocabulary.
-
-    The container functions each carry this check; the host branch
-    needs it just as much, because the name reaches a keyring service
-    slot and arrives from a request body.
-    """
-    if sName not in SET_VALID_TOKEN_NAMES:
-        raise ValueError(f"Invalid token name: {sName}")
-
-
-def fbCopyCredentialInContainer(
-    connectionDocker, sContainerId, sSourceName, sTargetName,
-):
-    """Copy a container-keyring entry to another slot; value stays inside.
-
-    Returns True iff the source entry existed and the copy landed.
-    The secret never crosses the docker-exec boundary: the read and
-    the write happen inside one in-container python process, so the
-    token cannot leak into exec output or host logs. Used by the
-    connect flow's stage-validate-commit to snapshot a working token
-    before a newly entered one overwrites it.
-    """
-    for sName in (sSourceName, sTargetName):
-        if sName not in SET_VALID_TOKEN_NAMES:
-            raise ValueError(f"Invalid token name: {sName}")
-    sCommand = fsPythonCommand(
-        "import keyring",
-        f"v=keyring.get_password('vaibify',{repr(sSourceName)}); "
-        f"v is not None and keyring.set_password("
-        f"'vaibify',{repr(sTargetName)},v); "
-        f"print('copied' if v is not None else 'missing')",
-        sContainerId,
-    )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    return iExitCode == 0 and "copied" in (sOutput or "")
-
-
 def fnDeleteCredentialFromContainer(
     connectionDocker, sContainerId, sName,
 ):
@@ -1374,18 +1147,6 @@ def _fnRemovePath(sPath):
         pass
 
 
-_DICT_ZENODO_VALIDATION_ENDPOINT = {
-    "sandbox": (
-        "https://sandbox.zenodo.org/api/deposit/depositions",
-        "zenodo_token_sandbox",
-    ),
-    "zenodo": (
-        "https://zenodo.org/api/deposit/depositions",
-        "zenodo_token_production",
-    ),
-}
-
-
 def fbValidateZenodoToken(
     connectionDocker, sContainerId, sService="sandbox",
 ):
@@ -1398,35 +1159,34 @@ def fbValidateZenodoToken(
 def ftResultValidateZenodoToken(
     connectionDocker, sContainerId, sService="sandbox",
 ):
-    """Test a Zenodo token; return ``(bPass, sRemediationDetail)``.
+    """Probe the project's ACTIVE token on the host; return ``(bPass, sDetail)``.
 
     ``sService`` is the ZenodoClient service key (``"sandbox"`` or
     ``"zenodo"``). Validation hits the same instance the token was
     issued for; sandbox tokens are rejected by production and vice
-    versa. The inline command uses only ``keyring`` and ``requests``
-    because the container does not have the vaibify package installed;
-    both are installed EXPLICITLY by the image Dockerfile, because a
-    check that borrowed them from the researcher's own requirements
-    worked only for projects that happened to depend on them.
+    versa. The probe runs on the host with ``requests``, never inside
+    the container, because the token never enters the container.
 
-    On failure the detail names what actually failed — a missing
-    container package, a rejection by the named instance, no token in
-    the container keyring, or no network — because every one of those
-    used to be reported as "check that the token has deposit scopes",
-    which sent a researcher with a valid token to the wrong fix.
+    On failure the detail names what actually failed -- no token stored
+    (or one awaiting confirmation), a rejection by the named instance,
+    or no answer from it -- because every one of those used to be
+    reported as "check that the token has deposit scopes".
     """
-    if sService not in _DICT_ZENODO_VALIDATION_ENDPOINT:
+    from .zenodoTokenAccess import (
+        ZenodoTokenUnavailable, fsRequireActiveZenodoToken,
+    )
+    if sService not in _DICT_ZENODO_API_BASE:
         raise ValueError(f"Invalid Zenodo service: {sService}")
-    sUrl, sSlot = _DICT_ZENODO_VALIDATION_ENDPOINT[sService]
-    iExit, sOut = connectionDocker.ftResultExecuteCommand(
-        sContainerId,
-        _fsBuildZenodoValidationCommand(sUrl, sSlot, sContainerId),
-    )
-    if iExit == 0 and "ok" in sOut:
+    try:
+        sToken = fsRequireActiveZenodoToken(
+            connectionDocker, sContainerId, sService,
+        )
+    except ZenodoTokenUnavailable as error:
+        return (False, error.sMessage)
+    dictProbe = zenodoClient.fdictProbeToken(sService, sToken)
+    if dictProbe["sOutcome"] == zenodoClient.S_PROBE_ACCEPTED:
         return (True, "")
-    return (
-        False, fsClassifyZenodoValidationFailure(sOut, sService),
-    )
+    return (False, fsDescribeZenodoValidationOutcome(dictProbe, sService))
 
 
 def _fsZenodoHostForService(sService):
@@ -1434,38 +1194,19 @@ def _fsZenodoHostForService(sService):
     return "zenodo.org" if sService == "zenodo" else "sandbox.zenodo.org"
 
 
-def fsClassifyZenodoValidationFailure(sOut, sService):
-    """Name the failure a validation exec's output records.
+def fsDescribeZenodoValidationOutcome(dictProbe, sService):
+    """Name the failure a host-side token probe records.
 
-    Classifies into fixed messages rather than echoing the raw output:
-    the output of a command that handles credentials is not UI text.
-    The one fragment carried through is a missing module NAME, which
-    the researcher needs verbatim.
+    Fixed sentences rather than the raw response: a rejection names the
+    instance that rejected and the one the token may have been made
+    on; an undetermined probe names the instance the host could not
+    get an answer from, and says it is not a token problem.
     """
     sHost = _fsZenodoHostForService(sService)
     sOther = _fsZenodoHostForService(
         "sandbox" if sService == "zenodo" else "zenodo",
     )
-    sLower = (sOut or "").lower()
-    matchModule = re.search(
-        r"no module named '?([A-Za-z0-9_.]+)'?", sLower,
-    )
-    if matchModule:
-        return (
-            "The container is missing the Python package "
-            f"'{matchModule.group(1)}', which vaibify's Zenodo check "
-            "runs on — the token was never tested. Rebuild the "
-            "project image with the current vaibify (its image "
-            "installs the package), or install it in the running "
-            "container."
-        )
-    if "no-token" in sLower:
-        return (
-            "No token reached the container's credential store, so "
-            "nothing was tested. Try connecting again; if this "
-            "repeats, the container keyring is broken."
-        )
-    if "401" in sLower or "403" in sLower:
+    if dictProbe["sOutcome"] == zenodoClient.S_PROBE_REJECTED:
         return (
             f"{sHost} rejected the token. Check that the token was "
             f"created on {sHost} — not {sOther}; the two instances "
@@ -1473,36 +1214,11 @@ def fsClassifyZenodoValidationFailure(sOut, sService):
             "selector above chooses which one is tested — and that "
             "it has the deposit:write and deposit:actions scopes."
         )
-    if (
-        "connectionerror" in sLower or "timeout" in sLower
-        or "temporary failure" in sLower or "name resolution" in sLower
-        or "newconnectionerror" in sLower
-    ):
-        return (
-            f"The container could not reach {sHost} at all — this is "
-            "a network problem, not a token problem. Check the "
-            "container's network access, then try again."
-        )
     return (
-        f"Validation against {sHost} failed for an unrecognized "
-        "reason. Check that the token was created on that instance "
-        "with deposit:write and deposit:actions scopes."
-    )
-
-
-def _fsBuildZenodoValidationCommand(sUrl, sSlot, sResourceId):
-    """Build a self-contained command that validates the token."""
-    sCall = (
-        f"_t=keyring.get_password('vaibify', {repr(sSlot)}) "
-        "or keyring.get_password('vaibify', 'zenodo_token') "
-        "or sys.exit('no-token'); "
-        f"r=requests.get({repr(sUrl)}, "
-        "headers={'Authorization': 'Bearer '+_t}, "
-        "params={'size': 1}); "
-        "r.raise_for_status(); print('ok')"
-    )
-    return fsPythonCommand(
-        "import keyring, requests, sys", sCall, sResourceId,
+        f"This computer could not get an answer from {sHost} "
+        f"({dictProbe.get('sDetail') or 'no detail'}) — a network or "
+        "service problem, not a token problem. Nothing about the token "
+        "was decided; try again."
     )
 
 
@@ -1577,11 +1293,11 @@ def fdictComputeContainerDigests(
     sScript = _S_DIGEST_SCRIPT
     listArgs = [fsShellQuote(p) for p in listAbsPaths]
     sCommand = (
-        "python3 -c " + fsShellQuote(sScript)
+        S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sScript)
         + " " + " ".join(listArgs)
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand,
+        sContainerId, sCommand, sLane=S_EXEC_LANE_INTEGRITY_READ,
     )
     dictDigests = {}
     if iExit != 0:
@@ -1669,7 +1385,7 @@ def fsBuildTestMarkerCheckCommand(
     sScript = _fsBuildTestMarkerScript(
         sJsonDirs, sProjectRepoPath, sWorkflowSlug,
     )
-    return "python3 -c " + fsShellQuote(sScript)
+    return S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sScript)
 
 
 def _fsBuildTestMarkerScript(

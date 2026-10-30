@@ -36,7 +36,7 @@ class _ConnectionAnsweringDirectories:
         self.setPresentDirectories = setPresentDirectories
         self.listCommandChecks = []
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         del sContainerId
         if sCommand.startswith("test -d "):
             sPath = sCommand.split("'")[1]

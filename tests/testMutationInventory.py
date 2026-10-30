@@ -167,7 +167,12 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 272 -> 271 (2026-10-12): the test generator's unclassified conftest
 # write and the new marker-plugin writes share one classified confined
 # write site, _fnWriteTextConfined.
-I_UNCLASSIFIED_ROW_BUDGET = 267
+# 267 -> 260 (2026-10-29): the in-container Zenodo and Overleaf lanes
+# are gone (their store, copy, archive, validation and stdin-program
+# execs with them), and the reads and writes that replaced them -- the
+# host lanes' confined file read, the migration's keyring read, and the
+# pull's confined tree write -- are classified.
+I_UNCLASSIFIED_ROW_BUDGET = 260
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -441,7 +446,25 @@ I_UNCLASSIFIED_ROW_BUDGET = 267
 # are excluded with their authority recorded (plan-built argv, first-
 # step action names only, agent lane rejected, machine-wide lock), and
 # the guards behind it are kill-confirmed.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 231
+# 231 -> 224 (2026-10-29): Zenodo tokens leave the container; the
+# store, copy, archive, validation and staged-client execs are gone.
+# 224 -> 225 (2026-10-29): the Overleaf pull lands its sources through
+# TWO confined writes (fnMakeDirectory for the manuscript directory,
+# fnWriteTreeViaTar for the files) where one stdin-fed program exec
+# stood before; both are classified, under the pull's mode-(b) carrier.
+# 225 -> 226 (2026-10-29), a NEW reach on the researcher's own machine,
+# named: the X11 helper launch (x11Authorizations.fdictRunHelper), a
+# fixed `sys.executable -I -m vaibify.host.x11Authority` argv with
+# validated values, which touches no container and reaches only the
+# researcher's own X server. The row is excluded with its authority
+# recorded; the guards behind it are kill-confirmed.
+# 226 -> 227 (2026-10-29), a NEW reach on the researcher's own machine,
+# named: the allowlist network mode's docker commands
+# (projectEgress._fprocessDocker), which make, probe and remove a
+# project's sealed network and proxy sidecar and never exec into the
+# project container. The row is excluded with its authority recorded;
+# the seal is proven live (tests/testProjectEgressLive.py).
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 227
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -748,7 +771,18 @@ DICT_UNRESOLVED_BUDGET = {
     # plan's steps, root only through an OS-owned prompt). Each takes
     # its argv as a parameter, built from constants in one module, so
     # the scan cannot read it; both rows carry reviewed dispositions.
-    "opaque-subprocess-command": 24,
+    # 24 -> 25 (2026-10-29), NEW host reach, named: the X11 helper
+    # launch, x11Authorizations.fdictRunHelper, which takes the
+    # helper's argument list as a parameter (the operation name and the
+    # validated values _flistCommonArguments builds) and prefixes the
+    # fixed `sys.executable -I -m vaibify.host.x11Authority`; the row
+    # carries a reviewed disposition.
+    # 25 -> 26 (2026-10-29), NEW host reach, named: the allowlist network
+    # mode's one docker launcher, projectEgress._fprocessDocker, which
+    # takes the docker arguments as a parameter (built by the module's
+    # own argument composers from validated values); the row carries a
+    # reviewed disposition.
+    "opaque-subprocess-command": 26,
     # 52 since fsImageState (2026-09-18): a gateway image lookup, read
     # through the same SDK root as flistGetRunningContainers beside it.
     # 53 since fdictSweepSurvivorsOfVanishedResources (2026-09-21): the
@@ -781,7 +815,13 @@ DICT_UNRESOLVED_BUDGET = {
     # image; a commit rolled back after a crash drops the tag it had
     # just written. Without it the two names would stay forever, and a
     # rollback would leave an artifact it claims to have removed.
-    "untraceable-docker-sdk-root": 56,
+    # 56 -> 57 (2026-10-29) since _fsReadInternalNetworkSubnet: the
+    # council proxy launch reads its internal network's IPv4 subnet,
+    # through the same root as _fsRemoveInternalNetwork beside it, so the
+    # proxy binds only its internal address and never the default bridge;
+    # a daemon that cannot report the subnet refuses the launch. The
+    # site carries its ruling in tests/testBlindSpotDispositions.py.
+    "untraceable-docker-sdk-root": 57,
 }
 
 
@@ -2075,6 +2115,9 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # Pure argument/flag assembly for a later launch; no daemon call.
     "flistBuildRunArgs",
     "flistMountSecrets",
+    # Reads the project's network mode off its configuration, with the
+    # old networkIsolation spelling as the fallback; no daemon call.
+    "fsNetworkModeOf",
     # Writes the start-time notice naming each secret this host could
     # not resolve. Reads a probe that materializes nothing and calls
     # the hub logger; no daemon call.

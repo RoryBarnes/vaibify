@@ -29,6 +29,7 @@ from fastapi import HTTPException, Request
 
 from .. import archiveProgress
 from ..actionCatalog import ffnAgentAction
+from ..remoteBindingContext import fdictRequireBoundZenodoTarget
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
@@ -373,8 +374,14 @@ def _fnRegisterDepositEnvironmentArchive(app, dictCtx):
         dictDestination = _fdictResolveDepositDestination(
             dictContainer, dictBody,
         )
+        # The archive is its own record, but it spends the researcher's
+        # token on an INSTANCE, which must be the confirmed one.
+        fdictRequireBoundZenodoTarget(
+            dictCtx, sContainerId, dictWorkflow,
+            dictDestination["sZenodoService"], bInstanceOnly=True,
+        )
         sToken = await asyncio.to_thread(
-            _fsReadZenodoTokenFromContainer,
+            _fsReadZenodoTokenFromHost,
             dictCtx["docker"], sContainerId,
             dictDestination["sZenodoService"],
         )
@@ -443,42 +450,38 @@ def _fnRefuseIfDepositInFlight(sContainerId):
         )
 
 
-def _fsReadZenodoTokenFromContainer(
+def _fsReadZenodoTokenFromHost(
     connectionDocker, sContainerId, sZenodoService,
 ):
     """Return the Zenodo token for ``sZenodoService``, or raise HTTP 409.
 
-    Vaibify stores this token in the CONTAINER keyring, because every
-    other Zenodo call it makes runs as a script inside the container.
-    ``docker save`` can only run on the host, so for this one
-    operation the token crosses -- read through the typed-read seam,
-    held in a local for the length of one upload, written to no file
-    and no log. The alternative was streaming a gigabyte the other
-    way through an exec socket built for a terminal.
+    The token is the project's ACTIVE host slot
+    (:mod:`vaibify.gui.zenodoTokenAccess`); it never enters the
+    container and never crosses the exec boundary. It is held in a
+    local for the length of one upload, written to no file and no log.
 
     An absent token is a 409 naming the instance, never a 500: the
     dashboard answers it by asking for that token WITHOUT recording
-    the instance as where this project publishes.
+    the instance as where this project publishes. A token awaiting the
+    researcher's confirmation after the migration out of the container
+    is absent too, and the message says so.
     """
-    from ...reproducibility.zenodoClient import fsZenodoTokenName
+    from vaibify.config.zenodoTokenSlots import TokenStoreUnreadable
+    from .. import zenodoTokenAccess
     try:
-        sToken = connectionDocker.fsFetchKeyringSecret(
-            sContainerId, fsZenodoTokenName(sZenodoService),
+        sToken = zenodoTokenAccess.fsActiveZenodoToken(
+            connectionDocker, sContainerId, sZenodoService,
         )
-    except LookupError as errorLookup:
-        # An UNREADABLE slot is not an empty one: asking for a token
+    except TokenStoreUnreadable as error:
+        # An UNREADABLE keyring is not an empty one: asking for a token
         # would claim none is stored and fix nothing.
-        raise HTTPException(409, str(errorLookup)) from None
+        raise HTTPException(409, str(error)) from None
     if not sToken:
-        sInstance = _DICT_INSTANCE_BY_SERVICE[sZenodoService]
         raise HTTPException(409, {
             "sError": _S_ZENODO_TOKEN_MISSING,
-            "sInstance": sInstance,
-            "sMessage": (
-                f"No {sInstance} Zenodo token is stored for this "
-                "project, so vaibify cannot deposit the image there. "
-                "Add one and try again; where this project publishes "
-                "is unchanged."
+            "sInstance": _DICT_INSTANCE_BY_SERVICE[sZenodoService],
+            "sMessage": zenodoTokenAccess.fsDescribeMissingZenodoToken(
+                connectionDocker, sContainerId, sZenodoService,
             ),
         })
     return sToken
@@ -746,8 +749,8 @@ def _fnRegisterPromoteEnvironmentArchive(app, dictCtx):
 
         Preflight order is POLICY before CREDENTIALS before BYTES.
         Every refusal vaibify can reach on information it already
-        holds runs before the production token is read across the
-        container boundary, and the token is validated long before a
+        holds runs before the production token is read from the host
+        keyring, and the token is validated long before a
         multi-gigabyte ``docker save`` begins -- discovering a missing
         token after the save is exactly the failure the envelope
         pre-check exists to prevent.
@@ -763,7 +766,7 @@ def _fnRegisterPromoteEnvironmentArchive(app, dictCtx):
         dictContainer = _fdictRequireEnvelopeContainerBlock(filesRepo)
         _fnRequireSandboxImageDeposit(dictContainer)
         sToken = await asyncio.to_thread(
-            _fsReadProductionTokenFromContainer,
+            _fsReadProductionTokenFromHost,
             dictCtx["docker"], sContainerId,
         )
         await asyncio.to_thread(_fnValidateProductionToken, sToken)
@@ -797,7 +800,7 @@ def _fnRequireSandboxImageDeposit(dictContainer):
         raise HTTPException(409, str(errorRefused)) from None
 
 
-def _fsReadProductionTokenFromContainer(connectionDocker, sContainerId):
+def _fsReadProductionTokenFromHost(connectionDocker, sContainerId):
     """Return the PRODUCTION Zenodo token, or raise HTTP 409 by name.
 
     A distinct refusal from the deposit route's, and deliberately so:
@@ -807,13 +810,14 @@ def _fsReadProductionTokenFromContainer(connectionDocker, sContainerId):
     where this project publishes -- that field lives in project.json,
     which Level 2 compares.
     """
-    from ...reproducibility.zenodoClient import fsZenodoTokenName
+    from vaibify.config.zenodoTokenSlots import TokenStoreUnreadable
+    from .. import zenodoTokenAccess
     try:
-        sToken = connectionDocker.fsFetchKeyringSecret(
-            sContainerId, fsZenodoTokenName("zenodo"),
+        sToken = zenodoTokenAccess.fsActiveZenodoToken(
+            connectionDocker, sContainerId, "zenodo",
         )
-    except LookupError:
-        sToken = ""
+    except TokenStoreUnreadable as error:
+        raise HTTPException(409, str(error)) from None
     if not sToken:
         raise HTTPException(409, {
             "sError": _S_PRODUCTION_TOKEN_MISSING,
@@ -821,8 +825,7 @@ def _fsReadProductionTokenFromContainer(connectionDocker, sContainerId):
                 "No PRODUCTION Zenodo token is stored for this "
                 "project, so vaibify cannot deposit on zenodo.org. "
                 "Add one and try again; your sandbox connection is "
-                "unchanged and this project still publishes where it "
-                "did."
+                "unchanged."
             ),
         })
     return sToken

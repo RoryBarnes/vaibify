@@ -211,7 +211,14 @@ LIST_RESEARCHER_ACTIONS = [
         "/api/containers/{sName}/settings",
         "Change the container's settings, e.g. CPU and memory limits. "
         "Args: any of {iCpuLimit, fMemoryLimitGigabytes, bNeverSleep, "
-        "bX11Forwarding, b<Agent>AutoUpdate}."),
+        "bX11Forwarding, sNetworkMode: open|allowlist|isolated, "
+        "b<Agent>AutoUpdate}."),
+    _fdictHubEntry(
+        "allow-network-host", "container", "POST",
+        "/api/containers/{sName}/network/allow-host",
+        "In allowlist network mode, let the container reach one more host "
+        "(host or host:port); takes effect when the container is created "
+        "again. Args: {sHost}."),
     _fdictHubEntry(
         "cancel-container-start", "container", "POST",
         "/api/containers/{sName}/start/cancel",

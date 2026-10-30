@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock, call
 import pytest
 
 from vaibify.reproducibility.overleafSync import (
-    fnPushFiguresToOverleaf,
+    ftPushFiguresToOverleaf,
     fnPullTexFromOverleaf,
     _COMMIT_MARKER,
     _OVERLEAF_GIT_HOST,
@@ -26,7 +26,7 @@ def listTempFigures(tmp_path):
     return listPaths
 
 
-def test_fnPushFiguresToOverleaf_calls_git_with_credential_helper(
+def test_ftPushFiguresToOverleaf_calls_git_with_credential_helper(
     listTempFigures,
 ):
     listCapturedCommands = []
@@ -48,7 +48,7 @@ def test_fnPushFiguresToOverleaf_calls_git_with_credential_helper(
             "_fbHasUncommittedChanges",
             return_value=True,
         ):
-            fnPushFiguresToOverleaf(
+            ftPushFiguresToOverleaf(
                 listTempFigures, "abc123proj", "figures",
                 "test-token-xyz",
             )
@@ -182,12 +182,10 @@ def test_fnValidateTargetDirectory_accepts_valid_paths():
     fnValidateTargetDirectory("a/b/c")
 
 
-def test_push_emits_push_status_no_changes_when_clone_is_pristine(
+def test_push_reports_no_changes_when_clone_is_pristine(
     tmp_path,
 ):
-    """No commit should still emit PUSH_STATUS=no-changes to stdout."""
-    import io
-    import contextlib
+    """No commit still reports ``no-changes`` and the head it found."""
     from vaibify.reproducibility import overleafSync as mod
     listCmds = []
 
@@ -208,13 +206,12 @@ def test_push_emits_push_status_no_changes_when_clone_is_pristine(
         mockR.stderr = ""
         return mockR
 
-    buf = io.StringIO()
-    with patch.object(mod.subprocess, "run", side_effect=fnFakeRun), \
-         contextlib.redirect_stdout(buf):
-        mod.fnPushFiguresToOverleaf(
+    with patch.object(mod.subprocess, "run", side_effect=fnFakeRun):
+        tOutcome = mod.ftPushFiguresToOverleaf(
             [], "proj123", "figures", "tok", sMirrorSha="",
         )
-    sOutput = buf.getvalue()
+    assert tOutcome == ("no-changes", "abc1234")
+    sOutput = mod.fsFormatPushOutput(*tOutcome)
     assert "PUSH_STATUS=no-changes" in sOutput
     assert "HEAD_SHA=abc1234" in sOutput
 

@@ -56,7 +56,9 @@ def liveContainer():
     )
     try:
         for sSetup in (
-            f"useradd -m {S_USER}",
+            # Ubuntu's useradd gives a 750 home; the read-only reader
+            # needs that group bit, so Debian's 700 is widened here.
+            f"useradd -m {S_USER} && chmod 750 /home/{S_USER}",
             f"mkdir -p {S_PROJECT}",
             f"chown -R {S_USER} /home/{S_USER}",
         ):

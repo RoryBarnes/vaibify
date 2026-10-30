@@ -407,7 +407,7 @@ def test_flistFindWorkflowsInContainer_custom_search_root():
         def __init__(self):
             self.listCommands = []
 
-        def ftResultExecuteCommand(self, sContainerId, sCommand):
+        def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
             self.listCommands.append(sCommand)
             return (0, "")
 

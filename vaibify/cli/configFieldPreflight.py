@@ -82,16 +82,27 @@ def _fsDescribeWorkspaceRoot(sWorkspaceRoot):
 
 
 def _fsDescribeX11WithNetworkIsolation(config):
-    """Return the complaint about X11 forwarding on a sealed container."""
-    if getattr(config, "bX11Forwarding", False) and getattr(
-        config, "bNetworkIsolation", False,
-    ):
+    """Return the complaint about X11 forwarding on a sealed container.
+
+    Isolation and allowlist mode both seal the container's network; a
+    display channel into either would defeat the seal (ruling D4).
+    """
+    if not getattr(config, "bX11Forwarding", False):
+        return ""
+    sMode = getattr(config, "sNetworkMode", "")
+    if getattr(config, "bNetworkIsolation", False) or sMode == "isolated":
         return (
             "x11Forwarding and networkIsolation are both true; a "
             "container with no network cannot reach the X server that "
             "forwarding exists to reach, and forwarding a display into "
             "a sealed container would defeat the seal. Set one of them "
             "to false"
+        )
+    if sMode == "allowlist":
+        return (
+            "x11Forwarding is true while networkMode is allowlist; a "
+            "display channel into a sealed container would defeat the "
+            "seal. Set networkMode to open or x11Forwarding to false"
         )
     return ""
 

@@ -2,6 +2,7 @@
 
 import copy
 import posixpath
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,16 @@ from .bindMountValidator import (
 # the ONE record of the pin: a build whose baseImage is unset or equal
 # to this value is built from it, never from the floating tag.
 S_DEFAULT_BASE_IMAGE = "ubuntu:24.04"
+
+# The container's process ceiling (``docker run --pids-limit``). A fork
+# storm inside a container otherwise exhausts the host's process table;
+# the default leaves a parallel science run ample room.
+I_DEFAULT_PIDS_LIMIT = 16384
+S_NETWORK_MODE_OPEN = "open"
+S_NETWORK_MODE_ALLOWLIST = "allowlist"
+S_NETWORK_MODE_ISOLATED = "isolated"
+T_NETWORK_MODES = (S_NETWORK_MODE_OPEN, S_NETWORK_MODE_ALLOWLIST,
+                   S_NETWORK_MODE_ISOLATED)
 
 
 def fbBaseImageUsesDockerfilePin(sBaseImage):
@@ -110,12 +121,18 @@ class ProjectConfig:
     reproducibility: ReproducibilityConfig = field(
         default_factory=ReproducibilityConfig
     )
+    # networkMode is the setting (ruling D1); bNetworkIsolation is its
+    # old spelling, kept in agreement with it by the loader so every
+    # reader of either sees one truth.
+    sNetworkMode: str = S_NETWORK_MODE_OPEN
+    listAllowedHosts: List[str] = field(default_factory=list)
     bNetworkIsolation: bool = False
     bX11Forwarding: bool = False
     bNeverSleep: bool = False
     iDashboardPort: int = 0
     iCpuLimit: int = 0
     fMemoryLimitGigabytes: float = 0.0
+    iPidsLimit: int = I_DEFAULT_PIDS_LIMIT
 
 
 # Mapping from camelCase YAML keys to Hungarian dataclass fields
@@ -138,11 +155,14 @@ _YAML_TO_HUNGARIAN = {
     "secrets": "listSecrets",
     "reproducibility": "reproducibility",
     "networkIsolation": "bNetworkIsolation",
+    "networkMode": "sNetworkMode",
+    "allowedHosts": "listAllowedHosts",
     "x11Forwarding": "bX11Forwarding",
     "neverSleep": "bNeverSleep",
     "dashboardPort": "iDashboardPort",
     "cpuLimit": "iCpuLimit",
     "memoryLimitGigabytes": "fMemoryLimitGigabytes",
+    "pidsLimit": "iPidsLimit",
 }
 
 _HUNGARIAN_TO_YAML = {v: k for k, v in _YAML_TO_HUNGARIAN.items()}
@@ -210,12 +230,44 @@ def fconfigLoadFromFile(sFilePath):
         Validated configuration dataclass instance.
     """
     dictRaw = _fdictReadYaml(sFilePath)
-    dictMerged = _fdictMergeWithDefaults(dictRaw)
+    if not fbNetworkKeysAgree(dictRaw):
+        raise ValueError(
+            f"Configuration validation failed for '{sFilePath}': networkMode "
+            f"{dictRaw.get('networkMode')!r} and networkIsolation "
+            f"{dictRaw.get('networkIsolation')!r} disagree; keep one, or make "
+            "them agree (isolated is the only mode networkIsolation: true names)."
+        )
+    dictMerged = _fdictMergeWithDefaults(fdictReconcileNetworkKeys(dictRaw))
+    _fnValidateBindMountsForFile(dictMerged, sFilePath)
     if not fbValidateConfig(dictMerged):
         raise ValueError(
             f"Configuration validation failed for '{sFilePath}'."
         )
     return _fconfigFromYamlDict(dictMerged)
+
+
+def _fnValidateBindMountsForFile(dictMerged, sFilePath):
+    """Refuse a mount list with the validator's own sentence.
+
+    Run before the boolean validation so a researcher reads WHY the
+    entry was refused -- an unknown key, the retired ``readOnly``, a
+    denied path, a read-write mount over this very file's directory --
+    rather than "validation failed". The directory of the file is the
+    project directory a read-write mount may not cover.
+    """
+    listMounts = dictMerged.get("bindMounts") or []
+    if not isinstance(listMounts, list):
+        return
+    try:
+        fnValidateBindMountList(
+            listMounts,
+            sProjectDirectory=os.path.dirname(os.path.realpath(sFilePath)),
+        )
+    except BindMountValidationError as errorMount:
+        raise ValueError(
+            f"Configuration validation failed for '{sFilePath}': "
+            f"{errorMount}"
+        ) from errorMount
 
 
 def fnSaveToFile(config, sFilePath):
@@ -272,8 +324,37 @@ def fconfigFromYamlDict(dictRaw):
     ProjectConfig
         Fully-populated configuration dataclass instance.
     """
-    dictMerged = _fdictMergeWithDefaults(dictRaw)
+    dictMerged = _fdictMergeWithDefaults(fdictReconcileNetworkKeys(dictRaw))
     return _fconfigFromYamlDict(dictMerged)
+
+
+def fdictReconcileNetworkKeys(dictRaw):
+    """Return the dict with ``networkMode`` and ``networkIsolation`` agreeing.
+
+    Ruling D1: a file that names only the old key is read as it always
+    was (``true`` is isolated, ``false`` is open); a file that names
+    only the new key gets the old one derived; a file that names both
+    is left alone here and refused by validation when they disagree.
+    """
+    dictResult = dict(dictRaw)
+    bHasMode = "networkMode" in dictResult
+    bHasIsolation = "networkIsolation" in dictResult
+    if bHasIsolation and not bHasMode:
+        dictResult["networkMode"] = (
+            S_NETWORK_MODE_ISOLATED if dictResult["networkIsolation"] is True
+            else S_NETWORK_MODE_OPEN)
+    elif bHasMode and not bHasIsolation:
+        dictResult["networkIsolation"] = (
+            dictResult["networkMode"] == S_NETWORK_MODE_ISOLATED)
+    return dictResult
+
+
+def fbNetworkKeysAgree(dictConfig):
+    """False only when both network keys are present and contradict each other."""
+    if "networkMode" not in dictConfig or "networkIsolation" not in dictConfig:
+        return True
+    return dictConfig["networkIsolation"] is (
+        dictConfig["networkMode"] == S_NETWORK_MODE_ISOLATED)
 
 
 def fbValidateConfig(dictConfig):
@@ -289,8 +370,26 @@ def fbValidateConfig(dictConfig):
         _fbValidateFeatures,
         _fbValidateDashboardPort,
         _fbValidateResourceLimits,
+        _fbValidateNetworkMode,
     ]
     return all(fnCheck(dictConfig) for fnCheck in listChecks)
+
+
+def _fbValidateNetworkMode(dictConfig):
+    """Check networkMode, allowedHosts and their agreement with networkIsolation."""
+    sMode = dictConfig.get("networkMode", S_NETWORK_MODE_OPEN)
+    if sMode not in T_NETWORK_MODES:
+        return False
+    if not isinstance(dictConfig.get("networkIsolation", False), bool):
+        return False
+    listAllowedHosts = dictConfig.get("allowedHosts", [])
+    if not isinstance(listAllowedHosts, list):
+        return False
+    from vaibify.docker.egressAllowlist import fbIsAllowedHostEntry
+    if not all(isinstance(sEntry, str) and fbIsAllowedHostEntry(sEntry)
+               for sEntry in listAllowedHosts):
+        return False
+    return fbNetworkKeysAgree(dictConfig)
 
 
 # A repository ``name`` is a path basename (the clone directory); a
@@ -749,7 +848,24 @@ def _fbValidateResourceLimits(dictConfig):
         fMemory, (int, float)
     ):
         return False
-    return fMemory == 0 or fMemory >= 0.25
+    if not (fMemory == 0 or fMemory >= 0.25):
+        return False
+    return _fbValidatePidsLimit(dictConfig)
+
+
+def _fbValidatePidsLimit(dictConfig):
+    """Check that pidsLimit, if present, is a positive integer.
+
+    The limit bounds how many processes the container may hold, which
+    is what stops a fork storm from taking the host down with it. There
+    is no "unlimited" spelling: the default is generous (a 63-worker
+    pool whose workers each run 63 BLAS threads needs about 4,000), and
+    a researcher who needs more raises the number.
+    """
+    iPidsLimit = dictConfig.get("pidsLimit", I_DEFAULT_PIDS_LIMIT)
+    if not isinstance(iPidsLimit, int) or isinstance(iPidsLimit, bool):
+        return False
+    return iPidsLimit > 0
 
 
 def _fbValidateFeatures(dictConfig):
@@ -776,6 +892,8 @@ def _fconfigFromYamlDict(dictYaml):
     )
     dictHungarian["features"] = featuresConfig
     dictHungarian["reproducibility"] = reproConfig
+    dictHungarian["bNetworkIsolation"] = (
+        dictHungarian.get("sNetworkMode", S_NETWORK_MODE_OPEN) == S_NETWORK_MODE_ISOLATED)
     return ProjectConfig(**dictHungarian)
 
 
@@ -847,11 +965,14 @@ def _fdictScalarFieldsToYaml(config):
         "bindMounts": config.listBindMounts,
         "secrets": config.listSecrets,
         "networkIsolation": config.bNetworkIsolation,
+        "networkMode": config.sNetworkMode,
+        "allowedHosts": list(config.listAllowedHosts),
         "x11Forwarding": config.bX11Forwarding,
         "neverSleep": config.bNeverSleep,
         "dashboardPort": config.iDashboardPort,
         "cpuLimit": config.iCpuLimit,
         "memoryLimitGigabytes": config.fMemoryLimitGigabytes,
+        "pidsLimit": config.iPidsLimit,
     }
 
 

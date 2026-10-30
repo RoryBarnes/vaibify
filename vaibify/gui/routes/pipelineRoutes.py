@@ -13,6 +13,9 @@ from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDiscon
 
 from ...config.registryManager import fbIsHostProject
 from ...docker.dockerConnection import fbErrorMeansContainerUnreachable
+from ...docker.execLane import (
+    S_EXEC_LANE_INTEGRITY_READ, S_HUB_PYTHON_COMMAND,
+)
 from ...reproducibility import lockSatisfaction, remoteCheckState
 from ...reproducibility.manifestPaths import (
     fdictWorkflowTemplateValues,
@@ -3686,7 +3689,7 @@ def _fdictFetchTestMarkers(
     )
     try:
         iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-            sContainerId, sCommand
+            sContainerId, sCommand, sLane=S_EXEC_LANE_INTEGRITY_READ,
         )
     except Exception as error:
         if not fbErrorMeansContainerUnreachable(error):
@@ -3790,7 +3793,8 @@ def _fnDeleteLegacyMarkers(
         listStepDirs, sProjectRepoPath,
     )
     sCmd = (
-        "python3 -c " + fsShellQuote(_S_LEGACY_MARKER_DELETE_SCRIPT)
+        S_HUB_PYTHON_COMMAND + " -c "
+        + fsShellQuote(_S_LEGACY_MARKER_DELETE_SCRIPT)
         + " <<< " + fsShellQuote(json.dumps(listMarkerPaths))
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(

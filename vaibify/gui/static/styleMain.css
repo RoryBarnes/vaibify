@@ -1597,6 +1597,27 @@ pre.quarantine-remedy {
     background: var(--border-color);
 }
 
+/* One row per Zenodo token moved out of the container: the server's
+   state sentence, what Zenodo reports, and the researcher's buttons. */
+.zenodo-token-row {
+    margin: 6px 0;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-color);
+}
+
+.zenodo-token-titles,
+.zenodo-token-rotation {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.zenodo-token-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
 /* Docker availability banner — shown on the container hub when
    the backend cannot reach the Docker daemon. */
 .docker-status-banner {

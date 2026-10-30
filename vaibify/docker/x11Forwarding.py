@@ -2,7 +2,11 @@
 
 Forwarding is opt-in per project (``x11Forwarding: true`` in
 ``vaibify.yml``); nothing here runs for a project that did not ask for
-it. On macOS the container reaches the host's X server over TCP at
+it. An opted-in container is admitted to the display by its OWN X
+authorization, made and recorded by :mod:`x11Authorizations` and
+mounted read-only into the container; no ``xhost`` grant is made, so a
+container without a cookie is refused however it reaches the server.
+On macOS the container reaches the host's X server over TCP at
 ``host.docker.internal``, so the server must be installed, running, and
 accepting network clients. XQuartz and the MacPorts X11 application are
 both recognized; they differ in application path, bundle identifier,
@@ -17,6 +21,14 @@ import socket
 import subprocess
 import sys
 import time
+
+from .x11Authorizations import (
+    S_SERVER_COOKIE_NOTICE,
+    S_TRUST_SERVER_COOKIE,
+    fbAuthorizationUsable,
+    fdictPrepareAuthorization,
+    flistMountArguments,
+)
 
 
 MAC_X_SERVER_PRODUCTS = (
@@ -43,8 +55,10 @@ MAC_BINARY_PREFERENCE_DOMAINS = (
 SA_X_SERVER_PROCESS_NAMES = ("Xquartz",)
 X11_TCP_BASE_PORT = 6000
 MAC_CONTAINER_HOST = "host.docker.internal"
+S_LINUX_SOCKET_DIRECTORY = "/tmp/.X11-unix"
 F_SERVER_START_WAIT_SECONDS = 10.0
 F_POLL_INTERVAL_SECONDS = 0.25
+F_BEST_EFFORT_TIMEOUT_SECONDS = 10.0
 
 S_STATE_READY = "ready"
 S_STATE_NO_SERVER = "no-server"
@@ -61,67 +75,100 @@ S_RECREATE_COMMAND = "vaibify stop && vaibify start"
 _setNoticesShownThisInvocation = set()
 
 
-def flistConfigureX11Args():
-    """Return docker run args for X11 forwarding on the current platform.
+def flistConfigureX11Args(sContainerName, sProjectUuid):
+    """Return docker run args forwarding the display to one container.
 
     Detects macOS vs Linux and delegates to the appropriate setup. The
     caller decides whether the project opted in; this function always
-    configures.
-
-    Returns
-    -------
-    list of str
-        Docker run arguments enabling X11 display forwarding.
+    configures. The arguments carry the container's own authorization,
+    made for ``sContainerName`` and recorded against ``sProjectUuid``;
+    when none could be made, no DISPLAY is passed and the record says
+    why.
     """
     saRunArgs = []
     sPlatform = platform.system()
     if sPlatform == "Darwin":
-        fnConfigureMacX11(saRunArgs)
+        fnConfigureMacX11(saRunArgs, sContainerName, sProjectUuid)
     elif sPlatform == "Linux":
-        fnConfigureLinuxX11(saRunArgs)
+        fnConfigureLinuxX11(saRunArgs, sContainerName, sProjectUuid)
     return saRunArgs
 
 
-def fnConfigureMacX11(saRunArgs):
+def fnConfigureMacX11(saRunArgs, sContainerName, sProjectUuid):
     """Configure X11 forwarding for macOS with whichever X server exists.
 
-    Starts the server if it is not running, grants the container access,
-    and sets DISPLAY from the host's own display number. When the server
-    is missing or refuses network clients, the reason and the one fix
-    are printed; DISPLAY is left unset only when there is no server.
-
-    Parameters
-    ----------
-    saRunArgs : list of str
-        Docker run argument list to extend in place.
+    Lets the server accept network clients if it does not yet, starts
+    it if it is not running, and, once something listens on the port
+    the container will dial, gives the container its own authorization
+    and sets DISPLAY to the host's own display number. When the server
+    is missing or not yet listening, the reason and the one fix are
+    printed and no DISPLAY is passed.
     """
     dictServer = fdictFindMacXServer()
     if dictServer is not None:
+        _fnAllowNetworkClients(dictServer)
         fnStartMacXServer(dictServer)
-        fnGrantMacXhostAccess()
-    iPort = X11_TCP_BASE_PORT + fiResolveHostDisplayNumber()
-    dictAssessment = fdictAssessMacX11(dictServer, iPort, bWaitForPort=True)
+    iNumber = fiResolveHostDisplayNumber()
+    dictAssessment = fdictAssessMacX11(
+        dictServer, X11_TCP_BASE_PORT + iNumber, bWaitForPort=True,
+    )
     if not dictAssessment["bReady"]:
         _fnPrintAssessmentNotice(dictAssessment)
-    if dictServer is not None:
-        saRunArgs.extend(["-e", f"DISPLAY={fsResolveMacContainerDisplay()}"])
+        return
+    _fbExtendWithAuthorization(
+        saRunArgs, sContainerName, sProjectUuid,
+        sDisplay=os.environ.get("DISPLAY", ""),
+        sProbeDisplay=f"localhost:{iNumber}", sNumber=str(iNumber),
+        sContainerDisplay=fsResolveMacContainerDisplay(),
+    )
 
 
-def fnConfigureLinuxX11(saRunArgs):
-    """Configure X11 forwarding for Linux with safer xhost policy.
+def fnConfigureLinuxX11(saRunArgs, sContainerName, sProjectUuid):
+    """Configure X11 forwarding for Linux through the socket directory.
 
-    Uses xhost +SI:localuser:$USER instead of the overly permissive
-    xhost +local:docker, then mounts the X11 socket and passes DISPLAY.
-
-    Parameters
-    ----------
-    saRunArgs : list of str
-        Docker run argument list to extend in place.
+    The container's own authorization admits it; the X11 socket
+    directory is mounted read-only and DISPLAY is the host's own.
     """
-    _fnGrantLocalUserXhostAccess()
-    sDisplay = os.environ.get("DISPLAY", ":0")
-    saRunArgs.extend(["-e", f"DISPLAY={sDisplay}"])
-    saRunArgs.extend(["-v", "/tmp/.X11-unix:/tmp/.X11-unix:ro"])
+    dictAssessment = fdictAssessLinuxX11()
+    if not dictAssessment["bReady"]:
+        _fnPrintAssessmentNotice(dictAssessment)
+        return
+    sDisplay = os.environ["DISPLAY"]
+    bUsable = _fbExtendWithAuthorization(
+        saRunArgs, sContainerName, sProjectUuid, sDisplay=sDisplay,
+        sProbeDisplay=sDisplay, sNumber=str(fiResolveHostDisplayNumber()),
+        sContainerDisplay=sDisplay,
+    )
+    if bUsable:
+        saRunArgs.extend([
+            "--mount",
+            f"type=bind,source={S_LINUX_SOCKET_DIRECTORY},"
+            f"target={S_LINUX_SOCKET_DIRECTORY},readonly",
+        ])
+
+
+def _fbExtendWithAuthorization(
+    saRunArgs, sContainerName, sProjectUuid, sDisplay, sProbeDisplay,
+    sNumber, sContainerDisplay,
+):
+    """Make the container's authorization; add DISPLAY and its mount when usable."""
+    dictOutcome = fdictPrepareAuthorization(
+        sContainerName, sProjectUuid, sDisplay, sProbeDisplay, sNumber,
+    )
+    if not fbAuthorizationUsable(dictOutcome):
+        _fnPrintNoticeOnce(
+            dictOutcome["sOutcome"],
+            "X11 forwarding is enabled but no authorization could be made "
+            f"for this container ({dictOutcome['sOutcome']}: "
+            f"{dictOutcome.get('sReason') or 'no detail'}); it starts "
+            "without a display.",
+        )
+        return False
+    saRunArgs.extend(["-e", f"DISPLAY={sContainerDisplay}"])
+    saRunArgs.extend(flistMountArguments(dictOutcome["sDirectory"]))
+    if dictOutcome.get("sFallbackCause"):
+        _fnPrintNoticeOnce(S_TRUST_SERVER_COOKIE, S_SERVER_COOKIE_NOTICE)
+    return True
 
 
 def fdictFindMacXServer():
@@ -214,6 +261,28 @@ def fnStartMacXServer(dictServer):
         return
     _fnRunBestEffort(["open", "-a", dictServer["sAppPath"]])
     _fbWaitUntil(fbMacXServerIsRunning, F_SERVER_START_WAIT_SECONDS)
+
+
+def _fnAllowNetworkClients(dictServer):
+    """Turn the server's network-client preference on, if it is not.
+
+    A container is a network client of the Mac's X server, and both
+    servers ship refusing them. The preference is read by the server
+    when it starts, so a server already running keeps refusing until it
+    is quit and started again; the assessment says exactly that.
+    """
+    sDomain = dictServer["sPreferenceDomain"]
+    if fsReadNetworkClientPreference(sDomain) == "allowed":
+        return
+    _fnRunBestEffort(
+        ["defaults", "write", sDomain, "nolisten_tcp", "-bool", "false"],
+    )
+    _fnPrintNoticeOnce(
+        "network-clients-enabled",
+        f"{dictServer['sProduct']} is now set to accept network clients "
+        "(a container is one). If it was already running, quit it "
+        "completely and start it again for the setting to take effect.",
+    )
 
 
 def _fbWaitUntil(fbCondition, fSeconds):
@@ -334,10 +403,11 @@ def fdictAssessLinuxX11():
             "Run vaibify from a graphical session, then restart the "
             "container.",
         )
-    if not os.path.isdir("/tmp/.X11-unix"):
+    if not os.path.isdir(S_LINUX_SOCKET_DIRECTORY):
         return _fdictAssessment(
             S_STATE_NO_SERVER,
-            "The X11 socket directory /tmp/.X11-unix does not exist.",
+            f"The X11 socket directory {S_LINUX_SOCKET_DIRECTORY} does "
+            "not exist.",
             "Start an X server or a Wayland session with XWayland, then "
             "restart the container.",
         )
@@ -371,7 +441,7 @@ def fbContainerForwardsDisplay(jsonInspect):
          if sEntry.startswith("DISPLAY=")), "",
     )
     bSocketMounted = any(
-        dictMount.get("Destination") == "/tmp/.X11-unix"
+        dictMount.get("Destination") == S_LINUX_SOCKET_DIRECTORY
         for dictMount in jsonInspect.get("Mounts") or []
     )
     return bool(sDisplay) and (
@@ -404,8 +474,9 @@ def fdictAssessContainerX11(bRequested, jsonInspect):
         return _fdictAssessment(
             S_STATE_CREATED_WITH,
             "This project has x11Forwarding off, but this container was "
-            "created with it and still has a display channel to your "
-            "screen.",
+            "created with it. Its X authorization was revoked when the "
+            "setting changed, and DISPLAY stays set until the container "
+            "is created again.",
             "Create the container again to remove it.", S_RECREATE_COMMAND,
         )
     return _fdictAssessment(S_STATE_READY, "", "")
@@ -468,27 +539,32 @@ def _fsExtractDisplaySuffix(sDisplay):
 
 def _fnPrintAssessmentNotice(dictAssessment):
     """Print a not-ready assessment to stderr once per invocation."""
-    sKey = dictAssessment["sState"]
+    _fnPrintNoticeOnce(
+        dictAssessment["sState"],
+        "X11 forwarding is enabled but not usable: "
+        + dictAssessment["sMessage"] + "\n[vaibify]   " + dictAssessment["sFix"],
+    )
+
+
+def _fnPrintNoticeOnce(sKey, sNotice):
+    """Print one notice to stderr, once per invocation per key."""
     if sKey in _setNoticesShownThisInvocation:
         return
     _setNoticesShownThisInvocation.add(sKey)
-    print(
-        "[vaibify] X11 forwarding is enabled but not usable: "
-        + dictAssessment["sMessage"],
-        file=sys.stderr,
-    )
-    print("[vaibify]   " + dictAssessment["sFix"], file=sys.stderr)
+    print("[vaibify] " + sNotice, file=sys.stderr)
 
 
 def _fnRunBestEffort(saArgs):
-    """Run a subprocess, ignoring missing binaries and non-zero exits.
+    """Run a subprocess, ignoring missing binaries, hangs and non-zero exits.
 
     X11 setup is optional: a host without xhost, XQuartz, or pgrep
     should not crash container start.
     """
     try:
-        subprocess.run(saArgs, capture_output=True)
-    except FileNotFoundError:
+        subprocess.run(
+            saArgs, capture_output=True, timeout=F_BEST_EFFORT_TIMEOUT_SECONDS,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         return
 
 
@@ -504,30 +580,26 @@ def _fsFindXhost():
     return "xhost"
 
 
-def _fnGrantLocalUserXhostAccess():
-    """Grant the current local user X11 access via xhost."""
-    sUser = os.environ.get("USER", "")
-    if not sUser:
-        return
-    _fnRunBestEffort([_fsFindXhost(), "+SI:localuser:" + sUser])
+def fnRevokeLegacyXhostGrants():
+    """Withdraw the host-based grants earlier versions made.
 
-
-def fnGrantMacXhostAccess():
-    """Let the container's TCP connection past the X server's host check.
-
-    ``+SI:localuser:$USER`` is evaluated against local (Unix-socket)
-    clients only, so it cannot admit a container that arrives over TCP;
-    ``+localhost`` is the narrowest host entry that does (the container
-    engine forwards its connection from the loopback address). Both
-    grants are made. Revoke the TCP grant with ``xhost -localhost``.
+    ``xhost +localhost`` admitted every client arriving over loopback
+    and ``+SI:localuser:$USER`` every local client of the researcher's
+    account, container or not; with per-container cookies neither is
+    needed, and either would let a container without a cookie in. This
+    also removes such grants the researcher made by hand, which the
+    documentation says. Nothing runs without a display, or on a Mac
+    whose X server is not running: connecting to the launchd socket
+    would start it.
     """
-    _fnGrantLocalUserXhostAccess()
-    _fnRunBestEffort([_fsFindXhost(), "+localhost"])
-
-
-def fnRevokeMacXhostAccess():
-    """Withdraw the TCP host entry that fnGrantMacXhostAccess added."""
+    if not os.environ.get("DISPLAY"):
+        return
+    if platform.system() == "Darwin" and not fbMacXServerIsRunning():
+        return
     _fnRunBestEffort([_fsFindXhost(), "-localhost"])
+    sUser = os.environ.get("USER", "")
+    if sUser:
+        _fnRunBestEffort([_fsFindXhost(), "-SI:localuser:" + sUser])
 
 
 def _fbProcessIsRunning(sProcessName):

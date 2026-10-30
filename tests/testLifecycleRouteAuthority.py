@@ -120,6 +120,22 @@ DICT_LIFECYCLE_AUDIT = {
             "file, which no container lock addresses."
         ),
     },
+    ("POST", "/api/containers/{sName}/network/allow-host"): {
+        "sHandler": "fdictAllowNetworkHost",
+        "bHoldsMutationLock": False,
+        "bWritesJournalRecord": False,
+        "sTransfer": "not-applicable",
+        "sFinding": (
+            "Classified container-lifecycle for AUTHORIZATION on the "
+            "settings route's terms -- one session must not widen the "
+            "allowlist of a container another owns -- and refused to the "
+            "agent lane by name, because an agent that could extend its "
+            "own allowlist would have none. It rewrites allowedHosts in "
+            "vaibify.yml on the HOST, taking effect at the next start, so "
+            "it reaches no running container, takes no mutation lock and "
+            "writes no journal record."
+        ),
+    },
     ("POST", "/api/registry/{sName}/delete-environment"): {
         "sHandler": "fdictDeleteEnvironment",
         "bHoldsMutationLock": False,
@@ -264,6 +280,10 @@ def _flistCallablesBehind(tRoute):
         ("POST", "/api/containers/{sName}/settings"): [
             registryRoutes._fbApplyAgentAutoUpdate,
             registryRoutes._fnUpdateYamlScalarField,
+        ],
+        ("POST", "/api/containers/{sName}/network/allow-host"): [
+            registryRoutes._flistAllowHost,
+            registryRoutes._fnAppendYamlListItem,
         ],
         ("DELETE", "/api/registry/{sName}"): [
             registryManager.fnRemoveProject,

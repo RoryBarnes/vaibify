@@ -155,10 +155,11 @@ LIST_MODELLED_COMMANDS = [
         "sLaneTwoAssertion": "testRealContainerReportsItsContainerUser",
     },
     {
-        "sMatch": "python3 -c",
+        "sMatch": "python3 -I -c",
         "sPurpose": (
             "conftest-version scan, marker directory creation, and "
-            "marker copy -- all run as python3 reading stdin"
+            "marker copy -- all run as the hub's isolated python3 "
+            "(execLane.S_HUB_PYTHON_COMMAND) reading stdin"
         ),
         "sLaneTwoAssertion": "testRealContainerRunsPython3OverStdin",
     },
@@ -475,7 +476,7 @@ class FailClosedDockerAdapter:
             return self._ftAnswerDirectoryCreate(sCommand)
         if "printenv CONTAINER_USER" in sCommand:
             return (0, "researcher\n")
-        if "python3 -c" in sCommand:
+        if "python3 -I -c" in sCommand:
             # The conftest-version scan parses stdout as JSON; the
             # directory-creation and marker-copy helpers ignore it.
             # An empty object satisfies all three.
@@ -880,14 +881,14 @@ class FailClosedDockerAdapter:
         for iStart in range(0, len(baArchive), I_FILE_STREAM_CHUNK_BYTES):
             yield baArchive[iStart:iStart + I_FILE_STREAM_CHUNK_BYTES]
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         return self._ftAnswerModelledCommand(sCommand)
 
     def fbaFetchCredentialFile(self, sContainerId, sPath):
         """The council's bounded credential read, same modelled paths."""
         return self.fbaFetchFile(sContainerId, sPath)
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath in self.dictProjectFiles:
@@ -942,7 +943,7 @@ class FailClosedDockerAdapter:
             self.listSeededPaths.append(sLanded)
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         from types import SimpleNamespace
         # Same fail-closed contract as the blocking API: only modelled

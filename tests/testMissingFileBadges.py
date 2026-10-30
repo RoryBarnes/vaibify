@@ -129,9 +129,9 @@ class ConnectionWithOneFileOnDisk:
             return (0, "b" * 40 + "\n")
         if "remote get-url origin" in sCommand:
             return (1, "")
-        if "python3 -c" in sCommand and "glob" in sCommand:
+        if "python3 -I -c" in sCommand and "glob" in sCommand:
             return (0, f'["{S_PRESENT}", "{S_MISSING}"]\n')
-        if "python3 -c" in sCommand and "hashlib" in sCommand:
+        if "python3 -I -c" in sCommand and "hashlib" in sCommand:
             return (0, '{"' + S_PRESENT + '": "' + "c" * 40 + '"}\n')
         raise AssertionError(f"unmodelled command: {sCommand!r}")
 
@@ -142,7 +142,7 @@ class ConnectionWithOneFileOnDisk:
             sPath == f"{S_REPO}/{S_PRESENT}" for sPath in listPaths
         ]
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         del sContainerId, sPath, iMaxBytes
         raise FileNotFoundError("no cached sync status")
 

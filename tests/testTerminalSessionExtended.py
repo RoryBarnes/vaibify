@@ -59,9 +59,11 @@ def test_fnStart_creates_exec():
     mockConn = _fmockDockerConnection()
     session = TerminalSession(mockConn, "cid", sUser="user")
     session.fnStart()
+    from vaibify.docker.execLane import S_EXEC_LANE_RESEARCHER_COMMAND
     mockConn.fsExecCreate.assert_called_once_with(
         "cid", sUser="user",
         dictEnvironment={"CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN": "1"},
+        sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     assert session._bRunning is True
     assert session._sExecId == "exec_id_123"

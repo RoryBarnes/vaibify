@@ -154,7 +154,7 @@ class _ConnectionRecordingCommands:
         self.iFailOnCall = iFailOnCall
 
     def ftResultExecuteCommand(self, sContainerId, sCommand,
-                               sWorkdir=None):
+                               sWorkdir=None, sLane=None):
         self.listCommandLengths.append(len(sCommand))
         if len(self.listCommandLengths) == self.iFailOnCall:
             return (1, "")

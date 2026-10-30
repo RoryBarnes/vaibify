@@ -1,15 +1,19 @@
-"""The Overleaf token reaches its program on stdin, never on a command line.
+"""The Overleaf token never reaches a container program.
 
 Source: ``vaibify/gui/syncDispatcher.py`` and the two connections'
 ``ftRunProgramWithStdin``.
 
 The host keyring's Overleaf token used to be composed into the text of
 ``printf '%s' '<token>...' | python3 overleafSync.py ...`` and run as
-``bash -c`` inside the container, so it sat in the exec's argument vector,
-in ``docker inspect`` and in the in-container process list. These tests
-capture what each leg is actually asked to run and assert the token is in
-the input stream and nowhere else; the connection tests drive the real
-gated launch and the real exec framing.
+``bash -c`` inside the container, then handed to that program on its
+standard input. Since 2026-10-29 no container program runs at all:
+the push stages the figures out through the confined reader and
+commits on the host, the pull clones on the host and lands the sources
+through the confined tree write. These tests drive each dispatcher
+lane over a connection that refuses every exec, and assert the token
+is handed only to the host-side ``overleafSync`` call; the connection
+tests below keep ``ftRunProgramWithStdin`` honest for the callers that
+still have it.
 """
 
 import os
@@ -26,85 +30,127 @@ from vaibify.docker.dockerConnection import DockerConnection, ExecResult
 from vaibify.gui import syncDispatcher
 from vaibify.host import hostScratch
 from vaibify.host.hostConnection import HostConnection
+from vaibify.reproducibility import overleafSync
 
 S_TOKEN = "overleaf-token-SENTINEL-9f2c"
 
 
-class _CapturingConnection:
-    """A connection that records the program and the input it was given."""
+class _NoExecConnection:
+    """Serves one figure through the confined reader and refuses every exec."""
 
     def __init__(self):
-        self.listCalls = []
+        self.listTreeWrites = []
 
-    def ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
-        self.listCalls.append((list(listCommand), baStdin))
-        return ExecResult(iExitCode=0, sStdout="ok\n", sStderr="")
+    def fiterReadFileConfined(self, sContainerId, sFilePath, sAuthorizedRoot=None):
+        yield b"%PDF-figure"
+
+    def fnMakeDirectory(self, sContainerId, sDirectoryPath, **dictKeywords):
+        self.listTreeWrites.append(("mkdir", sDirectoryPath, dictKeywords))
+
+    def fnWriteTreeViaTar(self, sContainerId, sDestinationDirectory, listHostPaths, **dictKeywords):
+        self.listTreeWrites.append(
+            (sDestinationDirectory, sorted(os.path.basename(s) for s in listHostPaths), dictKeywords),
+        )
+
+    def ftRunProgramWithStdin(self, *tArguments, **dictKeywords):
+        raise AssertionError("no container program may receive the token")
 
     def ftResultExecuteCommand(self, *tArguments, **dictKeywords):
-        raise AssertionError(
-            "the Overleaf CLI must not be run through shell text")
+        raise AssertionError("the Overleaf lane must not run shell text")
 
 
-def _fnAssertTokenOnlyInStdin(connection):
-    assert len(connection.listCalls) == 1
-    listCommand, baStdin = connection.listCalls[0]
-    assert all(isinstance(sWord, str) for sWord in listCommand)
-    assert S_TOKEN not in " ".join(listCommand)
-    assert baStdin.decode("utf-8").split("\n", 1)[0] == S_TOKEN
+@pytest.fixture
+def listHostCalls(monkeypatch):
+    """Record every host-side overleafSync call with its token argument."""
+    listCalls = []
+    monkeypatch.setattr(
+        syncDispatcher, "_fsFetchOverleafToken", lambda: S_TOKEN,
+    )
+
+    def ftRecordPush(listFigurePaths, sOverleafId, sTargetDirectory, sToken, sMirrorSha=""):
+        listCalls.append(("push", sOverleafId, sTargetDirectory, sToken, sMirrorSha))
+        return ("pushed", "abc")
+
+    def ftRecordAnnotated(listFigurePaths, sOverleafId, sTargetDirectory, dictWorkflow,
+                          sGithubBaseUrl, sDoi, sToken, sTexFilename="main.tex", sMirrorSha=""):
+        listCalls.append(("push-annotated", sOverleafId, sDoi, sToken, sMirrorSha))
+        return ("pushed", "abc")
+
+    def fnRecordPull(sOverleafId, listPullPaths, sTargetDirectory, sToken):
+        listCalls.append(("pull", sOverleafId, list(listPullPaths), sToken))
+        with open(os.path.join(sTargetDirectory, "main.tex"), "w") as fileTex:
+            fileTex.write("pulled")
+
+    monkeypatch.setattr(overleafSync, "ftPushFiguresToOverleaf", ftRecordPush)
+    monkeypatch.setattr(overleafSync, "ftPushAnnotatedToOverleaf", ftRecordAnnotated)
+    monkeypatch.setattr(overleafSync, "fnPullTexFromOverleaf", fnRecordPull)
+    return listCalls
 
 
-@pytest.fixture(autouse=True)
-def fixtureKeyringToken():
-    with patch.object(
-        syncDispatcher, "_fsFetchOverleafToken", return_value=S_TOKEN,
-    ):
-        yield
-
-
-@pytest.mark.falsification
-def testAPlainPushKeepsTheTokenOffTheCommandLine():
-    """Kills: composing the token back into a ``printf | cli`` command."""
-    connection = _CapturingConnection()
-    syncDispatcher.ftResultPushToOverleaf(
+def testAPlainPushHandsTheTokenOnlyToTheHostProgram(listHostCalls):
+    connection = _NoExecConnection()
+    iExit, sOut = syncDispatcher.ftResultPushToOverleaf(
         connection, "cid", ["/work/fig.pdf"], "abcdef012345", "figures")
-    _fnAssertTokenOnlyInStdin(connection)
-    listCommand, baStdin = connection.listCalls[0]
-    assert "push" in listCommand and "abcdef012345" in listCommand
-    assert baStdin.decode("utf-8").endswith("/work/fig.pdf")
+    assert iExit == 0 and "PUSH_STATUS=pushed" in sOut
+    assert listHostCalls == [("push", "abcdef012345", "figures", S_TOKEN, "")]
 
 
-def testAnAnnotatedPushKeepsTheTokenOffTheCommandLine():
-    connection = _CapturingConnection()
-    syncDispatcher.ftResultPushToOverleaf(
+def testAnAnnotatedPushHandsTheTokenOnlyToTheHostProgram(listHostCalls):
+    connection = _NoExecConnection()
+    iExit, _ = syncDispatcher.ftResultPushToOverleaf(
         connection, "cid", ["/work/fig.pdf"], "abcdef012345", "figures",
         dictWorkflow={"sWorkflowName": "W"},
         sGithubBaseUrl="https://github.com/o/r", sDoi="10.5281/z.1",
         sTexFilename="main.tex", sMirrorSha="abc12345")
-    _fnAssertTokenOnlyInStdin(connection)
-    listCommand, _ = connection.listCalls[0]
-    assert listCommand[listCommand.index("--doi") + 1] == "10.5281/z.1"
-    assert listCommand[listCommand.index("--mirror-sha") + 1] == "abc12345"
+    assert iExit == 0
+    assert listHostCalls == [
+        ("push-annotated", "abcdef012345", "10.5281/z.1", S_TOKEN, "abc12345"),
+    ]
 
 
-def testAPullKeepsTheTokenOffTheCommandLine():
-    connection = _CapturingConnection()
-    syncDispatcher.ftResultPullFromOverleaf(
-        connection, "cid", "abcdef012345", ["main.tex"], "/work/tex")
-    _fnAssertTokenOnlyInStdin(connection)
-    listCommand, _ = connection.listCalls[0]
-    assert listCommand[listCommand.index("--target") + 1] == "/work/tex"
+@pytest.mark.falsification
+def testThePulledSourcesLandThroughTheConfinedTreeWrite(listHostCalls):
+    """The pull clones on the host and lands the files confined to the target.
+
+    Kills: dropping the authorized root and the deny list from the tree
+    write, which would let a planted link redirect the landing.
+    """
+    connection = _NoExecConnection()
+    iExit, _ = syncDispatcher.ftResultPullFromOverleaf(
+        connection, "cid", "abcdef012345", ["main.tex"], "/work/.vaibify/manuscript",
+        sProjectRepoPath="/work")
+    assert iExit == 0
+    assert listHostCalls == [("pull", "abcdef012345", ["main.tex"], S_TOKEN)]
+    tMade, (sDestination, listNames, dictKeywords) = connection.listTreeWrites
+    assert tMade == ("mkdir", "/work/.vaibify/manuscript",
+                     {"sAuthorizedRoot": "/work", "tForbiddenNames": (".git",)})
+    assert sDestination == "/work/.vaibify/manuscript"
+    assert listNames == ["main.tex"]
+    assert dictKeywords["sAuthorizedRoot"] == "/work/.vaibify/manuscript"
+    assert ".git" in dictKeywords["tForbiddenNames"]
+    assert ".vaibify" in dictKeywords["tForbiddenNames"]
 
 
-def testAHostileTargetStaysOneInertArgument():
-    connection = _CapturingConnection()
+def testAHostileTargetReachesNoShell(listHostCalls):
+    connection = _NoExecConnection()
     sHostile = "/work/$(touch pwned); `id` 'x'"
-    syncDispatcher.ftResultPullFromOverleaf(
+    iExit, _ = syncDispatcher.ftResultPullFromOverleaf(
         connection, "cid", "abcdef012345", ["main.tex"], sHostile)
-    listCommand, _ = connection.listCalls[0]
-    assert sHostile in listCommand
+    assert iExit == 0
+    assert connection.listTreeWrites[1][0] == sHostile
 
 
-def testTheDockerLegPutsTheTokenOnStdinNotInTheExecArguments():
+def testWithoutAHostTokenNothingRunsAnywhere(monkeypatch):
+    monkeypatch.setattr(syncDispatcher, "_fsFetchOverleafToken", lambda: "")
+    connection = _NoExecConnection()
+    iExit, sOut = syncDispatcher.ftResultPushToOverleaf(
+        connection, "cid", ["/work/fig.pdf"], "abcdef012345", "figures")
+    assert iExit == 3 and "No Overleaf token" in sOut
+    assert connection.listTreeWrites == []
+
+
+def testTheDockerLegPutsAProgramsInputOnStdinNotInTheExecArguments():
+    """The primitive other callers still use keeps its input off the argv."""
     mockDocker = MagicMock()
     mockClient = MagicMock()
     mockDocker.from_env.return_value = mockClient
@@ -119,8 +165,8 @@ def testTheDockerLegPutsTheTokenOnStdinNotInTheExecArguments():
         return_value=mockDocker,
     ):
         connection = DockerConnection()
-    syncDispatcher.ftResultPullFromOverleaf(
-        connection, "idOverleaf", "abcdef012345", ["main.tex"], "/work")
+    connection.ftRunProgramWithStdin(
+        "idOverleaf", ["python3", "-c", "pass"], (S_TOKEN + "\nrest").encode("utf-8"))
     dictKeywords = daemon.listExecCreateKeywords[0]
     assert S_TOKEN not in repr(dictKeywords)
     assert dictKeywords["cmd"][0] == "python3"

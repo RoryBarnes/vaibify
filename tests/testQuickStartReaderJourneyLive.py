@@ -90,7 +90,10 @@ def liveProject():
     try:
         iExit, baOutput = container.exec_run(
             ["sh", "-c",
-             f"useradd -m {S_USER} && apt-get update -qq && "
+             # The read-only reader needs the group's x bit on the
+             # home, which Ubuntu's useradd grants and Debian's does not.
+             f"useradd -m {S_USER} && chmod 750 {S_HOME} && "
+             "apt-get update -qq && "
              "apt-get install -y -qq git >/dev/null && "
              "pip install --no-cache-dir --quiet numpy matplotlib"],
             user="root")

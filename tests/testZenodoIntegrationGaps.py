@@ -203,17 +203,6 @@ def test_fbKeyringBackendHealthy_returns_true_on_real_backend():
     assert _fbKeyringBackendHealthy(mockDocker, "cid")
 
 
-def test_fdictCheckZenodoKeyring_surfaces_backend_failure():
-    """When the backend is down the check returns the install remediation."""
-    from vaibify.gui.syncDispatcher import (
-        _fdictCheckZenodoKeyring, S_KEYRING_BACKEND_FAIL_MESSAGE,
-    )
-    mockDocker = _fMockDocker(0, "keyring.backends.fail Keyring")
-    dictResult = _fdictCheckZenodoKeyring(mockDocker, "cid")
-    assert dictResult["bConnected"] is False
-    assert dictResult["sMessage"] == S_KEYRING_BACKEND_FAIL_MESSAGE
-
-
 # ----------------------------------------------------------------------
 # workflowManager: keyword normalization non-string branch
 # ----------------------------------------------------------------------
@@ -278,48 +267,9 @@ def test_fbValidateZenodoToken_rejects_production_ui_name():
         fbValidateZenodoToken(mockDocker, "cid", "production")
 
 
-def test_fbValidateZenodoToken_exec_nonzero_yields_false():
-    """Non-zero exit from the container returns False without raising."""
-    from vaibify.gui.syncDispatcher import fbValidateZenodoToken
-    mockDocker = _fMockDocker(1, "HTTPError")
-    assert not fbValidateZenodoToken(mockDocker, "cid", "sandbox")
-
-
-def test_fbValidateZenodoToken_no_ok_in_output_yields_false():
-    """Zero exit without the 'ok' sentinel returns False."""
-    from vaibify.gui.syncDispatcher import fbValidateZenodoToken
-    mockDocker = _fMockDocker(0, "something else")
-    assert not fbValidateZenodoToken(mockDocker, "cid", "sandbox")
-
-
 # ----------------------------------------------------------------------
 # syncDispatcher: archive path validation + script transport
 # ----------------------------------------------------------------------
-
-
-def test_ftResultArchiveToZenodo_passes_empty_paths_list():
-    """An empty file list still builds a valid script; upload loop is a no-op."""
-    from vaibify.gui.syncDispatcher import ftResultArchiveToZenodo
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(
-        mockDocker, "cid", "sandbox", [],
-        {"sTitle": "T", "listCreators": [{"sName": "X"}]},
-    )
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    assert "python3 -c" in sCommand
-
-
-def test_ftResultArchiveToZenodo_missing_metadata_uses_defaults():
-    """When dictMetadata is None the default title/creator are injected."""
-    from vaibify.gui.syncDispatcher import ftResultArchiveToZenodo
-    mockDocker = _fMockDocker(0, "ZENODO_RESULT={}")
-    ftResultArchiveToZenodo(mockDocker, "cid", "sandbox", ["/a.txt"])
-    import base64, re
-    sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
-    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
-    sScript = base64.b64decode(sMatch.group(1)).decode("utf-8")
-    assert "Vaibify archive" in sScript
-    assert "Vaibify User" in sScript
 
 
 # ----------------------------------------------------------------------
@@ -486,74 +436,6 @@ def test_fdictMetadataRequestToDict_flattens_creator_models():
         "sName": "Author", "sAffiliation": "UW", "sOrcid": "",
     }
     assert dictOut["sRelatedGithubUrl"] == "https://github.com/a/b"
-
-
-# ----------------------------------------------------------------------
-# Archive script: structural invariants that must hold forever
-# ----------------------------------------------------------------------
-
-# Both builders name the interpreter and the module directory their
-# resource uses. These assertions are about the SCRIPT BODY, so they
-# ask about an id nothing registered, which resolves to the container
-# answers; the host branch is covered where the mode branch is.
-S_UNREGISTERED_CONTAINER = "cid_unregistered_for_zenodo_scripts"
-
-
-def test_archive_script_no_vaibify_imports_with_parent():
-    """The newversion-branch script body must not import from vaibify."""
-    from vaibify.gui.syncDispatcher import _fsBuildZenodoArchiveCommand
-    import base64, re
-    sCommand = _fsBuildZenodoArchiveCommand(
-        "https://sandbox.zenodo.org/api", "zenodo_token_sandbox",
-        ["/a.txt"], {"title": "T", "creators": [{"name": "X"}]},
-        S_UNREGISTERED_CONTAINER, iParentDepositId=42,
-    )
-    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
-    sScript = base64.b64decode(sMatch.group(1)).decode("utf-8")
-    assert "from vaibify" not in sScript
-    assert "import vaibify" not in sScript
-
-
-def test_archive_script_parses_cleanly_with_unicode_title():
-    """Non-ASCII titles must round-trip through base64 and compile."""
-    import ast, base64, re
-    from vaibify.gui.syncDispatcher import _fsBuildZenodoArchiveCommand
-    sCommand = _fsBuildZenodoArchiveCommand(
-        "https://sandbox.zenodo.org/api", "zenodo_token_sandbox",
-        ["/a.txt"],
-        {"title": "Héllo — unicode", "creators": [{"name": "X"}]},
-        S_UNREGISTERED_CONTAINER, iParentDepositId=0,
-    )
-    sMatch = re.search(r"base64\.b64decode\('([^']+)'\)", sCommand)
-    sScript = base64.b64decode(sMatch.group(1)).decode("utf-8")
-    ast.parse(sScript)
-
-
-def test_archive_script_zero_parent_yields_same_shape_as_absent():
-    """Explicit ``iParentDepositId=0`` produces the same first-publish script."""
-    from vaibify.gui.syncDispatcher import _fsBuildZenodoArchiveCommand
-    sZero = _fsBuildZenodoArchiveCommand(
-        "https://api", "slot", ["/a"], {"title": "T"},
-        S_UNREGISTERED_CONTAINER, 0,
-    )
-    sDefault = _fsBuildZenodoArchiveCommand(
-        "https://api", "slot", ["/a"], {"title": "T"},
-        S_UNREGISTERED_CONTAINER,
-    )
-    assert sZero == sDefault
-
-
-def test_validation_script_no_vaibify_imports():
-    """The token-validation command is self-contained, keyring + requests."""
-    from vaibify.gui.syncDispatcher import (
-        _fsBuildZenodoValidationCommand,
-    )
-    sCmd = _fsBuildZenodoValidationCommand(
-        "https://sandbox.zenodo.org/api/deposit/depositions",
-        "zenodo_token_sandbox", S_UNREGISTERED_CONTAINER,
-    )
-    assert "from vaibify" not in sCmd
-    assert "import vaibify" not in sCmd
 
 
 # ----------------------------------------------------------------------

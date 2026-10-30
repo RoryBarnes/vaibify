@@ -53,7 +53,7 @@ class MockDockerConnection:
 
     # --- the typed reads discovery and the sidecar read use ---
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         baContent = self.dictFiles.get((sContainerId, sPath))
         if baContent is None:
             raise FileNotFoundError(sPath)
@@ -83,7 +83,7 @@ class MockDockerConnection:
             for sPath in listPaths
         ]
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         self.listCommands.append(sCommand)
         for sNeedle, tResult in self.dictScripted.items():
             if sNeedle in sCommand:
@@ -510,7 +510,7 @@ def test_fdictComputeRepoStatus_ignores_artifacts():
     listCommands = []
 
     class ArtifactMockDocker:
-        def ftResultExecuteCommand(self, sContainerId, sCommand):
+        def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
             listCommands.append(sCommand)
             if "test -d" in sCommand:
                 return (0, "yes\n")

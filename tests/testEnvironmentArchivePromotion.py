@@ -125,7 +125,7 @@ def test_the_route_validates_the_token_before_reaching_docker_save():
     )]
     iEnvelope = sHandler.index("_fdictRequireEnvelopeContainerBlock")
     iSandbox = sHandler.index("_fnRequireSandboxImageDeposit")
-    iToken = sHandler.index("_fsReadProductionTokenFromContainer")
+    iToken = sHandler.index("_fsReadProductionTokenFromHost")
     iValidate = sHandler.index("_fnValidateProductionToken")
     iLaunch = sHandler.index("_fdictLaunchPromotionDurably")
     assert iEnvelope < iSandbox < iToken < iValidate < iLaunch, (

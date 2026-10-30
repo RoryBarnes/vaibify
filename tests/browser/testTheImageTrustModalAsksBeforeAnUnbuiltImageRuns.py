@@ -217,7 +217,7 @@ def testAnAnswerIsPostedForTheDigestShownThenTheStartIsRetried(
     listPosted = []
     fnRefuseStartWithThePrompt(pageDashboard, fdictPrompt(), listAttempts)
 
-    def fnRecord(routeIntercepted):
+    def fnRecord(routeIntercepted, sLane=None):
         listPosted.append(json.loads(routeIntercepted.request.post_data))
         routeIntercepted.fulfill(
             status=200, content_type="application/json",

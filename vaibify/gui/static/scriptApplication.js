@@ -449,6 +449,7 @@ const VaibifyApp = (function () {
             // gathered before the gap as if it survived it.
             VaibifySyncManager.fnRefreshConfiguredRemotes(
                 _dictSessionState.sContainerId);
+            VaibifyZenodoTokens.fnRefresh(_dictSessionState.sContainerId);
         });
     }
 
@@ -941,6 +942,7 @@ const VaibifyApp = (function () {
                 })
                 .then(function () {
                     VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
+                    VaibifyZenodoTokens.fnRefresh(sId);
                 });
             return;
         }
@@ -962,6 +964,9 @@ const VaibifyApp = (function () {
                 sId, false);
         }).then(function () {
             VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
+            // The connect that just ran moved any Zenodo token out of
+            // the container; what awaits the researcher is asked now.
+            VaibifyZenodoTokens.fnRefresh(sId);
         });
     }
 

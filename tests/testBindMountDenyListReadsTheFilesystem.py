@@ -101,7 +101,7 @@ def testAMountResolvedThroughALinkedDeniedLocationIsRefused(
 
 @pytest.mark.falsification
 def testTheEphemeralSecretStoreIsDeniedInEveryDirection(sHome):
-    """Kills: removing ``.vaibify/tmp`` from the home-relative deny list."""
+    """Kills: removing ``.vaibify`` from the home-relative deny list."""
     sSecrets = os.path.join(sHome, ".vaibify", "tmp")
     os.makedirs(os.path.join(sSecrets, "one"))
     for sMount in (sSecrets, os.path.join(sSecrets, "one"),

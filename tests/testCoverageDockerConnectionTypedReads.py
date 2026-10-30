@@ -54,14 +54,14 @@ class LocalProgramContainer:
         self.listExecCalls = []
         self.dictEnvironment = dictEnvironment
 
-    def exec_run(self, cmd, demux=True, user=None, workdir=None):
+    def exec_run(self, cmd, demux=True, user=None, workdir=None, environment=None):
         self.listExecCalls.append({"listCommand": cmd, "sUser": user})
         listArguments = shlex.split(cmd[2])
         assert cmd[:2] == ["/bin/bash", "-c"]
-        assert listArguments[:2] == ["python3", "-c"]
-        assert len(listArguments) == 3
+        assert listArguments[:3] == ["python3", "-I", "-c"]
+        assert len(listArguments) == 4
         processProgram = subprocess.run(
-            [sys.executable, "-c", listArguments[2]],
+            [sys.executable, "-I", "-c", listArguments[3]],
             capture_output=True, env=self.dictEnvironment,
         )
         self.listExecCalls[-1]["baStdout"] = processProgram.stdout
@@ -83,8 +83,8 @@ class CannedAnswerContainer:
         self.listAnswers = list(listAnswers)
         self.listPrograms = []
 
-    def exec_run(self, cmd, demux=True, user=None, workdir=None):
-        self.listPrograms.append(shlex.split(cmd[2])[2])
+    def exec_run(self, cmd, demux=True, user=None, workdir=None, environment=None):
+        self.listPrograms.append(shlex.split(cmd[2])[3])
         iExitCode, sStdout, sStderr = self.listAnswers.pop(0)
         return iExitCode, (sStdout.encode(), sStderr.encode())
 

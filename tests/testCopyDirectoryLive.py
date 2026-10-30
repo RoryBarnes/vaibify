@@ -42,7 +42,7 @@ def liveContainer():
     )
     try:
         for sSetup in (
-            f"useradd -m {S_USER}",
+            f"useradd -m {S_USER} && chmod 750 /home/{S_USER}",
             f"mkdir -p {S_PROJECT}/existing",
             f"chown -R {S_USER} /home/{S_USER}",
         ):

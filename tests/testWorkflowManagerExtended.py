@@ -1197,7 +1197,7 @@ def test_fdictLoadWorkflowFromContainer_auto_discover():
     def _fExecuteCommand(sContainerId, sCommand, **_kwargs):
         if sCommand.startswith("find "):
             return (0, sWorkflowPath + "\n")
-        if sCommand.startswith("python3 -c "):
+        if sCommand.startswith("python3 -I -c "):
             return (0, sProbeOutput)
         return (0, "")
 

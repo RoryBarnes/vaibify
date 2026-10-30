@@ -752,6 +752,46 @@ def ftRecvWsFrame(socketConnection):
     return ("text", dataPayload.decode("utf-8", errors="replace"))
 
 
+def ftProxyAuthority():
+    """Return ``(sHost, iPort)`` of the HTTP proxy the environment names, or None.
+
+    In allowlist network mode the container has no route to the hub;
+    the proxy sidecar pins the hub's one port, and every client reaches
+    it through a CONNECT tunnel. ``urllib`` does that on its own from
+    the same variables; the WebSocket dial below is hand-rolled, so it
+    tunnels explicitly.
+    """
+    for sName in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        sValue = os.environ.get(sName, "")
+        if sValue:
+            tParsed = urllib.parse.urlparse(sValue)
+            if tParsed.hostname and tParsed.port:
+                return tParsed.hostname, tParsed.port
+    return None
+
+
+def fsocketConnectToHub(sHost, iPort):
+    """Dial the hub directly, or through a CONNECT tunnel when a proxy is set."""
+    tProxy = ftProxyAuthority()
+    if tProxy is None:
+        return socket.create_connection((sHost, iPort), timeout=F_CONNECT_TIMEOUT)
+    socketProxy = socket.create_connection(tProxy, timeout=F_CONNECT_TIMEOUT)
+    socketProxy.sendall((
+        "CONNECT " + sHost + ":" + str(iPort) + " HTTP/1.1\r\n"
+        "Host: " + sHost + ":" + str(iPort) + "\r\n\r\n").encode("ascii"))
+    baResponse = b""
+    while b"\r\n\r\n" not in baResponse:
+        baChunk = socketProxy.recv(4096)
+        if not baChunk:
+            raise OSError("the network proxy closed the CONNECT tunnel")
+        baResponse += baChunk
+    baStatusLine = baResponse.split(b"\r\n", 1)[0]
+    if b" 200 " not in baStatusLine:
+        raise OSError("the network proxy refused the hub tunnel: "
+                      + baStatusLine.decode("ascii", errors="replace"))
+    return socketProxy
+
+
 def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
     """Open the pipeline socket, send one action, stream events.
 
@@ -767,8 +807,7 @@ def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
         fnFail("vaibify-do does not support TLS in the in-container "
                "WebSocket path; use plain http host-bridge url", iCode=4)
     try:
-        socketConnection = socket.create_connection(
-            (sHost, iPort), timeout=F_CONNECT_TIMEOUT)
+        socketConnection = fsocketConnectToHub(sHost, iPort)
     except (OSError, socket.timeout) as error:
         fnFailHostUnreachable(dictEnv["VAIBIFY_HOST_URL"], error)
     socketConnection.settimeout(F_READ_TIMEOUT)

@@ -36,7 +36,7 @@ class MockDockerConnection:
         with self.lockRecord:
             self.dictFiles[(sContainerId, sPath)] = baContent
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         with self.lockRecord:
             self.listCommands.append(sCommand)
         if sCommand.startswith("mv "):
@@ -242,7 +242,7 @@ def test_read_state_absorbs_docker_api_error():
     from vaibify.gui.pipelineState import fdictReadState
 
     class MockBadDocker:
-        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
             raise docker.errors.APIError("docker daemon contention")
 
     assert fdictReadState(MockBadDocker(), "ctr1") is None
@@ -260,7 +260,7 @@ def test_read_state_propagates_non_benign_errors():
     from vaibify.gui.pipelineState import fdictReadState
 
     class MockBrokenDocker:
-        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
             raise RuntimeError("a real bug, not a benign read failure")
 
     with pytest.raises(RuntimeError):

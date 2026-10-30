@@ -57,7 +57,7 @@ class MockDockerConnection(TypedHashFromServedBytes):
             },
         ]
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         if "test -d" in sCommand and ".vaibify" in sCommand:
             return (0, "")
         if "find" in sCommand and ".vaibify/workflows" in sCommand:
@@ -101,7 +101,7 @@ class MockDockerConnection(TypedHashFromServedBytes):
             return (0, "")
         return (1, "")
 
-    def fdictFetchSmallFiles(self, sContainerId, listPaths):
+    def fdictFetchSmallFiles(self, sContainerId, listPaths, sLane=None):
         """The batched read, answered from this fake's per-file read."""
         dictFiles = {}
         for sPath in listPaths:
@@ -111,7 +111,7 @@ class MockDockerConnection(TypedHashFromServedBytes):
                 dictFiles[sPath] = None
         return dictFiles
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         del iMaxBytes
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
@@ -135,7 +135,7 @@ class MockDockerConnection(TypedHashFromServedBytes):
         self._dictFiles[sPath] = baContent
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         from types import SimpleNamespace
         iExit, sOutput = self.ftResultExecuteCommand(
@@ -152,7 +152,7 @@ class MockDockerConnection(TypedHashFromServedBytes):
     ):
         self._dictFiles[sPath] = baContent
 
-    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
+    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None, sLane=None):
         return "exec-id-mock"
 
     def fsocketExecStart(self, sExecId):

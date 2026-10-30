@@ -682,6 +682,19 @@
              style="display: none;"></div>
         <div id="buildWarningsBanner" class="build-warnings-banner"
              style="display: none;"></div>
+        <!-- The Network row of an allowlist-mode project: the proxy's
+             state and what it refused, with the researcher-only
+             "Allow host" action (ruling D8). Its own banner: it is
+             live state, not a warning from a start. -->
+        <div id="networkBanner"
+             class="build-warnings-banner configuration-drift-banner"
+             style="display: none;"></div>
+        <!-- Zenodo tokens moved out of the container, awaiting the
+             researcher's decision. Its own banner: it asks for an
+             action, and the server's answer is what it renders. -->
+        <div id="zenodoTokenBanner"
+             class="build-warnings-banner configuration-drift-banner"
+             style="display: none;"></div>
         <!-- Running CPU or memory limits that differ from vaibify.yml.
              Its own banner: a limit applies at the next start, so it is
              neither a start warning nor an image older than its file. -->
@@ -1458,6 +1471,7 @@
 <script src="/static/scriptOverleafMirror.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptZenodoDepositCard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptSyncManager.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptZenodoTokens.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptArxivConfig.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptAiModelConfig.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptProjectContext.js?v=__CACHE_VERSION__"></script>

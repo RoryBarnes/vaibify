@@ -86,7 +86,7 @@ class MockDockerDraft:
         return ExecResult(iExitCode=iExitCode, sStdout=sOutput, sStderr="")
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         if "mkdir -p" in sCommand:
             sPath = sCommand.split("mkdir -p ", 1)[1].strip().strip("'")
@@ -168,7 +168,7 @@ class MockDockerDraft:
     def fsHashContainerFileSha256(self, sContainerId, sPath):
         return ""
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath == S_WORKFLOW_PATH:
@@ -183,7 +183,7 @@ class MockDockerDraft:
         self._dictFiles[sPath] = baContent
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         from types import SimpleNamespace
         iExit, sOutput = self.ftResultExecuteCommand(
@@ -200,7 +200,7 @@ class MockDockerDraft:
     ):
         self._dictFiles[sPath] = baContent
 
-    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
+    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None, sLane=None):
         return "exec-id-mock"
 
     def fsocketExecStart(self, sExecId):

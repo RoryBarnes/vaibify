@@ -538,7 +538,7 @@ def testAnOrdinaryRunCarriesNoEvidenceExportAndNoInvocationIdentity():
     listCommands = []
 
     def fnRecord(sContainerId, sCommand, fnEmitChunk, sWorkdir=None,
-                 sUser=None):
+                 sUser=None, sLane=None):
         listCommands.append(sCommand)
         return ExecResult(iExitCode=0, sStdout="", sStderr="")
 

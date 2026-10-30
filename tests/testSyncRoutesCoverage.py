@@ -21,6 +21,12 @@ from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.typedHashDouble import TypedHashFromServedBytes
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
+from tests.zenodoTokenFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureHostZenodoSlots,
+)
 
 
 S_CONTAINER_ID = "sync_test_cid"
@@ -112,7 +118,7 @@ class MockDockerSync(TypedHashFromServedBytes):
         )
         return ExecResult(iExitCode=iExitCode, sStdout=sOutput, sStderr="")
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         if "test -d" in sCommand and ".vaibify" in sCommand:
             return (0, "")
         if "find" in sCommand and ".vaibify/workflows" in sCommand:
@@ -133,7 +139,7 @@ class MockDockerSync(TypedHashFromServedBytes):
             return (0, "")
         return (self._iSyncExitCode, self._sSyncOutput)
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath.endswith(".json"):
@@ -165,7 +171,7 @@ class MockDockerSync(TypedHashFromServedBytes):
         # so the sidecar bookkeeping starts absent like a fresh repo.
         return sPath in self._dictFiles
 
-    def ftRunInContainerStreamed(self, sContainerId, sCommand):
+    def ftRunInContainerStreamed(self, sContainerId, sCommand, sLane=None):
         import shlex
         from collections import namedtuple
         TExecResult = namedtuple("TExecResult", "iExitCode sStdout")
@@ -182,7 +188,7 @@ class MockDockerSync(TypedHashFromServedBytes):
         )
         return TExecResult(iExitCode, sStdout)
 
-    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
+    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None, sLane=None):
         return "exec-id-sync"
 
     def fsocketExecStart(self, sExecId):
@@ -199,6 +205,36 @@ def _fmockCreateDockerSync():
     global _mockDockerInstance
     _mockDockerInstance = MockDockerSync()
     return _mockDockerInstance
+
+
+@pytest.fixture(autouse=True)
+def fixtureHostArchiveAnswersLikeTheMock(monkeypatch):
+    """The Zenodo deposit and the Overleaf push run on the HOST since 2026-10-29.
+
+    No exec, and a token this test does not hold. These route tests
+    still describe the outcome through the mock's sync exit code and
+    output, so both host lanes are stood in for by a function that
+    answers exactly those. Tests about the lanes' own behaviour live in
+    ``testTheProjectDepositIsAskedWhatItStored.py`` and
+    ``testOverleafHostLane.py``.
+    """
+    from vaibify.gui import syncDispatcher
+
+    def ftAnswerLikeTheMock(
+        connectionDocker, sContainerId, *tArguments, **dictKeywords,
+    ):
+        del connectionDocker, sContainerId, tArguments, dictKeywords
+        return (
+            _mockDockerInstance._iSyncExitCode,
+            _mockDockerInstance._sSyncOutput,
+        )
+
+    monkeypatch.setattr(
+        syncDispatcher, "ftResultArchiveToZenodo", ftAnswerLikeTheMock,
+    )
+    monkeypatch.setattr(
+        syncDispatcher, "ftResultPushToOverleaf", ftAnswerLikeTheMock,
+    )
 
 
 def _fnConnectToContainer(clientHttp):
@@ -280,6 +316,43 @@ def test_overleaf_push_success(clientHttp):
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bSuccess"] is True
+
+
+@pytest.mark.falsification
+def test_overleaf_push_acts_on_the_bound_project_not_the_edited_id(
+    clientHttp, monkeypatch,
+):
+    """The push spends the token on the project the researcher confirmed.
+
+    ``project.json`` names one id (as after an agent edit) and the
+    binding record another; the dispatcher is handed the bound one.
+
+    Kills: the push flow taking its project id from project.json.
+    """
+    from vaibify.gui.routes import syncRoutes
+    _fnConnectToContainer(clientHttp)
+    _mockDockerInstance._iSyncExitCode = 0
+    _mockDockerInstance._sSyncOutput = "pushed"
+    monkeypatch.setattr(
+        syncRoutes, "fsRequireBoundOverleafProjectId",
+        lambda dictCtx, sContainerId, dictWorkflow: "bound-project-id",
+    )
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
+        return_value=(0, "PUSH_STATUS=pushed\nHEAD_SHA=abc\nok\n"),
+    ) as mockPush, patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={
+            "sWorkflowName": "Test Pipeline", "sOverleafProjectId": "agent-edited-id",
+            "sProjectRepoPath": "/workspace/repo", "listSteps": [],
+        },
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={"listFilePaths": ["/workspace/Plot/fig.pdf"]},
+        )
+    assert responseHttp.status_code == 200, responseHttp.text
+    assert mockPush.call_args[1]["sProjectId"] == "bound-project-id"
 
 
 def test_overleaf_push_triggers_post_push_verify(clientHttp):
@@ -791,23 +864,18 @@ def test_setup_overleaf_validation_failure_without_previous_deletes(
     )
 
 
-def test_setup_zenodo_validation_failure_restores_snapshot(clientHttp):
-    """A failed Zenodo validation restores the in-container snapshot.
+def test_setup_zenodo_validation_failure_restores_the_previous_host_token(
+    clientHttp, fixtureHostZenodoSlots,
+):
+    """A failed Zenodo validation restores the previous ACTIVE host token.
 
-    Stage-validate-commit for container-side tokens: the previous
-    token is copied aside inside the container before the new one
-    lands; a failed validation copies it back and drops the snapshot,
-    never deleting the working credential.
+    Stage-validate-commit: the token the host already held is captured
+    before the new one lands; a failed validation writes it back, never
+    deleting the working credential.
     """
     _fnConnectToContainer(clientHttp)
-    _mockDockerInstance._iSyncExitCode = 0
-    _mockDockerInstance._sSyncOutput = "ok"
+    fixtureHostZenodoSlots.fnStoreActive("sandbox", "the_working_token")
     with patch(
-        "vaibify.gui.syncDispatcher.fbCopyCredentialInContainer",
-        return_value=True,
-    ) as mockCopy, patch(
-        "vaibify.gui.syncDispatcher.fnDeleteCredentialFromContainer",
-    ) as mockDelete, patch(
         "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
         return_value=(False, ""),
     ):
@@ -823,31 +891,16 @@ def test_setup_zenodo_validation_failure_restores_snapshot(clientHttp):
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
     assert "previously saved token was restored" in dictResult["sMessage"]
-    listCopyCalls = [tCall[0][2:] for tCall in mockCopy.call_args_list]
-    assert listCopyCalls == [
-        ("zenodo_token_sandbox", "zenodo_token_sandbox_backup"),
-        ("zenodo_token_sandbox_backup", "zenodo_token_sandbox"),
-    ]
-    listDeletedSlots = [
-        tCall[0][2] for tCall in mockDelete.call_args_list
-    ]
-    assert listDeletedSlots == ["zenodo_token_sandbox_backup"]
+    assert fixtureHostZenodoSlots.fsActive("sandbox") == "the_working_token"
 
 
 def test_setup_zenodo_validation_failure_without_previous_deletes(
-    clientHttp,
+    clientHttp, fixtureHostZenodoSlots,
 ):
     """With no prior Zenodo token, a failed validation deletes the
     fresh one and says it was not saved."""
     _fnConnectToContainer(clientHttp)
-    _mockDockerInstance._iSyncExitCode = 0
-    _mockDockerInstance._sSyncOutput = "ok"
     with patch(
-        "vaibify.gui.syncDispatcher.fbCopyCredentialInContainer",
-        return_value=False,
-    ), patch(
-        "vaibify.gui.syncDispatcher.fnDeleteCredentialFromContainer",
-    ) as mockDelete, patch(
         "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
         return_value=(False, ""),
     ):
@@ -864,10 +917,7 @@ def test_setup_zenodo_validation_failure_without_previous_deletes(
     assert dictResult["bConnected"] is False
     assert "was not saved" in dictResult["sMessage"]
     assert "restored" not in dictResult["sMessage"]
-    listDeletedSlots = [
-        tCall[0][2] for tCall in mockDelete.call_args_list
-    ]
-    assert listDeletedSlots == ["zenodo_token_sandbox"]
+    assert fixtureHostZenodoSlots.fsActive("sandbox") == ""
 
 
 def test_setup_overleaf_validation_fails_embeds_stderr(clientHttp):
@@ -944,7 +994,7 @@ def test_setup_overleaf_writes_host_keyring_not_container(clientHttp):
         "vaibify.config.secretManager.fnStoreSecret",
         return_value=None,
     ) as mockHostStore, patch(
-        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
+        "vaibify.gui.zenodoTokenAccess.fnStoreActiveZenodoToken",
         return_value=None,
     ) as mockContainerStore, patch(
         "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
@@ -1072,22 +1122,16 @@ def test_has_credential_endpoint_rejects_unknown_service(clientHttp):
         )
 
 
-def test_setup_zenodo_validation_passes(clientHttp):
+def test_setup_zenodo_validation_passes(clientHttp, fixtureHostZenodoSlots):
     """Regression: Zenodo setup via shared helper still works."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
         return_value={"bConnected": True, "sMessage": "Connected"},
     ), patch(
-        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
-        return_value=None,
-    ), patch(
         "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
         return_value=(True, ""),
-    ), patch(
-        "vaibify.gui.syncDispatcher.fnDeleteCredentialFromContainer",
-        return_value=None,
-    ) as mockDelete:
+    ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
             json={
@@ -1098,21 +1142,18 @@ def test_setup_zenodo_validation_passes(clientHttp):
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is True
-    mockDelete.assert_not_called()
+    assert fixtureHostZenodoSlots.fsActive("sandbox") == "good_zenodo_token"
 
 
-def test_setup_zenodo_stores_token_in_sandbox_slot_by_default(
-    clientHttp,
+def test_setup_zenodo_stores_token_in_the_sandbox_host_slot_by_default(
+    clientHttp, fixtureHostZenodoSlots,
 ):
-    """Default sZenodoInstance is sandbox -> zenodo_token_sandbox."""
+    """Default sZenodoInstance is sandbox -> the project's sandbox active slot."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
         return_value={"bConnected": True, "sMessage": "Connected"},
     ), patch(
-        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
-        return_value=None,
-    ) as mockStore, patch(
         "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
         return_value=(True, ""),
     ):
@@ -1123,22 +1164,19 @@ def test_setup_zenodo_stores_token_in_sandbox_slot_by_default(
                 "sToken": "good_zenodo_token",
             },
         )
-    sStoredName = mockStore.call_args[0][2]
-    assert sStoredName == "zenodo_token_sandbox"
+    assert fixtureHostZenodoSlots.fsActive("sandbox") == "good_zenodo_token"
+    assert fixtureHostZenodoSlots.fsActive("production") == ""
 
 
-def test_setup_zenodo_stores_production_token_in_production_slot(
-    clientHttp,
+def test_setup_zenodo_stores_production_token_in_the_production_host_slot(
+    clientHttp, fixtureHostZenodoSlots,
 ):
-    """sZenodoInstance=production -> zenodo_token_production slot."""
+    """sZenodoInstance=production -> the project's production active slot."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
         return_value={"bConnected": True, "sMessage": "Connected"},
     ), patch(
-        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
-        return_value=None,
-    ) as mockStore, patch(
         "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
         return_value=(True, ""),
     ) as mockValidate:
@@ -1150,8 +1188,8 @@ def test_setup_zenodo_stores_production_token_in_production_slot(
                 "sZenodoInstance": "production",
             },
         )
-    sStoredName = mockStore.call_args[0][2]
-    assert sStoredName == "zenodo_token_production"
+    assert fixtureHostZenodoSlots.fsActive("production") == "prod_token"
+    assert fixtureHostZenodoSlots.fsActive("sandbox") == ""
     assert mockValidate.call_args[0][2] == "zenodo"
 
 
@@ -1161,9 +1199,6 @@ def test_setup_zenodo_persists_service_on_success(clientHttp):
     with patch(
         "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
         return_value={"bConnected": True, "sMessage": "Connected"},
-    ), patch(
-        "vaibify.gui.syncDispatcher.fnStoreCredentialInContainer",
-        return_value=None,
     ), patch(
         "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
         return_value=(True, ""),
@@ -1237,8 +1272,8 @@ def test_mirror_refresh_auth_failure(clientHttp):
     assert "authentication" in dictResult["sMessage"]
 
 
-def test_mirror_refresh_missing_project_id_returns_400(clientHttp):
-    """Project ID absent from workflow => HTTP 400 from refresh."""
+def test_mirror_refresh_missing_project_id_is_refused_409(clientHttp):
+    """Project ID absent from workflow => HTTP 409 (no confirmed binding) from refresh."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
@@ -1247,11 +1282,11 @@ def test_mirror_refresh_missing_project_id_returns_400(clientHttp):
         responseHttp = clientHttp.post(
             f"/api/overleaf/{S_CONTAINER_ID}/mirror/refresh",
         )
-    assert responseHttp.status_code == 400
+    assert responseHttp.status_code == 409
 
 
-def test_mirror_tree_missing_project_id_returns_400(clientHttp):
-    """Project ID absent => HTTP 400 from tree endpoint."""
+def test_mirror_tree_missing_project_id_is_refused_409(clientHttp):
+    """Project ID absent => HTTP 409 (no confirmed binding) from tree endpoint."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
@@ -1260,11 +1295,11 @@ def test_mirror_tree_missing_project_id_returns_400(clientHttp):
         responseHttp = clientHttp.get(
             f"/api/overleaf/{S_CONTAINER_ID}/mirror/tree",
         )
-    assert responseHttp.status_code == 400
+    assert responseHttp.status_code == 409
 
 
-def test_mirror_diff_missing_project_id_returns_400(clientHttp):
-    """Project ID absent => HTTP 400 from diff endpoint."""
+def test_mirror_diff_missing_project_id_is_refused_409(clientHttp):
+    """Project ID absent => HTTP 409 (no confirmed binding) from diff endpoint."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
@@ -1277,11 +1312,11 @@ def test_mirror_diff_missing_project_id_returns_400(clientHttp):
                 "sTargetDirectory": "figures",
             },
         )
-    assert responseHttp.status_code == 400
+    assert responseHttp.status_code == 409
 
 
-def test_mirror_delete_missing_project_id_returns_400(clientHttp):
-    """Project ID absent => HTTP 400 from delete endpoint."""
+def test_mirror_delete_missing_project_id_is_refused_409(clientHttp):
+    """Project ID absent => HTTP 409 (no confirmed binding) from delete endpoint."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
@@ -1290,7 +1325,7 @@ def test_mirror_delete_missing_project_id_returns_400(clientHttp):
         responseHttp = clientHttp.delete(
             f"/api/overleaf/{S_CONTAINER_ID}/mirror",
         )
-    assert responseHttp.status_code == 400
+    assert responseHttp.status_code == 409
 
 
 def test_mirror_tree_includes_refreshed_at(clientHttp, tmp_path, monkeypatch):
@@ -2642,16 +2677,14 @@ def test_fsOverleafRemediation_whitespace_only_falls_back_to_default():
 
 
 def test_fnCleanupCredential_swallows_delete_failure():
-    """Container delete raising keeps the caller resilient."""
+    """A host slot delete raising keeps the caller resilient."""
     from vaibify.gui.routes.syncRoutes import _fnCleanupCredential
-    mockSyncDispatcher = MagicMock()
-    mockSyncDispatcher.fnDeleteCredentialFromContainer.side_effect = (
-        RuntimeError("nope")
-    )
-    # Should not raise
-    _fnCleanupCredential(
-        mockSyncDispatcher, MagicMock(), "cid", "zenodo", "sandbox",
-    )
+    with patch(
+        "vaibify.gui.zenodoTokenAccess.fnDeleteActiveZenodoToken",
+        side_effect=RuntimeError("nope"),
+    ):
+        # Should not raise
+        _fnCleanupCredential({"docker": MagicMock()}, "cid", "zenodo", "sandbox")
 
 
 def test_fnCleanupOverleafHostCredential_swallows_delete_failure():

@@ -59,7 +59,8 @@ from .preflightResult import (
 __all__ = [
     "flistDiagnoseContainerNetwork", "fsClassifyResolverConfiguration",
     "fsReadContainerResolvConf",
-    "fsClassifyDnsPair", "ftDescribeIsolation", "fdictResolveProbeTarget",
+    "fsClassifyDnsPair", "ftDescribeIsolation", "fbDescribesAllowlistMode",
+    "fdictResolveProbeTarget",
     "S_RESOLVER_EXPLICIT_DNS", "S_RESOLVER_EMBEDDED_RESOLVER",
     "S_RESOLVER_DEFAULT_BRIDGE", "S_RESOLVER_UNKNOWN",
     "S_DNS_BOTH_RESOLVE", "S_DNS_CONTAINER_FAULT",
@@ -78,6 +79,7 @@ S_DNS_HOST_FAULT_NOT_IMPAIRING = "host-fault-not-impairing-this-container"
 S_DNS_BOTH_FAIL = "host-or-upstream-failure"
 
 _S_ISOLATION_ENVIRONMENT_FLAG = "VAIBIFY_NETWORK_ISOLATED=true"
+_S_ALLOWLIST_ENVIRONMENT_FLAG = "VAIBIFY_NETWORK_MODE=allowlist"
 _S_EMBEDDED_RESOLVER_ADDRESS = "127.0.0.11"
 _T_BUILT_IN_NETWORK_MODES = ("bridge", "default", "host", "none")
 _F_PROBE_TIMEOUT_SECONDS = 2.0
@@ -259,6 +261,31 @@ def _fpreflightIsolation(sEvidence):
             "Reads HostConfig.NetworkMode and looks for vaibify's own "
             "VAIBIFY_NETWORK_ISOLATED flag in the created "
             "environment. Both are runtime truth, not configuration."
+        ),
+    )
+
+
+def fbDescribesAllowlistMode(jsonInspect):
+    """True when vaibify created the container in allowlist network mode."""
+    listEnvironment = (jsonInspect.get("Config") or {}).get("Env") or []
+    return _S_ALLOWLIST_ENVIRONMENT_FLAG in listEnvironment
+
+
+def _fpreflightAllowlistMode():
+    """Return the informational result for a container sealed behind its proxy."""
+    return PreflightResult(
+        sName="network-isolation", sLevel=S_LEVEL_INFO,
+        sScope=S_SCOPE_CONTAINER,
+        sMessage=(
+            "this container reaches the network only through its "
+            "allowlisting proxy (networkMode: allowlist); its own resolver "
+            "is black-holed by design, so the DNS and direct-dial checks "
+            "do not apply. The dashboard's Network row lists what the proxy "
+            "refused."
+        ),
+        sMechanism=(
+            "Looks for vaibify's own VAIBIFY_NETWORK_MODE=allowlist flag in "
+            "the created environment, which is runtime truth."
         ),
     )
 
@@ -826,6 +853,8 @@ def flistDiagnoseContainerNetwork(
     bIsolated, sEvidence = ftDescribeIsolation(jsonInspect)
     if bIsolated:
         return [_fpreflightIsolation(sEvidence)]
+    if fbDescribesAllowlistMode(jsonInspect):
+        return [_fpreflightAllowlistMode()]
     listResults = _flistReportAttachments(jsonInspect)
     if sEvidence:
         listResults.append(PreflightResult(

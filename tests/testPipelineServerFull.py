@@ -10,6 +10,9 @@ from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.typedHashDouble import TypedHashFromServedBytes
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 
 S_CONTAINER_ID = "srv123container"
@@ -98,7 +101,7 @@ class MockDockerFull(TypedHashFromServedBytes):
         return ExecResult(iExitCode=iExitCode, sStdout=sOutput, sStderr="")
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         if "git rev-parse --show-toplevel" in sCommand:
             return (0, "/workspace\n")
@@ -136,7 +139,7 @@ class MockDockerFull(TypedHashFromServedBytes):
         """
         return ["analyze.py", "plot.py"]
 
-    def fdictFetchSmallFiles(self, sContainerId, listPaths):
+    def fdictFetchSmallFiles(self, sContainerId, listPaths, sLane=None):
         """The batched read, answered from this fake's per-file read."""
         dictFiles = {}
         for sPath in listPaths:
@@ -146,7 +149,7 @@ class MockDockerFull(TypedHashFromServedBytes):
                 dictFiles[sPath] = None
         return dictFiles
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath.endswith(".json"):
@@ -172,7 +175,7 @@ class MockDockerFull(TypedHashFromServedBytes):
         self._dictFiles[sPath] = baContent
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         from types import SimpleNamespace
         iExit, sOutput = self.ftResultExecuteCommand(
@@ -183,7 +186,7 @@ class MockDockerFull(TypedHashFromServedBytes):
         )
 
     def fsExecCreate(
-        self, sContainerId, sCommand=None, sUser=None,
+        self, sContainerId, sCommand=None, sUser=None, sLane=None
     ):
         return "exec-id-mock"
 
@@ -239,9 +242,11 @@ def test_overleaf_push_success(clientHttp):
         "listFilePaths": ["/workspace/Plot/fig.pdf"],
         "sCommitMessage": "Update figures",
     }
+    # The push itself runs on the host (overleafSync, with the host
+    # keyring's token) since 2026-10-29; this test is about the route.
     with patch(
-        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
-        return_value="test-tok",
+        "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
+        return_value=(0, "PUSH_STATUS=pushed\nHEAD_SHA=abc\nok\n"),
     ):
         responseHttp = clientHttp.post(
             f"/api/overleaf/{S_CONTAINER_ID}/push",
@@ -262,10 +267,17 @@ def test_zenodo_archive_success(clientHttp):
         "listFilePaths": ["data.npy"],
         "sCommitMessage": "Archive data",
     }
-    responseHttp = clientHttp.post(
-        f"/api/zenodo/{S_CONTAINER_ID}/archive",
-        json=dictPayload,
-    )
+    # The deposit runs on the host with the project's active token since
+    # 2026-10-29; this test is about the route.
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 1, "sDoi": '
+                      '"10.5072/zenodo.1", "sConceptDoi": "", "sHtmlUrl": ""}'),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json=dictPayload,
+        )
     assert responseHttp.status_code == 200
     assert responseHttp.json()["bSuccess"] is True
 

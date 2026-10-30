@@ -130,7 +130,7 @@ class LocalShellContainer:
     def __init__(self):
         self.listCommands = []
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         """Return ``(iExitCode, sStdout)`` from a real shell run."""
         self.listCommands.append(sCommand)
         completed = _fcompletedRunShell(sCommand)
@@ -144,7 +144,7 @@ class LocalShellContainer:
             completed.returncode, completed.stdout, completed.stderr,
         )
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         """Read real bytes back out of the container filesystem."""
         with open(sPath, "rb") as fileHandle:
             return fileHandle.read()

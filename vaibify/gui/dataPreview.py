@@ -6,6 +6,8 @@ __all__ = [
 
 import posixpath
 
+from vaibify.docker.execLane import S_HUB_PYTHON_COMMAND
+
 from .pipelineUtils import fsShellQuote
 
 
@@ -47,7 +49,7 @@ def _fsPreviewNpy(connectionDocker, sContainerId, sAbsPath):
         "print(f'first={f[0]!r} last={f[-1]!r}'); "
         "print(f'min={f.min()!r} max={f.max()!r} mean={f.mean()!r}')"
     )
-    sCommand = "python3 -c " + fsShellQuote(sProgram)
+    sCommand = S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sProgram)
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
@@ -72,7 +74,7 @@ def _fsPreviewHdf5(connectionDocker, sContainerId, sAbsPath):
         "for n in items[:10]]; "
         "f.close()"
     )
-    sCommand = "python3 -c " + fsShellQuote(sProgram)
+    sCommand = S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sProgram)
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )

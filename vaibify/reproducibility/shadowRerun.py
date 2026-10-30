@@ -64,6 +64,8 @@ import posixpath
 import re
 import stat
 
+from vaibify.docker.execLane import S_EXEC_LANE_RESEARCHER_COMMAND
+
 from vaibify.docker import coherentExport
 from vaibify.docker import daemonCapacity
 from vaibify.docker import disposableContainer
@@ -1025,6 +1027,7 @@ def _fdictRefusalIfImageLacksLockedPackages(
         return None
     tExecResult = connectionDocker.ftRunInContainerStreamed(
         sShadowContainerName, S_ENUMERATE_PACKAGES_COMMAND,
+        sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     if tExecResult.iExitCode != 0:
         return fdictUnrunOutcome(

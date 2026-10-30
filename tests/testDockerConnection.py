@@ -187,8 +187,8 @@ def test_fnWriteFile_uses_exec():
     conn, daemon, mockContainer = _fconnectionWithRecordingDaemon()
     conn.fnWriteFile("abc123", "/tmp/output.txt", b"data")
     assert len(daemon.listExecCreateKeywords) == 1
-    assert daemon.listExecCreateKeywords[0]["cmd"][:2] == ["python3", "-c"]
-    assert repr("/tmp/output.txt") in daemon.listExecCreateKeywords[0]["cmd"][2]
+    assert daemon.listExecCreateKeywords[0]["cmd"][:3] == ["python3", "-I", "-c"]
+    assert repr("/tmp/output.txt") in daemon.listExecCreateKeywords[0]["cmd"][3]
     assert daemon.listReceivedStdin == [b"data"]
     mockContainer.put_archive.assert_not_called()
 
@@ -269,10 +269,17 @@ def test_fsExecCreate_forwards_an_exec_environment(mockGetDocker):
     the confined read and write programs pass nothing and must not
     gain an environment they never asked for.
 
+    Since the exec lane landed, a hub-internal exec also carries the
+    fixed PATH beside whatever it asked for -- the read and write
+    programs gain exactly that and nothing else (``tests/testExecLane.py``
+    holds the lane itself).
+
     Kills: dropping the ``environment`` keyword from ``fsExecCreate``.
     """
     from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
+    from vaibify.docker.execLane import LIST_FIXED_SYSTEM_PATH
     _CACHED_CONTAINER_USER.clear()
+    sFixedPath = ":".join(LIST_FIXED_SYSTEM_PATH)
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
     mockClient.containers.get.return_value = _fMockContainerWithUser(
@@ -282,9 +289,13 @@ def test_fsExecCreate_forwards_an_exec_environment(mockGetDocker):
     conn.fsExecCreate(
         "abc123", dictEnvironment={"SWITCH_UNDER_TEST": "1"})
     dictKwargs = mockClient.api.exec_create.call_args[1]
-    assert dictKwargs["environment"] == {"SWITCH_UNDER_TEST": "1"}
+    assert dictKwargs["environment"] == {
+        "SWITCH_UNDER_TEST": "1", "PATH": sFixedPath,
+    }
     conn.fsExecCreate("abc123", listCommand=["true"], bTty=False)
-    assert "environment" not in mockClient.api.exec_create.call_args[1]
+    assert mockClient.api.exec_create.call_args[1]["environment"] == {
+        "PATH": sFixedPath,
+    }
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
@@ -345,7 +356,7 @@ def test_fnWriteFileViaTar_requests_the_secret_mode():
         "abc123", "/tmp/secret.env", b"token=abc",
         iMode=0o600, iUid=1000, iGid=1000,
     )
-    sProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    sProgram = daemon.listExecCreateKeywords[0]["cmd"][3]
     assert "iMode = " + repr(0o600) in sProgram
     assert "0o600, dir_fd" in sProgram
 
@@ -377,7 +388,7 @@ def test_fnWriteFile_forwards_mode_and_ignores_the_ownership_stamps():
         "abc123", "/tmp/x", b"data",
         iMode=0o600, iUid=0, iGid=0,
     )
-    sProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    sProgram = daemon.listExecCreateKeywords[0]["cmd"][3]
     assert "iMode = " + repr(0o600) in sProgram
     assert daemon.listExecCreateKeywords[0]["user"] == "researcher"
 

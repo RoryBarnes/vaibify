@@ -536,13 +536,13 @@ class _MockDockerForPoll:
         return ""
 
     def ftResultExecuteCommand(self, sContainerId, sCommand,
-                               sWorkdir=None):
+                               sWorkdir=None, sLane=None):
         if "find" in sCommand and "workflows" in sCommand:
             return (0, "/workspace/.vaibify/workflows/test.json\n")
         return (0, "")
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         from vaibify.docker.dockerConnection import ExecResult
         iExitCode, sOutput = self.ftResultExecuteCommand(
@@ -552,7 +552,7 @@ class _MockDockerForPoll:
             iExitCode=iExitCode, sStdout=sOutput, sStderr="",
         )
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath.endswith(".json"):
             return json.dumps({
                 "sWorkflowName": "Poll",

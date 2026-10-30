@@ -12,6 +12,8 @@ __all__ = [
 import logging
 import posixpath
 
+from vaibify.docker.execLane import S_EXEC_LANE_RESEARCHER_COMMAND
+
 logger = logging.getLogger("vaibify")
 
 
@@ -295,7 +297,7 @@ def _fsRemoveOldTestSection(sContent):
 def fbContainerHasClaude(connectionDocker, sContainerId):
     """Return True if the claude CLI is available in the container."""
     iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId, "which claude"
+        sContainerId, "which claude", sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     return iExitCode == 0
 
@@ -339,7 +341,8 @@ def ftResultGenerateViaClaude(
         f" {fsShellQuote(sPrompt)}"
     )
     return connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand, sUser=sUser
+        sContainerId, sCommand, sUser=sUser,
+        sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
 
 

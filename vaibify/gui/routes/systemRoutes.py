@@ -464,16 +464,70 @@ def _ftDescribeX11Findings(connectionDocker, sContainerId):
     lines, every failure to establish a fact answers with NO lines.
     """
     from vaibify.docker.containerManager import fjsonInspectContainer
+    from vaibify.docker.x11Authorizations import flistDescribeAuthorization
     from vaibify.docker.x11Forwarding import ftDescribeX11Findings
+    from ..pipelineServer import fsContainerNameForId
     configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
     if configProject is None:
         return [], []
     try:
-        return ftDescribeX11Findings(
+        listContainerLines, listHostLines = ftDescribeX11Findings(
             configProject.bX11Forwarding, fjsonInspectContainer(sContainerId),
         )
+        listContainerLines += flistDescribeAuthorization(
+            fsContainerNameForId(connectionDocker, sContainerId),
+        )
+        return listContainerLines, listHostLines
     except Exception:
         return [], []
+
+
+def _fdictDescribeNetwork(connectionDocker, sContainerId):
+    """Return the Network row: the mode, the proxy's state, what it refused.
+
+    The mode is the file's, the rest is the daemon's; a project that is
+    not in allowlist mode has no proxy and says so (``not-applicable``).
+    Every failure to establish a fact answers ``unknown`` rather than a
+    guess (ruling D8: a dead proxy is shown, never silent).
+    """
+    from vaibify.config.registryManager import fdictGetProject
+    from vaibify.docker import projectEgress
+    from ..pipelineServer import fsContainerNameForId
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    if configProject is None:
+        return {"sMode": "unknown", "sProxyState": "unknown", "listRefused": []}
+    sMode = getattr(configProject, "sNetworkMode", "") or "open"
+    dictNetwork = {"sMode": sMode, "sName": "",
+                   "sProxyState": "not-applicable", "listRefused": []}
+    if sMode != "allowlist":
+        return dictNetwork
+    try:
+        dictNetwork["sName"] = fsContainerNameForId(connectionDocker, sContainerId)
+        dictProject = fdictGetProject(dictNetwork["sName"]) or {}
+        dictNetwork.update(projectEgress.fdictDescribeProjectEgress(
+            dictProject.get("sProjectUuid") or ""))
+    except Exception:
+        dictNetwork["sProxyState"] = "unknown"
+    return dictNetwork
+
+
+def _flistDescribeBindMountDrift(connectionDocker, sContainerId):
+    """Return the lines saying the container's mount modes differ from vaibify.yml.
+
+    Three-state like the X11 finding: a failure to read either side
+    answers with no lines, never with a claim.
+    """
+    from vaibify.docker.bindMountDrift import flistDescribeBindMountDrift
+    from vaibify.docker.containerManager import fjsonInspectContainer
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    if configProject is None:
+        return []
+    try:
+        return flistDescribeBindMountDrift(
+            configProject.listBindMounts, fjsonInspectContainer(sContainerId),
+        )
+    except Exception:
+        return []
 
 
 def _flistDescribeResourceLimitDrift(connectionDocker, sContainerId):
@@ -566,6 +620,7 @@ def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
     dictReadiness["listConfigurationDrift"] = (
         listBuiltDrift
         + listX11ContainerLines
+        + _flistDescribeBindMountDrift(connectionDocker, sContainerId)
     )
     # Its own key: the pinned image is never called out of date.
     dictReadiness["listPinnedEnvironmentDrift"] = listPinnedDrift
@@ -574,6 +629,9 @@ def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
     )
     dictReadiness["listResourceAdvisories"] = (
         _flistDescribeResourceAdvisories(connectionDocker, sContainerId)
+    )
+    dictReadiness["dictNetwork"] = _fdictDescribeNetwork(
+        connectionDocker, sContainerId,
     )
     listSecretWarnings = _flistDescribeUnresolvableSecrets(
         connectionDocker, sContainerId,

@@ -194,7 +194,7 @@ def test_fdictGenerateAllTests_creates_three_categories(
         ' "fValue": 300.0, "sUnit": "K"}]}'
     )
 
-    def fMockExecute(sContainerId, sCommand, sUser=None):
+    def fMockExecute(sContainerId, sCommand, sUser=None, sLane=None):
         if "mkdir" in sCommand:
             return (0, "")
         if "which claude" in sCommand:

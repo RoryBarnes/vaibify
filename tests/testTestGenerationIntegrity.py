@@ -109,7 +109,7 @@ class DockerDoubleForGeneration(DockerDoubleThatCallsTheRealGates):
         if bOutputExists:
             self.setExistingPaths.add(S_STEP + "/" + sOutput)
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
             dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
             dictWorkflow["listSteps"][0]["saOutputDataFiles"] = [self.sOutput]
@@ -120,7 +120,7 @@ class DockerDoubleForGeneration(DockerDoubleThatCallsTheRealGates):
         super().fnWriteFile(sContainerId, sPath, baContent, **dictKeywords)
         self.setExistingPaths.add(sPath)
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None, sLane=None):
         tExec = super().ftResultExecuteCommand(
             sContainerId, sCommand, sWorkdir)
         if (S_INTROSPECT_COMMAND_MARKER in sCommand

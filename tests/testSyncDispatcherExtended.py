@@ -32,7 +32,7 @@ def test_fsPythonCommand_basic():
     sResult = fsPythonCommand(
         "import os", "print(os.getcwd())", S_UNREGISTERED_CONTAINER,
     )
-    assert sResult.startswith("python3 -c ")
+    assert sResult.startswith("python3 -I -c ")
     assert "import os" in sResult
     assert "print(os.getcwd())" in sResult
 
@@ -49,7 +49,7 @@ def test_fsPythonCommand_uses_single_quote_wrapping():
     sResult = fsPythonCommand(
         "import os", "print(os.getcwd())", S_UNREGISTERED_CONTAINER,
     )
-    sArgument = sResult[len("python3 -c "):]
+    sArgument = sResult[len("python3 -I -c "):]
     assert sArgument.startswith("'")
     assert sArgument.endswith("'")
 

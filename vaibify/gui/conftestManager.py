@@ -38,6 +38,7 @@ import re
 from collections import OrderedDict
 
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from vaibify.docker.execLane import S_HUB_PYTHON_COMMAND
 
 from . import pipelineUtils
 from . import testMarkerContract
@@ -522,7 +523,7 @@ def _fsBuildVersionsProbeCommand(listConftestPaths):
         "print(json.dumps(out))\n"
     )
     return (
-        "python3 -c " + fsShellQuote(sScript)
+        S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sScript)
         + " <<< " + fsShellQuote(sPathsJson)
     )
 
@@ -579,7 +580,7 @@ def _fsBuildConftestBatchWriteCommand(listConftestPaths, sContent):
         "print('OK')\n"
     )
     return (
-        "python3 -c " + fsShellQuote(sScript)
+        S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sScript)
         + " <<< " + fsShellQuote(sPayload)
     )
 
@@ -850,7 +851,7 @@ def _fsBuildFlatMarkerMigrationCommand(sProjectRepoPath, sWorkflowSlug):
         "'iMoved': len(listMoved), 'listMoved': listMoved}))\n"
     )
     return (
-        "python3 -c " + fsShellQuote(sScript) + " "
+        S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sScript) + " "
         + fsShellQuote(sProjectRepoPath) + " "
         + fsShellQuote(sWorkflowSlug)
     )

@@ -52,14 +52,14 @@ class RecordingConnection:
         self.listCommands = []
         self.listRunning = listRunning or []
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         self.listCommands.append((sContainerId, sCommand))
         answerNext = self.listAnswers.pop(0)
         if isinstance(answerNext, BaseException):
             raise answerNext
         return answerNext
 
-    def ftRunInContainerStreamed(self, sContainerId, sCommand):
+    def ftRunInContainerStreamed(self, sContainerId, sCommand, sLane=None):
         self.listCommands.append((sContainerId, sCommand))
         answerNext = self.listAnswers.pop(0)
         if isinstance(answerNext, BaseException):

@@ -47,7 +47,7 @@ class _FakeStateDocker:
                 dictInitialDocument,
             ).encode("utf-8")
 
-    def fbaFetchFile(self, _sContainerId, sPath):
+    def fbaFetchFile(self, _sContainerId, sPath, sLane=None):
         if sPath in self.dictFiles:
             return self.dictFiles[sPath]
         raise FileNotFoundError(sPath)
@@ -55,7 +55,7 @@ class _FakeStateDocker:
     def fnWriteFile(self, _sContainerId, sPath, baPayload):
         self.dictFiles[sPath] = baPayload
 
-    def ftResultExecuteCommand(self, _sContainerId, sCommand):
+    def ftResultExecuteCommand(self, _sContainerId, sCommand, sLane=None):
         if sCommand.startswith("mv -f "):
             listParts = shlex.split(sCommand.split("||")[0])
             sTempPath, sTargetPath = listParts[2], listParts[3]
@@ -70,7 +70,7 @@ class _FakeStateDocker:
 class _RenameDroppingDocker(_FakeStateDocker):
     """Reports the rename succeeded while installing nothing."""
 
-    def ftResultExecuteCommand(self, _sContainerId, sCommand):
+    def ftResultExecuteCommand(self, _sContainerId, sCommand, sLane=None):
         if sCommand.startswith("mv -f "):
             return (0, "")
         return (0, "")
@@ -233,7 +233,7 @@ def _ftRunMarkeredStep(
     dockerState.dictShaAnswer = sShaOutput
     fnRealExecute = dockerState.ftResultExecuteCommand
 
-    def ftRouteExecute(sContainerId, sCommand):
+    def ftRouteExecute(sContainerId, sCommand, sLane=None):
         if sCommand.startswith("sha256sum"):
             return (0, dockerState.dictShaAnswer)
         return fnRealExecute(sContainerId, sCommand)

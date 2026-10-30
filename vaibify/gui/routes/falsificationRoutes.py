@@ -29,6 +29,7 @@ import time
 from fastapi import HTTPException, Request
 
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from ...docker.execLane import S_EXEC_LANE_RESEARCHER_COMMAND
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import fdictRequireWorkflow
@@ -231,6 +232,7 @@ def _fsRequireCosmicRay(connectionDocker, sContainerId):
     """Return the container's cosmic-ray version or raise HTTP 409."""
     tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId, "cosmic-ray --version",
+        sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     if tExecResult.iExitCode != 0:
         raise HTTPException(
@@ -399,6 +401,7 @@ def _fdictRunMutationSync(
         f"{fsShellQuote(sSessionPath)} && "
         f"cosmic-ray exec {fsShellQuote(sConfigPath)} "
         f"{fsShellQuote(sSessionPath)}",
+        sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     if tExecResult.iExitCode != 0:
         return fdictBuildFalsificationRecord(
@@ -502,6 +505,7 @@ def _fdictSummarizeMutationSession(
         sContainerId,
         f"python {fsShellQuote(sSummaryPath)} "
         f"{fsShellQuote(sSessionPath)}",
+        sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
     )
     dictSummary = _fdictParseSummaryOutput(resultSummary)
     if dictSummary is None:

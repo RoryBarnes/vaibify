@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vaibify.docker import x11Forwarding
+from vaibify.docker import x11Authorizations, x11Forwarding
 from vaibify.docker.x11Forwarding import (
     fbMacXServerAcceptingNetworkConnections,
     fdictAssessLinuxX11,
@@ -15,14 +15,20 @@ from vaibify.docker.x11Forwarding import (
     flistConfigureX11Args,
     fnConfigureLinuxX11,
     fnConfigureMacX11,
-    fnGrantMacXhostAccess,
-    fnRevokeMacXhostAccess,
+    fnRevokeLegacyXhostGrants,
     fnStartMacXServer,
     fsReadNetworkClientPreference,
     fsResolveMacContainerDisplay,
     _fbProcessIsRunning,
-    _fnGrantLocalUserXhostAccess,
 )
+
+S_CONTAINER = "demo"
+S_UUID = "a" * 32
+S_DIRECTORY = "/home/alice/.vaibify/x11/demo"
+LIST_AUTHORIZATION_ARGUMENTS = [
+    "--mount", f"type=bind,source={S_DIRECTORY},target=/run/vaibify/x11,readonly",
+    "-e", "XAUTHORITY=/run/vaibify/x11/Xauthority",
+]
 
 S_MACPORTS_APP = "/Applications/MacPorts/X11.app"
 S_MACPORTS_DISPLAY = "/var/run/com.apple.launchd.AbCdEf/org.macports:0"
@@ -316,19 +322,33 @@ def _fnInstallConfigureFakes(monkeypatch, dictServer, bListening,
     monkeypatch.setattr(
         x11Forwarding, "_fnRunBestEffort",
         lambda saArgs: listRuns.append(saArgs))
+    _fnInstallPrepareFake(monkeypatch, listRuns)
     return listRuns
 
 
+def _fnInstallPrepareFake(monkeypatch, listRuns, sOutcome="generated"):
+    """Stand in for the authorization helper; record what was asked for."""
+    def fdictPrepare(sContainerName, sProjectUuid, sDisplay, sProbeDisplay, sNumber):
+        listRuns.append(["prepare", sContainerName, sProjectUuid, sDisplay,
+                         sProbeDisplay, sNumber])
+        return {"sOutcome": sOutcome, "sDirectory": S_DIRECTORY,
+                "sReason": "" if sOutcome == "generated" else "no server answered"}
+
+    monkeypatch.setattr(x11Forwarding, "fdictPrepareAuthorization", fdictPrepare)
+
+
 @patch.dict("os.environ", {"DISPLAY": S_MACPORTS_DISPLAY, "USER": "alice"})
-def test_configureMac_on_a_macports_mac_starts_it_and_sets_display(
+def test_configureMac_on_a_macports_mac_starts_it_and_authorizes_the_container(
     monkeypatch, capsys,
 ):
     listRuns = _fnInstallConfigureFakes(
         monkeypatch, DICT_MACPORTS_SERVER, bListening=True)
     saRunArgs = []
-    fnConfigureMacX11(saRunArgs)
+    fnConfigureMacX11(saRunArgs, S_CONTAINER, S_UUID)
     assert ["open", "-a", S_MACPORTS_APP] in listRuns
-    assert saRunArgs == ["-e", "DISPLAY=host.docker.internal:0"]
+    assert ["prepare", S_CONTAINER, S_UUID, S_MACPORTS_DISPLAY, "localhost:0", "0"] in listRuns
+    assert saRunArgs == ["-e", "DISPLAY=host.docker.internal:0"] + LIST_AUTHORIZATION_ARGUMENTS
+    assert not any(saCall[0] == "defaults" for saCall in listRuns)
     assert capsys.readouterr().err == ""
 
 
@@ -338,7 +358,7 @@ def test_configureMac_with_no_server_sets_no_display_and_says_why(
 ):
     listRuns = _fnInstallConfigureFakes(monkeypatch, None, bListening=False)
     saRunArgs = []
-    fnConfigureMacX11(saRunArgs)
+    fnConfigureMacX11(saRunArgs, S_CONTAINER, S_UUID)
     assert saRunArgs == []
     assert listRuns == []
     sError = capsys.readouterr().err
@@ -346,17 +366,50 @@ def test_configureMac_with_no_server_sets_no_display_and_says_why(
 
 
 @patch.dict("os.environ", {"DISPLAY": S_MACPORTS_DISPLAY, "USER": "alice"})
-def test_configureMac_when_clients_are_blocked_warns_with_the_fix(
+def test_configureMac_when_clients_are_blocked_enables_them_and_asks_for_a_restart(
     monkeypatch, capsys,
 ):
-    _fnInstallConfigureFakes(
+    listRuns = _fnInstallConfigureFakes(
         monkeypatch, DICT_MACPORTS_SERVER, bListening=False,
         sPreference="blocked")
     saRunArgs = []
-    fnConfigureMacX11(saRunArgs)
+    fnConfigureMacX11(saRunArgs, S_CONTAINER, S_UUID)
+    assert ["defaults", "write", "org.macports.X11", "nolisten_tcp", "-bool", "false"] in listRuns
     sError = capsys.readouterr().err
-    assert "defaults write org.macports.X11 nolisten_tcp" in sError
-    assert "DISPLAY=host.docker.internal:0" in saRunArgs
+    assert "accept network clients" in sError and "quit it completely" in sError
+    assert saRunArgs == []
+    assert not any(saCall[0] == "prepare" for saCall in listRuns)
+
+
+@patch.dict("os.environ", {"DISPLAY": S_MACPORTS_DISPLAY, "USER": "alice"})
+@pytest.mark.falsification
+def test_configureMac_passes_no_display_when_no_authorization_could_be_made(
+    monkeypatch, capsys,
+):
+    """Kills: passing DISPLAY and the mount when no authorization could be made."""
+    listRuns = _fnInstallConfigureFakes(
+        monkeypatch, DICT_MACPORTS_SERVER, bListening=True)
+    _fnInstallPrepareFake(monkeypatch, listRuns, sOutcome="serverUnreachable")
+    saRunArgs = []
+    fnConfigureMacX11(saRunArgs, S_CONTAINER, S_UUID)
+    assert saRunArgs == []
+    assert "no authorization could be made" in capsys.readouterr().err
+
+
+@patch.dict("os.environ", {"DISPLAY": S_MACPORTS_DISPLAY, "USER": "alice"})
+def test_configureMac_names_the_fallback_cookie_for_what_it_is(monkeypatch, capsys):
+    listRuns = _fnInstallConfigureFakes(
+        monkeypatch, DICT_MACPORTS_SERVER, bListening=True)
+
+    def fdictCopied(sContainerName, sProjectUuid, sDisplay, sProbeDisplay, sNumber):
+        return {"sOutcome": "copied", "sDirectory": S_DIRECTORY,
+                "sFallbackCause": "securityUnsupported"}
+
+    monkeypatch.setattr(x11Forwarding, "fdictPrepareAuthorization", fdictCopied)
+    saRunArgs = []
+    fnConfigureMacX11(saRunArgs, S_CONTAINER, S_UUID)
+    assert saRunArgs[:2] == ["-e", "DISPLAY=host.docker.internal:0"]
+    assert x11Authorizations.S_SERVER_COOKIE_NOTICE in capsys.readouterr().err
 
 
 def test_the_same_notice_is_printed_once_per_invocation(capsys):
@@ -367,29 +420,43 @@ def test_the_same_notice_is_printed_once_per_invocation(capsys):
 
 
 @pytest.mark.falsification
-@patch.dict("os.environ", {"USER": "alice"})
-def test_macGrant_admits_the_local_user_and_the_tcp_loopback(monkeypatch):
-    """Kills: dropping the TCP host entry, which locks the container out."""
+@patch.dict("os.environ", {"USER": "alice", "DISPLAY": ":0"})
+def testTheLegacyXhostGrantsAreWithdrawn(monkeypatch):
+    """Earlier versions admitted every loopback client; the entry outlives the version.
+
+    Kills: leaving the +localhost entry, through which any client reaches the display.
+    """
     listRuns = []
+    monkeypatch.setattr(x11Forwarding.platform, "system", lambda: "Linux")
     monkeypatch.setattr(
         x11Forwarding, "_fsFindXhost", lambda: "/opt/local/bin/xhost")
     monkeypatch.setattr(
         x11Forwarding, "_fnRunBestEffort",
         lambda saArgs: listRuns.append(saArgs))
-    fnGrantMacXhostAccess()
-    assert ["/opt/local/bin/xhost", "+SI:localuser:alice"] in listRuns
-    assert ["/opt/local/bin/xhost", "+localhost"] in listRuns
+    fnRevokeLegacyXhostGrants()
+    assert ["/opt/local/bin/xhost", "-localhost"] in listRuns
+    assert ["/opt/local/bin/xhost", "-SI:localuser:alice"] in listRuns
+    assert not any("+" in sArg for saCall in listRuns for sArg in saCall)
 
 
-def test_macRevoke_withdraws_the_tcp_loopback_entry(monkeypatch):
+@patch.dict("os.environ", {"USER": "alice", "DISPLAY": "/tmp/launchd/org.macports:0"})
+def test_the_legacy_revocation_never_starts_a_quit_mac_server(monkeypatch):
     listRuns = []
-    monkeypatch.setattr(
-        x11Forwarding, "_fsFindXhost", lambda: "xhost")
+    monkeypatch.setattr(x11Forwarding.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(x11Forwarding, "fbMacXServerIsRunning", lambda: False)
     monkeypatch.setattr(
         x11Forwarding, "_fnRunBestEffort",
         lambda saArgs: listRuns.append(saArgs))
-    fnRevokeMacXhostAccess()
-    assert listRuns == [["xhost", "-localhost"]]
+    fnRevokeLegacyXhostGrants()
+    assert listRuns == []
+
+
+@patch.dict("os.environ", {"USER": "alice"}, clear=True)
+def test_the_legacy_revocation_does_nothing_without_a_display(monkeypatch):
+    monkeypatch.setattr(
+        x11Forwarding, "_fnRunBestEffort",
+        lambda saArgs: pytest.fail("ran xhost with no DISPLAY"))
+    fnRevokeLegacyXhostGrants()
 
 
 def test_xhost_is_found_in_the_macports_directory_off_the_path(monkeypatch):
@@ -404,54 +471,59 @@ def test_xhost_is_found_in_the_macports_directory_off_the_path(monkeypatch):
 @patch("vaibify.docker.x11Forwarding.fnConfigureMacX11")
 def test_flistConfigureX11Args_darwin(mockMac, mockPlatform):
     mockPlatform.system.return_value = "Darwin"
-    flistConfigureX11Args()
-    mockMac.assert_called_once()
+    flistConfigureX11Args(S_CONTAINER, S_UUID)
+    mockMac.assert_called_once_with([], S_CONTAINER, S_UUID)
 
 
 @patch("vaibify.docker.x11Forwarding.platform")
 @patch("vaibify.docker.x11Forwarding.fnConfigureLinuxX11")
 def test_flistConfigureX11Args_linux(mockLinux, mockPlatform):
     mockPlatform.system.return_value = "Linux"
-    flistConfigureX11Args()
-    mockLinux.assert_called_once()
+    flistConfigureX11Args(S_CONTAINER, S_UUID)
+    mockLinux.assert_called_once_with([], S_CONTAINER, S_UUID)
 
 
 @patch("vaibify.docker.x11Forwarding.platform")
 def test_flistConfigureX11Args_windows(mockPlatform):
     mockPlatform.system.return_value = "Windows"
-    assert flistConfigureX11Args() == []
+    assert flistConfigureX11Args(S_CONTAINER, S_UUID) == []
 
 
-@patch("vaibify.docker.x11Forwarding._fnGrantLocalUserXhostAccess")
 @patch.dict("os.environ", {"DISPLAY": ":1"})
-def test_fnConfigureLinuxX11_sets_display(mockGrant):
+def test_fnConfigureLinuxX11_sets_display_and_mounts_the_socket_read_only(monkeypatch):
+    listRuns = []
+    monkeypatch.setattr(x11Forwarding.os.path, "isdir", lambda sPath: True)
+    _fnInstallPrepareFake(monkeypatch, listRuns)
     saRunArgs = []
-    fnConfigureLinuxX11(saRunArgs)
-    assert "DISPLAY=:1" in saRunArgs
-    assert "/tmp/.X11-unix:/tmp/.X11-unix:ro" in saRunArgs
+    fnConfigureLinuxX11(saRunArgs, S_CONTAINER, S_UUID)
+    assert saRunArgs == (
+        ["-e", "DISPLAY=:1"] + LIST_AUTHORIZATION_ARGUMENTS
+        + ["--mount", "type=bind,source=/tmp/.X11-unix,target=/tmp/.X11-unix,readonly"]
+    )
+    assert listRuns == [["prepare", S_CONTAINER, S_UUID, ":1", ":1", "1"]]
 
 
-@patch("vaibify.docker.x11Forwarding._fnGrantLocalUserXhostAccess")
 @patch.dict("os.environ", {}, clear=True)
-def test_fnConfigureLinuxX11_defaults_display_when_unset(mockGrant):
+def test_fnConfigureLinuxX11_passes_nothing_without_a_display(monkeypatch, capsys):
+    x11Forwarding._setNoticesShownThisInvocation.clear()
+    monkeypatch.setattr(
+        x11Forwarding, "fdictPrepareAuthorization",
+        lambda *listArguments: pytest.fail("asked for an authorization with no display"))
     saRunArgs = []
-    fnConfigureLinuxX11(saRunArgs)
-    assert "DISPLAY=:0" in saRunArgs
+    fnConfigureLinuxX11(saRunArgs, S_CONTAINER, S_UUID)
+    assert saRunArgs == []
+    assert "no DISPLAY" in capsys.readouterr().err
 
 
-@patch("vaibify.docker.x11Forwarding.subprocess.run",
-       side_effect=FileNotFoundError)
-@patch.dict("os.environ", {"USER": "alice"})
-def test_grantLocalUserXhostAccess_tolerates_missing_xhost(mockRun):
-    _fnGrantLocalUserXhostAccess()
-    mockRun.assert_called_once()
-
-
-@patch.dict("os.environ", {"USER": ""})
-@patch("vaibify.docker.x11Forwarding.subprocess.run")
-def test_grantLocalUserXhostAccess_no_op_when_user_unset(mockRun):
-    _fnGrantLocalUserXhostAccess()
-    mockRun.assert_not_called()
+@patch.dict("os.environ", {"DISPLAY": ":1"})
+def test_fnConfigureLinuxX11_mounts_no_socket_when_no_authorization_was_made(monkeypatch):
+    listRuns = []
+    monkeypatch.setattr(x11Forwarding.os.path, "isdir", lambda sPath: True)
+    _fnInstallPrepareFake(monkeypatch, listRuns, sOutcome="error")
+    x11Forwarding._setNoticesShownThisInvocation.clear()
+    saRunArgs = []
+    fnConfigureLinuxX11(saRunArgs, S_CONTAINER, S_UUID)
+    assert saRunArgs == []
 
 
 @patch("vaibify.docker.x11Forwarding.subprocess.run",

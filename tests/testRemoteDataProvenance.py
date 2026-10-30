@@ -27,7 +27,7 @@ class _FakeDocker:
         self.sOutput = sOutput
         self.listCommands = []
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         self.listCommands.append(sCommand)
         return (0, self.sOutput)
 

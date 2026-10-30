@@ -47,11 +47,20 @@ import stat
 
 
 __all__ = [
+    "T_BIND_MOUNT_KEYS",
     "fnValidateBindMount",
     "fnValidateBindMountList",
+    "fbBindMountIsReadWrite",
     "flistConfiguredDockerEndpoints",
     "BindMountValidationError",
 ]
+
+# The whole schema of one entry. ``readWrite`` defaults to false: a
+# host directory is read-only inside the container unless the
+# researcher says otherwise, and the old ``readOnly`` key is refused
+# by name so a file written against it fails loudly rather than
+# mounting read-write by accident.
+T_BIND_MOUNT_KEYS = ("host", "container", "readWrite")
 
 
 _LIST_DENY_PREFIXES = (
@@ -64,42 +73,33 @@ _LIST_DENY_PREFIXES = (
 _LIST_HOME_RELATIVE_DENY_PREFIXES = (
     ".ssh",
     ".aws",
-    ".config/gh",
     ".gnupg",
     ".docker",
     ".kube",
-    # The operation-journal quarantine markers (design §8): a same-UID
-    # agent inside a container that could mount this directory could
-    # delete a quarantine marker and un-quarantine a container whose
-    # past operations were never proven settled.
-    ".vaibify/journal",
-    # The ephemeral secret store (``ephemeralStore``): credentials the
-    # hub writes for a single operation live here at mode 0600, and a
-    # mount would hand them to a container that was never meant to
-    # hold them.
-    ".vaibify/tmp",
-    # The host-control Unix sockets (design §6b/§14): the control plane
-    # is host-only by construction — a container that could mount this
-    # directory would reach the same-UID peer-authenticated socket and
-    # drive reconcile/force-abandon/break-glass from inside.
-    ".vaibify/control",
-    # The per-name lifecycle locks: a container that could mount this
-    # directory could delete a lock file, and a process that locks the
-    # new inode at that path no longer excludes a rename or a start.
-    ".vaibify/lifecycleLocks",
-    # The rename journals: recovery rolls a rename back or forward from
-    # the bytes recorded here, so a container that could edit one would
-    # choose what recovery writes.
-    ".vaibify/pendingRenames",
-    # The session flocks, which a rename holds throughout: deleting one
-    # lets a second hub claim the name mid-transaction.
-    ".vaibify/locks",
-    # The containerization journals, which a rename checks before it
-    # begins and which recovery replays.
-    ".vaibify/pendingConversions",
-    # The registry, whose entry decides whether a rename committed and
-    # which directory and config every name resolves to.
-    ".vaibify/registry.json",
+    # Every agent CLI's own home: login tokens, memory, hooks and
+    # settings. A container that could write one would plant a hook
+    # the researcher's next host-side agent session runs.
+    ".claude", ".codex", ".gemini",
+    # The whole of ~/.config, not only gh: git, pip, every tool's
+    # configuration and many credential stores live under it.
+    ".config",
+    # All of vaibify's own host state. The operation-journal quarantine
+    # markers (design §8), the ephemeral secret store (mode 0600
+    # credentials for one operation), the host-control Unix sockets
+    # (design §6b/§14, the peer-authenticated reconcile and break-glass
+    # plane), and the per-project binding, migration and X11 records
+    # all live here, and a same-UID agent that could reach any of them
+    # could undo what the others protect.
+    ".vaibify",
+    # Files host tools read for credentials or configuration.
+    ".gitconfig", ".netrc", ".pypirc", ".npmrc",
+    # Shell start-up files: a line appended to one runs in the
+    # researcher's next terminal, as the researcher.
+    ".zshrc", ".zshenv", ".zprofile", ".zlogin",
+    ".bashrc", ".bash_profile", ".profile",
+    # macOS: a LaunchAgent runs at every login; the keychains hold
+    # every saved password.
+    "Library/LaunchAgents", "Library/Keychains",
 )
 
 
@@ -137,8 +137,17 @@ class BindMountValidationError(ValueError):
     """Raised when a vaibify.yml ``bindMounts`` entry is unsafe."""
 
 
-def fnValidateBindMount(dictMount, sProjectRepoPath=None):
-    """Raise :class:`BindMountValidationError` if the mount is unsafe."""
+def fnValidateBindMount(
+    dictMount, sProjectRepoPath=None, sProjectDirectory=None,
+):
+    """Raise :class:`BindMountValidationError` if the mount is unsafe.
+
+    ``sProjectDirectory`` is the host directory holding this project's
+    ``vaibify.yml``; a READ-WRITE mount may not cover it, because a
+    container that can edit the file declaring its own mounts and
+    secrets decides its own confinement at the next start.
+    """
+    _fnRejectUnknownKeys(dictMount)
     sRaw = dictMount.get("host")
     if not isinstance(sRaw, str) or not sRaw:
         raise BindMountValidationError(
@@ -155,7 +164,67 @@ def fnValidateBindMount(dictMount, sProjectRepoPath=None):
     _fnRejectDeniedPrefix(sResolved)
     _fnRejectDaemonSocket(sResolved)
     _fnRequireWithinAllowedRoot(sResolved, sProjectRepoPath)
+    _fnRejectReadWriteOverProject(
+        sResolved, fbBindMountIsReadWrite(dictMount), sProjectDirectory,
+    )
     _fnValidateContainerTarget(dictMount.get("container"))
+
+
+def _fnRejectUnknownKeys(dictMount):
+    """Refuse an entry whose keys are not exactly the schema's.
+
+    ``readOnly`` gets its own sentence: it was the key an earlier
+    schema accepted, and a file still carrying it must learn that the
+    default has turned around rather than mount read-write silently.
+    """
+    if not isinstance(dictMount, dict):
+        raise BindMountValidationError(
+            f"bindMounts entry must be a mapping, got {dictMount!r}"
+        )
+    if "readOnly" in dictMount:
+        raise BindMountValidationError(
+            "bindMounts entries are read-only unless an entry sets "
+            "readWrite: true; remove 'readOnly'"
+        )
+    listUnknown = sorted(set(dictMount) - set(T_BIND_MOUNT_KEYS))
+    if listUnknown:
+        raise BindMountValidationError(
+            f"bindMounts entry has unknown key(s) {listUnknown}; the keys "
+            f"are {list(T_BIND_MOUNT_KEYS)}"
+        )
+    if "readWrite" in dictMount and not isinstance(
+        dictMount["readWrite"], bool,
+    ):
+        raise BindMountValidationError(
+            f"bindMounts readWrite must be true or false, got "
+            f"{dictMount['readWrite']!r}"
+        )
+
+
+def fbBindMountIsReadWrite(dictMount):
+    """Return True only when the entry says ``readWrite: true``."""
+    return dictMount.get("readWrite") is True
+
+
+def _fnRejectReadWriteOverProject(sResolved, bReadWrite, sProjectDirectory):
+    """Refuse a read-write mount that is, or contains, the project directory.
+
+    ``vaibify.yml`` lives there. A container writing it chooses its own
+    bind mounts, secrets and network mode for the next start, so the
+    directory and every ancestor of it stay read-only or unmounted. A
+    directory BELOW it (a data folder beside the configuration) is not
+    covered: the configuration file is what matters.
+    """
+    if not bReadWrite or not sProjectDirectory:
+        return
+    sProject = os.path.realpath(os.path.expanduser(sProjectDirectory))
+    if sResolved == sProject or sProject.startswith(sResolved + os.sep):
+        raise BindMountValidationError(
+            f"bindMounts host path '{sResolved}' is mounted readWrite and "
+            f"covers the project directory '{sProject}', whose vaibify.yml "
+            f"declares this container's mounts and secrets; mount a "
+            f"directory below it, or drop readWrite"
+        )
 
 
 def _fnRequireAbsoluteHostPath(sRaw):
@@ -494,10 +563,12 @@ def _fnValidateContainerTarget(sTarget):
         )
 
 
-def fnValidateBindMountList(listMounts, sProjectRepoPath=None):
+def fnValidateBindMountList(
+    listMounts, sProjectRepoPath=None, sProjectDirectory=None,
+):
     """Apply :func:`fnValidateBindMount` to every entry in the list."""
     for dictMount in listMounts:
-        fnValidateBindMount(dictMount, sProjectRepoPath)
+        fnValidateBindMount(dictMount, sProjectRepoPath, sProjectDirectory)
 
 
 def _fsResolveSymlinks(sPath):

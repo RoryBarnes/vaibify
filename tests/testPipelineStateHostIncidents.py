@@ -43,7 +43,7 @@ class MockDockerConnection:
     def fnWriteFile(self, sContainerId, sPath, baContent):
         self.dictFiles[(sContainerId, sPath)] = baContent
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         if sCommand.startswith("mv "):
             # shlex: the state writer quotes both operands so a host
             # project directory containing a space survives, and a
@@ -63,7 +63,7 @@ class MockDockerConnection:
             return (0, self.dictFiles[tKey].decode("utf-8"))
         return (0, "")
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         """Fetch a file the way the typed-read adapter does.
 
         ``fdictReadState`` reads through this rather than assembling a

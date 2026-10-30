@@ -117,7 +117,7 @@ only the directory, the template, and the summary.
 | **Project Name** | The project name and the Docker container name. |
 | **Python Version** | 3.9 to 3.14; 3.12 by default. |
 | **Repositories** | Git URLs cloned into the workspace at first start (required for `toolkit`). |
-| **Features & Authentication** | Coding-agent command-line tools, JupyterLab, LaTeX, R, Julia, a PostgreSQL client, DVC, and NVIDIA GPU support; GitHub authentication; runtime options (sleep prevention on macOS, network isolation, X11 display forwarding); and resource limits. |
+| **Features & Authentication** | Coding-agent command-line tools, JupyterLab, LaTeX, R, Julia, a PostgreSQL client, DVC, and NVIDIA GPU support; GitHub authentication; runtime options (sleep prevention on macOS, the network mode, X11 display forwarding); and resource limits. |
 | **Packages** | System packages (apt) and Python packages, with an **Advanced** section for the package manager, pip flags, container user, base image, and workspace root. |
 | **Summary** | Review, then **Create**. |
 

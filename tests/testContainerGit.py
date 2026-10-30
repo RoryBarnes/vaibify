@@ -20,7 +20,7 @@ class _FakeDocker:
         self._listRules = listRules or []
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         self.listCommands.append(sCommand)
         for sMarker, iRc, sOut in self._listRules:

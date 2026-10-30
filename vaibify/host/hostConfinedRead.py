@@ -29,8 +29,11 @@ from vaibify.docker.confinedRead import (
 
 __all__ = [
     "HostReadUnsupportedError",
+    "fbBelowRoot",
+    "fiOpenParentDirectoryBelowRoot",
     "fiterStreamDirectoryAsTar",
     "fiterStreamFileInsideRoot",
+    "flistSplitPath",
     "fnRequireDirectoryRelativeAccess",
 ]
 
@@ -69,11 +72,11 @@ def fnRequireDirectoryRelativeAccess():
     raise HostReadUnsupportedError(S_DIRECTORY_RELATIVE_ACCESS_MISSING)
 
 
-def _flistSplit(sPath):
+def flistSplitPath(sPath):
     return [sPart for sPart in sPath.split(os.sep) if sPart]
 
 
-def _fbBelowRoot(listRoot, listParts, bAllowRoot):
+def fbBelowRoot(listRoot, listParts, bAllowRoot):
     if listParts[:len(listRoot)] != listRoot:
         return False
     return bAllowRoot or len(listParts) > len(listRoot)
@@ -91,7 +94,14 @@ def _fiOpenDirectoryWithoutFollowing(iParent, sName):
         raise
 
 
-def _fiOpenParentDirectory(sRealRoot, listBelowRoot):
+def fiOpenParentDirectoryBelowRoot(sRealRoot, listBelowRoot):
+    """Return a descriptor for the directory holding the last component.
+
+    Every component is opened relative to the one above it with
+    ``O_NOFOLLOW``, so a directory swapped for a link after the walk
+    passed it is refused rather than followed. Shared with the host
+    confined writer, whose walk must be the reader's.
+    """
     iDirectory = os.open(sRealRoot, os.O_RDONLY | os.O_DIRECTORY)
     for sName in listBelowRoot[:-1]:
         try:
@@ -134,17 +144,17 @@ def _fiOpenOnce(iParent, sName, iFlags):
 def _fiOpenFollowingLinksInsideRoot(
     sRealRoot, sStartPath, iFlags, bAllowRoot, sExpectedKind,
 ):
-    listRoot = _flistSplit(sRealRoot)
+    listRoot = flistSplitPath(sRealRoot)
     sCurrent = sStartPath
     for _ in range(I_MAX_LINK_HOPS + 1):
-        listParts = _flistSplit(sCurrent)
-        if not _fbBelowRoot(listRoot, listParts, bAllowRoot):
+        listParts = flistSplitPath(sCurrent)
+        if not fbBelowRoot(listRoot, listParts, bAllowRoot):
             raise ContainerReadRefusedError(
                 "refused: the path is not below its authorized root")
         listBelowRoot = listParts[len(listRoot):]
         if not listBelowRoot:
             return os.open(sRealRoot, iFlags)
-        iParent = _fiOpenParentDirectory(sRealRoot, listBelowRoot)
+        iParent = fiOpenParentDirectoryBelowRoot(sRealRoot, listBelowRoot)
         try:
             iOpened = _fiOpenOnce(iParent, listBelowRoot[-1], iFlags)
             if iOpened is not None:
@@ -153,7 +163,7 @@ def _fiOpenFollowingLinksInsideRoot(
         finally:
             os.close(iParent)
         sCurrent = _fsResolveLinkLexically(listParts[:-1], sTarget)
-        if not _fbBelowRoot(listRoot, _flistSplit(sCurrent), bAllowRoot):
+        if not fbBelowRoot(listRoot, flistSplitPath(sCurrent), bAllowRoot):
             raise ContainerReadRefusedError(
                 f"refused: '{listBelowRoot[-1]}' points to '{sTarget}', "
                 "which is outside the project")

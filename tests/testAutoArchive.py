@@ -2,6 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 from tests.dockerConnectionDoubles import (
     fconnectionDoubleWithNoContainerPaths,
 )
@@ -267,6 +272,59 @@ def test_fnMaybeAutoArchive_pushes_overleaf_on_transition():
     assert bResult is True
     assert mockPush.called
     assert mockPush.call_args[0][3] == "abc123"
+
+
+@pytest.mark.falsification
+def test_fnMaybeAutoArchive_pushes_to_the_bound_overleaf_project(monkeypatch):
+    """An unattended push spends the token on the project the researcher confirmed.
+
+    ``project.json`` names one id and the binding record another, as
+    after an agent edit; the push goes where the binding says.
+
+    Kills: the auto-archive taking its Overleaf target from project.json.
+    """
+    from vaibify.gui import remoteBindingContext
+    dictWorkflow = _fdictBuildWorkflow()
+    dictWorkflow["bAutoArchive"] = True
+    dictWorkflow["sOverleafProjectId"] = "agent-edited-id"
+    dictWorkflow["listSteps"][0]["dictVerification"] = {"sUser": "passed"}
+    monkeypatch.setattr(
+        remoteBindingContext, "fsRequireBoundOverleafProjectId",
+        lambda dictCtx, sContainerId, dictWorkflow: "bound-id",
+    )
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
+        return_value=(0, "ok"),
+    ) as mockPush:
+        fbMaybeAutoArchive(
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
+        )
+    assert mockPush.call_args[0][3] == "bound-id"
+
+
+def test_fnMaybeAutoArchive_refuses_an_unbound_overleaf_push(monkeypatch):
+    """No binding, no push: the token is not spent on project.json's word."""
+    from fastapi import HTTPException
+    from vaibify.gui import remoteBindingContext
+
+    def fnRefuse(dictCtx, sContainerId, dictWorkflow):
+        raise HTTPException(409, "no confirmed overleaf binding")
+
+    dictWorkflow = _fdictBuildWorkflow()
+    dictWorkflow["bAutoArchive"] = True
+    dictWorkflow["sOverleafProjectId"] = "abc123"
+    dictWorkflow["listSteps"][0]["dictVerification"] = {"sUser": "passed"}
+    monkeypatch.setattr(
+        remoteBindingContext, "fsRequireBoundOverleafProjectId", fnRefuse,
+    )
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
+    ) as mockPush:
+        bResult = fbMaybeAutoArchive(
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
+        )
+    assert bResult is False
+    mockPush.assert_not_called()
 
 
 def test_fnMaybeAutoArchive_pushes_zenodo_on_transition():

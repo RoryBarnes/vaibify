@@ -1,28 +1,19 @@
 """Clean Zenodo API client using Bearer token authentication.
 
 Provides upload, download, draft management, and search operations
-against Zenodo or the Zenodo sandbox. Tokens are retrieved via the
-secretManager module so that credentials never appear in source code.
+against Zenodo or the Zenodo sandbox. A client is handed its token by
+the caller; it never reaches into a keyring itself. Since 2026-10-29
+the tokens live only on the host, in per-project active slots
+(:mod:`vaibify.config.zenodoTokenSlots`), and every Zenodo operation
+vaibify performs runs on the host, so nothing here needs a token store.
 
-This module is also shipped into the vaibify workflow container at
-``/usr/share/vaibify/zenodoClient.py`` so the container-side Zenodo
-archive script can call the same API surface instead of re-
-implementing every HTTP path. That deployment has two consequences:
-
-1. Top-level imports must stay container-safe. ``keyring`` is always
-   present; ``requests`` is present when a workflow uses this
-   archive path; ``tqdm`` is optional and is therefore imported
-   lazily inside ``_fnStreamUpload``. A vaibify-package import at top
-   level breaks this rule outright, and one did: the redaction helpers
-   arrived later as ``from vaibify.reproducibility.credentialRedactor
-   import ...``, which raises ImportError at ``/usr/share/vaibify``
-   where no vaibify package exists. It is now a flat fallback, and
-   ``credentialRedactor`` is staged beside this file.
-2. The ``secretManager`` fallback for token acquisition only runs
-   when ``sToken`` is ``None``. Container callers always pass the
-   token explicitly (they read it from the container's keyring
-   themselves), so the deferred ``vaibify.config.secretManager``
-   import never fires inside the container.
+Older project images still carry a copy of this module at
+``/usr/share/vaibify/zenodoClient.py`` from the time the archive ran as
+a script inside the container. Nothing executes that copy any more, but
+the top-level imports stay container-safe (the flat ``credentialRedactor``
+fallback below) so an image that imports it for its own reasons does
+not break. ``tqdm`` is optional and is imported lazily inside
+``_fnStreamUpload``.
 """
 
 import hashlib
@@ -180,6 +171,10 @@ __all__ = [
     "flistDescribeUnexpectedDepositFiles",
     "fsReadPlainMd5",
     "fdictRevokeZenodoToken",
+    "fdictProbeToken",
+    "S_PROBE_ACCEPTED",
+    "S_PROBE_REJECTED",
+    "S_PROBE_UNDETERMINED",
 ]
 
 
@@ -447,20 +442,18 @@ class ZenodoClient:
         return responseHttp.json()
 
     def _fsGetToken(self):
-        """Lazy-load the Zenodo token via secretManager, "" when absent.
+        """Return the token this client was built with, "" when none.
 
         Absence is an answer, not an error. Published records are
         public, so the read paths (record fetch, file hashing) work
-        without a token — which is exactly the host-side verify's
-        situation: the researcher's token lives in the CONTAINER
-        keyring, and demanding one from the host keyring made every
-        hub-side verify die on a KeyError before any network call. A
-        mutating call sent without a token gets Zenodo's own 401,
-        surfaced as the actionable ``ZenodoAuthError``.
+        without a token. A mutating call sent without one gets Zenodo's
+        own 401, surfaced as the actionable ``ZenodoAuthError``. The
+        client never reaches into a keyring: which token a caller may
+        spend is the caller's decision, made from the project's ACTIVE
+        host slot, and a client that looked one up itself would be a
+        second authority on that question.
         """
-        if self._sToken is None:
-            self._sToken = _fsRetrieveToken(self._sService) or ""
-        return self._sToken
+        return self._sToken or ""
 
 
 # ------------------------------------------------------------------
@@ -629,22 +622,58 @@ def fsZenodoTokenName(sService):
     return "zenodo_token_sandbox"
 
 
-def _fsRetrieveToken(sService="sandbox"):
-    """Retrieve the Zenodo token for ``sService``, or ``""`` when absent.
+S_PROBE_ACCEPTED = "accepted"
+S_PROBE_REJECTED = "rejected"
+S_PROBE_UNDETERMINED = "undetermined"
 
-    Reads the namespaced slot first (``zenodo_token_sandbox`` or
-    ``zenodo_token_production``) and falls back to the legacy
-    ``zenodo_token`` slot when the namespaced one is empty so users
-    migrating from the pre-namespaced layout keep working. A store
-    holding neither returns ``""`` rather than raising: the caller may
-    be a read of a public record, which needs no token at all.
+
+def fdictProbeToken(sService, sToken):
+    """Ask ``sService`` whether ``sToken`` works; never discard or activate.
+
+    Returns ``{"sOutcome", "sDetail", "listDepositTitles"}`` where the
+    outcome is ``accepted`` (a 2xx on the depositions listing),
+    ``rejected`` (401 or 403) or ``undetermined`` (a network error, a
+    timeout, 429 or 5xx -- the instance was not reached or did not
+    answer the question). Undetermined is not rejected: a token the
+    host could not check is retried, never thrown away. The titles are
+    what the dashboard shows the researcher so they can recognise whose
+    token this is before confirming it.
     """
-    from vaibify.config.secretManager import fbSecretExists, fsRetrieveSecret
+    _fnValidateService(sService)
+    if not sToken:
+        return {
+            "sOutcome": S_PROBE_REJECTED, "sDetail": "no token",
+            "listDepositTitles": [],
+        }
+    try:
+        listDeposits = ZenodoClient(sService, sToken=sToken)._fdictRequest(
+            "GET", f"{_SERVICES[sService]}/api/deposit/depositions",
+            params={"size": 5},
+        )
+    except ZenodoAuthError as error:
+        return {
+            "sOutcome": S_PROBE_REJECTED, "sDetail": str(error),
+            "listDepositTitles": [],
+        }
+    except (ZenodoError, requests.RequestException) as error:
+        return {
+            "sOutcome": S_PROBE_UNDETERMINED,
+            "sDetail": f"{type(error).__name__}: {error}",
+            "listDepositTitles": [],
+        }
+    return {
+        "sOutcome": S_PROBE_ACCEPTED, "sDetail": "",
+        "listDepositTitles": _flistDepositTitles(listDeposits),
+    }
 
-    for sSlot in (fsZenodoTokenName(sService), "zenodo_token"):
-        if fbSecretExists(sSlot, "keyring"):
-            return fsRetrieveSecret(sSlot, "keyring")
-    return ""
+
+def _flistDepositTitles(listDeposits):
+    if not isinstance(listDeposits, list):
+        return []
+    return [
+        str((dictDeposit.get("metadata") or {}).get("title") or "")
+        for dictDeposit in listDeposits if isinstance(dictDeposit, dict)
+    ]
 
 
 def _fdictBuildAuthHeader(sToken):
@@ -1280,16 +1309,19 @@ def flistDescribeUnexpectedDepositFiles(dictDeposit, listExpected):
     ]
 
 
-def fdictRevokeZenodoToken(sService="sandbox"):
-    """Clear a Zenodo PAT from the local keyring.
+def fdictRevokeZenodoToken(sService, sProjectUuid):
+    """Clear one project's ACTIVE Zenodo token from the host keyring.
 
     Zenodo does not expose a token-revocation endpoint, so the
     upstream side is logged as a no-op pointing to the web UI. The
-    local keyring slot for the requested service is cleared via
-    ``fnDeleteSecret``. Returns the same dict shape as the GitHub
-    and Overleaf revokers so the CLI can render a uniform status.
+    slot cleared is the project's active slot for the instance
+    (:mod:`vaibify.config.zenodoTokenSlots`). Returns the same dict
+    shape as the GitHub and Overleaf revokers so the CLI can render a
+    uniform status.
     """
-    sSlot = fsZenodoTokenName(sService)
+    from vaibify.config.zenodoTokenSlots import fsActiveSlot
+    sInstance = "production" if sService == "zenodo" else "sandbox"
+    sSlot = fsActiveSlot(sInstance, sProjectUuid)
     bLocal, sLocalMessage = _ftClearLocalZenodoCredential(sSlot)
     sWebPath = (
         "zenodo.org/account/settings/applications"

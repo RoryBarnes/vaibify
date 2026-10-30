@@ -27,10 +27,17 @@ theirs; nothing here touches it. The line is authorship: vaibify's
 programs run on vaibify's interpreter, the researcher's run on
 theirs.
 
-**Programs that import only the standard library keep ``python3`` in
-both modes**, deliberately. A marker migration or a glob expansion
-works under any interpreter, and routing them through here would
-widen the change without fixing anything.
+**In a container the interpreter runs isolated** (``python3 -I``,
+:mod:`vaibify.docker.execLane`): the user site, the working directory
+and every ``PYTHON*`` variable belong to the in-container agent, and a
+program whose answer the hub trusts must not import from them. The
+image installs vaibify's dependencies in the system site-packages as
+root, which ``-I`` leaves importable. The host interpreter is not
+isolated: there the program and the researcher share one machine.
+
+**Programs that import only the standard library spell the same
+isolated interpreter in a container**, through the constant, so the
+rule has one spelling to check.
 """
 
 __all__ = ["fsResolveHelperInterpreter"]
@@ -38,6 +45,7 @@ __all__ = ["fsResolveHelperInterpreter"]
 import sys
 
 from vaibify.config.registryManager import fbIsHostProject
+from vaibify.docker.execLane import S_HUB_PYTHON_COMMAND
 
 from .pipelineUtils import fsShellQuote
 
@@ -51,5 +59,5 @@ def fsResolveHelperInterpreter(sResourceId):
     text.
     """
     if not fbIsHostProject(sResourceId):
-        return "python3"
+        return S_HUB_PYTHON_COMMAND
     return fsShellQuote(sys.executable)

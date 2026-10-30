@@ -23,6 +23,10 @@ import os
 import posixpath
 import subprocess
 import threading
+
+from vaibify.docker.execLane import (
+    S_EXEC_LANE_HUB_INTERNAL, S_HUB_PYTHON_COMMAND,
+)
 import time
 
 __all__ = [
@@ -330,13 +334,17 @@ class HostRepoFiles:
             dictResult[sAbsPath] = _fsHashHostFileOrNone(sAbsPath)
         return dictResult
 
-    def ftRunCommand(self, saCommand, fTimeoutSeconds):
+    def ftRunCommand(
+        self, saCommand, fTimeoutSeconds, sLane=S_EXEC_LANE_HUB_INTERNAL,
+    ):
         """Run a host command; return ``(iExitCode, sStdout, sStderr)``.
 
         Failure to launch (missing binary, timeout) maps to exit code
         127 with empty output so callers can treat all failures
-        uniformly.
+        uniformly. ``sLane`` has no meaning on a local tree and is
+        accepted for the duck type the container adapter defines.
         """
+        del sLane
         try:
             processResult = subprocess.run(
                 saCommand, capture_output=True, text=True,
@@ -522,7 +530,7 @@ def _fsBuildEmbeddedScriptCommand(sScriptTemplate, jsonPayload):
     sScript = sScriptTemplate % {"payload": repr(sPayloadB64)}
     sScriptB64 = base64.b64encode(sScript.encode("utf-8")).decode("ascii")
     return (
-        "python3 -c \"import base64; "
+        S_HUB_PYTHON_COMMAND + " -c \"import base64; "
         f"exec(base64.b64decode('{sScriptB64}').decode())\""
     )
 
@@ -789,7 +797,9 @@ class ContainerRepoFiles:
         _iExitCode, sStdout = self._ftExec(sCommand)
         return _fdictParseEmbeddedScriptOutput(sStdout)
 
-    def ftRunCommand(self, saCommand, fTimeoutSeconds):
+    def ftRunCommand(
+        self, saCommand, fTimeoutSeconds, sLane=S_EXEC_LANE_HUB_INTERNAL,
+    ):
         """Run a command where the project lives, with a timeout guard.
 
         Returns ``(iExitCode, sStdout, sStderr)``. The bound stops a
@@ -798,7 +808,9 @@ class ContainerRepoFiles:
         is served by the host leg, which applies the bound itself (exit
         124, process group ended): macOS ships no ``timeout``, and the
         prefix there made every command exit 127, so every git question
-        a host project asked answered "could not say".
+        a host project asked answered "could not say". ``sLane`` is the
+        exec lane (:mod:`vaibify.docker.execLane`): hub-internal unless
+        the command must see the researcher's own environment.
         """
         from vaibify.config.registryManager import fbIsHostProject
         sJoined = " ".join(fsShellQuotePosix(s) for s in saCommand)
@@ -810,7 +822,7 @@ class ContainerRepoFiles:
             sCommand = f"timeout {iTimeoutSeconds} {sJoined}"
             dictBound = {}
         tExecResult = self.connectionDocker.ftRunInContainerStreamed(
-            self.sContainerId, sCommand, **dictBound,
+            self.sContainerId, sCommand, sLane=sLane, **dictBound,
         )
         return (
             tExecResult.iExitCode, tExecResult.sStdout, tExecResult.sStderr,
@@ -1217,10 +1229,21 @@ class SnapshotRepoFiles:
         return self._dictFiles[sRelPath]
 
     def fbIsFile(self, sRelPath):
-        """Return the snapshotted existence of an envelope file."""
+        """Return the snapshotted existence of an envelope file.
+
+        ``None`` in the snapshot means the reader was refused the path;
+        that is "could not check", so it raises ``OSError`` like a failed
+        live read, never answers absent.
+        """
         if not self.sRootPath:
             return False
-        return bool(self._fdictFileEntry(sRelPath).get("bIsFile"))
+        bIsFile = self._fdictFileEntry(sRelPath).get("bIsFile")
+        if bIsFile is None:
+            raise OSError(
+                f"could not check '{sRelPath}': the reader was refused "
+                "the path at snapshot time"
+            )
+        return bool(bIsFile)
 
     def fbIsDir(self, sRelPath):
         """Directories are not sampled; snapshot has no honest answer."""
@@ -1231,6 +1254,11 @@ class SnapshotRepoFiles:
     def fsReadText(self, sRelPath):
         """Return snapshotted file text; FileNotFoundError when absent."""
         dictEntry = self._fdictFileEntry(sRelPath)
+        if dictEntry.get("bIsFile") is None:
+            raise OSError(
+                f"could not read '{sRelPath}': the reader was refused "
+                "the path at snapshot time"
+            )
         if not dictEntry.get("bIsFile") or dictEntry.get("sText") is None:
             raise FileNotFoundError(
                 f"not in container at snapshot time: '{sRelPath}'"
@@ -1306,7 +1334,9 @@ class SnapshotRepoFiles:
             for sAbsPath in listAbsPaths
         }
 
-    def ftRunCommand(self, saCommand, fTimeoutSeconds):
+    def ftRunCommand(
+        self, saCommand, fTimeoutSeconds, sLane=S_EXEC_LANE_HUB_INTERNAL,
+    ):
         """Command execution is a live-adapter operation."""
         raise NotImplementedError(
             "SnapshotRepoFiles cannot run commands"

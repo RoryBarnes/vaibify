@@ -41,7 +41,7 @@ class FakeExecDockerConnection:
         self.listWrites = []
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         self.listCommands.append((sContainerId, sCommand))
         resultProcess = subprocess.run(
@@ -53,7 +53,7 @@ class FakeExecDockerConnection:
             sStderr=resultProcess.stderr,
         )
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         with open(sPath, "rb") as fileHandle:
             return fileHandle.read()
 
@@ -381,7 +381,7 @@ class _CannedExecConnection:
         self.sStdout = sStdout
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         self.listCommands.append((sContainerId, sCommand))
         return SimpleNamespace(

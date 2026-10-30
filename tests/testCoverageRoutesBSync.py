@@ -25,6 +25,9 @@ from vaibify.config import registryManager
 from vaibify.docker import containerManager
 from vaibify.gui import syncDispatcher
 from vaibify.gui.routes import syncRoutes
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 
 S_CONTAINER_ID = "containerIdSyncPanel"
@@ -65,7 +68,7 @@ class SyncExecDouble:
         self.listProbedPaths.extend(listPaths)
         return [True for _ in listPaths]
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         self.listCommands.append(sCommand)
         if self.bRaiseOnExec:
             raise RuntimeError("daemon connection reset")
@@ -475,7 +478,7 @@ def testAnInterruptedPushTheProbeProvesLandedIsASuccess():
     """Zero commits ahead of the upstream is the one proof of a landed push."""
 
     class ProbeDouble(SyncExecDouble):
-        def ftResultExecuteCommand(self, sContainerId, sCommand):
+        def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
             self.listCommands.append(sCommand)
             return (0, "abcdef0123456789\n0\t0\n")
 
@@ -501,60 +504,22 @@ def testGitIdentityRefusesAnEmptyField(sName, sEmail, sField):
 # ── Credential roll-back ladder ──
 
 
-class CredentialDispatcherDouble:
-    """Container keyring operations that fail like an unreachable daemon.
+def testCleanupDeletesTheProjectsActiveSlotAndSwallowsFailure(monkeypatch):
+    """The instance's ACTIVE host slot is the one cleared; a refusal is swallowed."""
+    from vaibify.gui import zenodoTokenAccess
+    listDeleted = []
 
-    The slot naming is the real dispatcher's, so a wrong instance name
-    would still be caught by ``fsZenodoTokenNameForInstance``.
-    """
+    def fnRefuse(connectionDocker, sContainerId, sInstance):
+        listDeleted.append(sInstance)
+        raise RuntimeError("keyring locked")
 
-    fsZenodoTokenNameForInstance = staticmethod(
-        syncDispatcher.fsZenodoTokenNameForInstance,
+    monkeypatch.setattr(
+        zenodoTokenAccess, "fnDeleteActiveZenodoToken", fnRefuse,
     )
-
-    def __init__(self, bCopyRaises=True, bDeleteRaises=True):
-        self.bCopyRaises = bCopyRaises
-        self.bDeleteRaises = bDeleteRaises
-        self.listDeleted = []
-        self.listCopied = []
-
-    def fnDeleteCredentialForProject(self, connectionDocker, sId, sSlot):
-        self.listDeleted.append(sSlot)
-        if self.bDeleteRaises:
-            raise RuntimeError("daemon unreachable")
-
-    def fbCopyCredentialForProject(self, connectionDocker, sId, sFrom, sTo):
-        self.listCopied.append((sFrom, sTo))
-        if self.bCopyRaises:
-            raise RuntimeError("daemon unreachable")
-        return True
-
-
-def testCleanupTargetsTheInstanceSlotAndSwallowsFailure():
-    dispatcherDouble = CredentialDispatcherDouble()
     syncRoutes._fnCleanupCredential(
-        dispatcherDouble, SyncExecDouble(), S_CONTAINER_ID, "zenodo",
-        "production",
+        {"docker": SyncExecDouble()}, S_CONTAINER_ID, "zenodo", "production",
     )
-    assert dispatcherDouble.listDeleted == ["zenodo_token_production"]
-
-
-def testASnapshotThatCannotBeCopiedHasNoBackupSlot():
-    dispatcherDouble = CredentialDispatcherDouble()
-    tSlots = syncRoutes._ftSnapshotContainerCredential(
-        dispatcherDouble, {"docker": SyncExecDouble()}, S_CONTAINER_ID,
-        "zenodo", "sandbox",
-    )
-    assert tSlots == ("zenodo_token_sandbox", None)
-
-
-def testDroppingASnapshotSwallowsADaemonFailure():
-    dispatcherDouble = CredentialDispatcherDouble()
-    syncRoutes._fnDropContainerSnapshot(
-        dispatcherDouble, {"docker": SyncExecDouble()}, S_CONTAINER_ID,
-        "zenodo_token_sandbox_backup",
-    )
-    assert dispatcherDouble.listDeleted == ["zenodo_token_sandbox_backup"]
+    assert listDeleted == ["production"]
 
 
 def testAnOverleafRestoreThatFailsSaysTheTokenWasNotRestored(monkeypatch):
@@ -565,10 +530,9 @@ def testAnOverleafRestoreThatFailsSaysTheTokenWasNotRestored(monkeypatch):
         raise RuntimeError("keyring locked")
 
     monkeypatch.setattr(secretManager, "fnStoreSecret", fnKeyringRefuses)
-    dispatcherDouble = CredentialDispatcherDouble()
     dictResult = {"sMessage": "Validation failed"}
     syncRoutes._fnRollBackFailedCredential(
-        dispatcherDouble, {"docker": SyncExecDouble()}, S_CONTAINER_ID,
+        {"docker": SyncExecDouble()}, S_CONTAINER_ID,
         "overleaf", "", "previousTokenValue", dictResult,
     )
     assert dictResult["sMessage"] == (

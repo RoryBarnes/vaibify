@@ -28,6 +28,9 @@ import time
 
 from . import gitStatus
 from ..docker.execArgumentBudget import flistBatchPathsForOneExec
+from ..docker.execLane import (
+    S_EXEC_LANE_INTEGRITY_READ, S_HUB_PYTHON_COMMAND,
+)
 
 __all__ = [
     "fsCurrentBranchInContainer",
@@ -262,11 +265,11 @@ def _fdictHashOneBatchInContainer(
         "print(json.dumps(out))\n"
     )
     sCommand = (
-        "python3 -c " + shlex.quote(sScript) +
+        S_HUB_PYTHON_COMMAND + " -c " + shlex.quote(sScript) +
         " <<< " + shlex.quote(sPathsJson)
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand,
+        sContainerId, sCommand, sLane=S_EXEC_LANE_INTEGRITY_READ,
     )
     if iExit != 0:
         return None
@@ -308,7 +311,7 @@ def flistListContainerFiles(
         "print(json.dumps(out))\n"
     )
     sCommand = (
-        "python3 -c " + shlex.quote(sScript) +
+        S_HUB_PYTHON_COMMAND + " -c " + shlex.quote(sScript) +
         " <<< " + shlex.quote(sGlobsJson)
     )
     iExit, sOutput = connectionDocker.ftResultExecuteCommand(

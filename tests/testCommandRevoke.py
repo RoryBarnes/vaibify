@@ -94,13 +94,16 @@ def test_fdictRevokeOverleafToken_clears_local_slot():
     assert "overleaf.com/user/account" in dictResult["sMessage"]
 
 
+S_PROJECT_UUID = "a" * 32
+
+
 def test_fdictRevokeZenodoToken_clears_sandbox_slot():
     with patch(
         "vaibify.config.secretManager.fnDeleteSecret",
     ) as mockDelete:
-        dictResult = fdictRevokeZenodoToken("sandbox")
+        dictResult = fdictRevokeZenodoToken("sandbox", S_PROJECT_UUID)
     mockDelete.assert_called_once_with(
-        "zenodo_token_sandbox", "keyring",
+        f"zenodo_token_sandbox:{S_PROJECT_UUID}", "keyring",
     )
     assert dictResult["bLocalCleared"] is True
     assert "sandbox.zenodo.org" in dictResult["sMessage"]
@@ -110,9 +113,9 @@ def test_fdictRevokeZenodoToken_clears_production_slot():
     with patch(
         "vaibify.config.secretManager.fnDeleteSecret",
     ) as mockDelete:
-        dictResult = fdictRevokeZenodoToken("zenodo")
+        dictResult = fdictRevokeZenodoToken("zenodo", S_PROJECT_UUID)
     mockDelete.assert_called_once_with(
-        "zenodo_token_production", "keyring",
+        f"zenodo_token_production:{S_PROJECT_UUID}", "keyring",
     )
     assert dictResult["bLocalCleared"] is True
 
@@ -123,7 +126,7 @@ def test_fdictRevokeZenodoToken_propagates_delete_failure():
         "vaibify.config.secretManager.fnDeleteSecret",
         side_effect=RuntimeError("keyring busy"),
     ):
-        dictResult = fdictRevokeZenodoToken("sandbox")
+        dictResult = fdictRevokeZenodoToken("sandbox", S_PROJECT_UUID)
     assert dictResult["bLocalCleared"] is False
     assert "local clear failed" in dictResult["sMessage"]
 
@@ -159,11 +162,14 @@ def test_cli_revoke_zenodo_targets_sandbox_by_default():
     runner = CliRunner()
     with patch(
         "vaibify.config.secretManager.fnDeleteSecret",
-    ) as mockDelete:
+    ) as mockDelete, patch(
+        "vaibify.cli.commandRevoke._fsResolveProjectUuid",
+        return_value=S_PROJECT_UUID,
+    ):
         result = runner.invoke(fnRevokeCommand, ["zenodo"])
     assert result.exit_code == 0
     mockDelete.assert_called_once_with(
-        "zenodo_token_sandbox", "keyring",
+        f"zenodo_token_sandbox:{S_PROJECT_UUID}", "keyring",
     )
 
 
@@ -171,13 +177,18 @@ def test_cli_revoke_zenodo_targets_production_when_asked():
     runner = CliRunner()
     with patch(
         "vaibify.config.secretManager.fnDeleteSecret",
-    ) as mockDelete:
+    ) as mockDelete, patch(
+        "vaibify.cli.commandRevoke._fsResolveProjectUuid",
+        return_value=S_PROJECT_UUID,
+    ) as mockResolve:
         result = runner.invoke(
-            fnRevokeCommand, ["zenodo", "--instance", "production"],
+            fnRevokeCommand,
+            ["zenodo", "--instance", "production", "--project", "studyOne"],
         )
     assert result.exit_code == 0
+    mockResolve.assert_called_once_with("studyOne")
     mockDelete.assert_called_once_with(
-        "zenodo_token_production", "keyring",
+        f"zenodo_token_production:{S_PROJECT_UUID}", "keyring",
     )
 
 

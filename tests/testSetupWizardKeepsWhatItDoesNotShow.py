@@ -70,7 +70,7 @@ def _fdictEveryKeyConfigured(tmp_path, monkeypatch):
         "ports": [{"container": 8888, "host": 8899}],
         "bindMounts": [{
             "host": str(pathHome / "datasets"), "container": "/data",
-            "readOnly": True,
+            "readWrite": True,
         }],
         "secrets": [{"name": "api_token", "method": "keyring"}],
         "reproducibility": {
@@ -83,9 +83,12 @@ def _fdictEveryKeyConfigured(tmp_path, monkeypatch):
             },
         },
         "networkIsolation": True,
+        "networkMode": "isolated",
+        "allowedHosts": ["data.example.org"],
         "neverSleep": True,
         "dashboardPort": 8123,
         "cpuLimit": 3,
+        "pidsLimit": 4096,
         "memoryLimitGigabytes": 6.5,
     }
 

@@ -143,12 +143,13 @@ def fsGetVolumeName(config):
 def fsGetCredentialsVolumeName(config):
     """Return the credentials volume name for a project.
 
-    The credentials volume persists the container user's keyring
+    The credentials volume persisted the container user's keyring
     data directory across container recreations (``docker rm``
-    followed by ``docker run`` or a GUI Rebuild) so that stored
-    Zenodo, GitHub, and any other in-container-keyring tokens do
-    not have to be re-entered. Host-keyring tokens (Overleaf) do
-    not need this volume; they already persist host-side.
+    followed by ``docker run`` or a GUI Rebuild) while Zenodo tokens
+    lived in the container. Since 2026-10-29 every token lives on the
+    host, so no volume is created for a new container; an existing
+    one is still mounted until the migration out of it has finished
+    (see ``containerManager._fnAddCredentialsVolume``).
 
     Parameters
     ----------

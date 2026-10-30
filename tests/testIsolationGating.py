@@ -22,6 +22,9 @@ from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.typedHashDouble import TypedHashFromServedBytes
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 
 S_CONTAINER_ID = "isolation_test_cid"
@@ -93,7 +96,7 @@ class _MockDockerIsolation(TypedHashFromServedBytes):
         )
         return ExecResult(iExitCode=iExitCode, sStdout=sOutput, sStderr="")
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         if "test -d" in sCommand and ".vaibify" in sCommand:
             return (0, "")
         if "find" in sCommand and ".vaibify/workflows" in sCommand:
@@ -106,7 +109,7 @@ class _MockDockerIsolation(TypedHashFromServedBytes):
             return (0, "")
         if "ps aux" in sCommand:
             return (0, "0\n")
-        if "python3 -c" in sCommand and "hashlib" in sCommand:
+        if "python3 -I -c" in sCommand and "hashlib" in sCommand:
             return (0, "")
         if "which claude" in sCommand:
             return (1, "")
@@ -114,7 +117,7 @@ class _MockDockerIsolation(TypedHashFromServedBytes):
             return (0, "")
         return (0, "ok")
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, sLane=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
         if sPath.endswith(".json"):
@@ -140,7 +143,7 @@ class _MockDockerIsolation(TypedHashFromServedBytes):
         # so the sidecar bookkeeping starts absent like a fresh repo.
         return sPath in self._dictFiles
 
-    def ftRunInContainerStreamed(self, sContainerId, sCommand):
+    def ftRunInContainerStreamed(self, sContainerId, sCommand, sLane=None):
         import shlex
         from collections import namedtuple
         TExecResult = namedtuple("TExecResult", "iExitCode sStdout")
@@ -157,7 +160,7 @@ class _MockDockerIsolation(TypedHashFromServedBytes):
         )
         return TExecResult(iExitCode, sStdout)
 
-    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None):
+    def fsExecCreate(self, sContainerId, sCommand=None, sUser=None, sLane=None):
         return "exec-id-iso"
 
     def fsocketExecStart(self, sExecId):
@@ -303,8 +306,8 @@ def test_overleaf_push_proceeds_when_not_isolated(clientHttp):
         "vaibify.docker.containerManager.fbContainerIsNetworkIsolated",
         return_value=False,
     ), patch(
-        "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
-        return_value="test-tok",
+        "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
+        return_value=(0, "PUSH_STATUS=pushed\nHEAD_SHA=abc\nok\n"),
     ):
         responseHttp = clientHttp.post(
             f"/api/overleaf/{S_CONTAINER_ID}/push",
@@ -323,6 +326,10 @@ def test_zenodo_archive_proceeds_when_not_isolated(clientHttp):
     with patch(
         "vaibify.docker.containerManager.fbContainerIsNetworkIsolated",
         return_value=False,
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 1, "sDoi": '
+                      '"10.5072/zenodo.1", "sConceptDoi": "", "sHtmlUrl": ""}'),
     ):
         responseHttp = clientHttp.post(
             f"/api/zenodo/{S_CONTAINER_ID}/archive",

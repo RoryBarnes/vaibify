@@ -490,7 +490,7 @@ def ftTreeCallThroughTheProgram(connection, clientDocker, *tCallArguments, **dic
     daemon = ExecProgramDaemon(bExecute=False)
     clientDocker.api = daemon
     connection.fnWriteTreeViaTar(*tCallArguments, **dictKeywords)
-    sProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    sProgram = daemon.listExecCreateKeywords[0]["cmd"][3]
     sDestination = ast.literal_eval(
         re.search(r"^sDestination = (.+)$", sProgram, re.M).group(1))
     return sDestination, flistReadTarMembers(daemon.listReceivedStdin[0])
@@ -573,9 +573,9 @@ def testCopyFileIntoAnExistingDirectoryKeepsItsBasename(
         S_CONTAINER_ID, str(pathSource), "/workspace/inputs")
     assert container.listPutArchives == []
     assert daemon.listReceivedStdin == [b"payload"]
-    sWriteProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    sWriteProgram = daemon.listExecCreateKeywords[0]["cmd"][3]
     assert repr("/workspace/inputs/dataFile.csv") in sWriteProgram
-    sProbeProgram = shlex.split(container.listExecCalls[0]["cmd"][2])[2]
+    sProbeProgram = shlex.split(container.listExecCalls[0]["cmd"][2])[3]
     assert repr("/workspace/inputs") in sProbeProgram
 
 
@@ -591,7 +591,7 @@ def testCopyFileToANewPathWritesThatExactPath(monkeypatch, tmp_path):
         S_CONTAINER_ID, str(pathSource), "/workspace/inputs/renamed.csv")
     assert container.listPutArchives == []
     assert daemon.listReceivedStdin == [b"payload"]
-    sWriteProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    sWriteProgram = daemon.listExecCreateKeywords[0]["cmd"][3]
     assert repr("/workspace/inputs/renamed.csv") in sWriteProgram
     assert daemon.listExecCreateKeywords[0]["user"] == "researcher"
 
@@ -646,7 +646,7 @@ def ftTreeRequestFromTheDaemon(daemon):
     """Return ``(sDestination, setMemberNames)`` of the one tree write."""
     import ast
     import re
-    sProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    sProgram = daemon.listExecCreateKeywords[0]["cmd"][3]
     sDestination = ast.literal_eval(
         re.search(r"^sDestination = (.+)$", sProgram, re.M).group(1))
     return sDestination, {

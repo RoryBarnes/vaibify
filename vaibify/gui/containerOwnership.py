@@ -360,7 +360,7 @@ def frecordOwnerAuthorizedByAgentToken(
     for recordOwner in dictContainerOwners.values():
         if (
             recordOwner.sAgentToken
-            and recordOwner.sAgentToken == sPresentedToken
+            and secrets.compare_digest(recordOwner.sAgentToken, sPresentedToken)
             and recordOwner.sContainerId == sContainerId
         ):
             return recordOwner

@@ -1482,6 +1482,7 @@ var VaibifyContainerManager = (function () {
             'as this container is running, preventing sleep. ' +
             'Has no effect on Linux.</p>' +
             '</div>' +
+            _fsRenderNetworkModeSetting(dictSettings) +
             _fsRenderX11Setting(dictSettings) +
             _fsRenderResourceLimitSettings(dictSettings) +
             _fsRenderImageTrustSetting(dictSettings) +
@@ -1500,6 +1501,8 @@ var VaibifyContainerManager = (function () {
                     "settingNeverSleep").checked;
                 var bX11Forwarding = document.getElementById(
                     "settingX11Forwarding").checked;
+                var sNetworkMode = document.getElementById(
+                    "settingNetworkMode").value;
                 var iCpuLimit = _fiParsePositiveNumber(
                     "settingCpuLimit", true);
                 var fMemoryLimitGigabytes = _fiParsePositiveNumber(
@@ -1508,14 +1511,48 @@ var VaibifyContainerManager = (function () {
                 await fnSaveContainerSettings(sName, {
                     bNeverSleep: bNeverSleep,
                     bX11Forwarding: bX11Forwarding,
+                    sNetworkMode: sNetworkMode,
                     iCpuLimit: iCpuLimit,
                     fMemoryLimitGigabytes: fMemoryLimitGigabytes,
                 });
             });
     }
 
+    function _fsNetworkModeOf(dictSettings) {
+        if (dictSettings.sNetworkMode) return dictSettings.sNetworkMode;
+        return dictSettings.bNetworkIsolation === true ? "isolated" : "open";
+    }
+
+    function _fsRenderNetworkModeSetting(dictSettings) {
+        var sMode = _fsNetworkModeOf(dictSettings);
+        var bX11 = dictSettings.bX11Forwarding === true;
+        var listModes = [
+            ["allowlist", "Allowlist (agents' services, GitHub, package " +
+                "indexes, hosts you allow)"],
+            ["open", "Open (the whole network)"],
+            ["isolated", "Isolated (no network)"],
+        ];
+        var listAllowed = dictSettings.listAllowedHosts || [];
+        return '<div class="settings-option">' +
+            '<label class="settings-option-row">' +
+            '<span class="settings-option-label">Network mode</span> ' +
+            '<select id="settingNetworkMode"' + (bX11 ? " disabled" : "") +
+            '>' + listModes.map(function (tMode) {
+                return '<option value="' + tMode[0] + '"' +
+                    (tMode[0] === sMode ? " selected" : "") + '>' +
+                    VaibifyUtilities.fnEscapeHtml(tMode[1]) + '</option>';
+            }).join("") + '</select></label>' +
+            '<p class="settings-option-help">What the container may ' +
+            'reach. It takes effect when the container is created ' +
+            'again.' + (bX11 ? ' Locked to open while X11 display ' +
+            'forwarding is on.' : '') +
+            (listAllowed.length ? ' Hosts you allowed: ' +
+                VaibifyUtilities.fnEscapeHtml(listAllowed.join(", ")) + '.'
+                : '') + '</p></div>';
+    }
+
     function _fsRenderX11Setting(dictSettings) {
-        var bSealed = dictSettings.bNetworkIsolation === true;
+        var bSealed = _fsNetworkModeOf(dictSettings) !== "open";
         return '<div class="settings-option">' +
             '<label class="settings-option-row">' +
             '<input type="checkbox" id="settingX11Forwarding"' +
@@ -1525,10 +1562,10 @@ var VaibifyContainerManager = (function () {
             'X11 display forwarding</span></label>' +
             '<p class="settings-option-help">' +
             'Lets graphical programs in the container open windows ' +
-            'on your screen. A connected program can read the screen ' +
-            'and send input, so this is off by default. It takes ' +
-            'effect when the container is created again.' +
-            (bSealed ? ' Unavailable while network isolation is on.' : '') +
+            'on your screen. A connected program can draw on it, so ' +
+            'this is off by default. It takes effect when the ' +
+            'container is created again.' +
+            (bSealed ? ' Unavailable while the network mode is not open.' : '') +
             '</p></div>';
     }
 
@@ -2891,6 +2928,9 @@ var VaibifyContainerManager = (function () {
         _fnRenderResourceAdvisoryBanner(
             (dictReadiness && dictReadiness.listResourceAdvisories) || []
         );
+        _fnRenderNetworkBanner(
+            (dictReadiness && dictReadiness.dictNetwork) || null
+        );
         if (!dictReadiness) return;
         var sStatus = dictReadiness.sStatus || "";
         if (sStatus === "failed") {
@@ -2959,6 +2999,67 @@ var VaibifyContainerManager = (function () {
                 elBanner.style.display = "none";
                 elBanner.innerHTML = "";
             });
+        }
+    }
+
+    function _fnRenderNetworkBanner(dictNetwork) {
+        /* The server's facts about the sealed network: the mode, whether
+           the proxy sidecar is up, and what it refused (ruling D8). A
+           project not in allowlist mode has no row. A proxy that is
+           down is said in so many words; nothing here is re-derived. */
+        var elBanner = document.getElementById("networkBanner");
+        if (!elBanner) return;
+        if (!dictNetwork || dictNetwork.sMode !== "allowlist") {
+            elBanner.style.display = "none";
+            elBanner.innerHTML = "";
+            return;
+        }
+        var listRefused = dictNetwork.listRefused || [];
+        var sState = dictNetwork.sProxyState || "unknown";
+        var sStateText = sState === "running"
+            ? "network proxy running"
+            : (sState === "unknown" ? "network proxy state could not be read"
+                : "network proxy down: nothing in the container reaches " +
+                  "the network until the container is started again");
+        elBanner.innerHTML =
+            '<div class="build-warnings-banner-header">' +
+            '<span>Network mode: allowlist (' +
+            VaibifyUtilities.fnEscapeHtml(sStateText) + ')</span></div>' +
+            (listRefused.length
+                ? '<ul class="build-warnings-banner-list">' +
+                  listRefused.map(function (dictEntry) {
+                      var sHost = dictEntry.sHost + ":" + dictEntry.iPort;
+                      return "<li>Refused " + dictEntry.iCount + "\u00d7: " +
+                          VaibifyUtilities.fnEscapeHtml(sHost) + " (" +
+                          VaibifyUtilities.fnEscapeHtml(dictEntry.sReason || "") +
+                          ') <button type="button" class="btn ' +
+                          'btn-allow-network-host" data-host="' +
+                          VaibifyUtilities.fnEscapeHtml(sHost) +
+                          '">Allow host</button></li>';
+                  }).join("") + '</ul>'
+                : '<p class="build-warnings-banner-list">Nothing refused ' +
+                  'recently.</p>');
+        elBanner.style.display = "block";
+        elBanner.querySelectorAll(".btn-allow-network-host").forEach(
+            function (elButton) {
+                elButton.addEventListener("click", function () {
+                    _fnAllowNetworkHost(dictNetwork.sName, elButton.dataset.host);
+                });
+            });
+    }
+
+    async function _fnAllowNetworkHost(sName, sHost) {
+        try {
+            var dictAnswer = await VaibifyApi.fdictPost(
+                "/api/containers/" + encodeURIComponent(sName)
+                + "/network/allow-host", {sHost: sHost});
+            VaibifyApp.fnShowToast(
+                "Allowed " + sHost + "; it takes effect when the container " +
+                "is started again. Allowed hosts: " +
+                ((dictAnswer || {}).listAllowedHosts || []).join(", "),
+                "success");
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         }
     }
 

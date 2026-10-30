@@ -360,7 +360,7 @@ class _RecordingConnection:
         self.listCommands = []
 
     def ftRunInContainerStreamedWithChunks(
-        self, _sContainerId, sCommand, _fnEmitChunk, sWorkdir=None,
+        self, _sContainerId, sCommand, _fnEmitChunk, sWorkdir=None, sLane=None
     ):
         self.listCommands.append(sCommand)
         return SimpleNamespace(iExitCode=0, fCpuSeconds=0.0)

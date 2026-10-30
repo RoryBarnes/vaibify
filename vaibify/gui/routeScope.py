@@ -259,6 +259,10 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/registry/{sName}/rename"): S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/containers/{sName}/settings"):
         S_SCOPE_CONTAINER_LIFECYCLE,
+    # Allowing a network host rewrites the project's vaibify.yml, on the
+    # settings route's terms.
+    ("POST", "/api/containers/{sName}/network/allow-host"):
+        S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/host-directories/create"): S_SCOPE_BROWSER_HUB,
     ("PUT", "/api/preferences/host-warning-acknowledged"):
         S_SCOPE_BROWSER_HUB,
@@ -384,6 +388,16 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # writes nothing, and only the session that owns the container is
     # shown the host's socket path.
     ("GET", "/api/containers/{sContainerId}/vscode-link"),
+    # The remote-binding panel: what project.json names, what the
+    # researcher confirmed on the host, and what the host fetched about
+    # it with the researcher's own token. Reaches no container; the
+    # handler also refuses the agent lane by name.
+    ("GET", "/api/bindings/{sContainerId}"),
+    # The Zenodo token panel: which slots moved out of the container,
+    # how the host-side validation went, and what Zenodo reports about
+    # a pending token. Reads host state only; the handler also refuses
+    # the agent lane by name.
+    ("GET", "/api/zenodo-tokens/{sContainerId}"),
     # The Files tab's free-space answer before a drop. Reads the free
     # bytes of the volume (or host directory) the files would land in
     # and the destination names that already exist; writes nothing,

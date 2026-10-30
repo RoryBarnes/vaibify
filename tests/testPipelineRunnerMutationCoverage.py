@@ -60,7 +60,7 @@ def _fnConfigureStreamingMock(mockDocker, listResults):
 
     def fnStreamingSideEffect(
         sContainerId, sCommand, fnEmitChunk,
-        sWorkdir=None, sUser=None,
+        sWorkdir=None, sUser=None, sLane=None
     ):
         if listPending:
             iExitCode, sOutput = listPending.pop(0)

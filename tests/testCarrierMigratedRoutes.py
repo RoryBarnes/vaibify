@@ -86,6 +86,9 @@ from vaibify.gui import (
 from vaibify.reproducibility.publicationScope import (
     I_PUBLICATION_SCOPE_VERSION,
 )
+from tests.remoteBindingFixtures import (  # noqa: F401  (autouse fixture)
+    fixtureBindingsFollowProjectJson,
+)
 
 S_PRIMITIVE_WRITE = "fnWriteFileViaTar"
 S_PRIMITIVE_EXEC = "ftRunInContainerStreamed"
@@ -193,6 +196,33 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
             iMode=iMode, iUid=iUid, iGid=iGid,
         )
 
+    def fnWriteTreeViaTar(
+        self, sContainerId, sDestinationDirectory, listHostPaths,
+        iUid=None, iGid=None, sArchiveName=None, sAuthorizedRoot=None,
+        tForbiddenNames=(), bCreateDestination=False,
+    ):
+        """The confined tree write: gated like every write, recorded by its name."""
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnWriteTreeViaTar",
+        )
+        self._fnRecordLiveAdmission(
+            sContainerId, "fnWriteTreeViaTar", sPath=sDestinationDirectory,
+        )
+        for sHostPath in listHostPaths:
+            with open(sHostPath, "rb") as fileLocal:
+                self._dictFiles[
+                    sDestinationDirectory + "/" + os.path.basename(sHostPath)
+                ] = fileLocal.read()
+
+    def fnMakeDirectory(
+        self, sContainerId, sDirectoryPath, sAuthorizedRoot=None,
+        tForbiddenNames=(),
+    ):
+        self.fnWriteTreeViaTar(
+            sContainerId, sDirectoryPath, [], sAuthorizedRoot=sAuthorizedRoot,
+            tForbiddenNames=tForbiddenNames, bCreateDestination=True,
+        )
+
     def fnWriteFileViaTar(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
@@ -218,7 +248,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         )
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         mutationAdmission.fnAssertContainerCommandAdmitted(
             sContainerId, S_PRIMITIVE_EXEC,
@@ -230,7 +260,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
             self, sContainerId, sCommand, sWorkdir,
         )
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         """Fetch a file the way a typed read reaches the container.
 
         The real adapter marks the audited-read context around its own
@@ -269,6 +299,13 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
             mutationAdmission.fnExitAuditedRead(tokenRead)
         self.listTypedPathProbes.append(sPath)
         raise FileNotFoundError(f"Not a directory: {sPath}")
+
+    def fiterReadFileConfined(
+        self, sContainerId, sPath, sAuthorizedRoot=None,
+    ):
+        """The confined read the pull now uses; a read, so ungated here too."""
+        del sAuthorizedRoot
+        yield from self.fiterStreamFile(sContainerId, sPath)
 
     def fiterStreamFile(
         self, sContainerId, sPath, iChunkSizeBytes=1048576,
@@ -746,7 +783,7 @@ class DockerDoubleThatBlocksTheClean(DockerDoubleThatCallsTheRealGates):
         self.listCleanAdmissionModes = []
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         if not _fbCommandIsTheOutputClean(sCommand):
             return super().ftResultExecuteCommand(
@@ -766,7 +803,7 @@ class DockerDoubleThatBlocksTheClean(DockerDoubleThatCallsTheRealGates):
         self.listCleanCommandsRun.append(sCommand)
         return (0, "")
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(
                 DICT_WORKFLOW_WITH_OUTPUTS,
@@ -994,7 +1031,7 @@ class DockerDoubleServingAWorkflowWithPlots(
     conversion.
     """
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(
                 DICT_WORKFLOW_WITH_OUTPUTS,
@@ -1435,7 +1472,7 @@ class DockerDoubleServingAPublishedWorkflow(
             },
         }).encode("utf-8")
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(_fdictPublishedWorkflow()).encode("utf-8")
         return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
@@ -1469,7 +1506,7 @@ class DockerDoubleServingAPublishedWorkflow(
         return sPath in self._setDirs
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         if sCommand.startswith("python3 -c "):
             mutationAdmission.fnAssertContainerCommandAdmitted(
@@ -2146,7 +2183,7 @@ class DockerDoubleServingATokenedTrackedRepo(
             posixpath.join(S_PROJECT_REPO, "results.json"),
         )
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         """Answer the sidecar read, which is a TYPED read now.
 
         It was a ``cat`` through the general exec primitive when this
@@ -2254,7 +2291,7 @@ class DockerDoubleWhereThePushedRepoIsTheProjectRepo(
     """
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         """Report the repository as the project repo's git top level.
 
@@ -2277,7 +2314,7 @@ class DockerDoubleWhereThePushedRepoIsTheProjectRepo(
             sContainerId, sCommand, sWorkdir,
         )
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath != S_WORKFLOW_PATH:
             return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
         dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
@@ -2415,7 +2452,7 @@ class DockerDoubleThatBlocksTheRepoPush(
         self.listPushCommandsRun = []
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         if S_PUSH_COMMAND_MARKER not in sCommand:
             return super().ftResultExecuteCommand(
@@ -2630,7 +2667,7 @@ class DockerDoubleServingADeclaredWorkflow(
     telling the truth about what was written.
     """
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
             self._dictFiles[sPath] = json.dumps(
                 _fdictWorkflowWithDeclarationsAlreadyMade(),
@@ -2824,7 +2861,7 @@ class DockerDoubleWithNothingAtTheNewProjectPath(
     """
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         tResult = DockerDoubleThatCallsTheRealGates.ftResultExecuteCommand(
             self, sContainerId, sCommand, sWorkdir,
@@ -2957,7 +2994,7 @@ class DockerDoubleReadyForAdoption(
         return False
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         tResult = DockerDoubleThatCallsTheRealGates.ftResultExecuteCommand(
             self, sContainerId, sCommand, sWorkdir,
@@ -3084,7 +3121,7 @@ class DockerDoubleServingNinetyNineSteps(
 ):
     """The gated double over a workflow one step below the warning."""
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
             self._dictFiles[sPath] = json.dumps(
                 _fdictWorkflowOneStepBelowTheWarning(),
@@ -3677,7 +3714,7 @@ class DockerDoubleServingAnAiDeclaration(
 ):
     """The gated double over a workflow declaring a declaration file."""
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
             self._dictFiles[sPath] = json.dumps(
                 _fdictWorkflowWithAnAiDeclaration(),
@@ -4130,7 +4167,7 @@ class DockerDoubleServingAStaleRunnerState(
     notices, and its correction is a container write.
     """
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_STATE_PATH:
             return json.dumps({
                 "bRunning": True,
@@ -4238,7 +4275,7 @@ class DockerDoubleForTheRenameCascade(DockerDoubleThatCallsTheRealGates):
     """
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         if sCommand.startswith("test -e "):
             mutationAdmission.fnAssertContainerCommandAdmitted(
@@ -4252,7 +4289,7 @@ class DockerDoubleForTheRenameCascade(DockerDoubleThatCallsTheRealGates):
             sContainerId, sCommand, sWorkdir,
         )
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(DICT_WORKFLOW_FOR_CASCADE).encode("utf-8")
         return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
@@ -4636,7 +4673,7 @@ class DockerDoubleForTheReplayAxis(DockerDoubleThatCallsTheRealGates):
     the capture's test too.
     """
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(DICT_WORKFLOW_FOR_REPLAY).encode("utf-8")
         return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
@@ -5504,7 +5541,7 @@ class DockerDoubleForTheKillRoute(DockerDoubleThatCallsTheRealGates):
         ).encode("utf-8")
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         tExec = super().ftResultExecuteCommand(
             sContainerId, sCommand, sWorkdir,
@@ -5700,7 +5737,7 @@ class DockerDoubleForTestGeneration(DockerDoubleThatCallsTheRealGates):
             S_PROJECT_REPO + "/stepA/" + S_GENERATION_OUTPUT,
         )
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
             dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
             dictWorkflow["listSteps"][0]["saOutputDataFiles"] = [
@@ -5710,7 +5747,7 @@ class DockerDoubleForTestGeneration(DockerDoubleThatCallsTheRealGates):
         return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
 
     def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
+        self, sContainerId, sCommand, sWorkdir=None, sLane=None
     ):
         tExec = super().ftResultExecuteCommand(
             sContainerId, sCommand, sWorkdir,
@@ -5877,8 +5914,11 @@ class DockerDoubleServingASyncBoundWorkflow(
     def __init__(self):
         super().__init__()
         self.setExistingPaths.add(S_SYNC_PUSHABLE_FILE)
+        # The push stages the figure out through the confined reader
+        # (2026-10-29), so the bytes must be there to read.
+        self._dictFiles[S_SYNC_PUSHABLE_FILE] = b"%PDF-figure"
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(_fdictSyncBoundWorkflow()).encode("utf-8")
         return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
@@ -5977,11 +6017,24 @@ def testTheManuscriptPullWritesItsIgnoreUnderTheSameDrain(
     Kills: reverting ``_fdictHandlePullManuscript`` to its two
     ``asyncio.to_thread`` hops plus a bare ``fnWriteFile``.
     """
-    from vaibify.reproducibility import overleafMirror
+    import os
+    from vaibify.reproducibility import overleafMirror, overleafSync
     client, connectionDocker = tclientSyncBound
+
+    def fnCloneOnTheHost(sProjectId, listPullPaths, sTargetDirectory, sToken):
+        # The host-side clone (2026-10-29), stood in for: it lands the
+        # sources in the scratch directory the dispatcher then writes
+        # into the container through the confined tree write.
+        with open(os.path.join(sTargetDirectory, "main.tex"), "w") as fileTex:
+            fileTex.write("pulled")
+
     with _fnOverleafHostMirrorStubbed(), patch.object(
         overleafMirror, "flistListMirrorTree",
         lambda sProjectId: [{"sPath": "main.tex", "sType": "blob"}],
+    ), patch.object(
+        overleafSync, "fnPullTexFromOverleaf", fnCloneOnTheHost,
+    ), patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken", lambda: "tok",
     ):
         client.post(
             f"/api/overleaf/{S_CONTAINER_ID}/pull-manuscript",
@@ -6282,10 +6335,20 @@ S_ZENODO_BLOB_SHA_MARKER = "h = hashlib.sha1(); h.update(header)"
 
 
 def _fresponsePostZenodoArchive(client):
-    """Publish one file to Zenodo through the migrated archive route."""
+    """Publish one file to Zenodo through the migrated archive route.
+
+    The upload itself runs on the host since 2026-10-29 (no exec, and
+    a token this test does not hold), so it is stubbed to the success
+    line; the digest pass and the record save that follow are what
+    these tests observe.
+    """
     with patch(
         "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
         lambda sContainerId: None,
+    ), patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
+        return_value=(0, 'ZENODO_RESULT={"iDepositId": 7, "sDoi": '
+                      '"10.5072/zenodo.7", "sConceptDoi": "", "sHtmlUrl": ""}'),
     ):
         return client.post(
             f"/api/zenodo/{S_CONTAINER_ID}/archive",
@@ -6717,8 +6780,19 @@ def _tlistRecordEveryOverleafPush():
 
 
 def _fresponsePostOverleafPush(client):
-    """Push one figure through the migrated Overleaf push route."""
-    with _fnOverleafHostMirrorStubbed():
+    """Push one figure through the migrated Overleaf push route.
+
+    The push itself runs on the host since 2026-10-29 (a clone with a
+    token this test does not hold), so the dispatcher is stubbed to a
+    pushed outcome; the provenance pass and the bookkeeping save that
+    follow are what these tests observe.
+    """
+    with _fnOverleafHostMirrorStubbed(), patch(
+        "vaibify.reproducibility.overleafSync.ftPushFiguresToOverleaf",
+        return_value=("pushed", "abc"),
+    ), patch(
+        "vaibify.gui.syncDispatcher._fsFetchOverleafToken", lambda: "tok",
+    ):
         return client.post(
             f"/api/overleaf/{S_CONTAINER_ID}/push",
             json={
@@ -6854,7 +6928,7 @@ class DockerDoubleServingALevelThreeWorkflow(
 ):
     """The gate-faithful double over a repo-bound workflow."""
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(_fdictLevelThreeWorkflow()).encode("utf-8")
         return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
@@ -6899,12 +6973,12 @@ class DockerDoubleHoldingALockTheContainerFails(
         self.listTypedPathProbes.append(sPath)
         return True
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_LOCK_ABS_PATH:
             return S_LOCK_TEXT.encode("utf-8")
         return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None, sLane=None):
         # Delegated FIRST, so the enumerate exec crosses the same gate
         # every other command does; answering it before the super call
         # would exempt exactly the exec this fixture exists to watch.
@@ -8047,7 +8121,7 @@ class DockerDoubleServingAWorkflowWithRemotes(
 ):
     """The gate-faithful double over a workflow that has remotes."""
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(
                 _fdictWorkflowConfiguringTwoRemotes(),
@@ -8278,7 +8352,7 @@ class DockerDoubleServingADeclarationStep(
 ):
     """The gated double over a workflow holding a declaration step."""
 
-    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None, sLane=None):
         if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
             self._dictFiles[sPath] = json.dumps(
                 _fdictWorkflowWithADeclarationStep(),

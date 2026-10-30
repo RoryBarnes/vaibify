@@ -24,9 +24,9 @@ from vaibify.reproducibility.overleafSync import (
     _fnCopyPulledFiles,
     _fnCopyPulledFile,
     _fbHasUncommittedChanges,
-    _fnCommitAndPush,
+    _ftCommitAndPush,
     flistBuildCredentialHelperArgs,
-    fnPushAnnotatedToOverleaf,
+    ftPushAnnotatedToOverleaf,
 )
 
 
@@ -198,7 +198,7 @@ def test_fbHasUncommittedChanges_false(mockRun):
 
 
 # -----------------------------------------------------------------------
-# _fnCommitAndPush — no changes
+# _ftCommitAndPush — no changes
 # -----------------------------------------------------------------------
 
 
@@ -206,8 +206,8 @@ def test_fbHasUncommittedChanges_false(mockRun):
     "vaibify.reproducibility.overleafSync._fbHasUncommittedChanges",
     return_value=False,
 )
-def test_fnCommitAndPush_skips_when_clean(mockChanges):
-    _fnCommitAndPush("/repo")
+def test_ftCommitAndPush_skips_when_clean(mockChanges):
+    _ftCommitAndPush("/repo")
 
 
 # -----------------------------------------------------------------------
@@ -238,12 +238,12 @@ def test_flistBuildCredentialHelperArgs_returns_inline_c_args():
 
 
 # -----------------------------------------------------------------------
-# fnPushAnnotatedToOverleaf
+# ftPushAnnotatedToOverleaf
 # -----------------------------------------------------------------------
 
 
 @patch(
-    "vaibify.reproducibility.overleafSync._fnCommitAndPush",
+    "vaibify.reproducibility.overleafSync._ftCommitAndPush",
 )
 @patch(
     "vaibify.reproducibility.overleafSync._fnCopyFiguresToRepo",
@@ -258,10 +258,10 @@ def test_flistBuildCredentialHelperArgs_returns_inline_c_args():
 @patch(
     "vaibify.reproducibility.overleafSync._fnAnnotateTexInRepo",
 )
-def test_fnPushAnnotatedToOverleaf_calls_annotate(
+def test_ftPushAnnotatedToOverleaf_calls_annotate(
     mockAnnotate, mockCreds, mockClone, mockCopy, mockCommit,
 ):
-    fnPushAnnotatedToOverleaf(
+    ftPushAnnotatedToOverleaf(
         ["/fig.pdf"], "proj123", "figures",
         {"listSteps": []},
         "https://github.com/user/repo",
@@ -474,7 +474,8 @@ def test_cli_requires_subcommand():
 
 
 @patch(
-    "vaibify.reproducibility.overleafSync.fnPushFiguresToOverleaf",
+    "vaibify.reproducibility.overleafSync.ftPushFiguresToOverleaf",
+    return_value=("pushed", "abc1234"),
 )
 def test_cli_push_reads_stdin_paths(mockPush):
     """The push subcommand forwards token (line 1) + newline paths."""
@@ -529,7 +530,8 @@ def test_cli_pull_reads_stdin_paths(mockPull):
 
 
 @patch(
-    "vaibify.reproducibility.overleafSync.fnPushAnnotatedToOverleaf",
+    "vaibify.reproducibility.overleafSync.ftPushAnnotatedToOverleaf",
+    return_value=("pushed", "abc1234"),
 )
 def test_cli_push_annotated_reads_json_payload(mockAnnotated):
     """The push-annotated subcommand parses token (line 1) + JSON payload."""
@@ -576,7 +578,7 @@ def test_cli_auth_error_maps_to_specific_exit_code():
         main, OverleafAuthError,
     )
     with patch(
-        "vaibify.reproducibility.overleafSync.fnPushFiguresToOverleaf",
+        "vaibify.reproducibility.overleafSync.ftPushFiguresToOverleaf",
         side_effect=OverleafAuthError("auth failed xyz"),
     ):
         class _FakeStdin:
@@ -747,7 +749,7 @@ def test_clone_command_includes_hardening_flags(tmp_path):
         with patch.object(
             mod, "_fbHasUncommittedChanges", return_value=False,
         ):
-            mod.fnPushFiguresToOverleaf(
+            mod.ftPushFiguresToOverleaf(
                 [], "proj123", "figures", "tok",
             )
     listCloneCmd = [c for c in listCaptured if "clone" in c]
@@ -779,7 +781,7 @@ def test_clone_uses_inline_credential_helper_not_global(tmp_path):
         with patch.object(
             mod, "_fbHasUncommittedChanges", return_value=False,
         ):
-            mod.fnPushFiguresToOverleaf(
+            mod.ftPushFiguresToOverleaf(
                 [], "proj123", "figures", "tok",
             )
     for listCommand in listCaptured:

@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import time
+import uuid
 
 _S_REGISTRY_DIRECTORY = os.path.expanduser("~/.vaibify")
 _S_REGISTRY_PATH = os.path.join(_S_REGISTRY_DIRECTORY, "registry.json")
@@ -284,7 +285,33 @@ def _fdictBuildProjectEntry(
         "sConfigPath": sConfigPath,
         "sContainerName": sContainerName,
         "sMode": sMode,
+        # Random, immutable, host-only: the identity the remote-binding
+        # record is keyed by. A rename keeps it; a re-registration
+        # mints a new one with nothing attached (remoteBindings).
+        "sProjectUuid": uuid.uuid4().hex,
     }
+
+
+def fsProjectUuidFor(sName):
+    """Return the project's stable identity, stamping it on first use.
+
+    An entry written before the identity existed gets one the first
+    time anything asks, under the registry lock, so every project has
+    exactly one for the rest of its life. Never derived from the name.
+    """
+    dictProject = fdictGetProject(sName)
+    if dictProject is None:
+        raise KeyError(f"Project '{sName}' not found in registry")
+    if dictProject.get("sProjectUuid"):
+        return dictProject["sProjectUuid"]
+
+    def fnStampMissingIdentities(dictRegistry):
+        for dictEntry in dictRegistry["listProjects"]:
+            if not dictEntry.get("sProjectUuid"):
+                dictEntry["sProjectUuid"] = uuid.uuid4().hex
+
+    _fnMutateRegistryLocked(fnStampMissingIdentities)
+    return fdictGetProject(sName)["sProjectUuid"]
 
 
 def fnRemoveProject(sName):
@@ -301,6 +328,7 @@ def fnRemoveProject(sName):
         If the project is not found.
     """
     from vaibify.config.imageOrigins import fnRemoveOriginRecord
+    from vaibify.config.remoteBindings import flistDeleteBindings
 
     def fnRemoveByName(dictRegistry):
         listProjects = dictRegistry["listProjects"]
@@ -316,6 +344,11 @@ def fnRemoveProject(sName):
         # Un-registration is one of the three transitions that end an
         # origin record; the image itself is the daemon's to keep.
         fnRemoveOriginRecord(sName)
+        # The remote bindings are the project's and end with it; a
+        # re-registration mints a new identity with nothing attached.
+        for dictProject in listProjects:
+            if dictProject["sName"] == sName and dictProject.get("sProjectUuid"):
+                flistDeleteBindings(dictProject["sProjectUuid"])
 
     _fnMutateRegistryLocked(fnRemoveByName)
 

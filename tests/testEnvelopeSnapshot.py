@@ -29,7 +29,7 @@ class FakeExecDockerConnection:
         self.listCommands = []
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         self.listCommands.append((sContainerId, sCommand))
         resultProcess = subprocess.run(
@@ -49,7 +49,7 @@ class FailingExecConnection:
         self.listCommands = []
 
     def ftRunInContainerStreamed(
-        self, sContainerId, sCommand, sWorkdir=None, sUser=None,
+        self, sContainerId, sCommand, sWorkdir=None, sUser=None, sLane=None
     ):
         self.listCommands.append((sContainerId, sCommand))
         return SimpleNamespace(iExitCode=1, sStdout="", sStderr="boom")

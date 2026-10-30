@@ -528,9 +528,41 @@ DICT_NAMED_AUTHORITIES = {
         ),
     "docker/x11Forwarding.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
-            ["host-cli", "http"],
+            ["host-cli", "http", "background"],
             "Probes the host X server / XQuartz so GUI forwarding is "
-            "offered only when it would work.",
+            "offered only when it would work, turns the Mac server's "
+            "network-client preference on at the first opt-in, and "
+            "withdraws the xhost grants earlier versions made (the hub's "
+            "start runs that one in the background lane). Every argv is "
+            "source text plus a product's own preference domain.",
+        ),
+    "docker/projectEgress.py|<module>|process-launch|subprocess|import|0":
+        _fdictAuthority(
+            ["host-cli", "http", "background"],
+            "Runs `docker network create/inspect/rm`, `docker run` for the "
+            "digest-pinned proxy sidecar, `docker network connect`, "
+            "`docker logs/inspect/rm/ps` for it: the allowlist network "
+            "mode's egress boundary on the host. Every argv is source text "
+            "plus validated values (a 32-hex project identity that names "
+            "the network and proxy, the computed allowlist "
+            "egressAllowlist.ftComputeAllowlist validated for the proxy, "
+            "the engine-reported subnet, the hub's recorded port). It "
+            "never execs into the project container. Reached from a "
+            "container start (host-cli and the hub's start route), the "
+            "stop and readiness routes (http) and the hub's reconcile and "
+            "reaper (background).",
+        ),
+    "docker/x11Authorizations.py|<module>|process-launch|subprocess|import|0":
+        _fdictAuthority(
+            ["host-cli", "http", "background"],
+            "Runs the X11 helper (vaibify.host.x11Authority) as "
+            "`sys.executable -I -m` with a fixed operation name and "
+            "validated values: a container name matched against the "
+            "name pattern, a display string and a display number, an "
+            "int authorization id. It is a subprocess because an Xlib "
+            "I/O error ends the process it happens in. Reached from a "
+            "container start (host-cli), the stop, settings and delete "
+            "routes (http) and the hub's probe loop (background).",
         ),
     # -- the GUI tree ---------------------------------------------------
     "gui/commitCarrier.py|<module>|process-launch|subprocess|import|0":

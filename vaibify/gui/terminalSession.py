@@ -25,6 +25,8 @@ from vaibify.config.agentTerminalEnvironment import (
     fdictBuildAgentTerminalEnvironment,
 )
 
+from vaibify.docker.execLane import S_EXEC_LANE_RESEARCHER_COMMAND
+
 from . import terminalContainment
 
 
@@ -73,6 +75,7 @@ class TerminalSession:
             self._sExecId = self._connectionDocker.fsExecCreate(
                 self._sContainerId, sUser=self._sUser,
                 dictEnvironment=fdictBuildAgentTerminalEnvironment(),
+                sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
             )
             self._socketExec = (
                 self._connectionDocker.fsocketExecStart(self._sExecId)
@@ -95,6 +98,7 @@ class TerminalSession:
             self._sContainerId, sUser=self._sUser,
             listCommand=["/bin/sh", "-c", sWrapperScript],
             dictEnvironment=fdictBuildAgentTerminalEnvironment(),
+            sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
         )
         terminalContainment.fnPromoteTerminalOperation(
             sContainerName, sOperationId, self._sExecId,

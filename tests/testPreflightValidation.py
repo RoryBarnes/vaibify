@@ -16,7 +16,7 @@ class MockDockerConnection:
         self._dictResponses = dictResponses or {}
         self.listCommands = []
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sLane=None):
         self.listCommands.append(sCommand)
         for sPattern, tResult in self._dictResponses.items():
             if sPattern in sCommand:
@@ -25,7 +25,7 @@ class MockDockerConnection:
                 return (tResult, "")
         return (0, "ok")
 
-    def fbaFetchFile(self, sContainerId, sFilePath):
+    def fbaFetchFile(self, sContainerId, sFilePath, sLane=None):
         return b"{}"
 
 

@@ -1073,14 +1073,18 @@ LIST_FALSIFICATIONS = [
         )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
-            sUser = _fsResolveContainerUser(container)
+            sUser = _fsResolveExecUser(container, sLane)
         dictKwargs = self._fdictBuildExecKwargs(
-            sCommand, sWorkdir, sUser)""",
+            sCommand, sWorkdir, sUser,
+            _fdictResolveLaneEnvironment(container, sLane),
+        )""",
         new="""        container = self.fcontainerGetById(sContainerId)
         if sUser is None:
-            sUser = _fsResolveContainerUser(container)
+            sUser = _fsResolveExecUser(container, sLane)
         dictKwargs = self._fdictBuildExecKwargs(
-            sCommand, sWorkdir, sUser)""",
+            sCommand, sWorkdir, sUser,
+            _fdictResolveLaneEnvironment(container, sLane),
+        )""",
     ),
 
     Falsification(
@@ -2562,8 +2566,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testDataPreviewInjection.py::test_npy_preview_quotes_the_whole_program',
         source='vaibify/gui/dataPreview.py',
-        old='    sCommand = "python3 -c " + fsShellQuote(sProgram)\n    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(\n        sContainerId, sCommand\n    )\n    return sOutput.strip() if iExitCode == 0 else "(unreadable)"\n\n\ndef _fsPreviewHdf5',
-        new='    sCommand = "python3 -c \\"" + sProgram + "\\""\n    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(\n        sContainerId, sCommand\n    )\n    return sOutput.strip() if iExitCode == 0 else "(unreadable)"\n\n\ndef _fsPreviewHdf5',
+        old='    sCommand = S_HUB_PYTHON_COMMAND + " -c " + fsShellQuote(sProgram)\n    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(\n        sContainerId, sCommand\n    )\n    return sOutput.strip() if iExitCode == 0 else "(unreadable)"\n\n\ndef _fsPreviewHdf5',
+        new='    sCommand = S_HUB_PYTHON_COMMAND + " -c \\"" + sProgram + "\\""\n    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(\n        sContainerId, sCommand\n    )\n    return sOutput.strip() if iExitCode == 0 else "(unreadable)"\n\n\ndef _fsPreviewHdf5',
     ),
     Falsification(
         nodeid='tests/testDataPreviewInjection.py::test_file_fetch_does_not_execute_injected_payload',
@@ -2574,13 +2578,13 @@ LIST_FALSIFICATIONS = [
         # for the batched existence probe. The mutation is unchanged in
         # meaning -- drop the literal-ization and the shell quoting, so
         # a path becomes program text.
-        old="""        sCommand = "python3 -c " + shlex.quote(
+        old="""        sCommand = S_HUB_PYTHON_COMMAND + " -c " + shlex.quote(
             sTemplate.replace(
                 _S_TYPED_READ_PATH_SLOT,
                 _fsTypedReadPathLiteral(objPaths),
             ),
         )""",
-        new="""        sCommand = "python3 -c \\"" + sTemplate.replace(
+        new="""        sCommand = S_HUB_PYTHON_COMMAND + " -c \\"" + sTemplate.replace(
             _S_TYPED_READ_PATH_SLOT, objPaths,
         ) + "\\"" """,
     ),
@@ -3685,15 +3689,6 @@ LIST_FALSIFICATIONS = [
         new='    return',
     ),
     Falsification(
-        # docker cp runs on the HOST, so an unconfined agent-lane pull
-        # writes agent-authored bytes into a shell profile or an
-        # authorized-keys file -- code execution out of the sandbox.
-        nodeid='tests/testAgentLaneEnforcement.py::testAgentPullMustLandInTheExportDirectory',
-        source='vaibify/gui/routes/fileRoutes.py',
-        old='        if fbRequestRidesAgentLane(requestHttp):',
-        new='        if False:',
-    ),
-    Falsification(
         # Writing .git/hooks/pre-commit is code execution on the next
         # commit; writing .vaibify/ defeats the metadata-integrity
         # contract the PROOF truth system rests on.
@@ -4400,13 +4395,10 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testBindMountValidator.py::test_journal_directory_mount_is_rejected_in_every_direction',
         source='vaibify/config/bindMountValidator.py',
-        old='''    ".kube",
-    # The operation-journal quarantine markers (design §8): a same-UID
-    # agent inside a container that could mount this directory could
-    # delete a quarantine marker and un-quarantine a container whose
-    # past operations were never proven settled.
-    ".vaibify/journal",''',
-        new='''    ".kube",''',
+        # Re-anchored 2026-10-28: the one ".vaibify" entry now covers
+        # the journal, the ephemeral secrets and the control sockets.
+        old='    ".vaibify",\n',
+        new='',
     ),
 
     # ORPHANED_SESSION slice 3b — the commit-guard carrier (design §8).
@@ -6626,16 +6618,12 @@ LIST_FALSIFICATIONS = [
             '        fnRejectAgentTokenLane(requestHttp)\n'
             '        dictCtx["require"](sContainerId)\n'
             '        syncDispatcher.fnValidateServiceName(sService)\n'
-            '        return {\n'
-            '            "bHasCredential": '
-            '_fbServiceHasStoredCredential(sService),\n'
+            '        if sZenodoInstance and (\n'
         ),
         new=(
             '        dictCtx["require"](sContainerId)\n'
             '        syncDispatcher.fnValidateServiceName(sService)\n'
-            '        return {\n'
-            '            "bHasCredential": '
-            '_fbServiceHasStoredCredential(sService),\n'
+            '        if sZenodoInstance and (\n'
         ),
     ),
 
@@ -6950,20 +6938,17 @@ LIST_FALSIFICATIONS = [
             'testTheHostFilePullReachesNoMutatingContainerPrimitive'
         ),
         source='vaibify/gui/routes/fileRoutes.py',
+        # Re-anchored 2026-10-28: the pull reads through the confined
+        # reader; the mutation reads through the general exec instead.
         old=(
-            '    iWritten = 0\n'
-            '    with open(sTargetPath, "wb") as fileTarget:\n'
-            '        for baChunk in connectionDocker.fiterStreamFile(\n'
-            '            sContainerId, sContainerPath,\n'
-            '        ):\n'
+            '        connectionDocker.fiterReadFileConfined(\n'
+            '            sContainerId, sContainerPath, sAuthorizedRoot=sAuthorizedRoot,\n'
+            '        ),\n'
         ),
         new=(
-            '    iWritten = 0\n'
-            '    iExit, sOut = connectionDocker.ftResultExecuteCommand(\n'
-            '        sContainerId, "cat " + sContainerPath,\n'
-            '    )\n'
-            '    with open(sTargetPath, "wb") as fileTarget:\n'
-            '        for baChunk in (sOut.encode("utf-8"),):\n'
+            '        iter([connectionDocker.ftResultExecuteCommand(\n'
+            '            sContainerId, "cat " + sContainerPath,\n'
+            '        )[1].encode("utf-8")]),\n'
         ),
     ),
 
@@ -8291,14 +8276,14 @@ LIST_FALSIFICATIONS = [
         old=(
             '    return await _fdictPullManuscriptUnderTheDrain(\n'
             '        syncDispatcher, dictCtx, sContainerId, sProjectId,\n'
-            '        listPullPaths, sTargetDirectory, requestHttp,\n'
+            '        listPullPaths, sTargetDirectory, requestHttp, sRepo,\n'
             '    )\n'
         ),
         new=(
             '    return await asyncio.to_thread(\n'
             '        _fdictPullManuscriptBlocking,\n'
             '        syncDispatcher, dictCtx, sContainerId, sProjectId,\n'
-            '        listPullPaths, sTargetDirectory,\n'
+            '        listPullPaths, sTargetDirectory, sRepo,\n'
             '    )\n'
         ),
     ),
@@ -10094,46 +10079,6 @@ LIST_FALSIFICATIONS = [
             '        )\n'
         ),
         new='        listIsDirectory = [True] * len(listPaths)\n',
-    ),
-    # --- Which keyring holds this project's credentials (phase C) ---
-    #
-    # The container leg writes the value to a temporary file and runs an
-    # in-container python that reads it back into keyring. For a host
-    # project that lane is wrong twice: there is no container to run it
-    # in, and the file would be a secret written to the researcher's
-    # own disk on the way to a keyring this process can reach directly.
-    # The other direction is the wider failure -- a container project
-    # whose token went to the host keychain would authenticate every
-    # push with nothing.
-    Falsification(
-        nodeid=(
-            'tests/testHostGitAndReposPanel.py::'
-            'testAHostProjectsTokenGoesToTheResearchersOwnKeyring'
-        ),
-        source='vaibify/gui/syncDispatcher.py',
-        old=(
-            '    if fbIsHostProject(sContainerId):\n'
-            '        from vaibify.config.secretManager import fnStoreSecret\n'
-        ),
-        new=(
-            '    if False:\n'
-            '        from vaibify.config.secretManager import fnStoreSecret\n'
-        ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testHostGitAndReposPanel.py::'
-            'testAContainerProjectsTokenStillGoesIntoItsContainer'
-        ),
-        source='vaibify/gui/syncDispatcher.py',
-        old=(
-            '    if fbIsHostProject(sContainerId):\n'
-            '        from vaibify.config.secretManager import fnStoreSecret\n'
-        ),
-        new=(
-            '    if True:\n'
-            '        from vaibify.config.secretManager import fnStoreSecret\n'
-        ),
     ),
     # --- push and pull with no container to cross (phase C) ---
     Falsification(
@@ -16442,7 +16387,7 @@ LIST_FALSIFICATIONS = [
             'tests/testCouncilRunnerAccess.py::'
             'testTheProxyRelayIsBoundedPerConnection'
         ),
-        source='vaibify/gui/agentCouncilEgress.py',
+        source='vaibify/docker/egressProxy.py',
         old='            baChunk = await readerSource.read(I_RELAY_CHUNK_BYTES)',
         new='            baChunk = await readerSource.read()',
     ),
@@ -21119,20 +21064,23 @@ LIST_FALSIFICATIONS = [
             'test_a_disagreeing_draft_costs_a_draft_and_never_a_doi'
         ),
         source='vaibify/gui/syncDispatcher.py',
-        # The container script publishes over an archive nobody
-        # asked -- the state the environment lane had already left.
+        # The host deposit publishes over an archive nobody asked --
+        # the state the environment lane had already left.
         old=(
-            "    _draftNow = client.fdictGetDeposit(iDid)\n"
-            "    _problems = (flistDescribeDepositDisagreement("
-            "_draftNow, _expected)\n"
-            "                 + flistDescribeUnexpectedDepositFiles("
-            "_draftNow,\n"
-            "                                                       "
-            "_expected))\n"
-            "    if _problems:\n"
-            "        raise _ArchiveMismatch(' '.join(_problems))\n"
+            "        dictDraftNow = clientZenodo.fdictGetDeposit(iDepositId)\n"
+            "        listProblems = (\n"
+            "            zenodoClient.flistDescribeDepositDisagreement("
+            "dictDraftNow, listExpected)\n"
+            "            + zenodoClient.flistDescribeUnexpectedDepositFiles(\n"
+            "                dictDraftNow, listExpected,\n"
+            "            )\n"
+            "        )\n"
+            "        if listProblems:\n"
         ),
-        new='',
+        new=(
+            "        listProblems = []\n"
+            "        if listProblems:\n"
+        ),
     ),
     Falsification(
         nodeid=(
@@ -21143,16 +21091,15 @@ LIST_FALSIFICATIONS = [
         # Per-file comparison only: every uploaded file agrees while
         # the record also serves the previous version's leftovers.
         old=(
-            "    _problems = (flistDescribeDepositDisagreement("
-            "_draftNow, _expected)\n"
-            "                 + flistDescribeUnexpectedDepositFiles("
-            "_draftNow,\n"
-            "                                                       "
-            "_expected))\n"
+            "            zenodoClient.flistDescribeDepositDisagreement("
+            "dictDraftNow, listExpected)\n"
+            "            + zenodoClient.flistDescribeUnexpectedDepositFiles(\n"
+            "                dictDraftNow, listExpected,\n"
+            "            )\n"
         ),
         new=(
-            "    _problems = flistDescribeDepositDisagreement("
-            "_draftNow, _expected)\n"
+            "            zenodoClient.flistDescribeDepositDisagreement("
+            "dictDraftNow, listExpected)\n"
         ),
     ),
     Falsification(
@@ -22318,22 +22265,6 @@ LIST_FALSIFICATIONS = [
             '        if (false) {\n'
             '            var sReason = _fsDistillZenodoReason(\n'
         ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testTheStagedClientStaysCurrent.py::'
-            'test_a_stale_staged_client_is_rewritten_before_the_upload'
-        ),
-        source='vaibify/gui/syncDispatcher.py',
-        # The shipped shape: the archive script runs against
-        # whatever the image build froze, and a publish dies on an
-        # ImportError over a symbol the host added since.
-        old=(
-            '    fnEnsureStagedClientCurrent(connectionDocker, '
-            'sContainerId)\n'
-            '    _fnValidateArchiveFilePaths(listFilePaths)\n'
-        ),
-        new='    _fnValidateArchiveFilePaths(listFilePaths)\n',
     ),
     # --- 2026-09-16: sync->async is the one signature change Python
     # does not report at the call site, so a guard that stops being
@@ -25633,12 +25564,48 @@ LIST_FALSIFICATIONS = [
         old='            { "X-Session-Token": sSessionCredential });\n',
         new='            {});\n',
     ),
-    # --- The Overleaf token reaches its program on stdin only ---
+    # --- The Overleaf lane runs on the host (2026-10-29): the pulled
+    # sources land through the confined tree write, and every push and
+    # pull acts on the project the researcher confirmed ---
     Falsification(
-        nodeid='tests/testOverleafTokenStaysOffTheCommandLine.py::testAPlainPushKeepsTheTokenOffTheCommandLine',
+        nodeid='tests/testOverleafTokenStaysOffTheCommandLine.py::testThePulledSourcesLandThroughTheConfinedTreeWrite',
         source='vaibify/gui/syncDispatcher.py',
-        old='            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha),\n        sStdin,\n',
-        new='            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha)\n        + ["--token", _fsFetchOverleafToken()],\n        sStdin,\n',
+        old=(
+            '        sAuthorizedRoot=sTargetDirectory,\n'
+            '        tForbiddenNames=T_WRITE_DENYLISTED_NAMES, bCreateDestination=False,\n'
+        ),
+        new='        bCreateDestination=False,\n',
+    ),
+    Falsification(
+        nodeid='tests/testSyncRoutesCoverage.py::test_overleaf_push_acts_on_the_bound_project_not_the_edited_id',
+        source='vaibify/gui/routes/syncRoutes.py',
+        # the push flow hands the dispatcher project.json's id
+        old='    dictOverleafArgs["sProjectId"] = sProjectId\n',
+        new='    dictOverleafArgs["sProjectId"] = dictWorkflow.get("sOverleafProjectId", "")\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullManuscriptRoute.py::test_pull_manuscript_pulls_the_bound_project_not_the_edited_id',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    sProjectId = fsRequireBoundOverleafProjectId(\n'
+            '        dictCtx, sContainerId, dictWorkflow,\n'
+            '    )\n'
+            '    sRepo = dictWorkflow.get("sProjectRepoPath", "")\n'
+        ),
+        new=(
+            '    sProjectId = dictWorkflow.get("sOverleafProjectId", "")\n'
+            '    sRepo = dictWorkflow.get("sProjectRepoPath", "")\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testAutoArchive.py::test_fnMaybeAutoArchive_pushes_to_the_bound_overleaf_project',
+        source='vaibify/gui/fileStatusManager.py',
+        old=(
+            '    sProjectId = _fsBoundAutoArchiveTarget(\n'
+            '        connectionDocker, sContainerId, dictWorkflow, "overleaf",\n'
+            '    )\n'
+        ),
+        new='    sProjectId = dictWorkflow.get("sOverleafProjectId", "")\n',
     ),
     # --- The bind-mount deny list reads the filesystem, not the spelling ---
     Falsification(
@@ -25650,8 +25617,58 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testBindMountDenyListReadsTheFilesystem.py::testTheEphemeralSecretStoreIsDeniedInEveryDirection',
         source='vaibify/config/bindMountValidator.py',
-        old='    ".vaibify/tmp",\n',
+        # Re-anchored 2026-10-28: ``.vaibify`` is denied as a whole.
+        old='    ".vaibify",\n',
         new='',
+    ),
+    # --- 2026-10-28: bind mounts are read-only unless declared readWrite ---
+    Falsification(
+        nodeid=(
+            'tests/testBindMountReadOnlyDefault.py::'
+            'testAMountIsReadOnlyUnlessItSaysReadWrite'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # the default mounts writable and readWrite: true mounts read-only
+        old='    if not fbBindMountIsReadWrite(dictMount):\n        sSpec += ",readonly"\n',
+        new='    if fbBindMountIsReadWrite(dictMount):\n        sSpec += ",readonly"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBindMountReadOnlyDefault.py::'
+            'testAnAgentsHomeIsDeniedInEveryDirection'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        # an agent CLI's home is mountable again
+        old='    ".claude", ".codex", ".gemini",\n',
+        new='    ".codex", ".gemini",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBindMountReadOnlyDefault.py::'
+            'testTheRetiredReadOnlyKeyIsRefusedByName'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old='    if "readOnly" in dictMount:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBindMountReadOnlyDefault.py::'
+            'testAReadWriteMountOverTheProjectDirectoryIsRefused'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old='    if sResolved == sProject or sProject.startswith(sResolved + os.sep):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBindMountReadOnlyDefault.py::'
+            'testTheLoaderNamesTheRefusedEntryInItsOwnWords'
+        ),
+        source='vaibify/config/projectConfig.py',
+        # the loader no longer runs the validator with its own sentence
+        old='    listMounts = dictMerged.get("bindMounts") or []\n    if not isinstance(listMounts, list):\n        return\n',
+        new='    listMounts = []\n',
     ),
     Falsification(
         nodeid='tests/testBindMountDenyListReadsTheFilesystem.py::testASourceDockerWouldNotReadAsValidatedIsRefused',
@@ -25836,12 +25853,6 @@ LIST_FALSIFICATIONS = [
         new='',
     ),
     Falsification(
-        nodeid='tests/testFileEdgesAreSafe.py::testACappedPullStopsAndLeavesNoPartialFile',
-        source='vaibify/gui/routes/fileRoutes.py',
-        old='            if iMaxBytes is not None and iWritten > iMaxBytes:',
-        new='            if False:',
-    ),
-    Falsification(
         nodeid='tests/testFileEdgesAreSafe.py::testANonLatinOneFilenameDownloadsWithItsExactName',
         source='vaibify/gui/routes/downloadRoutes.py',
         old='    return {"Content-Disposition": fsBuildContentDisposition(sFilename)}',
@@ -25893,8 +25904,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testImageTrustGuardsTheLaunch.py::testEveryLaunchFunctionRefusesAnUnansweredDigest',
         source='vaibify/docker/containerManager.py',
-        old='    dictPosture = fdictResolveLaunchPosture(config.sProjectName)\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture)\n',
-        new='    dictPosture = None\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture)\n',
+        old='    dictPosture = fdictResolveLaunchPosture(config.sProjectName)\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture,\n',
+        new='    dictPosture = None\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture,\n',
     ),
     Falsification(
         nodeid='tests/testImageTrustGuardsTheLaunch.py::testTheStartRouteAsksBeforeCreatingAnything',
@@ -26763,8 +26774,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testContainerOwnership.py::test_fbAgentTokenAuthorizesContainerId_is_per_container',
         source='vaibify/gui/containerOwnership.py',
-        old='            and recordOwner.sAgentToken == sPresentedToken\n            and recordOwner.sContainerId == sContainerId\n',
-        new='            and recordOwner.sAgentToken == sPresentedToken\n',
+        old='            and secrets.compare_digest(recordOwner.sAgentToken, sPresentedToken)\n            and recordOwner.sContainerId == sContainerId\n',
+        new='            and secrets.compare_digest(recordOwner.sAgentToken, sPresentedToken)\n',
     ),
     # --- A revoked session credential no longer validates ---
     Falsification(
@@ -26812,8 +26823,18 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineServerAgentAuth.py::test_fbHasAgentToken_wrong_header_and_wrong_query_is_false',
         source='vaibify/gui/pipelineServer.py',
-        old='    if sHeaderToken and sHeaderToken == sExpectedToken:\n        return True\n    sQueryToken = websocket.query_params.get("sToken", "")\n    return bool(sQueryToken) and sQueryToken == sExpectedToken\n',
+        old='    if sHeaderToken and secrets.compare_digest(sHeaderToken, sExpectedToken):\n        return True\n    sQueryToken = websocket.query_params.get("sToken", "")\n    return bool(sQueryToken) and secrets.compare_digest(\n        sQueryToken, sExpectedToken,\n    )\n',
         new='    if sHeaderToken:\n        return True\n    sQueryToken = websocket.query_params.get("sToken", "")\n    return bool(sQueryToken)\n',
+    ),
+    # --- 2026-10-28: the process ceiling ---
+    Falsification(
+        nodeid=(
+            'tests/testSmallHardeningItems.py::'
+            'testThePidLimitMustBeAPositiveInteger'
+        ),
+        source='vaibify/config/projectConfig.py',
+        old='    return iPidsLimit > 0\n',
+        new='    return True\n',
     ),
     # --- Writes under the VCS directory are denylisted ---
     Falsification(
@@ -26889,8 +26910,47 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testCoverageRoutesAFileRoutes.py::testAPullOfAPathOutsideTheWorkspaceIsRefused',
         source='vaibify/gui/routes/fileRoutes.py',
-        old='        fsValidatePathWithinRoot(\n            request.sContainerPath,\n            projectRoots.fsResolveProjectRoot(\n                sContainerId, sWorkspaceRoot,\n            ),\n        )\n',
+        old='        fsValidatePathWithinRoot(request.sContainerPath, sPullRoot)\n',
         new='',
+    ),
+    # --- 2026-10-28: pull-file is researcher-only; the host write is confined ---
+    Falsification(
+        # The pull writes the researcher's machine with agent-authored
+        # bytes; the agent lane is refused by the catalog, which the
+        # middleware enforces server-side.
+        nodeid=(
+            'tests/testAgentLaneEnforcement.py::'
+            'testAgentPullIsRefusedAsAUserOnlyAction'
+        ),
+        source='vaibify/gui/actionCatalog.py',
+        old=(
+            '     "sPath": "/api/files/{sContainerId}/pull",\n'
+            '     "bAgentSafe": False,\n'
+        ),
+        new=(
+            '     "sPath": "/api/files/{sContainerId}/pull",\n'
+            '     "bAgentSafe": True,\n'
+        ),
+    ),
+    Falsification(
+        # A parent swapped for a link between walk steps redirects the
+        # write when the walk follows links.
+        nodeid=(
+            'tests/testHostConfinedWrite.py::'
+            'testAParentSwappedForALinkMidWalkIsRefusedAndNothingLandsOutside'
+        ),
+        source='vaibify/host/hostConfinedRead.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConfinedWrite.py::'
+            'testAFinalNameThatIsALinkIsRefusedAndTheTargetUntouched'
+        ),
+        source='vaibify/host/hostConfinedWrite.py',
+        old='    if stat.S_ISLNK(iMode) or stat.S_ISDIR(iMode):\n',
+        new='    if False:\n',
     ),
     # --- Path jail call sites: fileRoutes write ---
     Falsification(
@@ -27197,15 +27257,9 @@ LIST_FALSIFICATIONS = [
         old='    return int(matchDisplay.group(1)) if matchDisplay else 0\n',
         new='    return 0\n',
     ),
-    Falsification(
-        nodeid='tests/testX11Forwarding.py::test_macGrant_admits_the_local_user_and_the_tcp_loopback',
-        source='vaibify/docker/x11Forwarding.py',
-        old='    _fnRunBestEffort([_fsFindXhost(), "+localhost"])\n',
-        new='',
-    ),
     # --- 2026-10-02: X11 forwarding is opt-in per project and refused beside network isolation ---
     Falsification(
-        nodeid='tests/testX11OptIn.py::testAProjectThatDidNotOptInGetsNoDisplayNoSocketAndNoXhost',
+        nodeid='tests/testX11OptIn.py::testAProjectThatDidNotOptInGetsNoDisplayNoSocketAndNoAuthorization',
         source='vaibify/docker/containerManager.py',
         old='    if not getattr(config, "bX11Forwarding", False):\n        return\n',
         new='',
@@ -27269,8 +27323,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testX11Settings.py::test_turning_the_opt_in_on_persists_and_asks_for_a_recreate',
         source='vaibify/gui/registryRoutes.py',
-        old='    _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)\n    return True\n',
-        new='    return True\n',
+        old='    _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)\n    if not bNewValue:\n',
+        new='    if not bNewValue:\n',
     ),
     Falsification(
         nodeid='tests/testX11Settings.py::test_the_opt_in_is_refused_beside_network_isolation',
@@ -27476,7 +27530,7 @@ LIST_FALSIFICATIONS = [
             'tests/testConfinedTreeWrite.py::testTheTreeWriteRunsTheConfinedProgramAndNeverPutsAnArchive'
         ),
         source='vaibify/docker/dockerConnection.py',
-        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],\n                fileStdin=fileTar,\n            )\n',
         new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
     ),
     Falsification(
@@ -27508,7 +27562,7 @@ LIST_FALSIFICATIONS = [
             'tests/testConfinedTreeWriteLive.py::testAPlantedSymlinkAtTheDestinationDoesNotRedirectOrChangeOwnership'
         ),
         source='vaibify/docker/dockerConnection.py',
-        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],\n                fileStdin=fileTar,\n            )\n',
         new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
     ),
     Falsification(
@@ -27516,7 +27570,7 @@ LIST_FALSIFICATIONS = [
             'tests/testConfinedTreeWriteLive.py::testAPlantedSymlinkAtAnIntermediateComponentDoesNotRedirect'
         ),
         source='vaibify/docker/dockerConnection.py',
-        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],\n                fileStdin=fileTar,\n            )\n',
         new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
     ),
     Falsification(
@@ -27524,7 +27578,7 @@ LIST_FALSIFICATIONS = [
             'tests/testConfinedTreeWriteLive.py::testAMemberDirectoryThatIsASymlinkIsRefusedAndKeptNotDeleted'
         ),
         source='vaibify/docker/dockerConnection.py',
-        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],\n                fileStdin=fileTar,\n            )\n',
         new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
     ),
     Falsification(
@@ -36516,10 +36570,134 @@ LIST_FALSIFICATIONS = [
         source='vaibify/docker/dockerConnection.py',
         # an exec's own variables never reach the daemon
         old=(
+            '            container, sLane, dictEnvironment,\n'
+            '        )\n'
             '        if dictEnvironment:\n'
             '            dictKwargs["environment"] = dictEnvironment\n'
         ),
-        new='',
+        new=(
+            '            container, sLane, dictEnvironment,\n'
+            '        )\n'
+        ),
+    ),
+    # --- 2026-10-28: hub programs on a fixed PATH; integrity reads as a read-only user ---
+    Falsification(
+        nodeid=(
+            'tests/testExecLane.py::'
+            'testARefusedPathIsNeverReportedAbsentByTheExistenceProbes'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # a path the reader is refused reads as absent again
+        old='    "        sys.exit(2)  # a refusal is never absence\\n"\n',
+        new='    "        return False\\n"\n',
+    ),
+    # --- 2026-10-29: a stable project identity and the trusted remote binding ---
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testReRegistrationGetsANewIdentityAndNoBindings'
+        ),
+        source='vaibify/config/registryManager.py',
+        # the identity is the name again, so a re-registration inherits it
+        old='        "sProjectUuid": uuid.uuid4().hex,\n',
+        new='        "sProjectUuid": sName,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testNothingBindsUntilTheResearcherConfirms'
+        ),
+        source='vaibify/config/remoteBindings.py',
+        # an absent binding is filled from project.json automatically
+        old=(
+            '    if dictBound is None:\n'
+            '        raise BindingRequiredError(\n'
+        ),
+        new=(
+            '    if dictBound is None:\n'
+            '        return _fdictNormalizedTarget(sService, dictProjectTarget)\n'
+            '        raise BindingRequiredError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testTheAgentLaneCannotConfirmABinding'
+        ),
+        source='vaibify/gui/routes/bindingRoutes.py',
+        # the confirm handler no longer refuses the agent lane itself
+        # (the service-name guard follows this entry)
+        old=(
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"](sContainerId)\n'
+            '        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)\n'
+            '        if request.sService not in'
+        ),
+        new=(
+            '        dictCtx["require"](sContainerId)\n'
+            '        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)\n'
+            '        if request.sService not in'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testAnUnknownServiceOrFieldIsRefused'
+        ),
+        source='vaibify/config/remoteBindings.py',
+        old='    if sService not in T_BINDING_SERVICES:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecLane.py::'
+            'testTheRootProbeNeverResolvesThroughTheImagePath'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # the root /bin/sh probe inherits the image PATH again
+        old=(
+            '            ["/bin/sh", "-c", sScript], user=sUser, demux=False,\n'
+            '            environment=_fdictResolveLaneEnvironment(\n'
+            '                container, S_EXEC_LANE_HUB_INTERNAL,\n'
+            '            ),\n'
+        ),
+        new=(
+            '            ["/bin/sh", "-c", sScript], user=sUser, demux=False,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecLane.py::'
+            'testEveryHubRunPythonProgramIsIsolated'
+        ),
+        source='vaibify/docker/execLane.py',
+        # the hub's Python loads the agent's user site again
+        old='LIST_HUB_PYTHON_ARGV = ["python3", "-I"]\n',
+        new='LIST_HUB_PYTHON_ARGV = ["python3"]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecLane.py::'
+            'testTheHasherRunsAsTheReadOnlyUser'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # every typed read runs as the container user again
+        old=(
+            '        if sOperation in T_TYPED_READS_AS_CONTAINER_USER:\n'
+            '            return S_EXEC_LANE_HUB_INTERNAL\n'
+            '        return S_EXEC_LANE_INTEGRITY_READ\n'
+        ),
+        new=(
+            '        if sOperation in T_TYPED_READS_AS_CONTAINER_USER:\n'
+            '            return S_EXEC_LANE_HUB_INTERNAL\n'
+            '        return S_EXEC_LANE_HUB_INTERNAL\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testExecLane.py::testAnUndeclaredLaneIsRefused',
+        source='vaibify/docker/execLane.py',
+        old='    if sLane not in T_EXEC_LANES:\n',
+        new='    if False:\n',
     ),
     Falsification(
         nodeid=(
@@ -37324,6 +37502,159 @@ LIST_FALSIFICATIONS = [
             '        or dictIncident.get("sMessage", ""))\n'
         ),
     ),
+    # --- 2026-10-29: Zenodo tokens leave the container (security
+    # hardening plan, commit 6). The host slots, the migration out of
+    # the container, and the researcher-only decision. ---
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenSlots.py::'
+            'testASlotNameNeverAcceptsAnUnknownInstance'
+        ),
+        source='vaibify/config/zenodoTokenSlots.py',
+        old='    if sInstance not in T_ZENODO_INSTANCES:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenSlots.py::'
+            'testASlotNameNeedsAProjectIdentity'
+        ),
+        source='vaibify/config/zenodoTokenSlots.py',
+        old=(
+            '    if not sProjectUuid or not isinstance(sProjectUuid, str) or (\n'
+            '        not sProjectUuid.replace("-", "").isalnum()\n'
+            '    ):\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenSlots.py::'
+            'testATokenIsStoredPerProjectNeverShared'
+        ),
+        source='vaibify/config/zenodoTokenSlots.py',
+        # the shared, project-free slot every project would read
+        old='    return f"zenodo_token_{sInstance}:{sProjectUuid}"\n',
+        new='    return f"zenodo_token_{sInstance}"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testAPendingTokenIsNeverSpentByATokenBearingAction'
+        ),
+        source='vaibify/config/zenodoTokenSlots.py',
+        # the active reader falls back to the pending slot
+        old='    return fsReadSlot(fsActiveSlot(sInstance, sProjectUuid))\n',
+        new=(
+            '    return fsReadSlot(fsActiveSlot(sInstance, sProjectUuid)) or '
+            'fsReadSlot(\n'
+            '        fsPendingSlot(f"zenodo_token_{sInstance}", sProjectUuid),\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testTheContainerCopyIsDeletedOnlyAfterTheStageIsRecorded'
+        ),
+        source='vaibify/gui/zenodoTokenMigration.py',
+        # delete before the stage is recorded: the one way to lose a token
+        old='    if not bAuthorized:\n        return\n',
+        new='    if False:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testAnUndeterminedValidationIsNeverRejected'
+        ),
+        source='vaibify/gui/zenodoTokenMigration.py',
+        # an undetermined probe recorded as a rejection
+        old=(
+            '        if dictProbe["sOutcome"] == zenodoClient.S_PROBE_UNDETERMINED:\n'
+            '            sOutcome = zenodoClient.S_PROBE_UNDETERMINED\n'
+        ),
+        new=(
+            '        if dictProbe["sOutcome"] == zenodoClient.S_PROBE_UNDETERMINED:\n'
+            '            sOutcome = zenodoClient.S_PROBE_REJECTED\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenSlots.py::'
+            'testANetworkFailureIsUndetermined'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        # an outage read as a rejection by the probe itself
+        old=(
+            '    except (ZenodoError, requests.RequestException) as error:\n'
+            '        return {\n'
+            '            "sOutcome": S_PROBE_UNDETERMINED,\n'
+        ),
+        new=(
+            '    except (ZenodoError, requests.RequestException) as error:\n'
+            '        return {\n'
+            '            "sOutcome": S_PROBE_REJECTED,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testAConflictingHostValueIsNeverOverwritten'
+        ),
+        source='vaibify/gui/zenodoTokenMigration.py',
+        # staging over the host's value instead of recording the conflict
+        old='    if sConflict and sChoice != S_DECISION_STAGE_PENDING:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testDecliningDeletesOnlyThePendingSlot'
+        ),
+        source='vaibify/gui/zenodoTokenMigration.py',
+        # a decline that also clears the active slots
+        old='    slots.fnDeleteSlot(slots.fsPendingSlot(sSlot, sProjectUuid))\n',
+        new=(
+            '    slots.fnDeleteSlot(slots.fsPendingSlot(sSlot, sProjectUuid))\n'
+            '    for sInstance in slots.T_ZENODO_INSTANCES:\n'
+            '        slots.fnDeleteSlot(slots.fsActiveSlot(sInstance, sProjectUuid))\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenRoutes.py::'
+            'testTheAgentLaneCannotDecideAboutAToken'
+        ),
+        source='vaibify/gui/routes/zenodoTokenRoutes.py',
+        old=(
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"](sContainerId)\n'
+            '        if request.sDecision not in zenodoTokenMigration.T_DECISIONS:\n'
+        ),
+        new=(
+            '        dictCtx["require"](sContainerId)\n'
+            '        if request.sDecision not in zenodoTokenMigration.T_DECISIONS:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testContainerManager.py::'
+            'test_flistBuildRunArgs_creates_no_credentials_volume_for_a_new_container'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # a -v for a volume that does not exist makes Docker create it
+        old='    if not bVolumeExists:\n        return\n',
+        new='    if False:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheZenodoTokenBannerIsTheServers.py::'
+            'testAPendingTokenIsShownWithItsEvidenceAndTheDecisionButtons'
+        ),
+        source='vaibify/gui/static/scriptZenodoTokens.js',
+        old='        elRow.appendChild(_felementDecisionButtons(dictSlot));\n',
+        new='',
+    ),
     # --- 2026-10-28: the PROOF level color has one home ---
     Falsification(
         nodeid=(
@@ -37808,5 +38139,299 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/routeScope.py',
         old='    return fbAdmissionGateClosed()\n',
         new='    return False\n',
+    ),
+    # --- 2026-10-29: X11 forwarding admits a container by its OWN
+    # authorization (security hardening plan, commit 8): no xhost grant,
+    # revoke after a probe, renew after a server restart, read-only mount. ---
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::testTheLegacyXhostGrantsAreWithdrawn',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    _fnRunBestEffort([_fsFindXhost(), "-localhost"])\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Lifecycle.py::testTheHubWithdrawsTheLegacyGrantsAtStartup',
+        source='vaibify/gui/x11Lifecycle.py',
+        old='    if fbXServerAvailable():\n        x11Forwarding.fnRevokeLegacyXhostGrants()\n',
+        new='    if False:\n        x11Forwarding.fnRevokeLegacyXhostGrants()\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testTheAuthorizationIsMountedReadOnly',
+        source='vaibify/docker/x11Authorizations.py',
+        old='        f"type=bind,source={sDirectory},target={S_CONTAINER_AUTHORITY_DIRECTORY},readonly",\n',
+        new='        f"type=bind,source={sDirectory},target={S_CONTAINER_AUTHORITY_DIRECTORY}",\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testATransientFailureNeverFallsBackToTheServerCookie',
+        source='vaibify/docker/x11Authorizations.py',
+        # an unreachable server treated like one without the extension
+        old=(
+            '        x11Authority.S_OUTCOME_SECURITY_UNSUPPORTED,\n'
+            '        x11Authority.S_OUTCOME_LIBRARY_MISSING,\n'
+            '    ):\n'
+        ),
+        new=(
+            '        x11Authority.S_OUTCOME_SECURITY_UNSUPPORTED,\n'
+            '        x11Authority.S_OUTCOME_LIBRARY_MISSING,\n'
+            '        x11Authority.S_OUTCOME_SERVER_UNREACHABLE,\n'
+            '    ):\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testARefusedProbeRenewsAndNeverRevokesTheOldId',
+        source='vaibify/docker/x11Authorizations.py',
+        old='    if dictProbe["sOutcome"] != x11Authority.S_OUTCOME_REFUSED:\n        return dictProbe\n',
+        new='    if True:\n        return dictProbe\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authority.py::testARefusedProbeRevokesNothing',
+        source='vaibify/host/x11Authority.py',
+        old=(
+            '        if sProbe == S_OUTCOME_REFUSED:\n'
+            '            fnPrintOutcome(S_OUTCOME_GONE,\n'
+            '                           sReason="the cookie is already refused; nothing revoked")\n'
+            '            return\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authority.py::testTheTimeoutIsNeitherZeroNorPastTheServersClock',
+        source='vaibify/host/x11Authority.py',
+        old='I_SECURITY_NEVER_TIMEOUT_SECONDS = 1_000_000\n',
+        new='I_SECURITY_NEVER_TIMEOUT_SECONDS = 0\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Release.py::testStoppingAContainerRevokesItsAuthorization',
+        source='vaibify/docker/containerManager.py',
+        old='    fnReleaseAuthorizationQuietly(sProjectName)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Release.py::testTurningForwardingOffRevokesTheRunningContainersAuthorization',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if not bNewValue:\n        fnReleaseAuthorizationQuietly(sContainerName)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Release.py::testDeletingAnEnvironmentRevokesItsAuthorization',
+        source='vaibify/gui/environmentDeletion.py',
+        old=(
+            '        if bContainerRemoved:\n'
+            '            x11Authorizations.fnReleaseAuthorizationQuietly(sContainerName)\n'
+        ),
+        new='',
+    ),
+    # --- 2026-10-29: the egress proxy is shared and hardened (security
+    # hardening plan, commit 9). ---
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testAnAllowedNameResolvingToANonPublicAddressIsRefused',
+        source='vaibify/docker/egressProxy.py',
+        old='        if fbIsNonPublicAddress(sAnswer):\n            raise NonPublicResolution(sAnswer)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testTheProxyBindsOnlyItsInternalAddress',
+        source='vaibify/docker/egressProxy.py',
+        old='        if ipaddress.ip_address(sCandidate) in networkBind:\n            return sCandidate\n',
+        new='        return "0.0.0.0"\n',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testTheProxyIsBoundToTheInternalSubnetTheDaemonReports',
+        source='vaibify/gui/agentCouncilDockerGateway.py',
+        old='    sBindCidr = _fsReadInternalNetworkSubnet(dockerCouncil, sNetworkName)\n',
+        new='    sBindCidr = ""\n',
+    ),
+    # --- 2026-10-29: allowlist network mode (security hardening plan,
+    # commit 10): one setting with an old spelling, the sealed network,
+    # the pinned hub, the researcher-only allowlist. ---
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAFileWhoseTwoSpellingsDisagreeIsRefused',
+        source='vaibify/config/projectConfig.py',
+        old='    return fbNetworkKeysAgree(dictConfig)\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAllowlistModeJoinsTheSealedNetworkBehindTheProxy',
+        source='vaibify/docker/containerManager.py',
+        old=(
+            '    saRunArgs.extend(egressProxy.flistBuildSealedNetworkArguments(\n'
+            '        dictEgress["sNetworkName"]))\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAllowlistModeWithoutAPreparedProxyIsRefusedNotStartedOpen',
+        source='vaibify/docker/containerManager.py',
+        old='    if not dictEgress or not dictEgress.get("sProxyAddress"):\n        raise RuntimeError(\n',
+        new='    if False:\n        raise RuntimeError(\n',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testX11WithAllowlistModeIsRefusedEverywhereItIsAsked',
+        source='vaibify/docker/containerManager.py',
+        old=(
+            '    if fsNetworkModeOf(config) == S_NETWORK_MODE_ALLOWLIST:\n'
+            '        raise RuntimeError(\n'
+            '            f"\'{config.sProjectName}\' sets x11Forwarding with networkMode: "\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise RuntimeError(\n'
+            '            f"\'{config.sProjectName}\' sets x11Forwarding with networkMode: "\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testTheNetworkIsInternalIsolatedAndWithoutIPv6',
+        source='vaibify/docker/projectEgress.py',
+        old='        "--opt", S_ISOLATED_GATEWAY_OPTION,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testAnEngineThatLeavesAGatewayIsRefusedWithNoFallback',
+        source='vaibify/docker/projectEgress.py',
+        old='    if bGateway or sOption.strip() != "isolated":\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testAllowHostRoute.py::testAllowingAHostAppendsItAndAsksForARestart',
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    _fnAppendYamlListItem(sConfigPath, "allowedHosts", sEntry)\n'
+            '    return fconfigLoadFromFile(sConfigPath).listAllowedHosts\n'
+        ),
+        new='    return list(configProject.listAllowedHosts) + [sEntry]\n',
+    ),
+    Falsification(
+        nodeid='tests/testAllowHostRoute.py::testTheAgentLaneCannotAllowAHost',
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictProject = _fdictRequireProject(sName)\n'
+            '        listAllowed = _flistAllowHost('
+        ),
+        new=(
+            '        dictProject = _fdictRequireProject(sName)\n'
+            '        listAllowed = _flistAllowHost('
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testAllowHostRoute.py::testChangingTheModeWritesBothSpellingsInAgreement',
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    _fnUpdateYamlBoolField(\n'
+            '        sConfigPath, "networkIsolation", sNewMode == S_NETWORK_MODE_ISOLATED)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testAllowHostRoute.py::testASealingModeIsRefusedBesideX11AndX11BesideASealingMode',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if sNewMode != S_NETWORK_MODE_OPEN and configProject.bX11Forwarding:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testVaibifyDoProxyTunnel.py::testWithAProxyTheHubIsReachedThroughAConnectTunnel',
+        source='vaibify/containerImage/vaibifyDo.py',
+        old='    if tProxy is None:\n        return socket.create_connection((sHost, iPort), timeout=F_CONNECT_TIMEOUT)\n',
+        new='    if True:\n        return socket.create_connection((sHost, iPort), timeout=F_CONNECT_TIMEOUT)\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgressLive.py::testTheSealedContainerHasNoRouteToTheDaemonHost',
+        source='vaibify/docker/projectEgress.py',
+        # the option kept, the inspect-time verification dropped: a daemon
+        # that ignored the option would then seal nothing
+        old='        "network", "create", "--internal", "--ipv6=false",\n',
+        new='        "network", "create", "--ipv6=false",\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgressLive.py::testTheHubIsReachedOnItsPortAloneForHttpAndConnect',
+        source='vaibify/docker/egressProxy.py',
+        old=(
+            '        if iPort != DICT_HUB_GATEWAY["iPort"]:\n'
+            '            return "only the hub\'s port is served on the host"\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndAllowlistAndExcludesThePair',
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old='        dictData.sNetworkMode = "allowlist";\n',
+        new='        dictData.sNetworkMode = "open";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheSettingsDialogSendsTheChosenNetworkMode',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                    sNetworkMode: sNetworkMode,\n',
+        new='',
+    ),
+    # --- 2026-10-29: the guard functions of commits 8 and 10, each anchored. ---
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testTheContainerNameRuleRefusesATraversal',
+        source='vaibify/docker/x11Authorizations.py',
+        old='    if not _RE_CONTAINER_NAME.match(sContainerName or ""):\n        raise ValueError(',
+        new='    if False:\n        raise ValueError(',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testAContainerNameThatIsNotOneIsRefused',
+        source='vaibify/docker/x11Authorizations.py',
+        old='    _fnValidateContainerName(sContainerName)\n    sDirectory = os.path.join(fsX11Root(), sContainerName)\n',
+        new='    sDirectory = os.path.join(fsX11Root(), sContainerName)\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testAPreparedAuthorizationIsRecordedWithoutItsCookie',
+        source='vaibify/docker/x11Authorizations.py',
+        old='        iMode=0o600,\n',
+        new='        iMode=0o644,\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testAReleaseAgainstAnUnreachableServerKeepsTheRecordForARetry',
+        source='vaibify/docker/x11Authorizations.py',
+        old='    if dictOutcome["sOutcome"] == x11Authority.S_OUTCOME_SERVER_UNREACHABLE:\n        _fnUpdateRecord(',
+        new='    if False:\n        _fnUpdateRecord(',
+    ),
+    Falsification(
+        nodeid='tests/testX11Authorizations.py::testAServerWithoutSecurityFallsBackToItsOwnCookieAndSaysSo',
+        source='vaibify/docker/x11Authorizations.py',
+        old='        listLines.append(S_SERVER_COOKIE_NOTICE)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11OptIn.py::testAnOptedInProjectWhoseAuthorizationFailedStartsWithoutADisplay',
+        source='vaibify/docker/x11Authorizations.py',
+        old=(
+            '    return dictOutcome.get("sOutcome") in (\n'
+            '        x11Authority.S_OUTCOME_GENERATED, x11Authority.S_OUTCOME_COPIED,\n'
+            '    )\n'
+        ),
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_configureMac_passes_no_display_when_no_authorization_could_be_made',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    if not fbAuthorizationUsable(dictOutcome):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Lifecycle.py::testAMacWithItsServerQuitIsLeftAlone',
+        source='vaibify/gui/x11Lifecycle.py',
+        old='    if not fbXServerAvailable():\n        return {}\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Findings.py::testTheDoctorReportsACopiedServerCookieAsFullAccess',
+        source='vaibify/cli/doctorX11Checks.py',
+        old='    for sLine in flistDescribeAuthorization(sContainerName):\n',
+        new='    for sLine in []:\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testAnIdentityThatIsNotOneNamesNoResource',
+        source='vaibify/docker/projectEgress.py',
+        old='    if not _RE_PROJECT_UUID.match(sProjectUuid or ""):\n        raise EgressSetupError(',
+        new='    if False:\n        raise EgressSetupError(',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testTheRefusedDestinationsAreTalliedFromTheProxyLog',
+        source='vaibify/docker/projectEgress.py',
+        old='        if dictDecision is None or dictDecision["bAllowed"]:\n            continue\n',
+        new='        if dictDecision is None:\n            continue\n',
     ),
 ]

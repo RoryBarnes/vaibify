@@ -36,6 +36,7 @@ from pydantic import BaseModel
 
 from ...config.analysisStack import flistImagePythonPackages
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from ...docker.execLane import S_EXEC_LANE_RESEARCHER_COMMAND
 from ...reproducibility import (
     comparisonPolicyNotes, gitEvidence, reproductionRecord)
 from ...reproducibility.shadowRerun import S_ENUMERATE_PACKAGES_COMMAND
@@ -246,6 +247,7 @@ def fdictCheckLockSatisfiedByContainer(
     try:
         tExecResult = connectionDocker.ftRunInContainerStreamed(
             sContainerId, S_ENUMERATE_PACKAGES_COMMAND,
+            sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
         )
     except Exception as errorExec:  # noqa: BLE001 -- unknown, not a fault
         fnReRaiseControlPlaneRefusal(errorExec)

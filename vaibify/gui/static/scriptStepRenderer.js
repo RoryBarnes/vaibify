@@ -773,8 +773,9 @@ var VaibifyStepRenderer = (function () {
                     '&#9654; Run Plots</button>';
             }
             sHtml += '<div class="detail-note">This step requires ' +
-                'human judgment. It will run in the terminal ' +
-                'with X11 display forwarding.</div></div>';
+                'human judgment. It will run in the terminal; a ' +
+                'window can open on your screen only if this project ' +
+                'sets x11Forwarding.</div></div>';
         }
 
         sHtml += fsRenderInputDataSection(
