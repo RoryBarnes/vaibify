@@ -1084,10 +1084,16 @@ def _fnAddCredentialsVolume(config, saRunArgs):
     still mounted: it may hold a token the migration
     (``vaibify/gui/zenodoTokenMigration.py``) has not yet moved out,
     and a recreate that dropped the mount would strand that token in
-    the volume.
+    the volume. A host whose docker CLI cannot be run mounts nothing:
+    the launch these arguments are for fails on that same missing CLI
+    a moment later, with its own message.
     """
     sVolumeName = fsGetCredentialsVolumeName(config)
-    if not fbVolumeExists(sVolumeName):
+    try:
+        bVolumeExists = fbVolumeExists(sVolumeName)
+    except OSError:
+        return
+    if not bVolumeExists:
         return
     sUser = getattr(config, "sContainerUser", "researcher")
     sContainerPath = f"/home/{sUser}/.local/share/python_keyring"
