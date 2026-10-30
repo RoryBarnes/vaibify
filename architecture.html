@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.2.3.dev14 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.2.3.dev33 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=728d52c1"></script>
+      <script src="_static/documentation_options.js?v=709b6284"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -1753,14 +1753,22 @@ from, the file a credential passes through. A container’s scratch is
 ephemeral root its path guard admits. The container answer is passed
 in at every call site rather than known here, so this module never
 becomes a second authority on what those roots are.</p>
-<p><strong>Which keyring, likewise.</strong> A container project’s service tokens live
-in the container’s keyring, reachable only from inside it and thrown
-away with it. A host project’s live in the researcher’s own OS
-keyring, which is where Overleaf’s token already went in both modes
-because the Overleaf push has always run on the host. The dispatchers
-in <code class="docutils literal notranslate"><span class="pre">syncDispatcher</span></code> pick the store; the <code class="docutils literal notranslate"><span class="pre">InContainer</span></code> primitives
-beneath them are unchanged, because that is still exactly what they
-do.</p>
+<p><strong>Which keyring: the host’s, for both kinds of project.</strong> Since
+2026-10-29 a Zenodo token lives only in the researcher’s own OS
+keyring, in an active slot named for the project’s registry identity
+and the instance (<code class="docutils literal notranslate"><span class="pre">vaibify/config/zenodoTokenSlots.py</span></code>), which is where
+Overleaf’s token already went in both modes. Since the same date every
+Overleaf operation runs on the host too: the push stages the figures
+out through the confined reader and commits in process
+(<code class="docutils literal notranslate"><span class="pre">overleafSync.ftPushFiguresToOverleaf</span></code>), and the pull clones on the
+host and lands the sources through <code class="docutils literal notranslate"><span class="pre">fnWriteTreeViaTar</span></code>, so the
+in-container <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code> copy is no longer executed. Every Zenodo operation runs on the host
+too (<code class="docutils literal notranslate"><span class="pre">syncDispatcher.ftResultArchiveToZenodo</span></code> streams the files out
+through the confined reader), so the container keyring holds no token.
+A token an older container still holds is moved out at connect by
+<code class="docutils literal notranslate"><span class="pre">vaibify/gui/zenodoTokenMigration.py</span></code>: staged pending with a verified
+read-back, deleted only once that is recorded, validated on the host,
+and activated only by the researcher’s decision.</p>
 <p><strong>Paths.</strong> Every direct path argument and working directory is
 validated against exactly two roots — the project directory and the
 project’s <code class="docutils literal notranslate"><span class="pre">~/.vaibify/tmp/host-diagnostics/&lt;digest&gt;/</span></code> scratch subtree —
@@ -2967,18 +2975,17 @@ compressor. zstd and gzip give different bytes for one image, and so
 can two builds of one codec, which would report an identical image as
 diverged.</p>
 </section>
-<section id="the-deposit-runs-on-the-host-and-the-credential-crosses-once">
-<h3>The deposit runs on the host and the credential crosses once<a class="headerlink" href="#the-deposit-runs-on-the-host-and-the-credential-crosses-once" title="Link to this heading"></a></h3>
+<section id="the-deposit-runs-on-the-host-with-the-host-s-token">
+<h3>The deposit runs on the host, with the host’s token<a class="headerlink" href="#the-deposit-runs-on-the-host-with-the-host-s-token" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">save</span></code> talks to the daemon, so only the hub can produce the
-tarball; vaibify stores the Zenodo token in the CONTAINER keyring,
-because every other Zenodo call it makes runs as a script inside the
-container. The bytes and the credential therefore start on opposite
-sides of the boundary and one of them has to cross. Moving the token is
-the cheaper crossing by a factor of a hundred million: it is read
-through the typed-read seam (<code class="docutils literal notranslate"><span class="pre">DockerConnection.fsFetchKeyringSecret</span></code>),
-held in a local for the length of one upload, and written to no file
-and no log. Moving the tarball would mean streaming a gigabyte through
-an exec socket built for a terminal.</p>
+tarball, and since 2026-10-29 the Zenodo token lives only on the host
+too (<code class="docutils literal notranslate"><span class="pre">vaibify/gui/zenodoTokenAccess.py</span></code> reads the project’s active
+slot), so nothing crosses the container boundary for this deposit at
+all. The typed read of the container keyring
+(<code class="docutils literal notranslate"><span class="pre">DockerConnection.fsFetchKeyringSecret</span></code>) remains for one purpose: the
+migration that moves a token an older container still holds out of
+it. The token is held in a local for the length of one upload, and
+written to no file and no log.</p>
 <p>The deposit is a mode-(c) durable task and reports progress, because a
 silent multi-minute upload reads as a hang. Its route is
 <code class="docutils literal notranslate"><span class="pre">bAgentSafe:</span> <span class="pre">False</span></code>, and that one is a security decision rather than a
@@ -3904,6 +3911,44 @@ about as much as scanning 100 KB. A pass runs as a task of its own,
 and a request waits for it at most 45 seconds before answering that
 it is still running, since an in-container agent’s client gives up at
 60 and used to report a busy host as an unreachable one.</p>
+</section>
+<section id="sealed-networks-and-display-authorizations-beside-the-lifecycle-gateway">
+<h2>Sealed networks and display authorizations beside the lifecycle gateway<a class="headerlink" href="#sealed-networks-and-display-authorizations-beside-the-lifecycle-gateway" title="Link to this heading"></a></h2>
+<p>Two per-container resources live on the host and are made and removed
+by the container’s lifecycle, never by anything inside it. Each has a
+pure module and a host-state module, split the way the Agent Council’s
+egress is split, so the part that composes arguments can be tested
+without a daemon and the part that touches the daemon is one place.</p>
+<ul class="simple">
+<li><p><strong>The egress boundary</strong> (<code class="docutils literal notranslate"><span class="pre">networkMode:</span> <span class="pre">allowlist</span></code>).
+<code class="docutils literal notranslate"><span class="pre">vaibify/docker/egressProxy.py</span></code> is the proxy script and its argv and
+environment composition, shared with the council;
+<code class="docutils literal notranslate"><span class="pre">vaibify/docker/egressAllowlist.py</span></code> computes the base allowlist from
+the project’s configuration with every entry’s reason beside it;
+<code class="docutils literal notranslate"><span class="pre">vaibify/docker/projectEgress.py</span></code> makes the project’s internal
+network (gateway mode <code class="docutils literal notranslate"><span class="pre">isolated</span></code>, Engine 28) and proxy sidecar with
+<code class="docutils literal notranslate"><span class="pre">docker</span></code> commands on the host, keyed by the project’s stable identity,
+and reads the proxy’s log back for the dashboard’s Network row.
+<code class="docutils literal notranslate"><span class="pre">containerManager</span></code> calls it immediately before composing the run
+arguments, because the container’s proxy variables need the sidecar’s
+address, and releases it when the stopped container is removed;
+<code class="docutils literal notranslate"><span class="pre">vaibify/gui/projectEgressLifecycle.py</span></code> reconciles at the hub’s start
+and on the remnant reaper’s cadence. There is no fallback to a
+gatewayed network: an engine that leaves the bridge an address is
+refused by name.</p></li>
+<li><p><strong>The X authorization</strong> (<code class="docutils literal notranslate"><span class="pre">x11Forwarding:</span> <span class="pre">true</span></code>).
+<code class="docutils literal notranslate"><span class="pre">vaibify/host/x11Authority.py</span></code> is the helper process that makes every
+X call (an Xlib I/O error ends the process it happens in, so never the
+hub’s); <code class="docutils literal notranslate"><span class="pre">vaibify/docker/x11Authorizations.py</span></code> keeps the record under
+<code class="docutils literal notranslate"><span class="pre">~/.vaibify/x11</span></code> and the probe-then-revoke discipline, because a
+restarted X server reuses authorization ids; <code class="docutils literal notranslate"><span class="pre">x11Forwarding.py</span></code> owns
+what is known about the host’s X server; <code class="docutils literal notranslate"><span class="pre">vaibify/gui/x11Lifecycle.py</span></code>
+reconciles at start, probes on a cadence and withdraws the <code class="docutils literal notranslate"><span class="pre">xhost</span></code>
+grants earlier versions made. The authorization directory is mounted,
+not the file, so a renewed cookie reaches a running container.</p></li>
+</ul>
+<p>Both records hold no secret: the cookie lives only in the mounted
+directory, the proxy’s allowlist only in the sidecar’s argv.</p>
 </section>
 <section id="javascript-frontend">
 <h2>JavaScript frontend<a class="headerlink" href="#javascript-frontend" title="Link to this heading"></a></h2>

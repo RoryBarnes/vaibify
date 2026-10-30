@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>System Prompt &mdash; Vaibify 0.2.3.dev14 documentation</title>
+  <title>System Prompt &mdash; Vaibify 0.2.3.dev33 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=728d52c1"></script>
+      <script src="_static/documentation_options.js?v=709b6284"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -177,7 +177,7 @@ are lost; put lasting instructions in the project context file.</p>
 <li><p>“run unit tests on step A09” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-unit-tests</span> <span class="pre">A09</span></code></p></li>
 <li><p>“run all tests” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-all-tests</span></code></p></li>
 <li><p>“commit the current state” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">commit-canonical</span></code></p></li>
-<li><p>“pull a file from the container” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">pull-file</span> <span class="pre">sContainerPath=&lt;absolute</span> <span class="pre">path</span> <span class="pre">under</span> <span class="pre">/workspace&gt;</span> <span class="pre">sHostDestination='~/.vaibify/exports/&lt;VAIBIFY_CONTAINER_ID&gt;/'</span></code> (the only place an agent pull may land; quote the <code class="docutils literal notranslate"><span class="pre">~</span></code> so the host, not your shell, expands it, and tell the researcher the <code class="docutils literal notranslate"><span class="pre">sHostPath</span></code> it reports)</p></li>
+<li><p>“pull a file from the container” → USER-ONLY — the pull writes the researcher’s own machine with bytes you authored, so surface the request: name the container path and ask the researcher to pull it from the dashboard or with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span> <span class="pre">&lt;path&gt;</span> <span class="pre">&lt;destination&gt;</span></code> on the host; do not run <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">pull-file</span></code></p></li>
 <li><p>“make step A09’s figures the standard” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">accept-plots-as-standard</span> <span class="pre">A09</span></code> (USER-ONLY — surface the request, do not run)</p></li>
 <li><p>“push these output files to GitHub” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">push-to-github</span> <span class="pre">listFilePaths='[&quot;&lt;repo-relative</span> <span class="pre">path&gt;&quot;,</span> <span class="pre">...]'</span></code> (not a general <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span></code>: to push commits, run <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span></code>, then <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">reconcile-remote-state</span></code>)</p></li>
 <li><p>“push to Overleaf / Zenodo” → USER-ONLY — surface the request, do not run</p></li>

@@ -1705,14 +1705,22 @@ ephemeral root its path guard admits. The container answer is passed
 in at every call site rather than known here, so this module never
 becomes a second authority on what those roots are.
 
-**Which keyring, likewise.** A container project's service tokens live
-in the container's keyring, reachable only from inside it and thrown
-away with it. A host project's live in the researcher's own OS
-keyring, which is where Overleaf's token already went in both modes
-because the Overleaf push has always run on the host. The dispatchers
-in `syncDispatcher` pick the store; the `InContainer` primitives
-beneath them are unchanged, because that is still exactly what they
-do.
+**Which keyring: the host's, for both kinds of project.** Since
+2026-10-29 a Zenodo token lives only in the researcher's own OS
+keyring, in an active slot named for the project's registry identity
+and the instance (`vaibify/config/zenodoTokenSlots.py`), which is where
+Overleaf's token already went in both modes. Since the same date every
+Overleaf operation runs on the host too: the push stages the figures
+out through the confined reader and commits in process
+(`overleafSync.ftPushFiguresToOverleaf`), and the pull clones on the
+host and lands the sources through `fnWriteTreeViaTar`, so the
+in-container `overleafSync.py` copy is no longer executed. Every Zenodo operation runs on the host
+too (`syncDispatcher.ftResultArchiveToZenodo` streams the files out
+through the confined reader), so the container keyring holds no token.
+A token an older container still holds is moved out at connect by
+`vaibify/gui/zenodoTokenMigration.py`: staged pending with a verified
+read-back, deleted only once that is recorded, validated on the host,
+and activated only by the researcher's decision.
 
 **Paths.** Every direct path argument and working directory is
 validated against exactly two roots — the project directory and the
@@ -2920,18 +2928,17 @@ compressor. zstd and gzip give different bytes for one image, and so
 can two builds of one codec, which would report an identical image as
 diverged.
 
-### The deposit runs on the host and the credential crosses once
+### The deposit runs on the host, with the host's token
 
 `docker save` talks to the daemon, so only the hub can produce the
-tarball; vaibify stores the Zenodo token in the CONTAINER keyring,
-because every other Zenodo call it makes runs as a script inside the
-container. The bytes and the credential therefore start on opposite
-sides of the boundary and one of them has to cross. Moving the token is
-the cheaper crossing by a factor of a hundred million: it is read
-through the typed-read seam (`DockerConnection.fsFetchKeyringSecret`),
-held in a local for the length of one upload, and written to no file
-and no log. Moving the tarball would mean streaming a gigabyte through
-an exec socket built for a terminal.
+tarball, and since 2026-10-29 the Zenodo token lives only on the host
+too (`vaibify/gui/zenodoTokenAccess.py` reads the project's active
+slot), so nothing crosses the container boundary for this deposit at
+all. The typed read of the container keyring
+(`DockerConnection.fsFetchKeyringSecret`) remains for one purpose: the
+migration that moves a token an older container still holds out of
+it. The token is held in a local for the length of one upload, and
+written to no file and no log.
 
 The deposit is a mode-(c) durable task and reports progress, because a
 silent multi-minute upload reads as a hang. Its route is
@@ -3880,6 +3887,44 @@ about as much as scanning 100 KB. A pass runs as a task of its own,
 and a request waits for it at most 45 seconds before answering that
 it is still running, since an in-container agent's client gives up at
 60 and used to report a busy host as an unreachable one.
+
+## Sealed networks and display authorizations beside the lifecycle gateway
+
+Two per-container resources live on the host and are made and removed
+by the container's lifecycle, never by anything inside it. Each has a
+pure module and a host-state module, split the way the Agent Council's
+egress is split, so the part that composes arguments can be tested
+without a daemon and the part that touches the daemon is one place.
+
+- **The egress boundary** (`networkMode: allowlist`).
+  `vaibify/docker/egressProxy.py` is the proxy script and its argv and
+  environment composition, shared with the council;
+  `vaibify/docker/egressAllowlist.py` computes the base allowlist from
+  the project's configuration with every entry's reason beside it;
+  `vaibify/docker/projectEgress.py` makes the project's internal
+  network (gateway mode `isolated`, Engine 28) and proxy sidecar with
+  `docker` commands on the host, keyed by the project's stable identity,
+  and reads the proxy's log back for the dashboard's Network row.
+  `containerManager` calls it immediately before composing the run
+  arguments, because the container's proxy variables need the sidecar's
+  address, and releases it when the stopped container is removed;
+  `vaibify/gui/projectEgressLifecycle.py` reconciles at the hub's start
+  and on the remnant reaper's cadence. There is no fallback to a
+  gatewayed network: an engine that leaves the bridge an address is
+  refused by name.
+- **The X authorization** (`x11Forwarding: true`).
+  `vaibify/host/x11Authority.py` is the helper process that makes every
+  X call (an Xlib I/O error ends the process it happens in, so never the
+  hub's); `vaibify/docker/x11Authorizations.py` keeps the record under
+  `~/.vaibify/x11` and the probe-then-revoke discipline, because a
+  restarted X server reuses authorization ids; `x11Forwarding.py` owns
+  what is known about the host's X server; `vaibify/gui/x11Lifecycle.py`
+  reconciles at start, probes on a cadence and withdraws the `xhost`
+  grants earlier versions made. The authorization directory is mounted,
+  not the file, so a renewed cookie reaches a running container.
+
+Both records hold no secret: the cookie lives only in the mounted
+directory, the proxy's allowlist only in the sidecar's argv.
 
 ## JavaScript frontend
 

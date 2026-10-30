@@ -18,20 +18,42 @@ The defenses are designed to contain four things:
 - **Escape to the host file system.** No wholesale host mount and no
   Docker socket. The host paths that *are* mounted are listed under
   [Container isolation](#container-isolation).
-- **Exfiltration over the network.** Optional network isolation blocks
-  all traffic in and out.
+- **Exfiltration over the network.** The network mode decides what the
+  container can reach: `allowlist` (the default for a new project) gives
+  it no route off the host and one way out, a proxy that serves only the
+  hosts the project needs and the hosts you allow; `isolated` blocks
+  all traffic in and out; `open` is the whole network (see
+  [Network modes](#network-modes)). An allowed host is still a channel:
+  an agent allowed to reach GitHub can push to its own fork.
 - **Privilege escalation inside the container.** Your code runs as an
   unprivileged user, with no `sudo` and a minimal capability set.
 - **One container acting on another.** Each container's agent holds its
   own token, which authorizes that container and no other.
+- **The container forging what the dashboard reports.** The programs the
+  hub runs inside a container to hash files, read markers and probe
+  processes resolve through a fixed system PATH, run Python isolated
+  from the agent's user site, and read as a separate read-only user, so
+  a program the agent plants cannot answer in their place (see
+  [What the hub runs inside the container](#what-the-hub-runs-inside-the-container)).
 
 Credential theft is contained only **partially**: a secret you choose to
 mount into a container can be read by every process in it (see
 [How secrets are handled](#how-secrets-are-handled)).
 
-vaibify does **not** defend against kernel-level container escapes. For
-high-security workloads, run vaibify inside a virtual machine or use a
-hardened container runtime such as gVisor.
+vaibify does **not** defend against kernel-level container escapes, and
+every control here rests on the container runtime being current:
+`runc` and Docker Engine have each had container-breakout fixes, and an
+engine behind those fixes makes the seal a courtesy. `vaibify doctor`
+reports the engine version; keep it patched. For high-security
+workloads, run vaibify inside a virtual machine or use a hardened
+container runtime such as gVisor.
+
+**What stays readable inside the container**, by design: the GitHub
+token when the project declares that secret (a researcher is not kept
+from any repository they normally reach), the coding agents' own
+logins and settings on the workspace volume, every `secrets` entry you
+declare, and the per-container session token `vaibify-do` uses. Zenodo
+and Overleaf tokens are not among them; they never enter the container.
 
 ## Container isolation
 
@@ -45,18 +67,30 @@ these restrictions:
 | Root only at startup, then `gosu` | The entrypoint starts as root to write a few system paths and fix workspace ownership, then `exec`s itself through `gosu` as the container user. Root exists at container start, but nothing you or an agent run inherits it. |
 | Minimal capabilities | The container starts with `--cap-drop ALL` and adds back only the five capabilities the entrypoint needs for that ownership fix and the `gosu` drop. `no-new-privileges` is set, so no setuid binary can regain privileges after the drop. |
 | No Docker socket | The daemon socket is never mounted. A bind mount that resolves to a Docker endpoint, is a socket, or contains one is refused (see below). |
-| Few host mounts | Files enter and leave through vaibify's own transfer commands, not a shared host directory. Three kinds of host path can be mounted: resolved secret files (read-only, under `/run/secrets`), any `bindMounts` you declare in `vaibify.yml`, and, only for a project that opts in, the Linux X11 socket (read-only). |
+| Few host mounts | Files enter and leave through vaibify's own transfer commands, not a shared host directory. Four kinds of host path can be mounted: resolved secret files (read-only, under `/run/secrets`), the repository list a container started on a pinned image syncs from (read-only, at `/etc/vaibify/container.conf`), any `bindMounts` you declare in `vaibify.yml` (read-only unless an entry sets `readWrite: true`), and, only for a project that opts in to `x11Forwarding`, that container's own X authorization directory (read-only) and, on Linux, the X11 socket directory (read-only). |
 | Workspace volume | A Docker named volume holds `/workspace` (or your configured `workspaceRoot`). It is not part of the host directory tree. |
 | Loopback-only ports | Every forwarded container port is bound to `127.0.0.1` unless that port's entry sets `lanExpose: true`. |
-| Optional network isolation | `networkIsolation: true` in `vaibify.yml` starts the container with `--network none`, blocking all traffic in and out. It cannot be combined with `x11Forwarding`. |
+| Network modes | `networkMode: allowlist` (the wizard's default for a new project) seals the container behind an allowlisting proxy: only the enabled agents' services, GitHub, the package indexes, the project's repositories and the hosts you allow, and nothing on the host, the VM or the LAN. `isolated` (the old `networkIsolation: true`) starts the container with `--network none`. `open` is the whole network. Neither sealing mode can be combined with `x11Forwarding`. |
 
 ### Declared bind mounts
 
 Each `bindMounts` entry is validated when the configuration loads and
-again when the run arguments are built. A mount is refused if it leaves
-your home directory, contains `..`, or touches `/etc`, `/root`, your
-SSH, cloud, GitHub CLI, GnuPG, Docker or Kubernetes configuration, or
-vaibify's own journal, control-socket or temporary-secret directories.
+again when the run arguments are built. Every mount is read-only inside
+the container unless its entry sets `readWrite: true`; the retired
+`readOnly` key and any other unknown key are refused, so a file written
+against the old schema cannot mount read-write by accident. A mount is
+refused if it leaves your home directory, contains `..`, or touches
+`/etc`, `/root`, your SSH, cloud, GnuPG, Docker or Kubernetes
+configuration, all of `~/.config`, an agent CLI's home (`~/.claude`,
+`~/.codex`, `~/.gemini`), `~/.gitconfig`, `~/.netrc`, `~/.pypirc`,
+`~/.npmrc`, a shell start-up file, `~/Library/LaunchAgents`,
+`~/Library/Keychains`, or anything under `~/.vaibify`. A `readWrite`
+mount may not be, or contain, the directory holding the project's
+`vaibify.yml`: a container that could edit the file declaring its own
+mounts and secrets would choose its own confinement at the next start.
+A mount's mode is fixed when the container is created, so the readiness
+banner and `vaibify doctor` compare the running container's `RW` flag
+with the file and say when they differ.
 The Docker socket is refused by **resolution and file type**, not by
 spelling: every endpoint your Docker configuration names, and any path
 that is a socket or contains one, is denied (on Colima, Rancher and
@@ -89,6 +123,53 @@ files writable from inside the container (`project.json`, `state.json`,
 directory names, the dependency diagram) are treated as untrusted
 markup: wrongly typed fields are refused by name, the frontend escapes
 through one quote-safe function, and the diagram is shown as an image.
+
+## What the hub runs inside the container
+
+The hub performs its own work in a container through `docker exec`:
+git questions, the five-second poll's hashes, test-marker reads,
+containment probes. The image's `PATH` leads with the container user's
+`~/.local/bin` so that a researcher's pip-installed tools resolve from a
+step command, and that directory, like the user site-packages beside
+it, belongs to the in-container agent. Until 2026-10-28 the hub's
+programs resolved through it too, and two of them ran as root.
+
+Every exec the hub performs now declares one of three lanes
+(`vaibify/docker/execLane.py`):
+
+| Lane | Identity | Environment | Used for |
+|---|---|---|---|
+| hub-internal (default) | the container user | the fixed system PATH (`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, with `/opt/conda/bin` first in a conda image); Python runs as `python3 -I` | git operations, markers, directory probes, the containment probes (these run as root with the same PATH) |
+| integrity-read | UID 65532 in the container user's group, `HOME=/` | the hub-internal environment | everything the dashboard poll and the level gates read: the snapshot hasher, typed file reads, marker and plot digests, repository status |
+| researcher-command | the container user | the image's own environment, `~/.local/bin` included | step runs, test runs, the terminal, agent CLIs, and the probes that must see the researcher's installed packages |
+
+The read-only user needs no account in the image, so no image is
+rebuilt. It reads through the container user's GROUP: the directories
+on the way to a file must grant the group its traversal bit, which
+Ubuntu's `useradd` gives a home directory (mode 750) and which `/workspace`
+has by construction. A project kept under a directory that is private
+to the container user (mode 700, Debian's default home) reads as
+unknown, never as absent: the existence probes exit non-zero when the
+reader is refused, and every gate reports "could not check". What the
+reader buys is bounded, and stated: a process the agent
+controls cannot ptrace, signal or read the `/proc` entry of a program
+that hashes a file for the dashboard, and cannot alter the root-owned
+interpreter it runs. The agent can still change a file, which the
+dashboard reports as changed, or make one unreadable, which the
+dashboard reports as unknown and never as unchanged or deleted. Three
+typed reads stay with the container user because they read that
+user's private files: the container keyring (read only to move a
+Zenodo token out of it), an agent login document and the size of
+`/tmp`. The set of execs that opt into the researcher
+lane is enumerated in `tests/testExecLaneInvariant.py`; adding one is
+a security decision.
+
+A file pulled out of a container (`vaibify pull`, or the dashboard's
+pull) is researcher-only. It is read through the confined reader as
+the container user, never through the daemon as root, and written on
+the host by a confined writer that opens the destination directory
+once and refuses a final name that is a link or a directory, so a
+read-write bind mount cannot redirect the researcher's copy.
 
 ## The per-container agent token
 
@@ -148,15 +229,90 @@ in shell history, in Git configuration or in a committed file.
    starts without it, and vaibify names the secret, its method and the
    remedy, never its value or where it would be stored.
 
-**Credentials inside the container are persistent and shared.** Two
-stores survive container recreation. The container keyring (a
-plaintext keyring backend) lives on a separate per-project credentials
-volume, which survives a Rebuild; **Delete environment…** on the
-environment's tile menu removes it. Each coding
-agent's login and settings live on the workspace volume. All agents run
-as the same container user, so file permissions isolate nothing between
-them: treat "one agent was compromised" as "every configured provider's
-session was exposed."
+**Publishing tokens never enter the container.** A Zenodo token lives
+only in the host keyring, in an active slot named for the project's
+registry identity and the instance; every deposit, publish and token
+check runs on the host, and the container keyring holds none. The
+Overleaf token likewise stays on the host: a push stages the figures
+out through the confined reader and commits from the host, a pull
+clones on the host and lands the sources through the confined tree
+write, and no container program is handed the token on any channel. A token
+an older container still holds is moved out at the next open: staged
+on the host as *pending* with a verified read-back, deleted from the
+container only once that is recorded, checked against Zenodo from the
+host, and spent by nothing until the researcher confirms it in the
+dashboard or with `vaibify do decide-migrated-zenodo-token` (the
+container keyring is agent-writable, so the token may not be theirs).
+No credentials volume is created for a new container; an existing one
+stays mounted until the move out of it has finished, and **Delete
+environment…** on the environment's tile menu removes it.
+
+**Agent logins inside the container are persistent and shared.** Each
+coding agent's login and settings live on the workspace volume. All
+agents run as the same container user, so file permissions isolate
+nothing between them: treat "one agent was compromised" as "every
+configured provider's session was exposed."
+
+## Network modes
+
+A project's `networkMode` in `vaibify.yml` is `open`, `allowlist` or
+`isolated`; `networkIsolation: true` is the old spelling of `isolated`
+and is still read (a file that sets the two to disagree is refused).
+The creation wizard proposes `allowlist` for a new project; an existing
+project keeps `open` until you change it, because the mode applies when
+the container is created and a published project's files are not
+edited for you.
+
+**Allowlist mode** gives the container no route off the host at all and
+one way out: an HTTP CONNECT proxy that vaibify runs beside it.
+
+- **The network.** The container joins a Docker network created
+  `--internal` with the bridge's gateway mode `isolated` (Docker Engine
+  28 or later; an older engine refuses allowlist mode by name, and there
+  is no fallback to a gatewayed network). `--internal` alone is not the
+  seal: such a network's bridge has an address, and every host service
+  listening on `0.0.0.0` answers on it. In `isolated` mode the bridge
+  has no address and the container no route, so a direct dial to your
+  machine, the VM, the LAN or another container fails before a packet
+  leaves the machine. The container's resolver points at an address
+  that is never routed, so it cannot even look names up.
+- **The proxy sidecar.** A digest-pinned `python:3.10-slim` container
+  running vaibify's own proxy script (`vaibify/docker/egressProxy.py`,
+  shared with the Agent Council) from a read-only bind mount, as an
+  unprivileged user with every capability dropped, a read-only root and
+  memory, CPU and PID bounds. It sits on the sealed network, bound to
+  its address there alone, and on the default bridge. It serves
+  `CONNECT` to the allowlisted names on the allowed ports, and refuses:
+  anything else, a raw address, an unlisted host or port, an allowed
+  name that resolves to a loopback, private, link-local, carrier-grade
+  NAT or multicast address, and a tunnel past its concurrency cap.
+- **The allowlist** is computed, with every entry's reason in
+  `vaibify/docker/egressAllowlist.py`: the enabled agents' login and API
+  hosts (the four secondary agents get only their login hosts), GitHub,
+  PyPI, the conda channels when the package manager is conda, the npm
+  registry when an agent auto-updates, every repository the project
+  clones, and `allowedHosts` (`host` or `host:port`). Zenodo, Overleaf
+  and arXiv are absent on purpose: those operations run on the host.
+- **The hub.** `vaibify-do` reaches the hub through the proxy, which
+  pins exactly `host.docker.internal:<hub port>`: no other port on that
+  name, no raw address, and the port is the one the hub recorded when
+  it launched. The container's published ports (`ports`, Jupyter) are
+  published on the sidecar and relayed to the container.
+- **The dashboard** shows the Network row: the mode, whether the proxy
+  is up (a dead proxy is said in so many words, never silent), and the
+  destinations the proxy refused recently with their counts. The
+  researcher-only **Allow host** action adds one to `allowedHosts`
+  (also `vaibify do allow-network-host`); it takes effect when the
+  container is created again. Agents cannot extend the allowlist.
+- **What it does not close.** Allowed hosts are multi-tenant: an agent
+  can push to its own GitHub fork, or send data to the model API it is
+  allowed to use.
+- **What breaks.** Tools that ignore the proxy variables cannot reach
+  the network; git over SSH to hosts other than GitHub is not relayed
+  (use HTTPS); a data archive not on the list must be allowed first.
+  A pinned image whose `vaibify-do` predates this release cannot stream
+  pipeline runs from inside an allowlist-mode container until the image
+  is rebuilt; its plain HTTP actions work through the proxy unchanged.
 
 ## X11 display forwarding
 
@@ -173,18 +329,52 @@ reason vaibify refuses to start a project that sets both
 `x11Forwarding` and `networkIsolation`: a display channel would defeat
 the seal.
 
+How a container is admitted to your display:
+
+- **Its own authorization, never a host-wide grant.** When an opted-in
+  container starts, vaibify asks the X server (through the X SECURITY
+  extension) for an *untrusted* authorization for that one container
+  and mounts it read-only at `/run/vaibify/x11/Xauthority`, with
+  `XAUTHORITY` pointing there. An untrusted client cannot read other
+  windows' contents, grab keystrokes aimed at them, or synthesize input
+  through XTEST: what remains is its own windows on your screen. The
+  authorization is revoked when the container stops, when the project
+  turns `x11Forwarding` off, when the environment is deleted, and when
+  the hub finds a recorded container gone. No `xhost` entry is made,
+  and the hub withdraws the `+localhost` and `+SI:localuser:$USER`
+  entries earlier versions made, so a container without a cookie is
+  refused however it reaches the server.
+- **What the record holds.** `~/.vaibify/x11/authorizations.json`
+  names each container's authorization id, display and directory; the
+  cookie itself lives only in the container's own directory, mode 600,
+  which no bind mount may reach.
+- **The fallback, and what it costs.** XQuartz and the MacPorts X
+  server do not implement the SECURITY extension. For such a server
+  vaibify copies the server's own cookie into the container's
+  directory instead. That is full display access, the same a program
+  on your Mac has, revocable only by restarting the X server; the
+  dashboard's readiness banner and `vaibify doctor` say so for every
+  container that holds one.
+- **A server restart.** Generated authorizations do not survive an X
+  server restart. The hub probes each container's cookie every minute
+  and, when the server has lost it, generates a new one and replaces
+  the mounted file, so a running container regains its display without
+  being created again; the banner reports the renewal.
+
 What vaibify changes on the host when forwarding is on:
 
-- **Linux:** mounts `/tmp/.X11-unix` read-only and runs
-  `xhost +SI:localuser:$USER`, which admits only your own account.
-  Revoke it with `xhost -SI:localuser:$USER`.
+- **Linux:** mounts `/tmp/.X11-unix` read-only, beside the
+  authorization directory.
 - **macOS:** the container reaches the X server over TCP at
   `host.docker.internal`, so the server (XQuartz or the MacPorts X11
-  application) must accept network clients. vaibify starts the server,
-  runs `xhost +SI:localuser:$USER` and `xhost +localhost` (the local-user
-  rule admits only Unix-socket clients, not a TCP connection from the
-  container engine), and tells you if the server refuses network
-  clients. Revoke the TCP entry with `xhost -localhost`.
+  application) must accept network clients. At the first opt-in
+  vaibify turns the server's network-client setting on
+  (`defaults write <domain> nolisten_tcp -bool false`), starts the
+  server, and tells you when it must be quit and started again for the
+  setting to take effect. vaibify never turns the setting back off,
+  because it cannot know what else you use it for; `vaibify doctor`
+  warns when the server accepts network clients and no registered
+  project forwards, and prints the command that turns it off.
 
 The display setting is fixed when a container is created. After you
 turn `x11Forwarding` on, or install or reconfigure the X server, stop
@@ -241,10 +431,11 @@ recreated.
 
 Stored credentials are a separate choice, off by default and
 unavailable under Inspect only. "Credentials" means the project's
-configured secrets (mounted read-only under `/run/secrets`), the
-credentials volume that holds the container keyring, and the host bridge
-an in-container agent uses to call back to vaibify. Unchecked, none of
-them is attached.
+configured secrets (mounted read-only under `/run/secrets`), an
+existing credentials volume (the container keyring an older container
+still holds a Zenodo token in), and the host bridge an in-container
+agent uses to call back to vaibify. Unchecked, none of them is
+attached.
 
 ### Restricted mode compatibility contract
 

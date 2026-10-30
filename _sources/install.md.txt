@@ -324,12 +324,15 @@ Keys are camelCase. Every field except `projectName` has a default.
 | `workspaceRoot` | string | `/workspace` | Absolute path where the workspace volume mounts |
 | `packageManager` | string | `pip` | `pip`, `conda`, or `mamba` (the last two install Miniforge) |
 | `pipInstallFlags` | string | `--prefer-binary` | Extra `pip install` flags for the image build; `--prefer-binary` is always kept |
-| `networkIsolation` | boolean | `false` | Block all network traffic in and out of the container |
-| `x11Forwarding` | boolean | `false` | Let graphical programs in the container open windows on your display. A connected client can read the screen and send input (see [Security Model](security.md)). Refused with `networkIsolation: true`. Takes effect when the container is created |
+| `networkMode` | string | `open` | `open`, `allowlist` or `isolated`. `allowlist` seals the container behind vaibify's allowlisting proxy (the wizard's default for a new project; needs Docker Engine 28); `isolated` is `--network none`. Neither sealing mode can be combined with `x11Forwarding`. Takes effect when the container is created (see [Security Model](security.md)) |
+| `allowedHosts` | list | `[]` | In allowlist mode, extra `host` or `host:port` entries the container may reach, beside the computed base list. Host names only, never addresses |
+| `networkIsolation` | boolean | `false` | The old spelling of `networkMode: isolated`; still read, and refused when it disagrees with `networkMode` |
+| `x11Forwarding` | boolean | `false` | Let graphical programs in the container open windows on your display. The container gets its own untrusted X authorization, revoked when it stops; on a server without the SECURITY extension (XQuartz, MacPorts X11) it holds a copy of the server's cookie instead, which is full display access (see [Security Model](security.md)). Refused with `networkIsolation: true`. Takes effect when the container is created |
 | `neverSleep` | boolean | `false` | Keep the Mac awake (`caffeinate`) while the container runs. Ignored elsewhere |
 | `dashboardPort` | integer | `0` | Port for the single-project viewer started from the command line ([CLI Reference](cli.md)). `0` means unassigned: the first launch picks a free port and writes it here. Otherwise 1024–65535 |
 | `cpuLimit` | integer | `0` | CPU cores for the container. `0` means all host cores minus one; a larger value is clamped to the host's core count. See [Core allocation](environmentsAndProjects.md#core-allocation) |
 | `memoryLimitGigabytes` | number | `0` | Memory cap in GB (1 GB = 2^30 bytes). `0` means unlimited; otherwise at least `0.25`. The cap includes swap, and at the cap the kernel kills a process in the container. See [Core allocation](environmentsAndProjects.md#core-allocation) |
+| `pidsLimit` | integer | `16384` | Most processes the container may hold at once (`docker run --pids-limit`), so a runaway fork cannot exhaust the host's process table. A 63-worker pool whose workers each run 63 BLAS threads needs about 4,000 |
 
 List fields:
 
@@ -341,15 +344,25 @@ List fields:
 | `condaPackages` | string | **Refused.** A non-empty list fails validation because the build has no conda install step; use `pythonPackages` |
 | `binaries` | `name`, `path` | Executables already in the container; each `name` becomes an environment variable holding `path`, and its directory joins PATH |
 | `ports` | `container`, optional `host` (defaults to `container`), optional `lanExpose` | Ports forwarded from the container, bound to `127.0.0.1` unless `lanExpose: true` |
-| `bindMounts` | `host`, `container` | Host directories mounted into the container (rules below) |
+| `bindMounts` | `host`, `container`, optional `readWrite` (defaults to `false`) | Host directories mounted into the container, read-only unless the entry sets `readWrite: true` (rules below) |
 | `secrets` | `name`, `method` (`gh_auth`, `keyring`, or `docker_secret`) | Credentials resolved on the host at start and mounted read-only at `/run/secrets/<name>`. A secret this host cannot resolve is skipped with a notice. Values never appear in `vaibify.yml` |
 
 A `bindMounts` host path must be absolute (Docker does not expand `~`),
 must exist, and must lie under your home directory or the project
-repository. Vaibify refuses any mount that overlaps a credential
-directory (such as `~/.ssh` or `~/.config/gh`), `/etc`, `/root`, a Docker
-daemon socket, or vaibify's own control, journal, and temporary
-directories under `~/.vaibify`, however the path is spelled.
+repository. Every mount is read-only inside the container unless its
+entry sets `readWrite: true`; an entry carrying the retired `readOnly`
+key, or any key other than `host`, `container` and `readWrite`, is
+refused. Vaibify refuses any mount that overlaps a credential or
+configuration directory (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`,
+`~/.kube`, all of `~/.config`, the agent homes `~/.claude`, `~/.codex`
+and `~/.gemini`), `~/.gitconfig`, `~/.netrc`, `~/.pypirc`, `~/.npmrc`,
+a shell start-up file, `~/Library/LaunchAgents`, `~/Library/Keychains`,
+`/etc`, `/root`, a Docker daemon socket, or anything under `~/.vaibify`,
+however the path is spelled. A `readWrite` mount may not be, or
+contain, the directory holding the project's `vaibify.yml`. A mount's
+mode is fixed when the container is created: after changing
+`readWrite`, the dashboard and `vaibify doctor` report the running
+container's mode until it is created again.
 
 ### Features
 

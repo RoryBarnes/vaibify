@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Connecting to External Resources &mdash; Vaibify 0.2.3.dev14 documentation</title>
+  <title>Connecting to External Resources &mdash; Vaibify 0.2.3.dev33 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=728d52c1"></script>
+      <script src="_static/documentation_options.js?v=709b6284"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -57,7 +57,11 @@
 <li class="toctree-l3"><a class="reference internal" href="#what-the-in-container-agent-may-do">What the in-container agent may do</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#setting-up-a-connection">Setting up a connection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#setting-up-a-connection">Setting up a connection</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#confirming-where-a-token-may-be-spent">Confirming where a token may be spent</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#zenodo-tokens-moved-out-of-an-older-container">Zenodo tokens moved out of an older container</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#github">GitHub</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#zenodo">Zenodo</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#overleaf">Overleaf</a><ul>
@@ -180,17 +184,18 @@ configuration file, <code class="docutils literal notranslate"><span class="pre"
 line.</strong> Environment variables and command lines are visible to
 process inspection and <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">inspect</span></code>; files in a repository get
 published.</p></li>
-<li><p><strong>Tokens live in established credential stores.</strong> On the host, that
-is your operating system’s keyring, or your existing <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span></code>
-login for GitHub. Inside a container it is a keyring kept on a
-dedicated Docker volume, so a token survives a Rebuild without being
-baked into the image.</p></li>
+<li><p><strong>Tokens live in established credential stores on your machine.</strong>
+That is your operating system’s keyring, or your existing <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span></code>
+login for GitHub. A Zenodo token is kept in a slot of that keyring
+named for the project it belongs to (its random <code class="docutils literal notranslate"><span class="pre">sProjectUuid</span></code> in
+the registry) and the instance, so two projects never share one and
+nothing inside a container can read it: every Zenodo deposit,
+publish and token check runs on your machine.</p></li>
 <li><p><strong>Tokens reach programs through short-lived channels.</strong> Git is given
 a mode-700 helper script that reads the token at the moment git asks
-and is deleted afterwards; container-side programs receive a token
-on standard input. A GitHub credential the container itself needs
-is mounted read-only as a Docker secret file and handed to git by a
-credential helper only for requests to GitHub.</p></li>
+and is deleted afterwards. A GitHub credential the container itself
+needs is mounted read-only as a Docker secret file and handed to git
+by a credential helper only for requests to GitHub.</p></li>
 <li><p><strong>Error messages are redacted</strong> before they reach the dashboard, so
 a server that echoes a credential back does not put it on screen.</p></li>
 </ul>
@@ -209,8 +214,8 @@ project:</p>
 <td><p>Same</p></td>
 </tr>
 <tr class="row-odd"><td><p>Zenodo</p></td>
-<td><p>The container’s keyring (one entry for the sandbox, one for production)</p></td>
-<td><p>The host keyring</p></td>
+<td><p>The host keyring, one slot per project and instance</p></td>
+<td><p>The same</p></td>
 </tr>
 <tr class="row-even"><td><p>Overleaf</p></td>
 <td><p>The host keyring</p></td>
@@ -249,6 +254,9 @@ something public under your name are researcher-only.</p>
 <tr class="row-even"><td><p>Configure arXiv, declare an extra Zenodo record</p></td>
 <td><p>Yes</p></td>
 </tr>
+<tr class="row-odd"><td><p>Pull a file from the container onto the host</p></td>
+<td><p>No. The agent authors the bytes and the write lands on your machine, so it asks you to pull the file from the dashboard or with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code></p></td>
+</tr>
 </tbody>
 </table>
 <p>Run <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">--list</span></code> inside a container for the complete catalog.</p>
@@ -271,11 +279,65 @@ sites with separate accounts and tokens.</p></li>
 <li><p><strong>GitHub</strong>: nothing, if <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">login</span></code> has been run on the host;
 otherwise a per-repository token.</p></li>
 </ul>
+<section id="confirming-where-a-token-may-be-spent">
+<h3>Confirming where a token may be spent<a class="headerlink" href="#confirming-where-a-token-may-be-spent" title="Link to this heading"></a></h3>
+<p>The project ID and the Zenodo record a workflow names live in
+<code class="docutils literal notranslate"><span class="pre">project.json</span></code>, which the in-container agent can edit. The copy vaibify
+trusts lives on your machine, under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/bindings/</span></code>, in a record
+keyed by the project’s own identity (a random <code class="docutils literal notranslate"><span class="pre">sProjectUuid</span></code> in the
+registry, kept across renames) and by the workflow (its file path and
+name). Only you write that record: the Remotes panel’s binding view
+(<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/bindings/...</span></code>) shows what <code class="docutils literal notranslate"><span class="pre">project.json</span></code> names beside what
+your own token fetched about it, and <strong>Confirm</strong> (or, on the host,
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">confirm-remote-binding</span> <span class="pre">sService=overleaf</span></code> or
+<code class="docutils literal notranslate"><span class="pre">sService=zenodo</span></code>) records it. Every Overleaf push, pull and mirror
+refresh, and every Zenodo deposit, publish and Make Permanent, reads
+its target from that record and refuses when <code class="docutils literal notranslate"><span class="pre">project.json</span></code> disagrees,
+naming both values. A workflow you move or rename has no binding until
+you confirm again; the confirmation can carry the old one across. After
+a deposit vaibify made, the record follows the new deposition itself.</p>
 <p><strong>Connect</strong> stores the token and immediately tests it against the
 service. If the test fails, vaibify restores the token you had before
 (or removes the new one if there was none), and the message says which
 happened. A connection that cannot be made because the container runs
 with network isolation is refused at once rather than after a timeout.</p>
+</section>
+<section id="zenodo-tokens-moved-out-of-an-older-container">
+<h3>Zenodo tokens moved out of an older container<a class="headerlink" href="#zenodo-tokens-moved-out-of-an-older-container" title="Link to this heading"></a></h3>
+<p>Before October 2026 a container project’s Zenodo token lived in the
+container’s own keyring, which the in-container agent could read and
+write. It now lives only on your machine, and every time a project is
+opened vaibify moves whatever Zenodo tokens its container still holds
+out of it, in a way that can neither lose a token nor put one to use
+behind your back:</p>
+<ol class="arabic simple">
+<li><p>Each container slot (sandbox, production, the older unnamed slot
+and the two snapshot slots) is read as the container user.</p></li>
+<li><p>Its value is written to a <strong>pending</strong> slot of your keyring and read
+back; only an equal read-back counts. A value your keyring already
+holds active is recognized at once; a <em>different</em> value already on
+your machine is a conflict, and nothing is written or deleted until
+you choose.</p></li>
+<li><p>The container copy is deleted only after the pending write is
+recorded, and a second read confirms it is gone.</p></li>
+<li><p>The pending token is checked against Zenodo from your machine. A
+rejection, or no answer at all, discards nothing; an unanswered
+check is retried at the next open.</p></li>
+<li><p><strong>You decide.</strong> The dashboard’s banner shows each token’s state, how
+the check went and the titles of the deposits Zenodo reports for it,
+with <strong>Confirm</strong> (it becomes the active token) and <strong>Decline</strong> (it is
+discarded). On the host, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">decide-migrated-zenodo-token</span> <span class="pre">sSlot=zenodo_token_sandbox</span> <span class="pre">sDecision=confirm</span></code> does the same; the
+unnamed older slot also takes <code class="docutils literal notranslate"><span class="pre">sInstance=sandbox|production</span></code>.
+Until you confirm, every Zenodo action refuses and says so.</p></li>
+</ol>
+<p>The record of the move lives in <code class="docutils literal notranslate"><span class="pre">~/.vaibify/migrations/</span></code> and holds
+slot names and states, never a value. Moving a token does not revoke
+copies an agent may already have read, so the banner also asks you to
+regenerate your Zenodo tokens (and your Overleaf token) on each
+service’s account page; vaibify cannot revoke them for you. No
+credentials volume is created for a new container; one that already
+exists stays mounted until the move out of it has finished.</p>
+</section>
 </section>
 <section id="github">
 <h2>GitHub<a class="headerlink" href="#github" title="Link to this heading"></a></h2>
@@ -353,6 +415,14 @@ Environment archive row, described in
 </section>
 <section id="overleaf">
 <h2>Overleaf<a class="headerlink" href="#overleaf" title="Link to this heading"></a></h2>
+<p>Every Overleaf operation runs on your machine with the token in your
+keyring: a push copies the selected figures out of the container
+through the confined reader and commits them from the host; a pull
+clones the project on the host and lands the sources in the container
+through the confined write, as the container user, inside the
+manuscript directory. No program in the container ever receives the
+token, and both act on the project you confirmed in the binding
+record, never on an id the agent may have edited into <code class="docutils literal notranslate"><span class="pre">project.json</span></code>.</p>
 <p><strong>Sync → Push to Overleaf</strong> copies figures into the bound Overleaf
 project through Overleaf’s Git integration. The dialog:</p>
 <ul class="simple">
@@ -506,9 +576,9 @@ see <a class="reference internal" href="cli.html"><span class="std std-doc">CLI 
 interface to tools, so revoke the token on the service’s own account
 page too, because a cleared local copy does not invalidate a token
 that may have been copied elsewhere.</p>
-<p>A Zenodo token entered for a container project lives in that
-container’s keyring, so revoke it on Zenodo’s account page; the copy
-left in the container then no longer works.</p>
+<p>A Zenodo token belongs to one project, so <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">zenodo</span></code> and
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">delete</span> <span class="pre">zenodo</span></code> take <code class="docutils literal notranslate"><span class="pre">--project</span></code> (or run inside the
+project directory) as well as <code class="docutils literal notranslate"><span class="pre">--instance</span></code>.</p>
 </section>
 <section id="working-on-a-remote-machine">
 <h2>Working on a remote machine<a class="headerlink" href="#working-on-a-remote-machine" title="Link to this heading"></a></h2>

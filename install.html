@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced Installation &mdash; Vaibify 0.2.3.dev14 documentation</title>
+  <title>Advanced Installation &mdash; Vaibify 0.2.3.dev33 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=728d52c1"></script>
+      <script src="_static/documentation_options.js?v=709b6284"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -518,15 +518,25 @@ comment <code class="docutils literal notranslate"><span class="pre">#</span> <s
 <td><p><code class="docutils literal notranslate"><span class="pre">--prefer-binary</span></code></p></td>
 <td><p>Extra <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> flags for the image build; <code class="docutils literal notranslate"><span class="pre">--prefer-binary</span></code> is always kept</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">networkMode</span></code></p></td>
+<td><p>string</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">open</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">open</span></code>, <code class="docutils literal notranslate"><span class="pre">allowlist</span></code> or <code class="docutils literal notranslate"><span class="pre">isolated</span></code>. <code class="docutils literal notranslate"><span class="pre">allowlist</span></code> seals the container behind vaibify’s allowlisting proxy (the wizard’s default for a new project; needs Docker Engine 28); <code class="docutils literal notranslate"><span class="pre">isolated</span></code> is <code class="docutils literal notranslate"><span class="pre">--network</span> <span class="pre">none</span></code>. Neither sealing mode can be combined with <code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>. Takes effect when the container is created (see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">allowedHosts</span></code></p></td>
+<td><p>list</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p>In allowlist mode, extra <code class="docutils literal notranslate"><span class="pre">host</span></code> or <code class="docutils literal notranslate"><span class="pre">host:port</span></code> entries the container may reach, beside the computed base list. Host names only, never addresses</p></td>
+</tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">networkIsolation</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
-<td><p>Block all network traffic in and out of the container</p></td>
+<td><p>The old spelling of <code class="docutils literal notranslate"><span class="pre">networkMode:</span> <span class="pre">isolated</span></code>; still read, and refused when it disagrees with <code class="docutils literal notranslate"><span class="pre">networkMode</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
-<td><p>Let graphical programs in the container open windows on your display. A connected client can read the screen and send input (see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). Refused with <code class="docutils literal notranslate"><span class="pre">networkIsolation:</span> <span class="pre">true</span></code>. Takes effect when the container is created</p></td>
+<td><p>Let graphical programs in the container open windows on your display. The container gets its own untrusted X authorization, revoked when it stops; on a server without the SECURITY extension (XQuartz, MacPorts X11) it holds a copy of the server’s cookie instead, which is full display access (see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). Refused with <code class="docutils literal notranslate"><span class="pre">networkIsolation:</span> <span class="pre">true</span></code>. Takes effect when the container is created</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">neverSleep</span></code></p></td>
 <td><p>boolean</p></td>
@@ -547,6 +557,11 @@ comment <code class="docutils literal notranslate"><span class="pre">#</span> <s
 <td><p>number</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
 <td><p>Memory cap in GB (1 GB = 2^30 bytes). <code class="docutils literal notranslate"><span class="pre">0</span></code> means unlimited; otherwise at least <code class="docutils literal notranslate"><span class="pre">0.25</span></code>. The cap includes swap, and at the cap the kernel kills a process in the container. See <a class="reference internal" href="environmentsAndProjects.html#core-allocation"><span class="std std-ref">Core allocation</span></a></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pidsLimit</span></code></p></td>
+<td><p>integer</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">16384</span></code></p></td>
+<td><p>Most processes the container may hold at once (<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">run</span> <span class="pre">--pids-limit</span></code>), so a runaway fork cannot exhaust the host’s process table. A 63-worker pool whose workers each run 63 BLAS threads needs about 4,000</p></td>
 </tr>
 </tbody>
 </table>
@@ -584,8 +599,8 @@ comment <code class="docutils literal notranslate"><span class="pre">#</span> <s
 <td><p>Ports forwarded from the container, bound to <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> unless <code class="docutils literal notranslate"><span class="pre">lanExpose:</span> <span class="pre">true</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bindMounts</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">host</span></code>, <code class="docutils literal notranslate"><span class="pre">container</span></code></p></td>
-<td><p>Host directories mounted into the container (rules below)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">host</span></code>, <code class="docutils literal notranslate"><span class="pre">container</span></code>, optional <code class="docutils literal notranslate"><span class="pre">readWrite</span></code> (defaults to <code class="docutils literal notranslate"><span class="pre">false</span></code>)</p></td>
+<td><p>Host directories mounted into the container, read-only unless the entry sets <code class="docutils literal notranslate"><span class="pre">readWrite:</span> <span class="pre">true</span></code> (rules below)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">secrets</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">name</span></code>, <code class="docutils literal notranslate"><span class="pre">method</span></code> (<code class="docutils literal notranslate"><span class="pre">gh_auth</span></code>, <code class="docutils literal notranslate"><span class="pre">keyring</span></code>, or <code class="docutils literal notranslate"><span class="pre">docker_secret</span></code>)</p></td>
@@ -595,10 +610,20 @@ comment <code class="docutils literal notranslate"><span class="pre">#</span> <s
 </table>
 <p>A <code class="docutils literal notranslate"><span class="pre">bindMounts</span></code> host path must be absolute (Docker does not expand <code class="docutils literal notranslate"><span class="pre">~</span></code>),
 must exist, and must lie under your home directory or the project
-repository. Vaibify refuses any mount that overlaps a credential
-directory (such as <code class="docutils literal notranslate"><span class="pre">~/.ssh</span></code> or <code class="docutils literal notranslate"><span class="pre">~/.config/gh</span></code>), <code class="docutils literal notranslate"><span class="pre">/etc</span></code>, <code class="docutils literal notranslate"><span class="pre">/root</span></code>, a Docker
-daemon socket, or vaibify’s own control, journal, and temporary
-directories under <code class="docutils literal notranslate"><span class="pre">~/.vaibify</span></code>, however the path is spelled.</p>
+repository. Every mount is read-only inside the container unless its
+entry sets <code class="docutils literal notranslate"><span class="pre">readWrite:</span> <span class="pre">true</span></code>; an entry carrying the retired <code class="docutils literal notranslate"><span class="pre">readOnly</span></code>
+key, or any key other than <code class="docutils literal notranslate"><span class="pre">host</span></code>, <code class="docutils literal notranslate"><span class="pre">container</span></code> and <code class="docutils literal notranslate"><span class="pre">readWrite</span></code>, is
+refused. Vaibify refuses any mount that overlaps a credential or
+configuration directory (<code class="docutils literal notranslate"><span class="pre">~/.ssh</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.aws</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.gnupg</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.docker</span></code>,
+<code class="docutils literal notranslate"><span class="pre">~/.kube</span></code>, all of <code class="docutils literal notranslate"><span class="pre">~/.config</span></code>, the agent homes <code class="docutils literal notranslate"><span class="pre">~/.claude</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.codex</span></code>
+and <code class="docutils literal notranslate"><span class="pre">~/.gemini</span></code>), <code class="docutils literal notranslate"><span class="pre">~/.gitconfig</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.netrc</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.pypirc</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.npmrc</span></code>,
+a shell start-up file, <code class="docutils literal notranslate"><span class="pre">~/Library/LaunchAgents</span></code>, <code class="docutils literal notranslate"><span class="pre">~/Library/Keychains</span></code>,
+<code class="docutils literal notranslate"><span class="pre">/etc</span></code>, <code class="docutils literal notranslate"><span class="pre">/root</span></code>, a Docker daemon socket, or anything under <code class="docutils literal notranslate"><span class="pre">~/.vaibify</span></code>,
+however the path is spelled. A <code class="docutils literal notranslate"><span class="pre">readWrite</span></code> mount may not be, or
+contain, the directory holding the project’s <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>. A mount’s
+mode is fixed when the container is created: after changing
+<code class="docutils literal notranslate"><span class="pre">readWrite</span></code>, the dashboard and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> report the running
+container’s mode until it is created again.</p>
 </section>
 <section id="features">
 <h3>Features<a class="headerlink" href="#features" title="Link to this heading"></a></h3>

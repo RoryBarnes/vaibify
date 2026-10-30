@@ -1112,13 +1112,12 @@ LIST_AGENT_ACTIONS = [
     {"sName": "pull-file", "sCategory": "files",
      "sMethod": "POST",
      "sPath": "/api/files/{sContainerId}/pull",
-     "bAgentSafe": True,
-     "sDescription": "Copy a file from the container to the host. "
-                     "Agent-lane pulls may only land under "
-                     "~/.vaibify/exports/<container>/ — the host write "
-                     "is otherwise arbitrary agent-authored content in "
-                     "the researcher's home directory. Tell the "
-                     "researcher where the file landed."},
+     "bAgentSafe": False,
+     "sDescription": "Copy a file from the container to a host path the "
+                     "researcher chooses. USER-ONLY: the write lands on "
+                     "the researcher's own machine and the agent authors "
+                     "the bytes, so an agent asks the researcher to pull "
+                     "the file from the dashboard or with `vaibify pull`."},
     {"sName": "upload-file", "sCategory": "files",
      "sMethod": "POST",
      "sPath": "/api/files/{sContainerId}/upload",
@@ -1257,6 +1256,34 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST", "sPath": "/api/reproductions/{sJobId}/discard",
      "bAgentSafe": False,
      "sDescription": "Delete a staged snapshot that will not be run. "
+                     "Human-only."},
+    # ---- Remote bindings ----
+    {"sName": "confirm-remote-binding", "sCategory": "sync",
+     "sMethod": "POST", "sPath": "/api/bindings/{sContainerId}/confirm",
+     "bAgentSafe": False,
+     "sDescription": "Confirm which Overleaf project or Zenodo record this "
+                     "workflow's token-bearing actions may act on. Args: "
+                     "{sService: overleaf|zenodo, optional dictTarget, "
+                     "optional sCarryFromWorkflowKey}. Human-only: the "
+                     "record lives on the host and decides where the "
+                     "researcher's tokens are spent."},
+    # ---- Zenodo tokens moved out of the container ----
+    {"sName": "decide-migrated-zenodo-token", "sCategory": "sync",
+     "sMethod": "POST", "sPath": "/api/zenodo-tokens/{sContainerId}/decide",
+     "bAgentSafe": False,
+     "sDescription": "Decide about a Zenodo token moved out of this "
+                     "project's container: confirm it (it becomes the "
+                     "active token), decline it (it is discarded), or "
+                     "resolve a conflict with keep-host or stage-pending. "
+                     "Args: {sSlot, sDecision, optional sInstance for the "
+                     "legacy slot, optional bReplaceActive}. Human-only: "
+                     "the container keyring is agent-writable, so only the "
+                     "researcher can say the token is theirs."},
+    {"sName": "retry-zenodo-token-migration", "sCategory": "sync",
+     "sMethod": "POST", "sPath": "/api/zenodo-tokens/{sContainerId}/migrate",
+     "bAgentSafe": False,
+     "sDescription": "Run the Zenodo token migration pass again now, "
+                     "retrying a validation the host could not complete. "
                      "Human-only."},
 ]
 
@@ -1468,6 +1495,10 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # the daemon. Control plane, human-only; each handler rejects the
     # agent lane by name as well.
     ("POST", "/api/containers/{sName}/acquire-image"),
+    # Allowing a network host widens the allowlist that seals the agent
+    # in; an agent that could extend it would have none. Human-only, and
+    # the handler rejects the agent lane by name as well.
+    ("POST", "/api/containers/{sName}/network/allow-host"),
     ("POST", "/api/containers/{sName}/switch-to-building"),
     ("POST", "/api/containers/{sName}/switch-to-pinned-image"),
     ("POST", "/api/containers/{sName}/start"),

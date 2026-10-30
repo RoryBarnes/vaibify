@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.2.3.dev14 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.2.3.dev33 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=728d52c1"></script>
+      <script src="_static/documentation_options.js?v=709b6284"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -359,8 +359,9 @@ Each check reports <code class="docutils literal notranslate"><span class="pre">
 reason; never counted as ok). Every <code class="docutils literal notranslate"><span class="pre">warn</span></code> and <code class="docutils literal notranslate"><span class="pre">fail</span></code> names a next step
 for the runtime this machine actually uses. For a running container,
 doctor also reports whether it was created consistently with
-<code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>, which is fixed when a container is created (see
-<a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). <code class="docutils literal notranslate"><span class="pre">--quiet</span></code> hides the <code class="docutils literal notranslate"><span class="pre">ok</span></code>
+<code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>, which is fixed when a container is created, and
+what its network mode is (an allowlist-mode container reaches the
+network only through its proxy; see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). <code class="docutils literal notranslate"><span class="pre">--quiet</span></code> hides the <code class="docutils literal notranslate"><span class="pre">ok</span></code>
 lines, <code class="docutils literal notranslate"><span class="pre">--json</span></code> emits the results as JSON, and <code class="docutils literal notranslate"><span class="pre">--explain</span> <span class="pre">CHECK</span></code>
 prints how one check decides and nothing else.</p>
 <p>Doctor works before any project exists, so it is the first check after
@@ -931,7 +932,7 @@ judgments available only here:</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">status</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
 <td><p>Report which remotes are configured and reachable</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">delete</span> <span class="pre">github|overleaf|zenodo</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">delete</span> <span class="pre">github|overleaf|zenodo</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
 <td><p>The same as <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">github</span> <span class="pre">[--keyring-slot</span> <span class="pre">SLOT]</span></code></p></td>
@@ -940,8 +941,8 @@ judgments available only here:</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">overleaf</span></code></p></td>
 <td><p>The same, for Overleaf</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">zenodo</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span></code></p></td>
-<td><p>The same, for one Zenodo instance (default <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">zenodo</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>The same, for one project’s token on one Zenodo instance (default <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>; the project is the current directory’s unless named)</p></td>
 </tr>
 </tbody>
 </table>
@@ -957,10 +958,11 @@ cleared. For GitHub it also runs <code class="docutils literal notranslate"><spa
 offer tools no way to revoke a token, so for them the command clears
 the local copy and names the account page where you revoke the token
 yourself; do that too, because clearing a local copy does not
-invalidate a token that may have been copied elsewhere. <code class="docutils literal notranslate"><span class="pre">revoke</span></code> acts
-on the host only: a Zenodo token entered for a container project is
-held inside that container, so revoke it on Zenodo’s account page,
-after which the copy in the container no longer works.</p>
+invalidate a token that may have been copied elsewhere. A Zenodo token
+is stored per project, so <code class="docutils literal notranslate"><span class="pre">revoke</span> <span class="pre">zenodo</span></code> clears one project’s slot
+for one instance. A token moved out of an older container awaits your
+decision in the dashboard, or with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">decide-migrated-zenodo-token</span> <span class="pre">sSlot=&lt;slot&gt;</span> <span class="pre">sDecision=confirm|decline</span></code>
+(see <a class="reference internal" href="externalResources.html"><span class="std std-doc">External Resources</span></a>).</p>
 </section>
 <section id="remote-machines">
 <h2>Remote machines<a class="headerlink" href="#remote-machines" title="Link to this heading"></a></h2>
