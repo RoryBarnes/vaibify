@@ -50,6 +50,7 @@ from vaibify.reproducibility import (
     overleafMirror,
     overleafSync,
     publicationScope,
+    remoteCheckState,
     zenodoClient,
 )
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
@@ -58,7 +59,9 @@ from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 __all__ = [
     "S_SYNC_STATUS_FILENAME",
     "S_MANIFEST_FILENAME",
+    "RemoteUncheckableError",
     "ReverifyConfigError",
+    "S_DEFAULT_GITHUB_BRANCH",
     "fdictAttemptOneVerify",
     "fdictComputeLiveExpectedHashes",
     "fdictDescribeReverifySchedule",
@@ -73,6 +76,7 @@ __all__ = [
     "fdictRunReverifyOnce",
     "flistSelectConfiguredServices",
     "flistSelectDeclaredServices",
+    "flistSortedZenodoRecordIds",
     "flistZenodoDeclaredRecords",
     "fnScheduleReverify",
     "fsArxivCacheDir",
@@ -100,6 +104,15 @@ _F_STARTUP_JITTER_SECONDS = 90.0
 
 class ReverifyConfigError(ValueError):
     """Raised when a workflow has missing/invalid remote configuration."""
+
+
+class RemoteUncheckableError(RuntimeError):
+    """A remote could not be asked, so the verify has no verdict to write.
+
+    Distinct from :class:`ReverifyConfigError`, which says the project is
+    not set up to be asked at all: this one says it was, and the remote
+    did not answer in a way that establishes anything.
+    """
 
 
 def fdictLoadManifestExpectedHashes(filesRepo):
@@ -182,6 +195,13 @@ def _fdictDeriveGithubConfig(filesRepo):
 # without it (a library caller, a unit fixture) has no hub to ask and is
 # compared as declared.
 S_HOST_GITHUB_BINDING_KEY = "_dictHostGithubBinding"
+
+# The branch a GitHub verify reads when neither the push binding nor the
+# declaration names one. One constant, because the gate must judge a
+# record against the branch the NEXT verify would read: a gate that read
+# an omitted branch as "any branch" kept evidence about a branch the
+# project had stopped declaring.
+S_DEFAULT_GITHUB_BRANCH = "main"
 
 S_GITHUB_NOT_BOUND = (
     "This project has not pushed to GitHub from this hub, so there is no "
@@ -302,15 +322,12 @@ def _fdictRequireServiceConfig(dictWorkflow, sService, filesRepo=None):
     return dictConfig
 
 
-def _fdictFetchHashesForService(
-    sService, dictConfig, listRelPaths, filesRepo, dictExpected=None,
-):
-    """Dispatch to the right mirror module for one service.
+def _fdictFetchHashesForService(sService, dictConfig, listRelPaths, filesRepo):
+    """Dispatch to the right mirror module for one single-remote service.
 
-    ``dictExpected`` is consumed only by the Zenodo lane, whose
-    any-declared-record merge needs to know which remote hash counts
-    as agreement; the single-remote services compare one authority
-    and never look at it.
+    Zenodo is not dispatched here: its archive is a SET of declared
+    records, each observed for reader access before anything is hashed
+    (:func:`_fdictVerifyZenodoArchive`).
     """
     if sService == "github":
         return _fdictFetchGithubHashes(dictConfig, listRelPaths)
@@ -318,13 +335,7 @@ def _fdictFetchHashesForService(
         return _fdictFetchOverleafHashes(
             dictConfig, listRelPaths, filesRepo,
         )
-    if sService == "arxiv":
-        return _fdictFetchArxivHashes(
-            dictConfig, listRelPaths, filesRepo,
-        )
-    return _fdictFetchZenodoHashes(
-        dictConfig, listRelPaths, dictExpected,
-    )
+    return _fdictFetchArxivHashes(dictConfig, listRelPaths, filesRepo)
 
 
 def fsArxivCacheDir(filesRepo):
@@ -369,7 +380,7 @@ def _fdictFetchGithubHashes(dictConfig, listRelPaths):
     """Fetch GitHub hashes; require sOwner, sRepo, sBranch."""
     sOwner = dictConfig.get("sOwner") or ""
     sRepo = dictConfig.get("sRepo") or ""
-    sBranch = dictConfig.get("sBranch") or "main"
+    sBranch = dictConfig.get("sBranch") or S_DEFAULT_GITHUB_BRANCH
     if not sOwner or not sRepo:
         raise ReverifyConfigError(S_GITHUB_NOT_CONFIGURED)
     return githubMirror.fdictFetchRemoteHashes(
@@ -445,31 +456,85 @@ def flistZenodoDeclaredRecords(dictZenodoConfig):
     return listDeclared
 
 
-def _fdictFetchZenodoHashes(dictConfig, listRelPaths, dictExpected):
-    """Fetch Zenodo hashes across every declared record.
+def _flistObserveZenodoRecords(dictConfig):
+    """Observe every declared record once, anonymously, before any hashing.
 
-    A file agrees with Zenodo when ANY declared record serves its
-    bytes — the archive is the set of declared records, not one
-    deposit. A fetch failure on any declared record propagates: a
-    researcher who declared a record they cannot read needs the error,
-    not a verify that silently pretended the record was empty.
+    Every record is asked BEFORE any is judged, so the archive's verdict
+    cannot depend on the order the records were declared or answered in.
     """
     listRecords = flistZenodoDeclaredRecords(dictConfig)
     if not listRecords:
         raise ReverifyConfigError(
             _fsDescribeMissingRemote("zenodo"))
     sService = dictConfig.get("sService") or "sandbox"
+    return [
+        zenodoClient.fdictObserveRecord(dictRecord["sRecordId"], sService)
+        for dictRecord in listRecords
+    ]
+
+
+def _fdictJudgeZenodoArchiveAccess(listObservations):
+    """Return the archive's reader-access verdict; raise when it has none.
+
+    Any record KNOWN not to be public makes the archive not public, even
+    while a sibling could not be checked: the restriction is established
+    whatever the sibling would have said, so it is recorded rather than
+    lost to the sibling's rate limit. Every record public is public.
+    Anything else -- some unchecked, none known closed -- is no verdict,
+    and raises so nothing is written over the previous record.
+    """
+    listNotPublic = [
+        dictObservation for dictObservation in listObservations
+        if dictObservation["sState"] == zenodoClient.S_RECORD_NOT_PUBLIC
+    ]
+    listUnchecked = [
+        dictObservation for dictObservation in listObservations
+        if dictObservation["sState"] == zenodoClient.S_RECORD_UNCHECKED
+    ]
+    if listNotPublic:
+        return _fdictBuildArchiveAccess(
+            zenodoClient.S_RECORD_NOT_PUBLIC, listNotPublic, listObservations)
+    if listUnchecked:
+        raise RemoteUncheckableError(
+            " ".join(d["sReason"] for d in listUnchecked))
+    return _fdictBuildArchiveAccess(
+        zenodoClient.S_RECORD_PUBLIC, listObservations, listObservations)
+
+
+def _fdictBuildArchiveAccess(sState, listExplaining, listObservations):
+    """Return the persisted ``dictPublicAccess`` for a Zenodo archive."""
+    return {
+        "sState": sState,
+        "sReason": " ".join(d["sReason"] for d in listExplaining),
+        "listRecords": [
+            {sKey: dictObservation[sKey]
+             for sKey in ("sRecordId", "sState", "sReason")}
+            for dictObservation in listObservations
+        ],
+    }
+
+
+def _fdictHashZenodoObservations(
+    listObservations, listRelPaths, dictExpected, sService,
+):
+    """Hash every declared record's files from its observation.
+
+    A file agrees with Zenodo when ANY declared record serves its
+    bytes — the archive is the set of declared records, not one
+    deposit. Reached only once every record is public, so a record
+    with no files really has none.
+    """
     dictKeyByPath = _fdictUniqueBasenameByPath(listRelPaths)
     listDepositKeys = sorted(set(dictKeyByPath.values()))
     listFetched = [
         _fdictMapDepositKeysBack(
-            zenodoClient.fdictFetchRemoteHashes(
-                dictRecord["sRecordId"],
-                listRelPaths=listDepositKeys, sService=sService,
+            zenodoClient.fdictHashRecordFiles(
+                dictObservation, listRelPaths=listDepositKeys,
+                sService=sService,
             ),
             listRelPaths, dictKeyByPath,
         )
-        for dictRecord in listRecords
+        for dictObservation in listObservations
     ]
     return _fdictMergeRecordHashes(
         listRelPaths, listFetched, dictExpected,
@@ -655,6 +720,14 @@ def fdictVerifyRemoteService(
     GitHub, ``sZenodoDoi`` + ``sEndpointVerified`` for Zenodo) so the
     L2 readiness check can detect when the live workflow state has
     drifted away from the last successful verification.
+
+    GitHub and Zenodo records also say what a READER is served
+    (``dictPublicAccess``) and which remote the evidence is about
+    (``dictRemoteIdentity``); a Zenodo record says whether its
+    comparison was withheld (``bComparisonWithheld``). When the remote
+    cannot be asked, this raises -- :class:`RemoteUncheckableError` or
+    the mirror's own error -- and the caller writes nothing, so the last
+    record stands.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictConfig = _fdictRequireServiceConfig(
@@ -667,13 +740,31 @@ def fdictVerifyRemoteService(
         dictExpected = _fdictNarrowExpectedToPushedFigures(
             dictExpected, dictWorkflow, filesRepo, sService,
         )
+    if sService == "zenodo":
+        return _fdictVerifyZenodoArchive(dictConfig, dictExpected, sNowIso)
     listRelPaths = sorted(dictExpected.keys())
     dictActual = _fdictFetchHashesForService(
-        sService, dictConfig, listRelPaths, filesRepo, dictExpected,
+        sService, dictConfig, listRelPaths, filesRepo,
     )
+    dictStatus = _fdictBuildComparisonStatus(
+        sService, sNowIso, dictExpected, dictActual,
+    )
+    _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig)
+    if sService == "github":
+        # After the hash fetch, against the remote the push binding
+        # already admitted: the probe asks about that repository only.
+        dictStatus["dictPublicAccess"] = githubMirror.fdictProbePublicAccess(
+            dictConfig["sOwner"], dictConfig["sRepo"],
+        )
+    return dictStatus
+
+
+def _fdictBuildComparisonStatus(sService, sNowIso, dictExpected, dictActual):
+    """Return the comparison half of a status record, as every writer shapes it."""
+    listRelPaths = sorted(dictExpected.keys())
     listDiverged = _flistBuildDivergenceList(dictExpected, dictActual)
     iTotal = len(dictExpected)
-    dictStatus = {
+    return {
         "sService": sService,
         "sLastVerified": sNowIso or _fsBuildIsoTimestamp(),
         "iTotalFiles": iTotal,
@@ -704,15 +795,54 @@ def fdictVerifyRemoteService(
         # 2026-09-01).
         "dictComparedHashes": dict(dictExpected),
     }
-    _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig)
-    if sService == "zenodo":
-        dictStatus["dictArchivedAttestation"] = (
-            _fdictJudgeArchivedAttestation(dictConfig, dictActual)
-        )
+
+
+def _fdictVerifyZenodoArchive(dictConfig, dictExpected, sNowIso):
+    """Observe every declared record, then compare only an archive a reader can open.
+
+    When any record is known not to be public the comparison is
+    WITHHELD: nothing is hashed, nothing is compared, and the record
+    says so. Comparing against an archive a reader cannot fully open
+    would claim divergence without bytes -- a restricted record answers
+    a reader with no files, so every file read "diverged" and the
+    remedy offered was a new deposit, an immutable version that left
+    the record restricted.
+    """
+    listObservations = _flistObserveZenodoRecords(dictConfig)
+    dictAccess = _fdictJudgeZenodoArchiveAccess(listObservations)
+    if dictAccess["sState"] == zenodoClient.S_RECORD_PUBLIC:
+        dictStatus = _fdictCompareOpenZenodoArchive(
+            listObservations, dictConfig, dictExpected, sNowIso)
+    else:
+        dictStatus = _fdictBuildComparisonStatus("zenodo", sNowIso, {}, {})
+        dictStatus["bComparisonWithheld"] = True
+        # The existing "nobody asked" value: no archive was read.
+        dictStatus["dictArchivedAttestation"] = None
+    dictStatus["dictPublicAccess"] = dictAccess
+    _fnAttachServiceIdentityFields(dictStatus, "zenodo", dictConfig)
     return dictStatus
 
 
-def _fdictJudgeArchivedAttestation(dictConfig, dictActual):
+def _fdictCompareOpenZenodoArchive(
+    listObservations, dictConfig, dictExpected, sNowIso,
+):
+    """Hash and compare an archive whose every record a reader can open."""
+    sService = dictConfig.get("sService") or "sandbox"
+    dictActual = _fdictHashZenodoObservations(
+        listObservations, sorted(dictExpected.keys()), dictExpected,
+        sService,
+    )
+    dictStatus = _fdictBuildComparisonStatus(
+        "zenodo", sNowIso, dictExpected, dictActual,
+    )
+    dictStatus["bComparisonWithheld"] = False
+    dictStatus["dictArchivedAttestation"] = _fdictJudgeArchivedAttestation(
+        listObservations, dictActual, sService,
+    )
+    return dictStatus
+
+
+def _fdictJudgeArchivedAttestation(listObservations, dictActual, sService):
     """Return the archive's own attestation verdict for this verify.
 
     Level 3 asserts a stranger can re-fetch and re-execute, so the
@@ -732,14 +862,14 @@ def _fdictJudgeArchivedAttestation(dictConfig, dictActual):
     """
     sArchivedManifestSha = (dictActual or {}).get(
         l3Attestation._S_MANIFEST_FILENAME) or ""
-    jsonArchived = _fjsonFetchArchivedAttestation(dictConfig)
+    jsonArchived = _fjsonFetchArchivedAttestation(listObservations, sService)
     bCovers, sReason = l3Attestation.ftJudgeArchivedAttestation(
         jsonArchived, sArchivedManifestSha,
     )
     return {"bCoversArchivedManifest": bCovers, "sReason": sReason}
 
 
-def _fjsonFetchArchivedAttestation(dictConfig):
+def _fjsonFetchArchivedAttestation(listObservations, sService):
     """Return the first declared record's attestation, or ``None``.
 
     Declared records are consulted in order and the FIRST readable
@@ -749,14 +879,15 @@ def _fjsonFetchArchivedAttestation(dictConfig):
     flat -- the bucket API refuses path-containing keys -- so the
     repo's ``.vaibify/l3_attestation.json`` is archived as
     ``l3_attestation.json``.
+
+    Read from the records already OBSERVED, never re-fetched: a second
+    fetch through the client re-raised 401, 403 and 404 and would have
+    aborted the verify before its verdict was saved.
     """
-    sService = dictConfig.get("sService") or "sandbox"
-    for dictRecord in flistZenodoDeclaredRecords(dictConfig):
-        jsonFound = zenodoClient.ZenodoClient(
+    for dictObservation in listObservations:
+        jsonFound = zenodoClient.fjsonReadRecordFile(
+            dictObservation, l3Attestation.S_ATTESTATION_FILENAME,
             sService=sService,
-        ).fjsonFetchRecordFile(
-            dictRecord["sRecordId"],
-            l3Attestation.S_ATTESTATION_FILENAME,
         )
         if jsonFound is not None:
             return jsonFound
@@ -770,16 +901,40 @@ def _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig):
     :func:`fdictVerifyRemoteService` so each function keeps one purpose
     and the per-service branches can grow independently if more identity
     fields are needed later.
+
+    ``dictRemoteIdentity`` names the remote the evidence is ABOUT, so a
+    later reader can tell a record about this remote from one about the
+    remote the project used to have: a renamed repository, a switched
+    branch or a newly declared record otherwise kept Level 2 on
+    evidence about something else.
     """
     if sService == "github":
         dictStatus["sCommittedShaVerified"] = (
             dictConfig.get("sCommittedSha") or None
         )
+        dictStatus["dictRemoteIdentity"] = {
+            "sOwner": dictConfig.get("sOwner") or "",
+            "sRepo": dictConfig.get("sRepo") or "",
+            # The branch the fetch actually read, its default included.
+            "sBranch": dictConfig.get("sBranch") or S_DEFAULT_GITHUB_BRANCH,
+        }
     elif sService == "zenodo":
         dictStatus["sZenodoDoi"] = dictConfig.get("sDoi") or None
         dictStatus["sEndpointVerified"] = (
             dictConfig.get("sService") or "sandbox"
         )
+        dictStatus["dictRemoteIdentity"] = {
+            "sEndpoint": dictStatus["sEndpointVerified"],
+            "listRecordIds": flistSortedZenodoRecordIds(dictConfig),
+        }
+
+
+def flistSortedZenodoRecordIds(dictZenodoConfig):
+    """Return the declared record ids in the one order every reader compares."""
+    return sorted(
+        dictRecord["sRecordId"]
+        for dictRecord in flistZenodoDeclaredRecords(dictZenodoConfig)
+    )
 
 
 def fsSyncStatusRelativePath():
@@ -803,7 +958,16 @@ def fdictReadCachedSyncStatus(filesRepo, sService):
 
 
 def _fnBackfillServiceIdentityFields(dictEntry, sService):
-    """Ensure the Phase-2 identity fields exist on a cached entry."""
+    """Ensure the Phase-2 identity fields exist on a cached entry.
+
+    ``dictPublicAccess`` and ``dictRemoteIdentity`` backfill to None: a
+    record written before they existed never asked what a reader is
+    served nor recorded which remote it compared, and the gate reads
+    that absence as unknown, never as public.
+    """
+    if sService in ("github", "zenodo"):
+        dictEntry.setdefault("dictPublicAccess", None)
+        dictEntry.setdefault("dictRemoteIdentity", None)
     if sService == "github":
         dictEntry.setdefault("sCommittedShaVerified", None)
     elif sService == "zenodo":
@@ -836,6 +1000,9 @@ def _fdictEmptyServiceStatus(sService):
         # scope check would pass on no evidence at all.
         "iScopeVersion": 0,
     }
+    if sService in ("github", "zenodo"):
+        dictEmpty["dictPublicAccess"] = None
+        dictEmpty["dictRemoteIdentity"] = None
     if sService == "github":
         dictEmpty["sCommittedShaVerified"] = None
     elif sService == "zenodo":
@@ -1038,26 +1205,55 @@ def fdictRunReverifyOnce(dictCtx, listWorkflows, sNowIso=None):
     sIso = sNowIso or _fsBuildIsoTimestamp()
     listResults = []
     for entryWorkflow in listWorkflows:
-        dictWorkflow, filesRepo = _ftResolveWorkflowEntry(
+        sContainerId, dictWorkflow, filesRepo = _ftResolveWorkflowEntry(
             dictCtx, entryWorkflow,
         )
         dictWorkflowReport = fdictRunReverifyForWorkflow(
             dictWorkflow, sNowIso=sIso, filesRepo=filesRepo,
         )
+        _fnRecordCheckOutcomes(
+            sContainerId, dictWorkflow, dictWorkflowReport["listResults"])
         for dictResult in dictWorkflowReport["listResults"]:
             listResults.append(dictResult)
     return {"sNowIso": sIso, "listResults": listResults}
 
 
+def _fnRecordCheckOutcomes(sContainerId, dictWorkflow, listResults):
+    """Settle each service's badge state the way the open-time refresh does.
+
+    Keyed exactly as the poll reads it -- the container ID the loop
+    enumerated, with the project's repository -- because the scheduled
+    pass used to leave a failed check as it found it, so a remote that
+    had stopped answering kept the badge's last reading with no word of
+    why. A bare workflow (a library caller) has no container to key by,
+    and records nothing.
+    """
+    if not sContainerId:
+        return
+    tCheckKey = remoteCheckState.ftProjectCheckKey(
+        sContainerId, dictWorkflow.get("sProjectRepoPath", ""),
+    )
+    for dictResult in listResults:
+        if dictResult.get("sStatus") == "ok":
+            remoteCheckState.fnMarkSettled(tCheckKey, dictResult["sService"])
+            continue
+        remoteCheckState.fnMarkUncheckable(
+            tCheckKey, dictResult["sService"], dictResult.get("sError", ""),
+        )
+
+
 def _ftResolveWorkflowEntry(dictCtx, entryWorkflow):
-    """Return ``(dictWorkflow, filesRepo_or_None)`` for one loop entry."""
+    """Return ``(sContainerId, dictWorkflow, filesRepo_or_None)`` for one entry.
+
+    A bare workflow dict has no container, so its id is ``""``.
+    """
     if isinstance(entryWorkflow, dict):
-        return entryWorkflow, None
+        return "", entryWorkflow, None
     sContainerId, dictWorkflow = entryWorkflow
     fnFiles = dictCtx.get("files") if dictCtx else None
     if fnFiles is None:
-        return dictWorkflow, None
-    return dictWorkflow, fnFiles(sContainerId)
+        return sContainerId, dictWorkflow, None
+    return sContainerId, dictWorkflow, fnFiles(sContainerId)
 
 
 def _flistEnumerateWorkflows(dictCtx):

@@ -78,6 +78,38 @@ verify's binding check is asserted at the shared call site,
 `fdictVerifyRemoteService`, with the fetch rigged to fail if reached
 (`testAnUnboundRemoteIsRefusedBeforeAnyFetchAndTheRefusalIsRelayed`).
 
+**Level 2 asks what a READER can retrieve (2026-10-30).** The verify
+observes access with no credentials and records which remote its
+evidence is about; two authorities in `levelGates`
+(`fdictDescribePublicAccess`, `fdictDescribePublishedCopy`) answer
+from that record, and every surface renders their answer.
+`docs/architecture.md` "What a reader can retrieve" has the model. Five
+things not to undo, each kill-confirmed in
+`tests/testReaderAccessIsObservedAnonymously.py` or
+`tests/testLevelTwoAsksWhatAReaderIsServed.py`:
+
+- **No token reaches a reader-access request.** The GitHub probe's
+  request builder takes no token and its path never asks the keyring;
+  every Zenodo reader read goes through the one tokenless client,
+  `zenodoClient._fclientAnonymous`.
+- **A restricted record withholds the comparison.** Nothing is hashed
+  when any declared record is known not to be public. A sibling's 429
+  never erases a known restriction, and an unchecked record with none
+  known closed writes nothing.
+- **Each record is observed once.** The comparison and the attestation
+  read consume the same observations; a second fetch re-raised 404 and
+  aborted the verify before its verdict was saved.
+- **Absent is not public, and evidence names its remote.** A record with
+  no `dictPublicAccess` reads unknown, never public, so a project does
+  not keep its level by having been verified before the question
+  existed, and an unknown verdict always charges a criterion, or the
+  header outranks the row. A record whose `dictRemoteIdentity` disagrees
+  with the push binding, the declared remote, the branch the next verify
+  would read (an omitted branch is the default, never "any") or the
+  declared record set is unknown.
+- **The backoff is a deadline, never a sleep.** A 403 or 429 sets an
+  in-process deadline before which every probe raises without sending.
+
 **Two level readings that must not be widened back (2026-10-27).**
 The step save and the test-execution routes detect a crossing of
 Level 1, so they read `fiComputeProofLevelUpToOne` (the marker rule

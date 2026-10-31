@@ -143,6 +143,13 @@ methods.
 - A PROOF requirement row whose readiness request failed says
   "unknown", never an invented "not met" (`data-req-key` keys the rows
   to the gate's verdict).
+- The GitHub and Zenodo rows, on the PROOF tab and in Published copies,
+  render the Level 2 authorities' states (`dictPublishedCopyStates`,
+  `dictPublicAccessStates`) with the server's `sReason`, never a
+  boolean or a count. `unknown` is "?" (a stale record, one about
+  another remote, one predating the reader question, a withheld
+  comparison), and a withheld Zenodo comparison reads "Not compared",
+  never "0 of 0" or "N diverged".
 - A poll that omits the envelope, or a failed resource-monitor poll,
   marks what is on screen as stale (`bEnvelopeDetailStale`); never leave
   a stale verdict on screen unmarked.
@@ -182,7 +189,8 @@ pattern wholesale.
   (populated from each poll's `listLevel2Blockers`). Criteria:
   `not-in-github-mirror`, `not-in-zenodo-deposit`, `figure-not-frozen`,
   `ai-declaration-unattested` (per-step); `github-verify-stale`,
-  `zenodo-verify-stale`, `missing-ai-declaration-step`,
+  `zenodo-verify-stale`, `github-repository-not-public`,
+  `zenodo-archive-not-public`, `missing-ai-declaration-step`,
   `ai-models-undeclared`, `personal-layer-unanswered`,
   `image-archive-unanswered`, `basename-collision`,
   `overleaf-verify-stale`, `not-in-overleaf`,
@@ -301,8 +309,9 @@ pattern wholesale.
   expandable step-like row. Its cells are NOT an aggregate or summary of the
   step rows: they cover only the requirements that attach to the
   workflow as a whole (L1: project repo present; L2: the GitHub and
-  Zenodo published-copy checks, the AI-model and Personal AI
-  Configuration declarations and the environment-archive question,
+  Zenodo published-copy checks and whether a reader can retrieve each
+  copy, the AI-model and Personal AI Configuration declarations and the
+  environment-archive question,
   plus arXiv and Overleaf while each is connected; L3: the
   workflow-scope envelope checks — the backend's tuples in
   `levelGates.py` are the authority, see `vaibify/gui/AGENTS.md`).

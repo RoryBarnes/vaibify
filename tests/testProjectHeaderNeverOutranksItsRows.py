@@ -22,6 +22,16 @@ construction (``_flistGithubLevel2Blockers`` returns the stale blocker
 and nothing else when the cache is stale), so counting both can never
 double-charge one service — which is why the fix is to widen the set
 rather than to special-case it.
+
+Since 2026-10-30 each remote has a SECOND requirement beside its copy
+check: that a reader can retrieve it (``github-repository-not-public``,
+``zenodo-archive-not-public``). Being public and matching are separate
+requirements, as in the paper's Level 2 table, so a private repository
+with a diverged file is charged twice -- once for each failed
+requirement, not twice for one. Staleness still excludes every other
+criterion for its service: a record that cannot answer emits the stale
+blocker alone, and a withheld Zenodo comparison emits only the
+not-public one.
 """
 
 import json
@@ -34,7 +44,12 @@ from tests.syncStatusFixtures import fdictBuildCachedVerify
 from vaibify.reproducibility.levelGates import (
     _fbComputeLevel2,
     _fdictL3WorkflowChecks,
+    _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA,
+    _T_WORKFLOW_LEVEL2_BASE_CRITERIA,
+    _T_WORKFLOW_LEVEL2_OVERLEAF_CRITERIA,
     _T_WORKFLOW_LEVEL3_CRITERIA,
+    S_BASENAME_COLLISION_CRITERION,
+    fnClearLevelBlockerCache,
     fbAtLeastLevel3,
     fdictComputeWorkflowScopeLevelStates,
     flistLevel2Blockers,
@@ -196,6 +211,152 @@ def testStalenessAndDivergenceNeverChargeTheSameServiceTwice(
         "two unhappy services cost other than two criteria: "
         f"{dictCell}"
     )
+
+
+def _fsetWorkflowScopeCriteria(dictWorkflow, sProjectRepo, dictAll):
+    """Write one cache document and return the workflow-scope criteria it raises."""
+    sDir = os.path.join(sProjectRepo, ".vaibify")
+    os.makedirs(sDir, exist_ok=True)
+    with open(os.path.join(sDir, "syncStatus.json"), "w") as fileHandle:
+        json.dump(dictAll, fileHandle)
+    fnClearLevelBlockerCache()
+    return {
+        dictEntry["sCriterion"]
+        for dictEntry in flistLevel2Blockers(dictWorkflow, sProjectRepo)
+        if dictEntry["iStepIndex"] < 0
+    }
+
+
+def _fdictCacheFor(sService, **dictOverrides):
+    """A fresh record of one service, with the overrides a scenario names."""
+    dictFields = {"sService": sService, "listComparedPaths": _LIST_COMPARED,
+                  "sLastVerified": _fsBuildIsoTimestamp()}
+    if sService == "zenodo":
+        dictFields.update(sZenodoDoi="10.5281/zenodo.1",
+                          sEndpointVerified="sandbox")
+    dictFields.update(dictOverrides)
+    return fdictBuildCachedVerify(**dictFields)
+
+
+@pytest.mark.falsification
+def testEveryLevel2CriterionTheGatesEmitIsCountedByTheHeader(
+    fixtureProjectRepo,
+):
+    """The Level 2 twin of the Level 3 test below.
+
+    Level 2 has no checks dict to enumerate, so the gates are DRIVEN
+    into every workflow-scope refusal a remote can raise -- stale,
+    diverged, and not public, for both services -- and each criterion
+    they emit must be one the header counts. A criterion counted only
+    while it applies (arXiv, Overleaf, a basename collision) counts
+    here too; the AI Declaration is a step and is homed on its row.
+
+    Kills: dropping the reader-access pair from
+    _T_WORKFLOW_LEVEL2_BASE_CRITERIA, which paints the header over a
+    private repository's row.
+    """
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    dictWorkflow["dictAiProvenance"] = {}
+    setEmitted = set()
+    sUnowned = ".vaibify/projects/project.json"
+    setEmitted |= _fsetWorkflowScopeCriteria(dictWorkflow, fixtureProjectRepo, {
+        "github": _fdictCacheFor(
+            "github", sPublicAccess="not-public", listDivergedPaths=[sUnowned]),
+        "zenodo": _fdictCacheFor(
+            "zenodo", sPublicAccess="not-public", bComparisonWithheld=True),
+    })
+    setEmitted |= _fsetWorkflowScopeCriteria(dictWorkflow, fixtureProjectRepo, {
+        "github": _fdictCacheFor("github", sLastVerified=_fsBuildIsoTimestamp(48)),
+        "zenodo": _fdictCacheFor("zenodo", listDivergedPaths=[sUnowned]),
+    })
+    setEmitted |= _fsetWorkflowScopeCriteria(dictWorkflow, fixtureProjectRepo, {
+        "zenodo": _fdictCacheFor("zenodo", sLastVerified=_fsBuildIsoTimestamp(48)),
+    })
+    assert {"github-repository-not-public", "zenodo-archive-not-public",
+            "github-verify-stale", "zenodo-verify-stale",
+            "not-in-github-mirror", "not-in-zenodo-deposit"} <= setEmitted
+    setCounted = set(
+        _T_WORKFLOW_LEVEL2_BASE_CRITERIA + _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA
+        + _T_WORKFLOW_LEVEL2_OVERLEAF_CRITERIA
+        + (S_BASENAME_COLLISION_CRITERION, "missing-ai-declaration-step"))
+    assert setEmitted - setCounted == set(), (
+        "these criteria block the rows and are dropped from the header "
+        f"count: {sorted(setEmitted - setCounted)}"
+    )
+
+
+def testAPrivateRepositoryIsChargedOnceForEachFailedRequirement(
+    fixtureProjectRepo,
+):
+    """Not public AND diverged: two requirements failed, two charged."""
+    _fnWriteBothServices(fixtureProjectRepo, [])
+    sDir = os.path.join(fixtureProjectRepo, ".vaibify", "syncStatus.json")
+    with open(sDir) as fileHandle:
+        dictAll = json.load(fileHandle)
+    dictAll["github"] = _fdictCacheFor(
+        "github", sPublicAccess="not-public",
+        listDivergedPaths=[".vaibify/projects/project.json"])
+    with open(sDir, "w") as fileHandle:
+        json.dump(dictAll, fileHandle)
+    fnClearLevelBlockerCache()
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    dictCell = _fdictHeaderLevel2Cell(fixtureProjectRepo, dictWorkflow)
+    assert dictCell["iTotal"] - dictCell["iSatisfied"] == 2, dictCell
+
+
+@pytest.mark.falsification
+def testARecordThatNeverAskedAboutReadersDeniesTheHeaderItsCheck(
+    fixtureProjectRepo,
+):
+    """Fresh, matching, about this remote, and silent about readers.
+
+    The scalar gate refuses it -- absent is never public -- and the row
+    reads "?". But the copy matched and the record named its remote, so
+    no copy blocker fired, and the access side charged only "not
+    public": the header counted 9 of 9 above a row it was refusing
+    (found in review, 2026-10-31). An unknown verdict is now charged to
+    the service's stale criterion when nothing else has charged it.
+
+    Kills: _flistPublicAccessLevel2Blockers no longer charging an
+    unknown verdict.
+    """
+    _fnWriteBothServices(fixtureProjectRepo, [])
+    sPath = os.path.join(fixtureProjectRepo, ".vaibify", "syncStatus.json")
+    with open(sPath) as fileHandle:
+        dictAll = json.load(fileHandle)
+    dictAll["github"] = _fdictCacheFor("github", sPublicAccess=None)
+    with open(sPath, "w") as fileHandle:
+        json.dump(dictAll, fileHandle)
+    fnClearLevelBlockerCache()
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    assert _fbComputeLevel2(dictWorkflow, fixtureProjectRepo) is False
+    dictCell = _fdictHeaderLevel2Cell(fixtureProjectRepo, dictWorkflow)
+    assert dictCell["sState"] != "attained", (
+        "the header claims Level 2 while the gate refuses an unknown "
+        f"reader verdict: {dictCell}")
+    assert dictCell["iTotal"] - dictCell["iSatisfied"] == 1, dictCell
+    listStale = [
+        dictEntry for dictEntry in flistLevel2Blockers(
+            dictWorkflow, fixtureProjectRepo)
+        if dictEntry["sCriterion"] == "github-verify-stale"
+    ]
+    assert len(listStale) == 1
+    assert "before vaibify asked what a reader is served" in (
+        listStale[0]["sRemediationHint"])
+
+
+def testAStaleRecordIsChargedOnceThoughBothQuestionsAreUnknown(
+    fixtureProjectRepo,
+):
+    """The copy side already charged the stale criterion; access adds nothing."""
+    _fnWriteBothServices(fixtureProjectRepo, [], fHoursAgo=48.0)
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    listCriteria = [
+        dictEntry["sCriterion"] for dictEntry in flistLevel2Blockers(
+            dictWorkflow, fixtureProjectRepo)
+    ]
+    assert listCriteria.count("github-verify-stale") == 1, listCriteria
+    assert listCriteria.count("zenodo-verify-stale") == 1, listCriteria
 
 
 # ── The same asymmetry one level up ──

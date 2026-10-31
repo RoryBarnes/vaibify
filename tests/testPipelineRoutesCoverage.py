@@ -1942,6 +1942,10 @@ class TestPollLevelStatePayload:
             # never wear a divergence's colour.
             "dictImageArchive",
             "dictDeterminism", "dictRemoteSyncs",
+            # Added 2026-10-30: each remote's two Level 2 questions --
+            # can a reader retrieve the copy, does it match -- in the
+            # authorities' words, so the rows never rebuild a verdict.
+            "dictPublicAccessStates", "dictPublishedCopyStates",
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
             "bRebuildAttestationRunning", "dictRebuildAttestation",
             # Added 2026-10-13. Which record the live run writes, so
@@ -2319,6 +2323,9 @@ class TestBuildWorkflowEnvelopeDetail:
             # displayed as the one it checked.
             "sZenodoDoiVerified": "",
             "sEndpointVerified": "",
+            # Added 2026-10-30: a record whose comparison was withheld
+            # compared nothing, and the row says so rather than "0 of 0".
+            "bComparisonWithheld": False,
         }
         assert dictSyncs["zenodo"] is None
         assert dictSyncs["overleaf"] is None

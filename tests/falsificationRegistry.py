@@ -4344,12 +4344,14 @@ LIST_FALSIFICATIONS = [
         # entirely leaves them all green. Only a drifting sha sees it.
         nodeid='tests/testLevelGates.py::test_fbAtLeastLevel2_committed_sha_drift_blocks_l2',
         source='vaibify/reproducibility/levelGates.py',
+        # Re-anchored 2026-10-30 on the reader-access conjunct that now
+        # follows the GitHub sync one; the mutation is unchanged.
         old="""    if not fbWorkflowFullySyncedWithGithub(
         dictWorkflow, filesRepo,
     ):
         return False
-    if not fbWorkflowFullySyncedWithZenodo(""",
-        new="""    if not fbWorkflowFullySyncedWithZenodo(""",
+    if not fbGithubRepositoryIsPublic(""",
+        new="""    if not fbGithubRepositoryIsPublic(""",
     ),
     Falsification(
         # Restores the claim the docs carried for months: that the
@@ -38616,5 +38618,306 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/styleMain.css',
         old='a:where([href]) {\n    color: var(--highlight-color);\n}\n',
         new='\n',
+    ),
+    # --- 2026-10-30: Level 2 observes what a reader is served ---
+    Falsification(
+        nodeid=(
+            'tests/testReaderAccessIsObservedAnonymously.py::'
+            'test_the_github_probe_sends_no_credential'
+        ),
+        # The probe builds its request with the researcher's token.
+        source='vaibify/reproducibility/githubMirror.py',
+        old=(
+            '            _frequestBuildAnonymousProbe(sUrl),'
+            ' _F_REQUEST_TIMEOUT_SECONDS,\n'
+        ),
+        new=(
+            '            _frequestBuildGithub(sUrl, _fsResolveTokenSafely('
+            'sOwner, sRepo)), _F_REQUEST_TIMEOUT_SECONDS,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderAccessIsObservedAnonymously.py::'
+            'test_rate_limits_are_uncheckable_never_not_public'
+        ),
+        # A 403 is read as a refusal to a reader.
+        source='vaibify/reproducibility/githubMirror.py',
+        old=(
+            '    if errorHttp.code == 404:\n'
+            '        return {"sState": S_ACCESS_NOT_PUBLIC, "sReason": (\n'
+        ),
+        new=(
+            '    if errorHttp.code in (404, 403):\n'
+            '        return {"sState": S_ACCESS_NOT_PUBLIC, "sReason": (\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderAccessIsObservedAnonymously.py::'
+            'test_the_backoff_never_blocks_and_never_spends'
+        ),
+        # The deadline is never consulted, so the probe sends anyway.
+        source='vaibify/reproducibility/githubMirror.py',
+        old=(
+            '    if time.time() < fDeadline:\n'
+            '        raise GithubMirrorError(_fsDescribeBackoff('
+            'sOwner, sRepo, fDeadline))\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderAccessIsObservedAnonymously.py::'
+            'test_the_zenodo_verify_sends_no_credential'
+        ),
+        # The reader-access client carries a token.
+        source='vaibify/reproducibility/zenodoClient.py',
+        old='    return ZenodoClient(sService=sService, sToken=None)\n',
+        new=(
+            '    return ZenodoClient(sService=sService,'
+            ' sToken="a-token-no-reader-has")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderAccessIsObservedAnonymously.py::'
+            'test_a_mixed_archive_withholds_the_comparison'
+        ),
+        # Only the primary record is observed; the extra one is skipped.
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=(
+            '        zenodoClient.fdictObserveRecord(dictRecord["sRecordId"],'
+            ' sService)\n'
+            '        for dictRecord in listRecords\n'
+        ),
+        new=(
+            '        zenodoClient.fdictObserveRecord(dictRecord["sRecordId"],'
+            ' sService)\n'
+            '        for dictRecord in listRecords[:1]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderAccessIsObservedAnonymously.py::'
+            'test_a_known_restriction_survives_an_uncheckable_sibling'
+        ),
+        # An unchecked sibling raises before the restriction is recorded.
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=(
+            '    if listNotPublic:\n'
+            '        return _fdictBuildArchiveAccess(\n'
+            '            zenodoClient.S_RECORD_NOT_PUBLIC, listNotPublic,'
+            ' listObservations)\n'
+            '    if listUnchecked:\n'
+            '        raise RemoteUncheckableError(\n'
+            '            " ".join(d["sReason"] for d in listUnchecked))\n'
+        ),
+        new=(
+            '    if listUnchecked:\n'
+            '        raise RemoteUncheckableError(\n'
+            '            " ".join(d["sReason"] for d in listUnchecked))\n'
+            '    if listNotPublic:\n'
+            '        return _fdictBuildArchiveAccess(\n'
+            '            zenodoClient.S_RECORD_NOT_PUBLIC, listNotPublic,'
+            ' listObservations)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderAccessIsObservedAnonymously.py::'
+            'test_an_uncheckable_record_alone_keeps_the_previous_record'
+        ),
+        # Unchecked records are read as public, so the verify writes.
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=(
+            '    if listUnchecked:\n'
+            '        raise RemoteUncheckableError(\n'
+            '            " ".join(d["sReason"] for d in listUnchecked))\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderAccessIsObservedAnonymously.py::'
+            'test_each_record_is_fetched_once_so_a_404_cannot_abort_the_verdict'
+        ),
+        # The attestation read fetches every record again through the client.
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=(
+            '        jsonFound = zenodoClient.fjsonReadRecordFile(\n'
+            '            dictObservation, l3Attestation.S_ATTESTATION_FILENAME,\n'
+            '            sService=sService,\n'
+            '        )\n'
+        ),
+        new=(
+            '        jsonFound = zenodoClient.ZenodoClient(\n'
+            '            sService=sService,\n'
+            '        ).fjsonFetchRecordFile(\n'
+            '            dictObservation["sRecordId"],\n'
+            '            l3Attestation.S_ATTESTATION_FILENAME,\n'
+            '        )\n'
+        ),
+    ),
+    # --- 2026-10-30: Level 2 requires the copies to be public and current ---
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_matching_private_repository_is_below_level_two'
+        ),
+        # The GitHub reader-access conjunct is gone from the scalar gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not fbGithubRepositoryIsPublic(dictWorkflow, filesRepo):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_matching_archive_a_reader_cannot_open_is_below_level_two'
+        ),
+        # The Zenodo reader-access conjunct is gone from the scalar gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not fbZenodoArchiveIsPublic(dictWorkflow, filesRepo):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_the_public_predicate_checks_freshness'
+        ),
+        # A stale record answers the reader-access question anyway.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if _fbSyncCacheStale(dictStatus):\n        return (\n            f"The last {sName} check is out of date — verify again to "\n            "refresh it."\n        )\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_record_that_never_asked_about_readers_is_unknown'
+        ),
+        # An absent reader-access verdict is read as public.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    dictAccess = dictStatus.get("dictPublicAccess")\n    if not isinstance(dictAccess, dict):\n',
+        new='    dictAccess = dictStatus.get("dictPublicAccess") or {"sState": S_ACCESS_PUBLIC}\n    if not isinstance(dictAccess, dict):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_repository_change_invalidates_the_evidence'
+        ),
+        # The record's remote is never compared with the push binding.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not _fbGithubRemotesAgree(dictExpected, dictRecorded):\n        return _fsDescribeOtherGithubRemote(dictRecorded)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_declared_remote_that_disagrees_with_the_binding_is_unknown'
+        ),
+        # The declared remote is never compared with the push binding.
+        source='vaibify/reproducibility/levelGates.py',
+        old='        if not _fbGithubRemotesAgree(dictDeclared, dictBound):\n            return scheduledReverify._fsDescribeBindingMismatch(dictBound)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_declared_branch_that_disagrees_with_the_binding_is_unknown'
+        ),
+        # Two GitHub remotes agree whatever their branches say.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return not (sReferenceBranch and sCandidateBranch\n                and sReferenceBranch != sCandidateBranch)\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_newly_declared_record_invalidates_the_evidence'
+        ),
+        # The recorded Zenodo record set is never compared with the declared one.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if (dictRecorded.get("sEndpoint") == sEndpoint\n            and dictRecorded.get("listRecordIds") == listRecordIds):\n',
+        new='    if dictRecorded.get("sEndpoint") == sEndpoint:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectHeaderNeverOutranksItsRows.py::'
+            'testEveryLevel2CriterionTheGatesEmitIsCountedByTheHeader'
+        ),
+        # The reader-access pair is dropped from the header's Level 2 tuple.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    "github-repository-not-public", "zenodo-archive-not-public",\n',
+        new='',
+    ),
+    # --- 2026-10-30: every verify lane settles the poll's check state ---
+    Falsification(
+        nodeid=(
+            'tests/testEveryVerifyLaneSettlesItsBadge.py::'
+            'test_the_scheduled_pass_settles_each_project_under_its_own_key'
+        ),
+        # The scheduled pass records no check outcome at all.
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=(
+            '        _fnRecordCheckOutcomes(\n'
+            '            sContainerId, dictWorkflow,'
+            ' dictWorkflowReport["listResults"])\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEveryVerifyLaneSettlesItsBadge.py::'
+            'test_verify_now_records_a_failed_check_under_the_container_id'
+        ),
+        # Verify now raises its error without settling the badge.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        remoteCheckState.fnMarkUncheckable(\n'
+            '            tCheckKey, sService, str(errorHttp.detail))\n'
+        ),
+        new='',
+    ),
+    # --- 2026-10-30: the Level 2 remote rows render the authorities' states ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLevelTwoRemoteRowsRenderTheirState.py::'
+            'test_the_four_level_two_remote_rows_render_unknown_never_not_met'
+        ),
+        # The PROOF tab ignores the Level 2 states; each row falls back
+        # to its boolean and paints "not met".
+        source='vaibify/gui/static/scriptProofTab.js',
+        old=(
+            '        if (dictLevel2) {\n'
+            '            return _DICT_LEVEL2_STATE_LIGHTS[dictLevel2.sState] ||\n'
+            '                "unknown";\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    # --- 2026-10-31: review findings on the reader-access gate ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectHeaderNeverOutranksItsRows.py::'
+            'testARecordThatNeverAskedAboutReadersDeniesTheHeaderItsCheck'
+        ),
+        # An unknown reader verdict charges no criterion at all.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if dictAccess["sState"] == S_EVIDENCE_UNKNOWN:\n'
+            '        return _flistUnchargedUnknownAccessBlockers(\n'
+            '            dictWorkflow, filesRepo, sService, dictAccess["sReason"])\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_removing_a_declared_branch_invalidates_the_evidence'
+        ),
+        # An omitted branch is read as any branch, not the verify's default.
+        source='vaibify/reproducibility/levelGates.py',
+        old='            or scheduledReverify.S_DEFAULT_GITHUB_BRANCH)\n',
+        new='            or "")\n',
     ),
 ]

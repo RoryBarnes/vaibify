@@ -15,6 +15,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+from tests.syncStatusFixtures import (
+    fdictBuildCachedVerify,
+    fdictRemoteIdentityVerifiedFor,
+)
 from vaibify.reproducibility import scheduledReverify
 from vaibify.reproducibility.aiDeclarationStep import (
     S_DEFAULT_DECLARATION_FILENAME,
@@ -859,16 +863,6 @@ def test_cached_sync_status_full_match_diverged_blocks():
 def test_fbGithubHeadMatchesVerifiedSha_both_empty_is_permissive(tmp_path):
     """Line 400: when both verified and live SHA are empty, treat as match."""
     sProjectRepo = str(tmp_path)
-    _fnWriteSyncStatusFile(sProjectRepo, {
-        "github": {
-            "sService": "github",
-            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-            "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
-            "sCommittedShaVerified": "",
-            "listComparedPaths": _LIST_COMPARED,
-            "iScopeVersion": _I_SCOPE_VERSION,
-        },
-    })
     dictWorkflow = {
         "listSteps": [_fdictAllGreenStep()],
         "dictRemotes": {
@@ -877,6 +871,15 @@ def test_fbGithubHeadMatchesVerifiedSha_both_empty_is_permissive(tmp_path):
             },
         },
     }
+    _fnWriteSyncStatusFile(sProjectRepo, {
+        "github": fdictBuildCachedVerify(
+            sService="github", listComparedPaths=_LIST_COMPARED,
+            sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+            sCommittedShaVerified="",
+            dictRemoteIdentity=fdictRemoteIdentityVerifiedFor(
+                dictWorkflow, "github"),
+        ),
+    })
     assert fbWorkflowFullySyncedWithGithub(
         dictWorkflow, sProjectRepo,
     ) is True

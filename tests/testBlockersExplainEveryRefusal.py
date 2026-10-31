@@ -20,6 +20,7 @@ time the set of unowned paths changed.
 
 import pytest
 
+from tests.syncStatusFixtures import fdictBuildCachedVerify
 from vaibify.reproducibility import levelGates
 
 
@@ -42,26 +43,16 @@ def _fdictWorkflow():
 
 def _fdictSyncStatus(listDivergedPaths, sNowIso="2099-01-01T00:00:00Z"):
     """A fresh, current-scope cache reporting the given divergences."""
-    from vaibify.reproducibility import publicationScope
-
     listCompared = sorted(
         {S_UNOWNED_LEVEL2_PATH, S_STEP_OUTPUT} | set(listDivergedPaths))
-    return {
-        "sService": "zenodo",
-        "iScopeVersion": publicationScope.I_PUBLICATION_SCOPE_VERSION,
-        "iTotalFiles": len(listCompared),
-        "iMatching": len(listCompared) - len(listDivergedPaths),
-        "listComparedPaths": listCompared,
-        "listDiverged": [
-            {"sPath": sPath, "sExpected": "a" * 64, "sActual": "b" * 64}
-            for sPath in listDivergedPaths
-        ],
-        "sLastVerified": sNowIso,
-        "sEndpointVerified": "sandbox",
+    return fdictBuildCachedVerify(
+        sService="zenodo", listComparedPaths=listCompared,
+        listDivergedPaths=listDivergedPaths, sLastVerified=sNowIso,
+        sEndpointVerified="sandbox",
         # A recorded DOI: without one the Zenodo gate refuses, and a
         # "clean" cache that the gate refuses is not clean.
-        "sZenodoDoi": "10.5281/zenodo.1",
-    }
+        sZenodoDoi="10.5281/zenodo.1",
+    )
 
 
 @pytest.fixture

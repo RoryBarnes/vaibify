@@ -1872,7 +1872,7 @@ var VaibifyWorkflowRequirements = (function () {
             dictHealth.sState, dictArgs.dictArchiveInfo);
         var dictStateByLevel = {};
         dictStateByLevel[2] = _DICT_MARK_TO_LEVEL_STATE[
-            _fsSyncRowState(dictArgs.dictSync)] || "unknown";
+            _fsRemoteLevelTwoMark(dictArgs)] || "unknown";
         dictStateByLevel[3] = _DICT_MARK_TO_LEVEL_STATE[
             sLevelThreeMark] || "unknown";
         var dictArchive = dictArgs.dictArchiveInfo || {};
@@ -1895,6 +1895,10 @@ var VaibifyWorkflowRequirements = (function () {
         if (_fbIsSandboxDeposit(dictArchive.sPermanence)) {
             listWarnings.push(S_SANDBOX_WARNING_TOOLTIP);
         }
+        if ((dictArgs.dictAccessState || {}).sState === "not-public") {
+            listWarnings.push("Not public: " +
+                dictArgs.dictAccessState.sReason);
+        }
         if (listDriftedSince.length > 0) {
             listWarnings.push(_fsDescribeStaleAgreement(
                 listDriftedSince.length, dictArgs.sKey));
@@ -1911,6 +1915,65 @@ var VaibifyWorkflowRequirements = (function () {
                 return _fsRenderMergedRemoteDetail(
                     dictArgs, dictHealth, sLevelThreeMark);
             }};
+    }
+
+    function _fsRemoteLevelTwoMark(dictArgs) {
+        /* Two requirements per remote, answered by the backend's
+           authorities: the copy matches, and a reader can retrieve it.
+           Either one unknown -- a stale record, one about another
+           remote, one written before vaibify asked what a reader is
+           served, a withheld comparison -- is "?", never a count. A
+           proven difference keeps the counts' partial/none split; a
+           matching copy no reader can retrieve is half met. A hub that
+           ships no states keeps the count-derived mark. */
+        var dictCopy = dictArgs.dictCopyState;
+        var dictAccess = dictArgs.dictAccessState;
+        if (!dictCopy || !dictAccess) {
+            return _fsSyncRowState(dictArgs.dictSync);
+        }
+        if (dictCopy.sState === "unknown" ||
+                dictAccess.sState === "unknown") {
+            return "unknown";
+        }
+        if (dictCopy.sState === "differs") {
+            return _fsSyncRowState(dictArgs.dictSync) === "orange"
+                ? "orange" : "red";
+        }
+        return dictAccess.sState === "public" ? "green" : "orange";
+    }
+
+    function _fsDescribeRemoteCopy(dictArgs) {
+        // An unknown copy is described in the server's sentence --
+        // "Not compared: ..." for a withheld or another remote's
+        // comparison -- never as "0 of 0" or "N diverged".
+        var dictCopy = dictArgs.dictCopyState;
+        if (dictCopy && dictCopy.sState === "unknown" && dictCopy.sReason) {
+            return dictCopy.sReason;
+        }
+        return _fsDescribeSyncState(dictArgs.dictSync);
+    }
+
+    var _DICT_READER_ACCESS_LABELS = {
+        "public": "Public",
+        "not-public": "Not public",
+        "unknown": "Public access unknown",
+    };
+
+    function _fsRenderReaderAccessLine(dictAccess, dictCopy) {
+        /* Whether a reader can retrieve this copy, with the backend's
+           reason. Said once: when the copy is unknown for the same
+           reason, the status line below already says it. */
+        if (!dictAccess || !_DICT_READER_ACCESS_LABELS[dictAccess.sState]) {
+            return "";
+        }
+        if (dictAccess.sState === "unknown" && dictCopy &&
+                dictCopy.sReason === dictAccess.sReason) {
+            return "";
+        }
+        return '<div class="requirement-row-access requirement-row-access-' +
+            fnEscapeHtml(dictAccess.sState) + '">' +
+            fnEscapeHtml(_DICT_READER_ACCESS_LABELS[dictAccess.sState] +
+                " — " + (dictAccess.sReason || "")) + '</div>';
     }
 
     function _fsRenderMergedRemoteDetail(
@@ -1948,6 +2011,8 @@ var VaibifyWorkflowRequirements = (function () {
             fnEscapeHtml(_fsDescribeStaleAgreement(
                 listDriftedSince.length, dictArgs.sKey)) + '</div>';
         return '<div class="requirement-row-detail">' +
+            _fsRenderReaderAccessLine(
+                dictArgs.dictAccessState, dictArgs.dictCopyState) +
             (sCheck
                 ? '<div class="requirement-row-check">' +
                   fnEscapeHtml(sCheck) + '</div>'
@@ -1957,7 +2022,7 @@ var VaibifyWorkflowRequirements = (function () {
             '<div class="sync-scope-title">Published data ' +
             '(Level 2)</div>' +
             '<div class="requirement-row-status">' +
-            fnEscapeHtml(_fsDescribeSyncState(dictArgs.dictSync)) +
+            fnEscapeHtml(_fsDescribeRemoteCopy(dictArgs)) +
             '</div>' +
             _fsRenderRemoteFileRows(
                 dictArgs.sBadgeKey, dictArgs.listExcludePaths,
@@ -2167,6 +2232,8 @@ var VaibifyWorkflowRequirements = (function () {
         dictDetail, dictChecks, setToggled,
     ) {
         var dictSyncs = dictDetail.dictRemoteSyncs || {};
+        var dictCopyStates = dictDetail.dictPublishedCopyStates || {};
+        var dictAccessStates = dictDetail.dictPublicAccessStates || {};
         var listEnvelope = dictDetail.listLevel3EnvelopePaths || [];
         var listNotRequired =
             dictDetail.listComparedNotRequiredPaths || [];
@@ -2182,6 +2249,8 @@ var VaibifyWorkflowRequirements = (function () {
                 sKey: "github", sTitle: "GitHub mirror",
                 sBadgeKey: "sGithub",
                 dictSync: dictSyncs.github,
+                dictCopyState: dictCopyStates.github,
+                dictAccessState: dictAccessStates.github,
                 sHowto: "Push with Sync → Push to GitHub, then " +
                     "Verify now.",
                 sInformationalHtml: _fsRenderInformationalFileBlock(
@@ -2208,6 +2277,8 @@ var VaibifyWorkflowRequirements = (function () {
                 sKey: "zenodo", sTitle: "Zenodo archive",
                 sBadgeKey: "sZenodo",
                 dictSync: dictSyncs.zenodo,
+                dictCopyState: dictCopyStates.zenodo,
+                dictAccessState: dictAccessStates.zenodo,
                 sHowto: "Publish with Sync → Archive to Zenodo, " +
                     "then Verify now.",
                 sInformationalHtml: _fsRenderInformationalFileBlock(

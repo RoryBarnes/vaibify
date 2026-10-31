@@ -61,7 +61,7 @@ from ..pipelineServer import (
     fsValidatePathWithinRoot,
 )
 from ..projectRoots import fsResolveProjectRoot
-from ...reproducibility import syncBookkeeping
+from ...reproducibility import remoteCheckState, syncBookkeeping
 from ...reproducibility.syncBookkeeping import (
     fnRecordZenodoPublish as _fnPersistZenodoPublishRecord,
 )
@@ -975,12 +975,12 @@ def _fnRefuseWhileOtherRecordsAreDeclared(dictWorkflow):
     """Raise 409 when additional Zenodo records are declared.
 
     ALL of them, not only those classifying as sandbox. A declared
-    record carries no service of its own -- ``_fdictFetchZenodoHashes``
+    record carries no service of its own -- ``_flistObserveZenodoRecords``
     reads ONE ``sService`` off the primary and applies it to every
-    declared record, and a fetch failure on any of them aborts the
-    whole verify. So advancing the primary to production while these
-    remain declared would send them to zenodo.org, 404 them, and break
-    Zenodo verification entirely.
+    declared record. So advancing the primary to production while these
+    remain declared would send them to zenodo.org, which does not serve
+    them, and the whole archive would read not public, its comparison
+    withheld.
     """
     listExtra = [
         dictRecord for dictRecord in
@@ -3297,6 +3297,23 @@ def _fnRaiseVerifyError(errorAny, sService):
     ) from errorAny
 
 
+def _fnMarkAndRaiseVerifyFailure(tCheckKey, errorRemote, sService):
+    """Settle the badge as uncheckable, then raise the route's error.
+
+    The badge reason and the response detail are the SAME sentence, so
+    the screen and ``vaibify do verify-remote`` say one thing. Keyed by
+    the container ID the poll reads with, never the container's name.
+    """
+    try:
+        if isinstance(errorRemote, HTTPException):
+            raise errorRemote
+        _fnRaiseVerifyError(errorRemote, sService)
+    except HTTPException as errorHttp:
+        remoteCheckState.fnMarkUncheckable(
+            tCheckKey, sService, str(errorHttp.detail))
+        raise
+
+
 def _fsRedactRemoteError(sMessage):
     """Apply both mirror modules' redactors to a remote error message."""
     from vaibify.reproducibility import (
@@ -3378,10 +3395,13 @@ def _fnRegisterRemoteVerify(app, dictCtx):
         dictCarried = await _fdictVerifyRemoteUnderTheDrain(
             dictWorkflow, sService, filesRepo, sContainerId, requestHttp,
         )
-        if isinstance(dictCarried["errorRemote"], HTTPException):
-            raise dictCarried["errorRemote"]
+        tCheckKey = remoteCheckState.ftProjectCheckKey(
+            sContainerId, dictWorkflow.get("sProjectRepoPath", ""),
+        )
         if dictCarried["errorRemote"] is not None:
-            _fnRaiseVerifyError(dictCarried["errorRemote"], sService)
+            _fnMarkAndRaiseVerifyFailure(
+                tCheckKey, dictCarried["errorRemote"], sService)
+        remoteCheckState.fnMarkSettled(tCheckKey, sService)
         fnBumpSyncEpoch(dictCtx, sContainerId)
         return dictCarried["dictStatus"]
 

@@ -48,7 +48,7 @@ def _fsRepoWithData(tmp_path):
 def _fdictVerify(sRepo, dictWorkflow):
     mockFetch = MagicMock(return_value={"data.csv": S_DATA_SHA})
     with patch(
-        "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
+        "vaibify.reproducibility.zenodoClient.fdictHashRecordFiles",
         mockFetch,
     ), patch.object(
         scheduledReverify, "_fjsonFetchArchivedAttestation",

@@ -38,7 +38,10 @@ from vaibify.reproducibility.levelGates import (
     fiProofLevel,
 )
 
-from tests.syncStatusFixtures import fdictBuildCachedVerify
+from tests.syncStatusFixtures import (
+    fdictBuildCachedVerify,
+    fdictRemoteIdentityVerifiedFor,
+)
 
 
 
@@ -164,6 +167,12 @@ def test_fbWorkflowHasAiDeclarationStep_handles_empty_workflow():
     assert fbWorkflowHasAiDeclarationStep({"listSteps": []}) is False
 
 
+def _fdictVerifiedIdentity(sService):
+    """The remote a verify of the Level-2-ready workflow records."""
+    return fdictRemoteIdentityVerifiedFor(
+        _fdictBuildLevel2ReadyWorkflow(), sService)
+
+
 # ------------------------------------------------------------------------
 # fbWorkflowFullySyncedWithGithub
 # ------------------------------------------------------------------------
@@ -173,6 +182,7 @@ def test_fbWorkflowFullySyncedWithGithub_fresh_full_match_returns_true(tmp_path)
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sCommittedShaVerified="abc123",
         ),
@@ -187,6 +197,7 @@ def test_fbWorkflowFullySyncedWithGithub_stale_returns_false(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=48.0),
             sCommittedShaVerified="abc123",
         ),
@@ -201,6 +212,7 @@ def test_fbWorkflowFullySyncedWithGithub_diverged_returns_false(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             listDivergedPaths=["step01/data.csv"],
             sCommittedShaVerified="abc123",
@@ -221,6 +233,7 @@ def test_fbWorkflowFullySyncedWithGithub_sha_mismatch_returns_false(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sCommittedShaVerified="OLD_SHA",
         ),
@@ -249,6 +262,7 @@ def test_fbWorkflowFullySyncedWithZenodo_fresh_full_match_returns_true(tmp_path)
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "zenodo": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("zenodo"),
             sService="zenodo",
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sZenodoDoi="10.1000/example",
@@ -270,6 +284,7 @@ def test_fbWorkflowFullySyncedWithZenodo_missing_doi_returns_false(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "zenodo": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("zenodo"),
             sService="zenodo",
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sZenodoDoi="",
@@ -286,6 +301,7 @@ def test_fbWorkflowFullySyncedWithZenodo_endpoint_mismatch_returns_false(tmp_pat
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "zenodo": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("zenodo"),
             sService="zenodo",
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sZenodoDoi="10.1000/example",
@@ -308,10 +324,12 @@ def _fnWriteAllGreenSyncStatus(sProjectRepo):
     """Write fresh-and-matching cache files for both services."""
     _fnWriteSyncStatusFile(sProjectRepo, {
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sCommittedShaVerified="abc123",
         ),
         "zenodo": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("zenodo"),
             sService="zenodo",
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sZenodoDoi="10.1000/example",
@@ -388,6 +406,10 @@ def test_fdictLevel2Gaps_returns_per_criterion_dict(tmp_path):
         "bAtLeastLevel1",
         "bGithubFullySynced",
         "bZenodoFullySynced",
+        "bGithubRepositoryPublic",
+        "bZenodoArchivePublic",
+        "dictPublicAccessStates",
+        "dictPublishedCopyStates",
         "bArxivFullySynced",
         "bAiDeclarationAttested",
         "bAiModelsDeclared",

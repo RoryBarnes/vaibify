@@ -237,7 +237,7 @@ def testASuccessfulPromotionRetiresTheSandboxRecord(monkeypatch, tmp_path):
         syncDispatcher, "ftResultArchiveToZenodo", ftPublishedUpload,
     )
     monkeypatch.setattr(
-        scheduledReverify, "_fdictFetchZenodoHashes", fdictNoNetwork,
+        scheduledReverify, "_flistObserveZenodoRecords", fdictNoNetwork,
     )
     dockerDouble = SyncExecDouble(
         dictBlobShas={"stepAlpha/dataFile.csv": "a" * 40},
