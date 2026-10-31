@@ -647,7 +647,8 @@ def test_a_cache_written_before_the_question_reads_its_access_as_absent(
     fixtureProjectRepo,
 ):
     """Absent is not public: the backfill says nobody asked."""
-    dictOld = fdictBuildCachedVerify(sService="github")
+    dictOld = fdictBuildCachedVerify(
+        sService="github", sPublicAccess=None, bRemoteIdentity=False)
     scheduledReverify.fnWriteSyncStatus(fixtureProjectRepo, dictOld)
     dictRead = scheduledReverify.fdictReadCachedSyncStatus(
         fixtureProjectRepo, "github")

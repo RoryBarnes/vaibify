@@ -32,7 +32,9 @@ def _fdictCollidingWorkflow(sProjectRepo):
 def _fnPassEveryOtherLevel2Conjunct(monkeypatch):
     """So the gate's answer depends on the collision alone."""
     for sName in ("fbAtLeastLevel1", "fbWorkflowFullySyncedWithGithub",
+                  "fbGithubRepositoryIsPublic",
                   "fbWorkflowFullySyncedWithZenodo",
+                  "fbZenodoArchiveIsPublic",
                   "fbWorkflowAiDeclarationAttested",
                   "fbImageArchiveQuestionSettled",
                   "fbWorkflowFullySyncedWithArxiv"):

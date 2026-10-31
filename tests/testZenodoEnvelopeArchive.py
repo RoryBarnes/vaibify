@@ -21,7 +21,10 @@ visibility-only, with a comment claiming it blocked attainment).
 
 import pytest
 
-from tests.syncStatusFixtures import fsRecentVerifyIso
+from tests.syncStatusFixtures import (
+    fdictBuildCachedVerify,
+    fsRecentVerifyIso,
+)
 from tests.zenodoObservationFixtures import fmockServeZenodoHashes
 from vaibify.gui import workflowManager
 from vaibify.reproducibility import (
@@ -82,27 +85,18 @@ class _FakeRepoFiles:
 def _fdictStatus(listCompared, listDivergedPaths=(),
                  sVerified=fsRecentVerifyIso(),
                  dictComparedHashes=None):
-    return {
-        "sService": "zenodo",
-        "sLastVerified": sVerified,
-        "iTotalFiles": len(listCompared),
-        "iMatching": len(listCompared) - len(listDivergedPaths),
-        "listComparedPaths": list(listCompared),
-        "listDiverged": [
-            {"sPath": s, "sExpected": "aaa", "sActual": "bbb"}
-            for s in listDivergedPaths
-        ],
-        "iScopeVersion": publicationScope.I_PUBLICATION_SCOPE_VERSION,
-        "sZenodoDoi": "10.5281/zenodo.1234",
-        "sEndpointVerified": "sandbox",
+    return fdictBuildCachedVerify(
+        sService="zenodo", listComparedPaths=listCompared,
+        listDivergedPaths=listDivergedPaths, sLastVerified=sVerified,
+        sZenodoDoi="10.5281/zenodo.1234", sEndpointVerified="sandbox",
         # The local hash each path was compared AS, defaulting to the
         # fake repo's live answer so the agreement check passes unless
         # a test deliberately drifts one side.
-        "dictComparedHashes": (
+        dictComparedHashes=(
             {s: S_VERIFIED_SHA for s in listCompared}
             if dictComparedHashes is None else dict(dictComparedHashes)
         ),
-    }
+    )
 
 
 def _fbArchiveMatches(monkeypatch, dictStatus, setPresent,

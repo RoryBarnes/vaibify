@@ -4344,12 +4344,14 @@ LIST_FALSIFICATIONS = [
         # entirely leaves them all green. Only a drifting sha sees it.
         nodeid='tests/testLevelGates.py::test_fbAtLeastLevel2_committed_sha_drift_blocks_l2',
         source='vaibify/reproducibility/levelGates.py',
+        # Re-anchored 2026-10-30 on the reader-access conjunct that now
+        # follows the GitHub sync one; the mutation is unchanged.
         old="""    if not fbWorkflowFullySyncedWithGithub(
         dictWorkflow, filesRepo,
     ):
         return False
-    if not fbWorkflowFullySyncedWithZenodo(""",
-        new="""    if not fbWorkflowFullySyncedWithZenodo(""",
+    if not fbGithubRepositoryIsPublic(""",
+        new="""    if not fbGithubRepositoryIsPublic(""",
     ),
     Falsification(
         # Restores the claim the docs carried for months: that the
@@ -38756,5 +38758,96 @@ LIST_FALSIFICATIONS = [
             '            l3Attestation.S_ATTESTATION_FILENAME,\n'
             '        )\n'
         ),
+    ),
+    # --- 2026-10-30: Level 2 requires the copies to be public and current ---
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_matching_private_repository_is_below_level_two'
+        ),
+        # The GitHub reader-access conjunct is gone from the scalar gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not fbGithubRepositoryIsPublic(dictWorkflow, filesRepo):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_matching_archive_a_reader_cannot_open_is_below_level_two'
+        ),
+        # The Zenodo reader-access conjunct is gone from the scalar gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not fbZenodoArchiveIsPublic(dictWorkflow, filesRepo):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_the_public_predicate_checks_freshness'
+        ),
+        # A stale record answers the reader-access question anyway.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if _fbSyncCacheStale(dictStatus):\n        return (\n            f"The last {sName} check is out of date — verify again to "\n            "refresh it."\n        )\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_record_that_never_asked_about_readers_is_unknown'
+        ),
+        # An absent reader-access verdict is read as public.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    dictAccess = dictStatus.get("dictPublicAccess")\n    if not isinstance(dictAccess, dict):\n',
+        new='    dictAccess = dictStatus.get("dictPublicAccess") or {"sState": S_ACCESS_PUBLIC}\n    if not isinstance(dictAccess, dict):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_repository_change_invalidates_the_evidence'
+        ),
+        # The record's remote is never compared with the push binding.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not _fbGithubRemotesAgree(dictBound, dictRecorded):\n        return _fsDescribeOtherGithubRemote(dictRecorded)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_declared_remote_that_disagrees_with_the_binding_is_unknown'
+        ),
+        # The declared remote is never compared with the push binding.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not _fbGithubRemotesAgree(dictDeclared, dictBound):\n        return scheduledReverify._fsDescribeBindingMismatch(dictBound)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_declared_branch_that_disagrees_with_the_binding_is_unknown'
+        ),
+        # Two GitHub remotes agree whatever their branches say.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return not (sReferenceBranch and sCandidateBranch\n                and sReferenceBranch != sCandidateBranch)\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_a_newly_declared_record_invalidates_the_evidence'
+        ),
+        # The recorded Zenodo record set is never compared with the declared one.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if (dictRecorded.get("sEndpoint") == sEndpoint\n            and dictRecorded.get("listRecordIds") == listRecordIds):\n',
+        new='    if dictRecorded.get("sEndpoint") == sEndpoint:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectHeaderNeverOutranksItsRows.py::'
+            'testEveryLevel2CriterionTheGatesEmitIsCountedByTheHeader'
+        ),
+        # The reader-access pair is dropped from the header's Level 2 tuple.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    "github-repository-not-public", "zenodo-archive-not-public",\n',
+        new='',
     ),
 ]

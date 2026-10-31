@@ -14,6 +14,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from tests.syncStatusFixtures import (
+    fdictBuildCachedVerify,
+    fdictRemoteIdentityVerifiedFor,
+)
 from tests.levelGateStubs import (
     S_RERUN_ASSESSOR_PATH,
     fdictCurrentAssessmentFields,
@@ -83,23 +87,21 @@ def _fnWriteSyncStatus(tmp_path):
         if (dictEntry or {}).get("sSha256")
     }
     dictPayload = {
-        "github": {
-            "iTotalFiles": len(_LIST_COMPARED),
-            "iMatching": len(_LIST_COMPARED), "listDiverged": [],
-            "listComparedPaths": _LIST_COMPARED,
-            "iScopeVersion": _I_SCOPE_VERSION,
-            "sLastVerified": _fsIsoNow(0.5),
-            "dictComparedHashes": dictComparedHashes,
-            "sCommittedShaVerified": "abc123",
-        },
-        "zenodo": {
-            "iTotalFiles": len(_LIST_COMPARED),
-            "iMatching": len(_LIST_COMPARED), "listDiverged": [],
-            "listComparedPaths": _LIST_COMPARED,
-            "iScopeVersion": _I_SCOPE_VERSION,
-            "sLastVerified": _fsIsoNow(0.5),
-            "dictComparedHashes": dictComparedHashes,
-            "sZenodoDoi": "10.1000/example",
+        "github": fdictBuildCachedVerify(
+            sService="github", listComparedPaths=_LIST_COMPARED,
+            sLastVerified=_fsIsoNow(0.5),
+            dictComparedHashes=dictComparedHashes,
+            sCommittedShaVerified="abc123",
+            dictRemoteIdentity=fdictRemoteIdentityVerifiedFor(
+                _fdictBuildLevel3Workflow(), "github"),
+        ),
+        "zenodo": fdictBuildCachedVerify(
+            sService="zenodo", listComparedPaths=_LIST_COMPARED,
+            sLastVerified=_fsIsoNow(0.5),
+            dictComparedHashes=dictComparedHashes,
+            sZenodoDoi="10.1000/example",
+            dictRemoteIdentity=fdictRemoteIdentityVerifiedFor(
+                _fdictBuildLevel3Workflow(), "zenodo"),
             # PRODUCTION since 2026-09-14. This fixture means "every
             # L3 criterion satisfied", and a sandbox deposit is now
             # one it fails: the sandbox mints test DOIs under no
@@ -107,7 +109,7 @@ def _fnWriteSyncStatus(tmp_path):
             # carry a Level 3 claim however exactly its bytes match.
             # The verified endpoint moves with the recorded one, which
             # is the field the endpoint check compares against.
-            "sEndpointVerified": "zenodo",
+            sEndpointVerified="zenodo",
             # The archived attestation covers the archived manifest.
             # A CONJUNCT of fbAtLeastLevel3 since 2026-09-15: it was
             # registered in the checks dict and the criteria tuple and
@@ -116,10 +118,10 @@ def _fnWriteSyncStatus(tmp_path):
             # This fixture means "every L3 criterion satisfied", so it
             # has to carry the answer -- and its absence would now,
             # correctly, cost the level.
-            "dictArchivedAttestation": {
+            dictArchivedAttestation={
                 "bCoversArchivedManifest": True,
             },
-        },
+        ),
     }
     (pathDir / "syncStatus.json").write_text(
         json.dumps(dictPayload)

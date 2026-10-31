@@ -925,6 +925,10 @@ def testWorkflowScopeEveryProjectCriterionBlockedReadsNone():
         # its old name — which is exactly what happened when the
         # divergence pair joined.
         _fdictWorkflowBlocker(2, "image-archive-unanswered"),
+        # Whether a reader can retrieve each copy (2026-10-30), on the
+        # same terms again.
+        _fdictWorkflowBlocker(2, "github-repository-not-public"),
+        _fdictWorkflowBlocker(2, "zenodo-archive-not-public"),
     ]
     dictStates = fdictComputeWorkflowScopeLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel2, [],

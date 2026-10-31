@@ -19,6 +19,8 @@ _T_PASSING_BOOLEAN_CONJUNCTS = (
     (levelGates, "fbAtLeastLevel1"),
     (levelGates, "fbWorkflowFullySyncedWithGithub"),
     (levelGates, "fbWorkflowFullySyncedWithZenodo"),
+    (levelGates, "fbGithubRepositoryIsPublic"),
+    (levelGates, "fbZenodoArchiveIsPublic"),
     (levelGates, "fbWorkflowFullySyncedWithArxiv"),
     (levelGates, "fbWorkflowAiDeclarationAttested"),
     (levelGates, "fbImageArchiveQuestionSettled"),

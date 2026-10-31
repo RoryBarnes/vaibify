@@ -32,7 +32,10 @@ from vaibify.reproducibility.levelGates import (
     fnClearLevelBlockerCache,
 )
 
-from tests.syncStatusFixtures import fdictBuildCachedVerify
+from tests.syncStatusFixtures import (
+    fdictBuildCachedVerify,
+    fdictRemoteIdentityVerifiedFor,
+)
 
 pytestmark = pytest.mark.falsification
 
@@ -106,6 +109,13 @@ def _fdictBuildLevel2ReadyWorkflow():
 # ------------------------------------------------------------------------
 
 
+
+def _fdictVerifiedIdentity(sService):
+    """The remote a verify of the Level-2-ready workflow records."""
+    return fdictRemoteIdentityVerifiedFor(
+        _fdictBuildLevel2ReadyWorkflow(), sService)
+
+
 def test_github_full_count_with_nonempty_diverged_is_not_synced(tmp_path):
     """A consistent cache with a diverged Level 2 file must fail closed.
 
@@ -129,6 +139,7 @@ def test_github_full_count_with_nonempty_diverged_is_not_synced(tmp_path):
         # 2 matching), so the consistency check cannot be what fails
         # and the divergence guard is genuinely decisive.
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             listDivergedPaths=["step01/data.csv"],
             sCommittedShaVerified="abc123",
@@ -166,6 +177,7 @@ def test_github_undercount_with_empty_diverged_is_not_synced(tmp_path):
         # iMatching contradicts listDiverged on purpose: no writer
         # produces this, so it models a hand-edited or truncated cache.
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             iMatchingOverride=2,
             sCommittedShaVerified="abc123",
@@ -196,6 +208,7 @@ def test_github_verified_sha_empty_but_live_sha_present_is_not_synced(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sCommittedShaVerified="",
         ),
@@ -222,6 +235,7 @@ def test_github_verified_sha_present_but_live_sha_empty_is_not_synced(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sCommittedShaVerified="abc123",
         ),
@@ -254,6 +268,7 @@ def test_github_full_match_without_timestamp_is_not_synced(tmp_path):
         # sLastVerified omitted entirely: the freshness guard reads
         # its ABSENCE, which is what this test makes decisive.
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sCommittedShaVerified="abc123",
         ),
     })
@@ -301,10 +316,12 @@ def _fnWriteAllGreenSyncStatus(sProjectRepo):
     """Write fresh-and-matching cache files for both services."""
     _fnWriteSyncStatusFile(sProjectRepo, {
         "github": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("github"),
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sCommittedShaVerified="abc123",
         ),
         "zenodo": fdictBuildCachedVerify(
+            dictRemoteIdentity=_fdictVerifiedIdentity("zenodo"),
             sService="zenodo",
             sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
             sZenodoDoi="10.1000/example",
