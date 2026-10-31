@@ -6034,7 +6034,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1302 -> 1316 (2026-10-28): a marker the read-only user cannot
     # open is reported unknown, never missing (the UnreadableSmallFile
     # sentinel).
-    "stateManager.py": 1316,
+    # 1316 -> 1318 (2026-10-31): in-flight completion receipts join the
+    # auto-managed .gitignore body (proof-receipt plan, approval A1).
+    "stateManager.py": 1318,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with

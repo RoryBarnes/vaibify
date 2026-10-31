@@ -85,6 +85,7 @@ __all__ = [
     "TUPLE_COMPARED_NOT_REQUIRED_PATHS",
     "S_ATTESTATION_REPO_PATH",
     "S_AI_PROVENANCE_REPO_PATH",
+    "S_PROOF_RECEIPT_REPO_PATH",
     "TUPLE_UNCOMPARED_PREFIXES",
     "TUPLE_UNCOMPARED_PATHS",
     "I_PUBLICATION_SCOPE_VERSION",
@@ -207,6 +208,10 @@ TUPLE_LEVEL3_ENVELOPE_PATHS = (
 # that stays correct only by insertion order.
 S_ATTESTATION_REPO_PATH = ".vaibify/l3_attestation.json"
 S_AI_PROVENANCE_REPO_PATH = ".vaibify/ai_provenance.json"
+# The PROOF receipt of the latest published archive step. Committed
+# with the canonical files and archived in every project deposit; its
+# home is here because the comparison scope must name it.
+S_PROOF_RECEIPT_REPO_PATH = ".vaibify/proofReceipt.json"
 TUPLE_COMPARED_NOT_REQUIRED_PATHS = (
     S_ATTESTATION_REPO_PATH,
     S_AI_PROVENANCE_REPO_PATH,

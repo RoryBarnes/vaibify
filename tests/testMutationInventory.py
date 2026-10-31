@@ -464,7 +464,13 @@ I_UNCLASSIFIED_ROW_BUDGET = 260
 # project's sealed network and proxy sidecar and never exec into the
 # project container. The row is excluded with its authority recorded;
 # the seal is proven live (tests/testProjectEgressLive.py).
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 227
+# 227 -> 228 (2026-10-31): the PROOF receipt's narrow backend write
+# (syncDispatcher._fnWriteReceiptTarget), one confined write to two
+# constant targets in .vaibify, committed as a mode-(a) file-write
+# record; the caller-supplied write keeps refusing .vaibify. Classified
+# at birth; the guards behind it are kill-confirmed
+# (tests/testProofReceiptWrite.py).
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 228
 
 
 # Every acquisition of a declared capability that still has no reviewed

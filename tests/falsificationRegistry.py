@@ -38950,4 +38950,45 @@ LIST_FALSIFICATIONS = [
             'dictIdentity["sCommit"]:\n'
         ),
     ),
+    # --- 2026-10-31: the PROOF receipt's narrow backend write ---
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptWrite.py::'
+            'testTheCallerSuppliedWriteStillRefusesVaibify'
+        ),
+        # The caller-supplied write's denylist loses .vaibify.
+        source='vaibify/docker/confinedWrite.py',
+        old='T_WRITE_DENYLISTED_NAMES = (".git", ".vaibify", "project.json")\n',
+        new='T_WRITE_DENYLISTED_NAMES = (".git", "project.json")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptWrite.py::'
+            'testTheNarrowWriteRefusesAPlantedSymlinkAtTheReceipt'
+        ),
+        # The narrow write's host leg follows links: a plain open.
+        source='vaibify/gui/syncDispatcher.py',
+        old=(
+            '    fsWriteFileInsideRoot(\n'
+            '        sRealRoot, os.path.join(sRealRoot, *listParts), iter([baContent]),\n'
+            '    )\n'
+        ),
+        new=(
+            '    with open(os.path.join(sRealRoot, *listParts), "wb") as fileReceipt:\n'
+            '        fileReceipt.write(baContent)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptWrite.py::'
+            'testThePendingPathRefusesAMalformedPromotionId'
+        ),
+        # The promotion-id pattern check removed before the path is composed.
+        source='vaibify/gui/syncDispatcher.py',
+        old=(
+            '    if not isinstance(sPromotionId, str) or not _RE_PROMOTION_ID.fullmatch(\n'
+            '            sPromotionId):\n'
+        ),
+        new='    if not isinstance(sPromotionId, str):\n',
+    ),
 ]

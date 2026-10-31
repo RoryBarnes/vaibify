@@ -70,6 +70,13 @@ __all__ = [
     "ftResultPushStagedToGithub",
     "ftResultPushToGithub",
     "ftResultPushToOverleaf",
+    "S_PENDING_RECEIPTS_DIRECTORY",
+    "T_RECEIPT_WRITE_FORBIDDEN_NAMES",
+    "fnWritePendingReceipt",
+    "fsCommitPendingReceiptWrite",
+    "fsCommitProofReceiptWrite",
+    "fnWriteProofReceiptIntoProject",
+    "fsPendingReceiptRepoPath",
 ]
 
 SET_VALID_SERVICES = {"github", "overleaf", "zenodo"}
@@ -398,6 +405,195 @@ def _fnLandPulledSourcesOnHost(listLocalPaths, sTargetDirectory):
                 os.path.join(sRealRoot, os.path.basename(sLocalPath)),
                 iter(lambda: fileLocal.read(65536), b""),
             )
+
+
+# ── The narrow backend write: two paths vaibify chooses, never a caller ──
+#
+# The caller-supplied confined write refuses ``.vaibify`` by name and
+# must go on refusing it: that denylist is the metadata-integrity
+# contract no request may cross. The PROOF receipt lives in
+# ``.vaibify``, so it is written here instead, through the same
+# symlink-safe primitives with a narrower forbidden list -- the
+# Overleaf manuscript pull's precedent -- and only to two targets
+# composed from constants. Neither public function takes a path.
+
+S_PENDING_RECEIPTS_DIRECTORY = ".vaibify/pendingReceipts"
+T_RECEIPT_WRITE_FORBIDDEN_NAMES = (".git", "project.json")
+_RE_PROMOTION_ID = re.compile(r"promotion-[0-9a-f]{32}")
+
+
+def fsPendingReceiptRepoPath(sPromotionId):
+    """Return a completion's pending receipt path; refuse a malformed id first.
+
+    The id is checked BEFORE any path is composed, so an id carrying a
+    separator or ``..`` never becomes part of a path at all.
+    """
+    if not isinstance(sPromotionId, str) or not _RE_PROMOTION_ID.fullmatch(
+            sPromotionId):
+        raise ValueError(
+            "refused: not a promotion id: " + repr(sPromotionId)[:80])
+    return posixpath.join(S_PENDING_RECEIPTS_DIRECTORY, sPromotionId + ".json")
+
+
+def fnWriteProofReceiptIntoProject(
+    connectionDocker, sContainerId, sProjectRepoPath, baReceipt,
+):
+    """Write the repository copy of the PROOF receipt, symlink-safe."""
+    from vaibify.reproducibility.publicationScope import (
+        S_PROOF_RECEIPT_REPO_PATH,
+    )
+    _fnWriteReceiptTarget(
+        connectionDocker, sContainerId, sProjectRepoPath,
+        S_PROOF_RECEIPT_REPO_PATH, baReceipt,
+    )
+
+
+def fnWritePendingReceipt(
+    connectionDocker, sContainerId, sProjectRepoPath, sPromotionId,
+    baReceipt,
+):
+    """Store a completion receipt's bytes, symlink-safe, before any draft."""
+    _fnWriteReceiptTarget(
+        connectionDocker, sContainerId, sProjectRepoPath,
+        fsPendingReceiptRepoPath(sPromotionId), baReceipt,
+    )
+
+
+def fsCommitProofReceiptWrite(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, baReceipt,
+):
+    """Write the repository receipt under carrier mode (a); return a warning.
+
+    ``""`` when it landed. A refused or failed write is carried back as
+    the warning rather than raised: the confined write is atomic, so the
+    old receipt is untouched and nothing is left to reconcile, and a
+    raise would quarantine a container over a file the next published
+    archive step rewrites anyway.
+    """
+    from vaibify.reproducibility.publicationScope import (
+        S_PROOF_RECEIPT_REPO_PATH,
+    )
+    return _fsCommitBackendFileWrite(
+        dictCtx, sContainerId, dictWorkflow, requestHttp,
+        "proof-receipt", S_PROOF_RECEIPT_REPO_PATH, baReceipt,
+        lambda sRepo: fnWriteProofReceiptIntoProject(
+            dictCtx["docker"], sContainerId, sRepo, baReceipt,
+        ),
+    )
+
+
+def fsCommitPendingReceiptWrite(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, sPromotionId,
+    baReceipt,
+):
+    """Store a completion's receipt under carrier mode (a); return an error."""
+    return _fsCommitBackendFileWrite(
+        dictCtx, sContainerId, dictWorkflow, requestHttp,
+        "pending-proof-receipt", fsPendingReceiptRepoPath(sPromotionId),
+        baReceipt,
+        lambda sRepo: fnWritePendingReceipt(
+            dictCtx["docker"], sContainerId, sRepo, sPromotionId, baReceipt,
+        ),
+    )
+
+
+def _fsCommitBackendFileWrite(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, sOperationName,
+    sRepoRelPath, baContent, fnWriteInto,
+):
+    """Journal one backend-chosen write as a ``file-write`` record."""
+    import hashlib
+    from vaibify.docker.confinedWrite import ContainerWriteRefusedError
+    from . import commitCarrier, routeContext
+    sRepo = (dictWorkflow or {}).get("sProjectRepoPath") or ""
+    sTarget = posixpath.join(sRepo, sRepoRelPath)
+
+    def fdictWrite():
+        try:
+            fnWriteInto(sRepo)
+        except (ContainerWriteRefusedError, OSError, ValueError) as error:
+            return {"sError": str(error) or type(error).__name__}
+        return {"sError": ""}
+
+    dictLaneTuple = routeContext.fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, sOperationName,
+    )
+    dictCommitted = commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "file-write", sTarget, fdictWrite,
+        {
+            **routeContext.fdictStampDockerIdForJournal(sContainerId),
+            "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
+            "sPriorSha256": routeContext.fsHashContainerFileOrEmpty(
+                dictCtx, sContainerId, sTarget,
+            ) if sRepo else "",
+        },
+    )
+    return dictCommitted["result"]["sError"]
+
+
+def _fnWriteReceiptTarget(
+    connectionDocker, sContainerId, sProjectRepoPath, sRepoRelPath,
+    baContent,
+):
+    """Land one backend-chosen file below the project repo, never via a link."""
+    from vaibify.docker.confinedWrite import ContainerWriteRefusedError
+    if not sProjectRepoPath:
+        raise ContainerWriteRefusedError(
+            "refused: this project has no repository to hold the receipt")
+    listParts = sRepoRelPath.split("/")
+    if set(listParts) & set(T_RECEIPT_WRITE_FORBIDDEN_NAMES):
+        raise ContainerWriteRefusedError(
+            "refused: the receipt write may not touch " + sRepoRelPath)
+    if fbIsHostProject(sContainerId):
+        _fnWriteReceiptOnHost(sProjectRepoPath, listParts, baContent)
+        return
+    import io
+    sRoot = posixpath.normpath(sProjectRepoPath)
+    connectionDocker.fnWriteFileFromStream(
+        sContainerId, posixpath.join(sRoot, sRepoRelPath),
+        io.BytesIO(baContent), iExpectedBytes=len(baContent),
+        sAuthorizedRoot=sRoot,
+        tForbiddenNames=T_RECEIPT_WRITE_FORBIDDEN_NAMES,
+        bCreateParents=True,
+    )
+
+
+def _fnWriteReceiptOnHost(sProjectRepoPath, listParts, baContent):
+    """The host leg: parents created and opened without following a link."""
+    import os
+    from vaibify.host.hostConfinedWrite import fsWriteFileInsideRoot
+    sRealRoot = os.path.realpath(sProjectRepoPath)
+    _fnMakeHostDirectoriesWithoutFollowing(sRealRoot, listParts[:-1])
+    fsWriteFileInsideRoot(
+        sRealRoot, os.path.join(sRealRoot, *listParts), iter([baContent]),
+    )
+
+
+def _fnMakeHostDirectoriesWithoutFollowing(sRealRoot, listDirectories):
+    """Create each directory below the root, refusing a link at any step."""
+    import os
+    from vaibify.docker.confinedWrite import ContainerWriteRefusedError
+    iDirectory = os.open(sRealRoot, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for sName in listDirectories:
+            try:
+                os.mkdir(sName, 0o755, dir_fd=iDirectory)
+            except FileExistsError:
+                pass
+            try:
+                iNext = os.open(
+                    sName, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=iDirectory,
+                )
+            except OSError as error:
+                raise ContainerWriteRefusedError(
+                    f"refused: '{sName}' is a symlink or not a directory"
+                ) from error
+            os.close(iDirectory)
+            iDirectory = iNext
+    finally:
+        os.close(iDirectory)
 
 
 _DICT_ZENODO_API_BASE = {
