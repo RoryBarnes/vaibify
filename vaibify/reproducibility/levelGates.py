@@ -2473,7 +2473,7 @@ def _fsDescribeUncoveredGithubRemote(dictWorkflow, dictRecorded):
 def _fsDescribeOtherGithubRemote(dictRecorded):
     """Say the last GitHub check was about a remote this project no longer uses."""
     return (
-        "The last GitHub check compared "
+        "Not compared: the last GitHub check compared "
         f"{dictRecorded.get('sOwner')}/{dictRecorded.get('sRepo')}, branch "
         f"{dictRecorded.get('sBranch')}, which is not the remote this "
         "project publishes to now — verify again to check the current one."
@@ -2496,7 +2496,7 @@ def _fsDescribeUncoveredZenodoArchive(dictWorkflow, dictRecorded):
             and dictRecorded.get("listRecordIds") == listRecordIds):
         return ""
     return (
-        "The last Zenodo check covered record(s) "
+        "Not compared: the last Zenodo check covered record(s) "
         f"{', '.join(dictRecorded.get('listRecordIds') or []) or 'none'} on "
         f"{dictRecorded.get('sEndpoint') or 'an unrecorded instance'}, not "
         f"the record(s) this project declares now "

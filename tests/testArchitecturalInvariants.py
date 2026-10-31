@@ -5439,7 +5439,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # researcher's own program (execLane holds the rule).
     # 4355 -> 4357 (2026-10-28): the integrity-read lane on the test-marker
     # read.
-    "routes/pipelineRoutes.py": 4357,
+    # 4357 -> 4384 (2026-10-30): the poll carries the Level 2 reader-access
+    # and published-copy states and the withheld-comparison flag
+    # (levelGates holds the authorities).
+    "routes/pipelineRoutes.py": 4384,
     # NEW at 820 (2026-10-28): systemRoutes.py crossed the cap with the
     # bind-mount mode drift finding beside the X11 and limit findings it
     # already renders; one more comparison of the running container

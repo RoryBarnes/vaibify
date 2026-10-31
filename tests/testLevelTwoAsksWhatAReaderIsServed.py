@@ -258,6 +258,8 @@ def test_a_repository_change_invalidates_the_evidence(fixtureProjectRepo):
         dictWorkflow, fixtureProjectRepo, "github")
     assert dictCopy["sState"] == "unknown"
     assert "someone/something" in dictCopy["sReason"]
+    # Published copies shows this sentence where the counts would be.
+    assert dictCopy["sReason"].startswith("Not compared: ")
 
 
 def test_the_binding_compares_owner_and_repository_without_case(
@@ -375,6 +377,7 @@ def test_a_newly_declared_record_invalidates_the_evidence(fixtureProjectRepo):
         dictWorkflow, fixtureProjectRepo, "zenodo")
     assert dictAccess["sState"] == "unknown"
     assert "1, 2 on sandbox" in dictAccess["sReason"]
+    assert dictAccess["sReason"].startswith("Not compared: ")
 
 
 def test_the_other_zenodo_instance_invalidates_the_evidence(fixtureProjectRepo):
