@@ -143,6 +143,10 @@ LIST_SWALLOWING_GATES = [
         lambda files: levelGates._fsSyncStatusFingerprint(files),
     ),
     (
+        "_fsSyncFreshnessFingerprint",
+        lambda files: levelGates._fsSyncFreshnessFingerprint(files),
+    ),
+    (
         "fbVerifyManifestComplete",
         lambda files: levelGates.fbVerifyManifestComplete(
             files, DICT_WORKFLOW,

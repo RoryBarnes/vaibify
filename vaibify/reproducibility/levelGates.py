@@ -348,6 +348,29 @@ def _fsSyncStatusFingerprint(filesRepo):
     return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
+def _fsSyncFreshnessFingerprint(filesRepo):
+    """Return each remote record's freshness, evaluated NOW, for a cache key.
+
+    The stale criteria depend on the clock as well as on the record, and
+    nothing rewrites a record whose verify fails (a laptop offline for a
+    day), so a list cached while a record was fresh would otherwise be
+    served after it aged past ``F_MAX_STALE_HOURS``: the header counting
+    a record the scalar gate refuses.
+    """
+    listFresh = []
+    for sService in ("github", "zenodo", "overleaf"):
+        try:
+            dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+                filesRepo, sService,
+            )
+        except (OSError, ValueError) as error:
+            fnReRaiseControlPlaneRefusal(error)
+            dictStatus = None
+        listFresh.append(_fbCachedSyncStatusFresh(
+            dictStatus, F_MAX_STALE_HOURS))
+    return json.dumps(listFresh)
+
+
 def _fsRepoFingerprint(filesRepo):
     """Return a stable identifier for the repo adapter or path."""
     sRepoRoot = fsRepoRootOf(filesRepo)
@@ -2870,6 +2893,8 @@ def flistLevel2Blockers(dictWorkflow, filesRepo):
         _fsWorkflowBlockerFingerprint(dictWorkflow),
         _fsRepoFingerprint(filesRepo),
         _fsSyncStatusFingerprint(filesRepo),
+        # And the clock: the same record turns stale with time alone.
+        _fsSyncFreshnessFingerprint(filesRepo),
         # The environment-archive criterion reads environment.json, so
         # a deposit (or an envelope regeneration that drops the
         # record) must be able to clear or raise this blocker. Without

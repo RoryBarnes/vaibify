@@ -39016,4 +39016,18 @@ LIST_FALSIFICATIONS = [
         old='    ".gitignore",\n    ".vaibify/outputProvenance.json",\n',
         new='    ".gitignore",\n',
     ),
+    # --- 2026-10-31: A20, the cached Level 2 blocker list ages with the clock ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectHeaderNeverOutranksItsRows.py::'
+            'testACachedBlockerListNamesAVerifyThatAgedPastItsWindow'
+        ),
+        # Freshness dropped from the blocker cache key.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        # And the clock: the same record turns stale with time alone.\n'
+            '        _fsSyncFreshnessFingerprint(filesRepo),\n'
+        ),
+        new='',
+    ),
 ]
