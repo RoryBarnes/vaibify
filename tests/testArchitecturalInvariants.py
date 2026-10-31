@@ -5718,7 +5718,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # one the client's table knows, so it cannot forge log lines.
     # 3755 -> 3774 (2026-10-29): token-bearing Overleaf and Zenodo actions read their target from the confirmed host binding, and a deposit moves it.
     # 3774 -> 3860 (2026-10-31): every project deposit carries a checkpoint PROOF receipt built from the staged bytes and written into the repository only after publication (proof-receipt plan, A13).
-    "routes/syncRoutes.py": 3860,
+    # 3860 -> 4157 (2026-10-31): the journaled completion version -- automatic after a checkpoint, the user-only retry route, and the archive's refusal while one is in flight (proof-receipt plan, A13).
+    "routes/syncRoutes.py": 4157,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -6949,7 +6950,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # researcher-command declaration on the exec that runs the
     # researcher's own program (execLane holds the rule).
     # 2142 -> 2144 (2026-10-28): the integrity-read lane on the digest read.
-    "syncDispatcher.py": 2144,
+    # 2144 -> 2466 (2026-10-31): the PROOF receipt's narrow write and staging hook, and the completion version's Zenodo steps and settlement (proof-receipt plan, A13).
+    "syncDispatcher.py": 2466,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -7608,7 +7610,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1572 + 1580 -> 1599 (2026-10-29): the two
     # lines of work above, merged.
     # 1599 -> 1603 (2026-10-29): allow-network-host is excluded from the agent lane, with why.
-    "actionCatalog.py": 1603,
+    # 1603 -> 1608 (2026-10-31): archive-zenodo-completion, the user-only retry for a PROOF completion version (proof-receipt plan, A11).
+    "actionCatalog.py": 1608,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

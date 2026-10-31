@@ -49,6 +49,7 @@ __all__ = [
     "S_REMOTE_BOOKKEEPING_KEY",
     "T_BOOKKEEPING_TOP_KEYS",
     "fdictExtractSyncBookkeeping",
+    "flistAllPendingPromotionIds",
     "flistReadPendingPromotions",
     "fnMirrorPendingPromotions",
     "fnRemovePendingPromotion",
@@ -412,6 +413,20 @@ def fnUpdatePendingPromotion(
         dictSection["listPendingPromotions"] = listPending
 
     _fnMutateBookkeepingSection(filesRepo, sWorkflowKey, _fnApply)
+
+
+def flistAllPendingPromotionIds(filesRepo):
+    """Return every in-flight promotion id, across every project's section."""
+    dictSections = _fdictFetchDocumentOrEmpty(filesRepo).get(
+        S_BOOKKEEPING_SECTION_KEY)
+    if not isinstance(dictSections, dict):
+        return []
+    return sorted(
+        str(dictRecord.get("sPromotionId") or "")
+        for dictSection in dictSections.values() if isinstance(
+            dictSection, dict)
+        for dictRecord in dictSection.get("listPendingPromotions") or []
+        if isinstance(dictRecord, dict))
 
 
 def fnRemovePendingPromotion(filesRepo, sWorkflowKey, sPromotionId):

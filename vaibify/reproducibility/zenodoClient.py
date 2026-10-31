@@ -390,6 +390,19 @@ class ZenodoClient:
             )
             self._fdictRequest("DELETE", sUrl)
 
+    def fnDeleteDraftFile(self, iDepositId, sFileId):
+        """Delete ONE file from a draft deposit, by its file id.
+
+        A completion version inherits its checkpoint's files and replaces
+        only the receipt, so it cannot clear the draft the way an
+        ordinary archive does.
+        """
+        sUrl = (
+            f"{self._sBaseUrl}/deposit/depositions"
+            f"/{iDepositId}/files/{sFileId}"
+        )
+        self._fdictRequest("DELETE", sUrl)
+
     def fdictGetDeposit(self, iDepositId):
         """Retrieve metadata for a deposit."""
         sUrl = f"{self._sBaseUrl}/deposit/depositions/{iDepositId}"

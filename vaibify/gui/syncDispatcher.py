@@ -77,6 +77,16 @@ __all__ = [
     "fsCommitProofReceiptWrite",
     "fnWriteProofReceiptIntoProject",
     "fsPendingReceiptRepoPath",
+    "fbaReadPendingReceiptOrNone",
+    "fdictCompletionJournalHooks",
+    "fdictSettlePublishedCompletion",
+    "fnSettleCompletion",
+    "fnSettleCompletionUnderTheDrain",
+    "fnSweepOrphanPendingReceipts",
+    "fsResolveSidecarKey",
+    "ftPublishCompletionWithClient",
+    "ftResultFinishCompletionDraft",
+    "ftResultPublishCompletion",
 ]
 
 SET_VALID_SERVICES = {"github", "overleaf", "zenodo"}
@@ -594,6 +604,361 @@ def _fnMakeHostDirectoriesWithoutFollowing(sRealRoot, listDirectories):
             iDirectory = iNext
     finally:
         os.close(iDirectory)
+
+
+# ── The completion version: inherited files, one receipt replaced ──
+#
+# A checkpoint cannot contain its own verification, so once a verify
+# establishes Level 2 a completion version is published: Zenodo's
+# new-version draft keeps the checkpoint's files (never cleared),
+# each inherited file is checked by key, MD5 and size against the
+# journaled inventory, only the receipt is replaced -- with bytes
+# stored before the draft existed -- and the draft is checked against
+# the EXACT expected inventory before it is published. Refusals keep
+# the draft: it is journaled, and the recovery routes decide.
+
+
+class _CompletionRefusal(Exception):
+    """A completion step vaibify declined; the message says why."""
+
+
+def ftResultPublishCompletion(
+    connectionDocker, sContainerId, sZenodoService, dictRecord, baReceipt,
+    dictMetadata, dictJournalHooks,
+):
+    """Publish one journaled completion from the HOST; return ``(iExit, sOut)``.
+
+    ``dictJournalHooks`` makes each step durable as it happens:
+    ``fnNoteDraft(iDraftId)``, ``fnNoteMismatch(listKeys)``,
+    ``fnNoteUploading()`` and ``fnNotePublished(dictPublished)``.
+    Nothing here raises for a refused completion.
+    """
+    from vaibify.reproducibility import archivePromotion
+    from .zenodoTokenAccess import (
+        ZenodoTokenUnavailable, fsRequireActiveZenodoToken,
+    )
+    sStored = archivePromotion.fsDescribeStoredReceiptMismatch(
+        dictRecord, baReceipt)
+    if sStored:
+        return (1, "RECEIPT-MISMATCH (nothing was published): " + sStored)
+    try:
+        sToken = fsRequireActiveZenodoToken(
+            connectionDocker, sContainerId, sZenodoService)
+    except ZenodoTokenUnavailable as error:
+        return (1, "no-token: " + error.sMessage)
+    return ftPublishCompletionWithClient(
+        zenodoClient.ZenodoClient(sZenodoService, sToken=sToken),
+        dictRecord, baReceipt, _fdictBuildApiMetadata(dictMetadata or {}),
+        dictJournalHooks)
+
+
+def ftPublishCompletionWithClient(
+    clientZenodo, dictRecord, baReceipt, dictApi, dictJournalHooks,
+):
+    """Open (or re-find) the completion's draft and finish it with one client."""
+    return _ftRunCompletionStep(lambda: _ftFinishCompletionDraft(
+        clientZenodo, dictRecord, _fiOpenCompletionDraft(
+            clientZenodo, dictRecord, dictApi, dictJournalHooks),
+        baReceipt, dictJournalHooks))
+
+
+def ftResultFinishCompletionDraft(
+    clientZenodo, dictRecord, baReceipt, dictJournalHooks,
+):
+    """Finish the RECORDED draft of an interrupted completion (resume)."""
+    def ftFinishRecorded():
+        iDraft = int(dictRecord.get("iDepositId") or 0)
+        _fnRequireCompletionStamp(clientZenodo.fdictGetDeposit(iDraft),
+                                  dictRecord)
+        return _ftFinishCompletionDraft(
+            clientZenodo, dictRecord, iDraft, baReceipt, dictJournalHooks)
+    return _ftRunCompletionStep(ftFinishRecorded)
+
+
+def _ftRunCompletionStep(ftStep):
+    """Run one completion step, turning every refusal into ``(1, message)``."""
+    import requests
+    try:
+        return ftStep()
+    except _CompletionRefusal as error:
+        return (1, str(error))
+    except zenodoClient.ZenodoError as error:
+        return (1, "HTTP " + str(error))
+    except requests.RequestException as error:
+        return (1, repr(error))
+
+
+def _fiOpenCompletionDraft(clientZenodo, dictRecord, dictApi, dictJournalHooks):
+    """Return the completion's draft id: re-found when recorded, else new.
+
+    A new-version call that hands back a draft stamped by ANOTHER
+    operation is refused; one carrying no stamp is a fresh draft,
+    recorded at once and then stamped with this completion's id.
+    """
+    from vaibify.reproducibility import archivePromotion
+    if int(dictRecord.get("iDepositId") or 0):
+        iDraft = int(dictRecord["iDepositId"])
+        _fnRequireCompletionStamp(clientZenodo.fdictGetDeposit(iDraft),
+                                  dictRecord)
+        return iDraft
+    iParent = int(dictRecord.get("iParentDepositId") or 0)
+    _fnRefuseANewerVersion(clientZenodo.fdictGetDeposit(iParent), iParent)
+    dictDraft = clientZenodo.fdictGetNewVersionDraft(iParent)
+    sForeign = archivePromotion.fsForeignPromotionStamp(
+        (dictDraft.get("metadata") or {}).get("description"),
+        dictRecord["sPromotionId"])
+    if sForeign:
+        raise _CompletionRefusal(
+            f"FOREIGN-DRAFT (nothing was published): Zenodo returned draft "
+            f"{dictDraft.get('id')}, which belongs to another vaibify "
+            f"operation ({sForeign}). Vaibify will not clear or publish "
+            "someone else's draft; finish or discard it on Zenodo first.")
+    iDraft = int(dictDraft["id"])
+    dictJournalHooks["fnNoteDraft"](iDraft)
+    dictStamped = dict(dictApi)
+    dictStamped["description"] = archivePromotion.fsStampPromotionIdIntoDescription(
+        dictApi.get("description"), dictRecord["sPromotionId"])
+    clientZenodo.fnSetMetadata(iDraft, dictStamped)
+    return iDraft
+
+
+def _fnRefuseANewerVersion(dictParentDeposit, iParent):
+    """Refuse unless the checkpoint is still the concept's latest version."""
+    sLatest = str((dictParentDeposit.get("links") or {}).get("latest") or "")
+    sLatestId = sLatest.rstrip("/").rsplit("/", 1)[-1] if sLatest else ""
+    if sLatestId.isdigit() and int(sLatestId) != int(iParent):
+        raise _CompletionRefusal(
+            f"NEWER-VERSION (nothing was published): record {iParent} is no "
+            f"longer this archive's latest version; record {sLatestId} is. "
+            "A completion only follows the checkpoint it completes.")
+
+
+def _fnRequireCompletionStamp(dictDeposit, dictRecord):
+    """Refuse a recorded draft that no longer names this completion."""
+    from vaibify.reproducibility import archivePromotion
+    if not archivePromotion.fbDescriptionCarriesPromotionId(
+            (dictDeposit.get("metadata") or {}).get("description"),
+            dictRecord.get("sPromotionId")):
+        raise _CompletionRefusal(
+            "FOREIGN-DRAFT (nothing was published): the recorded draft no "
+            "longer names this completion, so vaibify will not act on it.")
+
+
+def _ftFinishCompletionDraft(
+    clientZenodo, dictRecord, iDraft, baReceipt, dictJournalHooks,
+):
+    """Check the inherited files, replace the receipt, check, publish."""
+    from vaibify.reproducibility import archivePromotion
+    dictDeposit = clientZenodo.fdictGetDeposit(iDraft)
+    listInherited = archivePromotion.flistDescribeInheritedMismatch(
+        dictRecord, dictDeposit)
+    if listInherited:
+        dictJournalHooks["fnNoteMismatch"](listInherited)
+        raise _CompletionRefusal(
+            f"INHERITED-MISMATCH (nothing was published): draft {iDraft} "
+            "did not inherit the checkpoint's files intact: "
+            + ", ".join(listInherited) + ".")
+    _fnReplaceCompletionReceipt(
+        clientZenodo, iDraft, dictDeposit, dictRecord, baReceipt,
+        dictJournalHooks["fnNoteUploading"])
+    listProblems = archivePromotion.flistDescribeCompletionInventoryMismatch(
+        dictRecord, clientZenodo.fdictGetDeposit(iDraft))
+    if listProblems:
+        raise _CompletionRefusal(
+            f"ARCHIVE-MISMATCH (nothing was published): draft {iDraft} does "
+            "not hold exactly the intended files: "
+            + ", ".join(listProblems) + ".")
+    dictPublished = clientZenodo.fdictPublishDraft(iDraft)
+    dictJournalHooks["fnNotePublished"](dictPublished)
+    return (0, "ZENODO_RESULT=" + json.dumps({
+        "iDepositId": iDraft,
+        "sDoi": dictPublished.get("doi", ""),
+        "sConceptDoi": dictPublished.get("conceptdoi", ""),
+        "sHtmlUrl": (dictPublished.get("links") or {}).get("html", ""),
+    }))
+
+
+def _fnReplaceCompletionReceipt(
+    clientZenodo, iDraft, dictDeposit, dictRecord, baReceipt, fnNoteUploading,
+):
+    """Delete the inherited receipt and upload the stored bytes, unless done.
+
+    The bytes are checked against the journal first, on every path: a
+    resume reads them back from disk, where they could have changed.
+    """
+    import hashlib
+    import os
+    from vaibify.host.hostConfinedWrite import fsWriteFileInsideRoot
+    from vaibify.reproducibility import archivePromotion
+    sStored = archivePromotion.fsDescribeStoredReceiptMismatch(
+        dictRecord, baReceipt)
+    if sStored:
+        raise _CompletionRefusal(
+            "RECEIPT-MISMATCH (nothing was published): " + sStored)
+    dictWanted = dictRecord["dictCompletionReceipt"]
+    dictPresent = next((
+        dictFile for dictFile in dictDeposit.get("files") or []
+        if (dictFile.get("filename") or dictFile.get("key"))
+        == dictWanted["sKey"]), None)
+    if dictPresent and str(dictPresent.get("checksum") or "").split(":")[
+            -1] == hashlib.md5(baReceipt, usedforsecurity=False).hexdigest():
+        return
+    if dictPresent:
+        clientZenodo.fnDeleteDraftFile(
+            iDraft, dictPresent.get("id") or dictPresent.get("file_id"))
+    fnNoteUploading()
+    sScratchDirectory = _fsCreateHostScratchDirectory()
+    try:
+        clientZenodo.fnUploadToBucket(
+            (dictDeposit.get("links") or {}).get("bucket"),
+            fsWriteFileInsideRoot(
+                sScratchDirectory,
+                os.path.join(sScratchDirectory, dictWanted["sKey"]),
+                iter([baReceipt])))
+    finally:
+        _fnRemoveScratchDirectory(sScratchDirectory)
+
+
+def fsResolveSidecarKey(dictCtx, sContainerId, dictWorkflow):
+    """Return the syncStatus.json section key for this workflow."""
+    from . import stateManager
+    return stateManager.fsWorkflowKeyFromPath(
+        (dictCtx.get("paths") or {}).get(sContainerId, ""),
+        (dictWorkflow or {}).get("sProjectRepoPath") or "",
+    )
+
+
+def fdictCompletionJournalHooks(filesRepo, sWorkflowKey, sPromotionId):
+    """Return the hooks that make each completion step durable as it happens."""
+    from datetime import datetime, timezone
+    from vaibify.reproducibility import archivePromotion, syncBookkeeping
+
+    def fnNote(dictFields):
+        syncBookkeeping.fnUpdatePendingPromotion(
+            filesRepo, sWorkflowKey, sPromotionId, dictFields)
+
+    def fsNowIso():
+        return datetime.now(timezone.utc).isoformat()
+
+    return {
+        "fnNoteDraft": lambda iDraft: fnNote({
+            "iDepositId": int(iDraft),
+            "sPhase": archivePromotion.S_PHASE_DRAFTED}),
+        "fnNoteMismatch": lambda listKeys: fnNote({
+            "listInheritedMismatch": list(listKeys)}),
+        "fnNoteUploading": lambda: fnNote({
+            "sPhase": archivePromotion.S_PHASE_UPLOADING,
+            "sUploadingIso": fsNowIso()}),
+        "fnNotePublished": lambda dictPublished: fnNote({
+            "sPhase": archivePromotion.S_PHASE_PUBLISHED,
+            "sPublishedIso": fsNowIso(),
+            "sDoi": str(dictPublished.get("doi") or "")}),
+    }
+
+
+def fbaReadPendingReceiptOrNone(filesRepo, sPromotionId):
+    """Return a completion's stored receipt bytes, or None when unreadable."""
+    try:
+        return filesRepo.fbaReadBytes(fsPendingReceiptRepoPath(sPromotionId))
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def fnSettleCompletion(dictCtx, sContainerId, dictWorkflow, sPromotionId):
+    """Delete the stored receipt, drop the journal entry, sweep orphans."""
+    from vaibify.reproducibility import syncBookkeeping
+    from .routeContext import ffilesForWorkflow
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    sWorkflowKey = fsResolveSidecarKey(dictCtx, sContainerId, dictWorkflow)
+    filesRepo.fbRemoveFile(fsPendingReceiptRepoPath(sPromotionId))
+    syncBookkeeping.fnRemovePendingPromotion(
+        filesRepo, sWorkflowKey, sPromotionId)
+    fnSweepOrphanPendingReceipts(filesRepo)
+    syncBookkeeping.fnMirrorPendingPromotions(
+        filesRepo, sWorkflowKey, dictWorkflow)
+
+
+def fnSweepOrphanPendingReceipts(filesRepo):
+    """Delete each stored receipt that no project's journal entry names.
+
+    A crash between storing a completion receipt and recording its
+    intent leaves a file with no entry; every project in the repository
+    is consulted, because the directory is shared by them all.
+    """
+    from vaibify.reproducibility import syncBookkeeping
+    setLive = set(syncBookkeeping.flistAllPendingPromotionIds(filesRepo))
+    try:
+        listNames = filesRepo.flistListJsonFilenames(
+            S_PENDING_RECEIPTS_DIRECTORY)
+    except (OSError, ValueError):
+        return
+    for sName in listNames:
+        sPromotionId = sName[:-len(".json")]
+        if _RE_PROMOTION_ID.fullmatch(sPromotionId) and (
+                sPromotionId not in setLive):
+            filesRepo.fbRemoveFile(fsPendingReceiptRepoPath(sPromotionId))
+
+
+async def fdictSettlePublishedCompletion(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, dictRecord,
+    dictPublished, baReceipt,
+):
+    """Record, write, settle and re-verify a published completion.
+
+    In this order: the deposit record (receipt kind completion), the
+    repository receipt (only now that the version exists), the stored
+    file and journal entry, then a verify of the new record -- until
+    which the Zenodo copy reads unknown, because the declared record
+    changed. ``baReceipt`` is None when the bytes could not be restored.
+    """
+    from vaibify.reproducibility import archivePromotion, syncBookkeeping
+    from .remoteBindingContext import fnRecordZenodoOutcomeInBinding
+    from .routeContext import (
+        fdictCommitWorkflowSave, fsRefreshVerifyCacheAfterPush,
+    )
+    sService = str(dictRecord.get("sTargetService") or "sandbox")
+    syncBookkeeping.fnRecordZenodoPublish(dictWorkflow, dictPublished, sService)
+    syncBookkeeping.fnRecordPublishedReceipt(
+        dictWorkflow, archivePromotion.fdictDescribeCompletionReceiptNote(
+            dictRecord, dictPublished))
+    fnRecordZenodoOutcomeInBinding(
+        dictCtx, sContainerId, dictWorkflow, sService,
+        str(dictWorkflow.get("sZenodoConceptDoi") or ""),
+        str(dictWorkflow.get("sZenodoDepositionId") or ""))
+    fdictCommitWorkflowSave(dictCtx, sContainerId, dictWorkflow, requestHttp,
+                            "The Zenodo completion record")
+    sReceiptWarning = fsCommitProofReceiptWrite(
+        dictCtx, sContainerId, dictWorkflow, requestHttp, baReceipt,
+    ) if baReceipt is not None else (
+        "the published receipt's bytes could not be restored")
+    await fnSettleCompletionUnderTheDrain(
+        dictCtx, sContainerId, dictWorkflow, requestHttp,
+        dictRecord["sPromotionId"])
+    return {
+        "bCompleted": True,
+        "sDoi": str(dictPublished.get("sDoi") or ""),
+        "sProofReceiptWarning": sReceiptWarning,
+        "sPostCompletionVerifyWarning": await fsRefreshVerifyCacheAfterPush(
+            dictCtx, sContainerId, dictWorkflow, "zenodo", requestHttp),
+    }
+
+
+async def fnSettleCompletionUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, sPromotionId,
+):
+    """Run :func:`fnSettleCompletion` as a mode-(b) worker."""
+    from .routeContext import (
+        fdictCarryARefusalBackInsteadOfRaising, fgenericRunWorkerUnderTheDrain,
+    )
+
+    def fdictSettle(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: fnSettleCompletion(
+                dictCtx, sContainerId, dictWorkflow, sPromotionId))
+
+    await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictSettle, "zenodo-completion-settle", requestHttp)
 
 
 _DICT_ZENODO_API_BASE = {

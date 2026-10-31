@@ -140,24 +140,52 @@ def _fnRegisterReconcile(app, dictCtx):
             dictCtx, sContainerId, dictRecord, dictWorkflow,
         )
         dictOutcome = await asyncio.to_thread(
-            archivePromotion.fdictReconcilePromotion,
-            dictRecord, clientZenodo.fdictGetDeposit,
+            _fdictReconcileForLane, dictCtx, sContainerId, dictWorkflow,
+            dictRecord, clientZenodo,
         )
         dictOutcome["dictRecord"] = dictRecord
         return dictOutcome
 
 
+def _fdictReconcileForLane(
+    dictCtx, sContainerId, dictWorkflow, dictRecord, clientZenodo,
+):
+    """Reconcile one record by its lane's rules.
+
+    A completion is judged with its STORED receipt: whether resume is
+    offered depends on whether those bytes are still the journaled ones.
+    """
+    if dictRecord.get("sLane") != archivePromotion.S_LANE_COMPLETION:
+        return archivePromotion.fdictReconcilePromotion(
+            dictRecord, clientZenodo.fdictGetDeposit,
+        )
+    from .. import syncDispatcher
+    return archivePromotion.fdictReconcileCompletion(
+        dictRecord, clientZenodo.fdictGetDeposit,
+        syncDispatcher.fbaReadPendingReceiptOrNone(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            dictRecord["sPromotionId"]),
+    )
+
+
 def _ftRequireSettleableDeposit(
     dictCtx, sContainerId, dictRecord, dictWorkflow, tAllowedOutcomes,
+    sAction="",
 ):
-    """Reconcile, then refuse unless the outcome licenses this action."""
+    """Reconcile, then refuse unless the outcome licenses this action.
+
+    ``sAction`` additionally requires the outcome to OFFER that action,
+    which is how a completion's partial draft is resumable while the
+    other lanes' never are.
+    """
     clientZenodo = _fclientForPromotion(
         dictCtx, sContainerId, dictRecord, dictWorkflow,
     )
-    dictOutcome = archivePromotion.fdictReconcilePromotion(
-        dictRecord, clientZenodo.fdictGetDeposit,
+    dictOutcome = _fdictReconcileForLane(
+        dictCtx, sContainerId, dictWorkflow, dictRecord, clientZenodo,
     )
-    if dictOutcome["sOutcome"] not in tAllowedOutcomes:
+    if dictOutcome["sOutcome"] not in tAllowedOutcomes or (
+            sAction and sAction not in dictOutcome["listActions"]):
         raise HTTPException(409, dictOutcome["sMessage"])
     # Nothing is there to name this promotion when Zenodo has answered
     # 404, and asking again would raise where the outcome is already
@@ -221,6 +249,10 @@ def _fnRegisterResume(app, dictCtx):
                 dictCtx, sContainerId, sPromotionId,
             )
         )
+        if dictRecord.get("sLane") == archivePromotion.S_LANE_COMPLETION:
+            return await _fdictResumeCompletion(
+                dictCtx, sContainerId, dictWorkflow, dictRecord, requestHttp,
+            )
         clientZenodo, _dictOutcome = await asyncio.to_thread(
             _ftRequireSettleableDeposit,
             dictCtx, sContainerId, dictRecord, dictWorkflow,
@@ -283,6 +315,11 @@ async def _fdictAdoptForLane(
     dictRecord, dictOutcome, requestHttp,
 ):
     """Route one adoption to its own lane's writer, then settle."""
+    if dictRecord.get("sLane") == archivePromotion.S_LANE_COMPLETION:
+        return await _fdictAdoptCompletionDeposit(
+            dictCtx, sContainerId, dictWorkflow, filesRepo, dictRecord,
+            dictOutcome, requestHttp,
+        )
     if dictRecord.get("sLane") == archivePromotion.S_LANE_PROJECT:
         _fnAdoptProjectDeposit(
             dictCtx, sContainerId, dictWorkflow, dictRecord,
@@ -384,7 +421,7 @@ def _fnRegisterDiscard(app, dictCtx):
     )
     @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fdictDiscardPromotion(
-        sContainerId: str, sPromotionId: str,
+        sContainerId: str, sPromotionId: str, requestHttp: Request,
     ):
         """Delete an unwanted draft and forget the record.
 
@@ -398,6 +435,12 @@ def _fnRegisterDiscard(app, dictCtx):
                 dictCtx, sContainerId, sPromotionId,
             )
         )
+        if dictRecord.get("sLane") == archivePromotion.S_LANE_COMPLETION:
+            await _fnDiscardCompletionUnderTheDrain(
+                dictCtx, sContainerId, dictWorkflow, filesRepo, sSidecarKey,
+                dictRecord, requestHttp,
+            )
+            return {"bDiscarded": True}
         await asyncio.to_thread(
             _fnDiscardDraftAndRecord, dictCtx, sContainerId,
             dictWorkflow, filesRepo, sSidecarKey, dictRecord,
@@ -419,12 +462,143 @@ def _fnDiscardDraftAndRecord(
         )
         if dictOutcome["sOutcome"] != archivePromotion.S_OUTCOME_GONE:
             clientZenodo.fnDeleteDraft(int(dictRecord["iDepositId"]))
+    if dictRecord.get("sLane") == archivePromotion.S_LANE_COMPLETION:
+        from .. import syncDispatcher
+        syncDispatcher.fnSettleCompletion(
+            dictCtx, sContainerId, dictWorkflow, dictRecord["sPromotionId"])
+        return
     syncBookkeeping.fnRemovePendingPromotion(
         filesRepo, sSidecarKey, dictRecord["sPromotionId"],
     )
     syncBookkeeping.fnMirrorPendingPromotions(
         filesRepo, sSidecarKey, dictWorkflow,
     )
+
+
+# ── The completion lane ──
+#
+# A completion is a project archive's second version: inherited files
+# and one receipt replaced. Its recovery differs from the other lanes'
+# in two ways, and both are why it has branches of its own. A partial
+# draft can be RESUMED, because the one file that can be missing is the
+# stored receipt. And adoption writes the deposit record and the
+# repository receipt, never environment.json -- sending this lane
+# through the image adopter would stamp an image record.
+
+
+async def _fdictResumeCompletion(
+    dictCtx, sContainerId, dictWorkflow, dictRecord, requestHttp,
+):
+    """Publish an interrupted completion's draft, then settle it."""
+    from .. import syncDispatcher
+    from ..routeContext import (
+        fdictCarryARefusalBackInsteadOfRaising, fgenericRunWorkerUnderTheDrain,
+    )
+    clientZenodo, _dictOutcome = await asyncio.to_thread(
+        _ftRequireSettleableDeposit,
+        dictCtx, sContainerId, dictRecord, dictWorkflow,
+        (archivePromotion.S_OUTCOME_PUBLISHABLE,
+         archivePromotion.S_OUTCOME_RESUMABLE), archivePromotion.S_ACTION_RESUME,
+    )
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    baReceipt = syncDispatcher.fbaReadPendingReceiptOrNone(
+        filesRepo, dictRecord["sPromotionId"])
+
+    def fdictFinish(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: syncDispatcher.ftResultFinishCompletionDraft(
+                clientZenodo, dictRecord, baReceipt,
+                syncDispatcher.fdictCompletionJournalHooks(
+                    filesRepo, syncDispatcher.fsResolveSidecarKey(
+                        dictCtx, sContainerId, dictWorkflow),
+                    dictRecord["sPromotionId"])))
+
+    iExit, sOut = await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictFinish, "zenodo-completion-resume", requestHttp)
+    if iExit != 0:
+        raise HTTPException(409, sOut)
+    return await syncDispatcher.fdictSettlePublishedCompletion(
+        dictCtx, sContainerId, dictWorkflow, requestHttp, dictRecord,
+        _fdictParsePublished(sOut), baReceipt,
+    )
+
+
+def _fdictParsePublished(sOut):
+    """Return the publish record a completion step printed."""
+    import json
+    sJson = sOut.split("ZENODO_RESULT=", 1)[1].strip().splitlines()[0]
+    return json.loads(sJson)
+
+
+async def _fdictAdoptCompletionDeposit(
+    dictCtx, sContainerId, dictWorkflow, filesRepo, dictRecord, dictOutcome,
+    requestHttp,
+):
+    """Record a completion published while vaibify was not watching."""
+    from .. import syncDispatcher
+    baReceipt = await asyncio.to_thread(
+        _fbaRestoreCompletionReceiptOrNone, dictCtx, sContainerId,
+        dictWorkflow, filesRepo, dictRecord,
+    )
+    dictSettled = await syncDispatcher.fdictSettlePublishedCompletion(
+        dictCtx, sContainerId, dictWorkflow, requestHttp, dictRecord,
+        {"iDepositId": dictRecord.get("iDepositId"),
+         "sDoi": dictOutcome["sDoi"], "sConceptDoi": dictOutcome["sConceptDoi"]},
+        baReceipt,
+    )
+    return dict(dictSettled, bAdopted=True)
+
+
+def _fbaRestoreCompletionReceiptOrNone(
+    dictCtx, sContainerId, dictWorkflow, filesRepo, dictRecord,
+):
+    """Return the published receipt's bytes: stored, else downloaded, else None.
+
+    Either source must hash to the journaled SHA-256; bytes that do not
+    are never written into the repository.
+    """
+    import os
+    import tempfile
+    from .. import syncDispatcher
+    baStored = syncDispatcher.fbaReadPendingReceiptOrNone(
+        filesRepo, dictRecord["sPromotionId"])
+    if not archivePromotion.fsDescribeStoredReceiptMismatch(dictRecord, baStored):
+        return baStored
+    sKey = (dictRecord.get("dictCompletionReceipt") or {}).get("sKey") or ""
+    with tempfile.TemporaryDirectory() as sScratch:
+        try:
+            _fclientForPromotion(
+                dictCtx, sContainerId, dictRecord, dictWorkflow,
+            ).fnDownloadFile(int(dictRecord["iDepositId"]), sKey,
+                             os.path.join(sScratch, sKey))
+            with open(os.path.join(sScratch, sKey), "rb") as fileDownloaded:
+                baDownloaded = fileDownloaded.read()
+        except Exception:  # noqa: BLE001 -- the DOI is recorded regardless
+            return None
+    if archivePromotion.fsDescribeStoredReceiptMismatch(dictRecord, baDownloaded):
+        return None
+    return baDownloaded
+
+
+async def _fnDiscardCompletionUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, filesRepo, sSidecarKey, dictRecord,
+    requestHttp,
+):
+    """Discard a completion's draft, stored receipt and entry, admitted."""
+    from ..routeContext import (
+        fdictCarryARefusalBackInsteadOfRaising, fgenericRunWorkerUnderTheDrain,
+    )
+
+    def fdictDiscard(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fnDiscardDraftAndRecord(
+                dictCtx, sContainerId, dictWorkflow, filesRepo, sSidecarKey,
+                dictRecord))
+
+    await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictDiscard, "zenodo-completion-discard", requestHttp)
 
 
 def fnRegisterAll(app, dictCtx):

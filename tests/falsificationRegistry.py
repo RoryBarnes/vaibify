@@ -39358,4 +39358,145 @@ LIST_FALSIFICATIONS = [
         old='        dictCheckpoint.update(dictReceipt=dictReceipt, baReceipt=baReceipt)\n',
         new='        dictCheckpoint.update(dictReceipt=dictReceipt, baReceipt=baReceipt)\n        syncDispatcher.fnWriteProofReceiptIntoProject(dictCtx["docker"], sContainerId, dictWorkflow.get("sProjectRepoPath") or "", baReceipt)\n',
     ),
+    # --- 2026-10-31: the journaled completion version and its recovery ---
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testACompletionRefusesAnInheritedFileWhoseMd5OrSizeDiffers'
+        ),
+        # The inherited-file check compares keys only.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='        if not dictFound or not _fbFileAgrees(\n                {"sMd5": dictItem.get("sMd5"),\n                 "iBytes": dictItem.get("iSizeBytes")}, dictFound):\n',
+        new='        if not dictFound:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAForeignUnpublishedDraftIsRefused'
+        ),
+        # A draft adopted without its stamp.
+        source='vaibify/gui/syncDispatcher.py',
+        old='    if sForeign:\n        raise _CompletionRefusal(\n',
+        new='    if False:\n        raise _CompletionRefusal(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testANewerConceptVersionRefusesTheCompletion'
+        ),
+        # The latest-version check removed.
+        source='vaibify/gui/syncDispatcher.py',
+        old='    _fnRefuseANewerVersion(clientZenodo.fdictGetDeposit(iParent), iParent)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAPublishedVersionStillHoldingTheCheckpointReceiptIsMismatched'
+        ),
+        # The inventory names the checkpoint's receipt instead of the completion's.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='         listDataFiles + [dictCompletionReceipt]],\n',
+        new='         listDataFiles + [dict(dictCheckpointNote, sRepoPath="")]],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAPublishedVersionMissingTheReceiptIsMismatched'
+        ),
+        # The receipt left out of the completion's inventory.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='         listDataFiles + [dictCompletionReceipt]],\n',
+        new='         listDataFiles],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAStoredReceiptAlteredOnDiskIsNotResumed'
+        ),
+        # The stored bytes not checked against the journal.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='    sStored = fsDescribeStoredReceiptMismatch(dictRecord, baStoredReceipt)\n',
+        new='    sStored = ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testADraftHoldingAnExtraFileIsNotResumed'
+        ),
+        # The completion lane's extra-file check removed.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='    if dictRecord.get("sLane") == S_LANE_COMPLETION:\n        listMissing += _flistUnexpectedFiles(dictRecord, dictDeposit)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testTheProjectAndImageLanesStillOfferOnlyDiscardOnAPartialUpload'
+        ),
+        # The completion lane's resume applied to every lane.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='    S_OUTCOME_RESUMABLE: (S_ACTION_DISCARD,),\n',
+        new='    S_OUTCOME_RESUMABLE: (S_ACTION_RESUME, S_ACTION_DISCARD),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAnIncoherentObservationAuthorizesNoCompletion'
+        ),
+        # bCoherent ignored by the completion's authorization.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if not dictObservation["bCoherent"]:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testNoCompletionIsMintedWhileLevelTwoIsNotAttained'
+        ),
+        # The attained check removed from the authorization.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if not dictObservation["dictVerdict"]["bAtLeastLevel2"]:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testTheCompletionIsAuthorizedByTheObservationItRecords'
+        ),
+        # A second capture after authorization.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        return await _fdictPerformCompletion(\n            dictCtx, sContainerId, dictWorkflow, requestHttp, dictObservation)\n    except HTTPException as errorRefused:\n',
+        new='        return await _fdictPerformCompletion(\n            dictCtx, sContainerId, dictWorkflow, requestHttp, await _fdictCaptureUnderTheDrain(dictCtx, sContainerId, dictWorkflow, requestHttp))\n    except HTTPException as errorRefused:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testARetryNeverOpensASecondDraftOverALiveCompletion'
+        ),
+        # Reconciliation skipped before the retry.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        await _fnReconcileLiveCompletionFirst(\n            dictCtx, sContainerId, dictWorkflow, requestHttp)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAdoptingACompletionNeverReachesTheImageAdopter'
+        ),
+        # The completion lane sent to the image adopter.
+        source='vaibify/gui/routes/promotionRecoveryRoutes.py',
+        old='    if dictRecord.get("sLane") == archivePromotion.S_LANE_COMPLETION:\n        return await _fdictAdoptCompletionDeposit(\n',
+        new='    if False:\n        return await _fdictAdoptCompletionDeposit(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testResumeUploadsTheStoredBytesNotTheRepositoryCopy'
+        ),
+        # Resume reads the repository copy instead of the stored receipt.
+        source='vaibify/gui/routes/promotionRecoveryRoutes.py',
+        old='    baReceipt = syncDispatcher.fbaReadPendingReceiptOrNone(\n        filesRepo, dictRecord["sPromotionId"])\n',
+        new='    baReceipt = filesRepo.fbaReadBytes(".vaibify/proofReceipt.json")\n',
+    ),
 ]
