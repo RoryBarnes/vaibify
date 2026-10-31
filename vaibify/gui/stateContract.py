@@ -97,11 +97,10 @@ TUPLE_ROOT_CONFIG_FILES = (
     # (researcher's ruling, 2026-09-15) -- and being tracked is also
     # what stops it blocking the reproduction export.
     #
-    # Canonical is NOT compared: the comparison scope is built from
-    # the declared artefacts plus the envelope, and this is in
-    # neither. That separation is load-bearing here, because
-    # sCapturedAtUtc changes on every capture and a compared file
-    # that always changes is a treadmill.
+    # It IS compared, and gates nothing: publicationScope lists it in
+    # TUPLE_COMPARED_NOT_REQUIRED_PATHS (scope version 6, 2026-09-16),
+    # so its published copies carry truthful badges while no level
+    # waits on them.
     ".vaibify/ai_provenance.json",
     # How each output was produced (design I7). Tracked so it travels
     # with the outputs it describes -- the two-computer workflow needs
@@ -109,6 +108,10 @@ TUPLE_ROOT_CONFIG_FILES = (
     # shadow's own runner rewrites it, and the envelope copies a
     # digest-bound subset instead.
     ".vaibify/outputProvenance.json",
+    # The PROOF receipt of the latest published archive step: committed
+    # so a clone carries it, never compared, because it describes the
+    # archive it rides in.
+    ".vaibify/proofReceipt.json",
     ".gitignore",
 )
 

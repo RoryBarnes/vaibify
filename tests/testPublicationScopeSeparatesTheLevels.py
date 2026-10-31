@@ -791,3 +791,107 @@ def test_a_stale_scope_emits_a_blocker_rather_than_a_silent_refusal(
     dictStatus = levelGates.scheduledReverify.fdictReadCachedSyncStatus(
         sRepo, "github")
     assert levelGates._fbSyncCacheStale(dictStatus) is True
+
+
+# ---------------------------------------------------------------------
+# Committed, never compared: one category, four members.
+# ---------------------------------------------------------------------
+
+
+S_RECEIPT = ".vaibify/proofReceipt.json"
+S_OUTPUT_PROVENANCE = ".vaibify/outputProvenance.json"
+
+
+def _sBadgeOf(sPath):
+    from vaibify.gui import badgeState
+    return badgeState._fsVerifiedRemoteBadge(
+        sPath, _fdictStatus([S_DATA, S_SCRIPT]))
+
+
+@pytest.mark.falsification
+def test_the_proof_receipt_reads_not_compared():
+    """The receipt describes the archive it rides in; no verify compares it.
+
+    Kills: the PROOF receipt dropped from the never-compared set.
+    """
+    from vaibify.gui import badgeState
+    assert publicationScope.fbPathIsCompared(S_RECEIPT) is False
+    assert _sBadgeOf(S_RECEIPT) == badgeState.S_BADGE_NOT_COMPARED
+
+
+@pytest.mark.falsification
+def test_output_provenance_reads_not_compared():
+    """Rewritten by the rerun's own runner, so it used to read ``unknown``.
+
+    Kills: outputProvenance.json dropped from the never-compared set.
+    """
+    from vaibify.gui import badgeState
+    assert publicationScope.fbPathIsCompared(S_OUTPUT_PROVENANCE) is False
+    assert _sBadgeOf(S_OUTPUT_PROVENANCE) == badgeState.S_BADGE_NOT_COMPARED
+
+
+def test_naming_the_category_changes_no_comparison():
+    """The verify compares exactly what it compared before the category grew.
+
+    The expected list is what the code at the parent commit produced for
+    this workflow, so no scope-version bump is owed.
+    """
+    dictWorkflow = {
+        "sProjectRepoPath": "/repo",
+        "listSteps": [{
+            "sName": "Make Data", "sDirectory": "MakeData",
+            "saOutputDataFiles": ["output.json", "outputProvenance.json"],
+            "saPlotFiles": ["fig.pdf"],
+            "saDataCommands": ["python3 makeData.py"],
+            "saPlotCommands": ["python3 plotData.py"],
+            "dictTests": {"dictQualitative": {
+                "sFilePath": "tests/test_qualitative_make_data.py",
+                "sStandardsPath": "tests/qualitative_standards_make_data.json",
+                "saCommands": ["pytest tests/test_qualitative_make_data.py"],
+            }},
+        }],
+    }
+    assert publicationScope.flistCollectComparisonPaths(
+        dictWorkflow, _FakeRepoFiles(),
+    ) == [
+        ".vaibify/ai_provenance.json", ".vaibify/environment.json",
+        ".vaibify/l3_attestation.json", ".vaibify/projects/project.json",
+        ".vaibify/rerunAssessment.py", "Dockerfile", "MANIFEST.sha256",
+        "MakeData/fig.pdf", "MakeData/makeData.py", "MakeData/output.json",
+        "MakeData/outputProvenance.json", "MakeData/plotData.py",
+        "MakeData/tests/test_qualitative_make_data.py", "environment.yml",
+        "pyproject.toml", "reproduce.sh", "requirements.lock",
+        "requirements.txt", "tests/qualitative_standards_make_data.json",
+    ]
+    assert publicationScope.I_PUBLICATION_SCOPE_VERSION == 7
+
+
+def test_every_canonical_path_is_in_exactly_one_category():
+    """Compared and required, compared and gating nothing, or never compared.
+
+    The canonical set is the root files, one project definition, one
+    test marker, and a workflow's declared paths; "compared" means the
+    verify actually collects the path, not merely that nothing excludes
+    it, so a canonical file nobody compares and nobody names fails here.
+    """
+    from vaibify.gui import stateContract
+    dictWorkflow = {"sProjectRepoPath": "/repo", "listSteps": [{
+        "sName": "Make Data", "sDirectory": "MakeData",
+        "saOutputDataFiles": ["output.json"], "saPlotFiles": [],
+        "saDataCommands": ["python3 makeData.py"],
+    }]}
+    listCanonical = stateContract.flistCanonicalTrackedFilesFromScans(
+        dictWorkflow, [S_PROJECT, S_MARKER],
+        list(stateContract.TUPLE_ROOT_CONFIG_FILES),
+    )
+    setCompared = set(publicationScope.flistCollectComparisonPaths(
+        dictWorkflow, _FakeRepoFiles()))
+    for sPath in listCanonical:
+        bRequired = sPath in setCompared and bool(
+            publicationScope.fsetSelectLevel2Paths([sPath])
+            or publicationScope.fsetSelectLevel3Paths([sPath]))
+        bGatingNothing = sPath in setCompared and (
+            sPath in publicationScope.TUPLE_COMPARED_NOT_REQUIRED_PATHS)
+        bNeverCompared = not publicationScope.fbPathIsCompared(sPath)
+        assert [bRequired, bGatingNothing, bNeverCompared].count(True) == 1, (
+            sPath, bRequired, bGatingNothing, bNeverCompared)

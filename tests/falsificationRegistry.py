@@ -38991,4 +38991,29 @@ LIST_FALSIFICATIONS = [
         ),
         new='    if not isinstance(sPromotionId, str):\n',
     ),
+    # --- 2026-10-31: committed, never compared ---
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_the_proof_receipt_reads_not_compared'
+        ),
+        # The PROOF receipt dropped from the never-compared set.
+        source='vaibify/reproducibility/publicationScope.py',
+        old=(
+            '    ".vaibify/outputProvenance.json",\n'
+            '    S_PROOF_RECEIPT_REPO_PATH,\n'
+            ')\n'
+        ),
+        new='    ".vaibify/outputProvenance.json",\n)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_output_provenance_reads_not_compared'
+        ),
+        # outputProvenance.json dropped from the never-compared set.
+        source='vaibify/reproducibility/publicationScope.py',
+        old='    ".gitignore",\n    ".vaibify/outputProvenance.json",\n',
+        new='    ".gitignore",\n',
+    ),
 ]
