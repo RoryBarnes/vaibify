@@ -38,8 +38,10 @@ from vaibify.reproducibility.publicationScope import (
 
 
 __all__ = [
+    "DICT_DEFAULT_REMOTE_IDENTITY",
     "TUPLE_DEFAULT_COMPARED_PATHS",
     "fdictBuildCachedVerify",
+    "fdictRemoteIdentityVerifiedFor",
 ]
 
 
@@ -50,6 +52,42 @@ __all__ = [
 TUPLE_DEFAULT_COMPARED_PATHS = (
     "step01/data.csv", "step01/run.py", "step02/out.json",
 )
+
+
+# The remote a default record is evidence ABOUT, matching the generic
+# remotes the gate tests declare: GitHub ``someone/something`` (no
+# declared branch, so the verify read ``main``), and a Zenodo archive on
+# the sandbox whose declared records carry no ``sRecordId``. A test whose
+# workflow declares another remote passes the identity it verified.
+DICT_DEFAULT_REMOTE_IDENTITY = {
+    "github": {"sOwner": "someone", "sRepo": "something", "sBranch": "main"},
+    "zenodo": {"sEndpoint": "sandbox", "listRecordIds": []},
+}
+
+
+def fdictRemoteIdentityVerifiedFor(dictWorkflow, sService):
+    """Return the identity a verify of this workflow's DECLARED remote records.
+
+    For a fixture whose workflow declares a remote other than the
+    defaults. Spelled from the declaration as the verify records it --
+    GitHub's branch defaults to ``main``, Zenodo's records are sorted --
+    so a test about something else is not refused for verifying another
+    remote. Tests OF the identity check name their identities literally.
+    """
+    from vaibify.reproducibility import scheduledReverify, syncBookkeeping
+    dictDeclared = (dictWorkflow.get("dictRemotes") or {}).get(sService) or {}
+    if sService == "github":
+        return {
+            "sOwner": dictDeclared.get("sOwner") or "",
+            "sRepo": dictDeclared.get("sRepo") or "",
+            "sBranch": dictDeclared.get("sBranch") or "main",
+        }
+    return {
+        "sEndpoint": syncBookkeeping.fsResolveRecordedZenodoService(
+            dictWorkflow),
+        "listRecordIds": scheduledReverify.flistSortedZenodoRecordIds(
+            dictDeclared),
+    }
 
 
 def fsRecentVerifyIso(fHoursAgo=1.0):
@@ -72,9 +110,19 @@ def fdictBuildCachedVerify(
     sLastVerified=None,
     bScopeCurrent=True,
     iMatchingOverride=None,
+    sPublicAccess="public",
+    bRemoteIdentity=True,
     **dictIdentityFields,
 ):
     """Return one service's entry as a real verify writes it.
+
+    A GitHub or Zenodo entry carries the reader-access verdict and the
+    remote it is about, as every record the verify writes now does:
+    ``sPublicAccess`` is ``public`` by default, ``not-public`` negates
+    it, and ``None`` omits it; ``bRemoteIdentity=False`` omits the
+    identity, and passing ``dictRemoteIdentity`` names another remote.
+    An omitted field models a record written before the verify asked
+    what a reader is served, which the gate reads as unknown.
 
     ``bScopeCurrent=False`` models a cache written under an EARLIER
     definition of the published set -- a different thing from a stale
@@ -116,5 +164,27 @@ def fdictBuildCachedVerify(
         dictStatus["sLastVerified"] = sLastVerified
     if bScopeCurrent:
         dictStatus["iScopeVersion"] = I_PUBLICATION_SCOPE_VERSION
+    dictStatus.update(_fdictReaderAccessFields(
+        sService, sPublicAccess, bRemoteIdentity))
     dictStatus.update(dictIdentityFields)
     return dictStatus
+
+
+def _fdictReaderAccessFields(sService, sPublicAccess, bRemoteIdentity):
+    """Return the access and identity fields a GitHub or Zenodo verify writes."""
+    if sService not in DICT_DEFAULT_REMOTE_IDENTITY:
+        return {}
+    dictFields = {}
+    if sPublicAccess is not None:
+        dictFields["dictPublicAccess"] = {
+            "sState": sPublicAccess,
+            "sReason": f"(fixture) the {sService} copy is {sPublicAccess}",
+        }
+        if sService == "zenodo":
+            dictFields["dictPublicAccess"]["listRecords"] = []
+    if bRemoteIdentity:
+        dictFields["dictRemoteIdentity"] = dict(
+            DICT_DEFAULT_REMOTE_IDENTITY[sService])
+    if sService == "zenodo":
+        dictFields["bComparisonWithheld"] = False
+    return dictFields

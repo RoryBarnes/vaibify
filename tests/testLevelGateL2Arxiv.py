@@ -25,6 +25,10 @@ import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+from tests.syncStatusFixtures import (
+    fdictBuildCachedVerify,
+    fdictRemoteIdentityVerifiedFor,
+)
 from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
 )
@@ -86,27 +90,24 @@ def _fnWriteFigureFile(sProjectRepo, sRelPath="A/plot.pdf"):
 
 def _fdictFreshGithubCache():
     """Return a fresh, fully-matching github cache entry."""
-    return {
-        "sService": "github",
-        "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-        "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
-        "listComparedPaths": _LIST_COMPARED,
-        "iScopeVersion": _I_SCOPE_VERSION,
-        "sCommittedShaVerified": "abc123",
-    }
+    return fdictBuildCachedVerify(
+        sService="github", listComparedPaths=_LIST_COMPARED,
+        sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+        sCommittedShaVerified="abc123",
+        dictRemoteIdentity=fdictRemoteIdentityVerifiedFor(
+            _fdictWorkflowWithOverleaf(), "github"),
+    )
 
 
 def _fdictFreshZenodoCache():
     """Return a fresh, fully-matching zenodo cache entry."""
-    return {
-        "sService": "zenodo",
-        "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
-        "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
-        "listComparedPaths": _LIST_COMPARED,
-        "iScopeVersion": _I_SCOPE_VERSION,
-        "sZenodoDoi": "10.1000/example",
-        "sEndpointVerified": "sandbox",
-    }
+    return fdictBuildCachedVerify(
+        sService="zenodo", listComparedPaths=_LIST_COMPARED,
+        sLastVerified=_fsBuildIsoTimestamp(fHoursAgo=1.0),
+        sZenodoDoi="10.1000/example", sEndpointVerified="sandbox",
+        dictRemoteIdentity=fdictRemoteIdentityVerifiedFor(
+            _fdictWorkflowWithOverleaf(), "zenodo"),
+    )
 
 
 def _fnWriteAllGreenSyncCache(sProjectRepo):

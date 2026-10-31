@@ -3017,6 +3017,18 @@ def _fdictBuildWorkflowEnvelopeDetail(
             _fdictEnvelopeRemoteSyncs(filesRepo) if bHasRepo
             else dict.fromkeys(_T_ENVELOPE_SYNC_SERVICES)
         ),
+        # The two Level 2 questions each of GitHub and Zenodo answers --
+        # can a reader retrieve the copy, and does it match -- in the
+        # AUTHORITIES' words, so the rows render a verdict and never
+        # rebuild one from the counts above.
+        "dictPublicAccessStates": _fdictReaderStates(
+            levelGates.fdictDescribePublicAccess, dictWorkflow, filesRepo,
+            bHasRepo,
+        ),
+        "dictPublishedCopyStates": _fdictReaderStates(
+            levelGates.fdictDescribePublishedCopy, dictWorkflow, filesRepo,
+            bHasRepo,
+        ),
         "bAiDeclarationAttested":
             levelGates.fbWorkflowAiDeclarationAttested(
                 dictWorkflow, filesRepo),
@@ -3545,6 +3557,17 @@ def _fdictEnvelopeArtifactSatisfaction(
     }
 
 
+def _fdictReaderStates(fdictDescribe, dictWorkflow, filesRepo, bHasRepo):
+    """Return one authority's ``{sService: {sState, sReason}}`` for the poll."""
+    from vaibify.reproducibility import levelGates
+    if not bHasRepo:
+        return dict.fromkeys(levelGates.T_READER_ACCESS_SERVICES)
+    return {
+        sService: fdictDescribe(dictWorkflow, filesRepo, sService)
+        for sService in levelGates.T_READER_ACCESS_SERVICES
+    }
+
+
 def _fdictEnvelopeRemoteSyncs(filesRepo):
     """Return the cached verify summary per remote service, or None.
 
@@ -3602,6 +3625,10 @@ def _fdictProjectSyncSummary(dictStatus):
     dictSummary["sEndpointVerified"] = str(
         dictStatus.get("sEndpointVerified") or ""
     )
+    # A withheld comparison compared nothing, so its zero counts are not
+    # "0 of 0 matching"; the row says why instead.
+    dictSummary["bComparisonWithheld"] = bool(
+        dictStatus.get("bComparisonWithheld"))
     return dictSummary
 
 

@@ -447,6 +447,39 @@ def fnKeepTheRangedTransportOnLoopback(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fnAnswerReaderAccessWithoutTheNetwork(monkeypatch):
+    """The verify asks GitHub and Zenodo what a READER is served; no unit
+    test may. Both observers answer "public" here, the boringly-valid
+    default ``syncStatusFixtures.fdictBuildCachedVerify`` also uses, so a
+    test about hashing reads exactly as it did before the question
+    existed. The Zenodo observation holds a record with no files: a test
+    that compares files patches ``zenodoClient.fdictHashRecordFiles``
+    (``tests/zenodoObservationFixtures.py``). The observers' own tests
+    import the real functions at module load and drive them against
+    loopback servers; a test wanting another verdict patches the module
+    attribute itself.
+    """
+    from vaibify.reproducibility import githubMirror, zenodoClient
+
+    def fdictAnswerPublic(sOwner, sRepo):
+        return {"sState": githubMirror.S_ACCESS_PUBLIC,
+                "sReason": f"(test) {sOwner}/{sRepo} is public"}
+
+    def fdictObserveOpenRecord(sRecordId, sService="sandbox"):
+        return {"sRecordId": str(sRecordId),
+                "sState": zenodoClient.S_RECORD_PUBLIC,
+                "sReason": f"(test) record {sRecordId} is open",
+                "dictRecord": {"metadata": {"access_right": "open"},
+                               "files": []}}
+
+    monkeypatch.setattr(
+        githubMirror, "fdictProbePublicAccess", fdictAnswerPublic)
+    monkeypatch.setattr(
+        zenodoClient, "fdictObserveRecord", fdictObserveOpenRecord)
+    githubMirror.fnClearAnonymousBackoff()
+
+
+@pytest.fixture(autouse=True)
 def fnKeepBuildPreflightProbesOffTheDaemonAndTheNetwork(monkeypatch):
     """The build preflight asks the daemon's disk and pypi.org; no unit
     test may. Both probes answer "room enough" and "the name exists"

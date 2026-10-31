@@ -82,6 +82,16 @@ __all__ = [
     "fbAtLeastLevel1",
     "fbAtLeastLevel2",
     "fbAtLeastLevel3",
+    "S_ACCESS_NOT_PUBLIC",
+    "S_ACCESS_PUBLIC",
+    "S_COPY_DIFFERS",
+    "S_COPY_MATCHED",
+    "S_EVIDENCE_UNKNOWN",
+    "T_READER_ACCESS_SERVICES",
+    "fbGithubRepositoryIsPublic",
+    "fbZenodoArchiveIsPublic",
+    "fdictDescribePublicAccess",
+    "fdictDescribePublishedCopy",
     "fdictArchivedAttestationState",
     "fbL3ReadinessOK",
     "fbEnvelopeMatchesGithubMirror",
@@ -263,6 +273,10 @@ def _fdictWorkflowTopLevelFingerprint(dictWorkflow):
         # without this key a model declared after the first poll
         # left its blocker cached until an unrelated edit.
         "dictAiProvenance",
+        # The host-held push binding decides which remote a GitHub
+        # record is evidence about, so a push to another remote must
+        # bust the cached L2 and L3 lists.
+        scheduledReverify.S_HOST_GITHUB_BINDING_KEY,
     )}
 
 
@@ -1353,12 +1367,16 @@ def fbWorkflowHasProjectRepo(filesRepo):
 def fbAtLeastLevel2(dictWorkflow, filesRepo):
     """Return True iff the workflow meets the L2 Publication gate.
 
-    L2 builds on L1 with three additional criteria: every canonical
-    file's hash matches the GitHub mirror at a recently-verified
-    SHA, every Zenodo-published file's hash matches at a known DOI on
-    the workflow's configured endpoint, and the workflow contains an
+    L2 builds on L1. Every published file's hash matches the GitHub
+    mirror at a recently-verified SHA and the Zenodo archive at a known
+    DOI on the configured endpoint, each record about the remote the
+    project publishes to now; a reader with no login can retrieve the
+    repository and every declared record; the workflow carries an
     attested AI Declaration step (the declaration only has meaning at
-    publication, so its sign-off lives here, not at L1).
+    publication, so its sign-off lives here, not at L1); and the AI
+    models, Personal AI Configuration and environment-archive questions
+    are answered. Overleaf and arXiv join only when bound or recorded.
+    ``_fbComputeLevel2`` is the conjunction.
     """
     dictMemo = _fdictActiveLevelMemo()
     if dictMemo is not None and "bL2" in dictMemo:
@@ -1393,9 +1411,13 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
         dictWorkflow, filesRepo,
     ):
         return False
+    if not fbGithubRepositoryIsPublic(dictWorkflow, filesRepo):
+        return False
     if not fbWorkflowFullySyncedWithZenodo(
         dictWorkflow, filesRepo,
     ):
+        return False
+    if not fbZenodoArchiveIsPublic(dictWorkflow, filesRepo):
         return False
     if not fbWorkflowAiDeclarationAttested(dictWorkflow, filesRepo):
         return False
@@ -2184,7 +2206,7 @@ def fbWorkflowFullySyncedWithGithub(
         return False
     return _fbGithubHeadMatchesVerifiedSha(
         dictWorkflow, dictStatus,
-    )
+    ) and _fbCachedVerifyCoversRemote(dictWorkflow, dictStatus, "github")
 
 
 def _fbGithubHeadMatchesVerifiedSha(dictWorkflow, dictStatus):
@@ -2232,7 +2254,9 @@ def fbWorkflowFullySyncedWithZenodo(
         return False
     if not (dictStatus.get("sZenodoDoi") or ""):
         return False
-    return _fbZenodoEndpointMatches(dictWorkflow, dictStatus)
+    return _fbZenodoEndpointMatches(
+        dictWorkflow, dictStatus,
+    ) and _fbCachedVerifyCoversRemote(dictWorkflow, dictStatus, "zenodo")
 
 
 def _fbZenodoEndpointMatches(dictWorkflow, dictStatus):
@@ -2246,6 +2270,251 @@ def _fbZenodoEndpointMatches(dictWorkflow, dictStatus):
     if not sVerifiedEndpoint:
         return False
     return sVerifiedEndpoint == sLiveEndpoint
+
+
+# ------------------------------------------------------------------------
+# What a reader can retrieve, and whether the published copy matches.
+#
+# Two AUTHORITIES answer, for GitHub and Zenodo, the two questions the
+# paper's Level 2 table asks of each: is the copy public, and does it
+# match. Everything else -- the predicates, the gaps dict, the blockers,
+# the poll and both dashboard surfaces -- reads these two and never
+# re-derives them. Each answers "unknown", with the reason named, when
+# the evidence cannot answer: no record, a stale one, one written before
+# the reader question existed, or one about a remote other than the one
+# the project publishes to now.
+# ------------------------------------------------------------------------
+
+S_ACCESS_PUBLIC = "public"
+S_ACCESS_NOT_PUBLIC = "not-public"
+S_EVIDENCE_UNKNOWN = "unknown"
+S_COPY_MATCHED = "matched"
+S_COPY_DIFFERS = "differs"
+T_READER_ACCESS_SERVICES = ("github", "zenodo")
+_DICT_READER_SERVICE_NAMES = {"github": "GitHub", "zenodo": "Zenodo"}
+
+
+def _fdictEvidenceState(sState, sReason):
+    """Return one authority's answer in its wire shape."""
+    return {"sState": sState, "sReason": sReason}
+
+
+def fdictDescribePublicAccess(dictWorkflow, filesRepo, sService):
+    """Return ``{sState, sReason}``: can a READER retrieve this remote's copy?
+
+    ``public`` or ``not-public`` as the last verify observed it without
+    credentials, or ``unknown`` when that evidence cannot answer.
+    """
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        filesRepo, sService,
+    )
+    sGap = _fsDescribeEvidenceGap(dictWorkflow, dictStatus, sService)
+    if sGap:
+        return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, sGap)
+    dictAccess = dictStatus.get("dictPublicAccess")
+    if not isinstance(dictAccess, dict):
+        # Absent is never public: a record written before the verify
+        # asked what a reader is served answered nothing about readers.
+        return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, (
+            f"The last {_DICT_READER_SERVICE_NAMES[sService]} check was "
+            "made before vaibify asked what a reader is served — verify "
+            "again."
+        ))
+    sState = dictAccess.get("sState")
+    if sState in (S_ACCESS_PUBLIC, S_ACCESS_NOT_PUBLIC):
+        return _fdictEvidenceState(sState, str(dictAccess.get("sReason") or ""))
+    return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, (
+        f"The last {_DICT_READER_SERVICE_NAMES[sService]} check recorded "
+        "no verdict about readers — verify again."
+    ))
+
+
+def fdictDescribePublishedCopy(dictWorkflow, filesRepo, sService):
+    """Return ``{sState, sReason}``: does this remote's copy match the files?
+
+    ``matched``, ``differs`` (a proven divergence, or Zenodo's "nothing
+    deposited"), or ``unknown`` -- which includes a WITHHELD comparison,
+    where no file was compared because a reader cannot open the archive.
+    :func:`fbWorkflowFullySyncedWithGithub` and
+    :func:`fbWorkflowFullySyncedWithZenodo` are True exactly when this
+    answers ``matched``.
+    """
+    sName = _DICT_READER_SERVICE_NAMES[sService]
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        filesRepo, sService,
+    )
+    sGap = _fsDescribeEvidenceGap(dictWorkflow, dictStatus, sService)
+    if sGap:
+        return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, sGap)
+    if dictStatus.get("bComparisonWithheld"):
+        return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, "Not compared: " + str(
+            (dictStatus.get("dictPublicAccess") or {}).get("sReason") or ""))
+    if not _fbLevel2UnchangedSinceVerify(dictWorkflow, filesRepo, dictStatus):
+        return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, (
+            "Published files changed (or were declared) after the last "
+            f"{sName} check — verify again to compare them."
+        ))
+    return _fdictJudgeComparedCopy(dictWorkflow, filesRepo, dictStatus, sService)
+
+
+def _fdictJudgeComparedCopy(dictWorkflow, filesRepo, dictStatus, sService):
+    """Judge a current, covering record whose comparison actually ran."""
+    from . import publicationScope
+    sName = _DICT_READER_SERVICE_NAMES[sService]
+    listDiffering = sorted(publicationScope.fsetSelectLevel2Paths(
+        dictStatus.get("listComparedPaths") or [],
+    ) & _fsetDivergedPathsOf(dictStatus))
+    if listDiffering:
+        return _fdictEvidenceState(S_COPY_DIFFERS, (
+            f"{len(listDiffering)} published file(s) differ from {sName}: "
+            + ", ".join(listDiffering[:5])
+            + (" …" if len(listDiffering) > 5 else "")
+        ))
+    if sService == "zenodo" and not dictStatus.get("sZenodoDoi"):
+        return _fdictEvidenceState(S_COPY_DIFFERS, (
+            "No Zenodo DOI is recorded for this project — archive to a "
+            "deposit, then verify again."
+        ))
+    fbSynced = (fbWorkflowFullySyncedWithGithub if sService == "github"
+                else fbWorkflowFullySyncedWithZenodo)
+    if fbSynced(dictWorkflow, filesRepo):
+        return _fdictEvidenceState(
+            S_COPY_MATCHED, f"Every published file matches {sName}.")
+    return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, (
+        f"The last {sName} check no longer answers for this project (a "
+        "commit recorded since, or a record that contradicts itself) — "
+        "verify again."
+    ))
+
+
+def _fsDescribeEvidenceGap(dictWorkflow, dictStatus, sService):
+    """Return why a record cannot answer either question now, or ``""``."""
+    sName = _DICT_READER_SERVICE_NAMES[sService]
+    if not (dictStatus or {}).get("sLastVerified"):
+        return f"{sName} has not been checked yet — verify to check it."
+    if _fbSyncCacheStale(dictStatus):
+        return (
+            f"The last {sName} check is out of date — verify again to "
+            "refresh it."
+        )
+    return _fsDescribeUncoveredRemote(dictWorkflow, dictStatus, sService)
+
+
+def _fbCachedVerifyCoversRemote(dictWorkflow, dictStatus, sService):
+    """Return True iff the record is evidence about this project's remote NOW."""
+    return not _fsDescribeUncoveredRemote(dictWorkflow, dictStatus, sService)
+
+
+def _fsDescribeUncoveredRemote(dictWorkflow, dictStatus, sService):
+    """Return why a record is not evidence about the current remote, or ``""``.
+
+    A record with no ``dictRemoteIdentity`` was written before the
+    verify recorded which remote it compared, so it covers nothing it
+    can name -- every record written before the reader question existed
+    is one.
+    """
+    dictRecorded = (dictStatus or {}).get("dictRemoteIdentity")
+    if not isinstance(dictRecorded, dict):
+        return (
+            f"The last {_DICT_READER_SERVICE_NAMES[sService]} check did "
+            "not record which remote it compared — verify again."
+        )
+    if sService == "github":
+        return _fsDescribeUncoveredGithubRemote(dictWorkflow, dictRecorded)
+    return _fsDescribeUncoveredZenodoArchive(dictWorkflow, dictRecorded)
+
+
+def _fbGithubRemotesAgree(dictReference, dictCandidate):
+    """Apply the verify's binding rule to two GitHub remotes.
+
+    Owner and repository compare case-insensitively wherever the
+    reference names them; the branch compares exactly when both do --
+    ``scheduledReverify._fnRequireGithubConfigBoundToThePush``'s rule.
+    """
+    for sField in ("sOwner", "sRepo"):
+        sReference = (dictReference.get(sField) or "").lower()
+        if sReference and sReference != (
+                dictCandidate.get(sField) or "").lower():
+            return False
+    sReferenceBranch = dictReference.get("sBranch") or ""
+    sCandidateBranch = dictCandidate.get("sBranch") or ""
+    return not (sReferenceBranch and sCandidateBranch
+                and sReferenceBranch != sCandidateBranch)
+
+
+def _fsDescribeUncoveredGithubRemote(dictWorkflow, dictRecorded):
+    """Name the GitHub remote the record is NOT about, or answer ``""``.
+
+    Judged against the host-held push binding, which records where the
+    copy actually landed; a declared ``dictRemotes.github`` must also
+    agree with it. A workflow carrying no binding (a library caller, a
+    unit fixture) is compared with its declaration, as the verify does.
+    ``.git/config`` is never read: the poll cannot, and the next verify
+    refuses an ``origin`` that disagrees with the binding.
+    """
+    dictWorkflow = dictWorkflow or {}
+    dictDeclared = (dictWorkflow.get("dictRemotes") or {}).get("github") or {}
+    sBindingKey = scheduledReverify.S_HOST_GITHUB_BINDING_KEY
+    if sBindingKey not in dictWorkflow:
+        if _fbGithubRemotesAgree(dictDeclared, dictRecorded):
+            return ""
+        return _fsDescribeOtherGithubRemote(dictRecorded)
+    dictBound = (dictWorkflow[sBindingKey] or {}).get(
+        dictWorkflow.get("sProjectRepoPath") or "") or {}
+    if not dictBound.get("sOwner"):
+        return scheduledReverify.S_GITHUB_NOT_BOUND
+    if not _fbGithubRemotesAgree(dictDeclared, dictBound):
+        return scheduledReverify._fsDescribeBindingMismatch(dictBound)
+    if not _fbGithubRemotesAgree(dictBound, dictRecorded):
+        return _fsDescribeOtherGithubRemote(dictRecorded)
+    return ""
+
+
+def _fsDescribeOtherGithubRemote(dictRecorded):
+    """Say the last GitHub check was about a remote this project no longer uses."""
+    return (
+        "Not compared: the last GitHub check compared "
+        f"{dictRecorded.get('sOwner')}/{dictRecorded.get('sRepo')}, branch "
+        f"{dictRecorded.get('sBranch')}, which is not the remote this "
+        "project publishes to now — verify again to check the current one."
+    )
+
+
+def _fsDescribeUncoveredZenodoArchive(dictWorkflow, dictRecorded):
+    """Name the archive the record is NOT about, or answer ``""``.
+
+    The endpoint and the declared record set must both be the ones the
+    project declares now: declaring a second record, or moving to the
+    other instance, leaves the old record answering for a different
+    archive.
+    """
+    dictZenodo = ((dictWorkflow or {}).get("dictRemotes") or {}).get(
+        "zenodo") or {}
+    sEndpoint = syncBookkeeping.fsResolveRecordedZenodoService(dictWorkflow)
+    listRecordIds = scheduledReverify.flistSortedZenodoRecordIds(dictZenodo)
+    if (dictRecorded.get("sEndpoint") == sEndpoint
+            and dictRecorded.get("listRecordIds") == listRecordIds):
+        return ""
+    return (
+        "Not compared: the last Zenodo check covered record(s) "
+        f"{', '.join(dictRecorded.get('listRecordIds') or []) or 'none'} on "
+        f"{dictRecorded.get('sEndpoint') or 'an unrecorded instance'}, not "
+        f"the record(s) this project declares now "
+        f"({', '.join(listRecordIds) or 'none'} on {sEndpoint}) — verify "
+        "again to check them."
+    )
+
+
+def fbGithubRepositoryIsPublic(dictWorkflow, filesRepo):
+    """Return True iff a reader is known to be served the GitHub repository."""
+    return fdictDescribePublicAccess(
+        dictWorkflow, filesRepo, "github")["sState"] == S_ACCESS_PUBLIC
+
+
+def fbZenodoArchiveIsPublic(dictWorkflow, filesRepo):
+    """Return True iff a reader is known to be served every declared record."""
+    return fdictDescribePublicAccess(
+        dictWorkflow, filesRepo, "zenodo")["sState"] == S_ACCESS_PUBLIC
 
 
 def fbWorkflowHasOverleafBinding(dictWorkflow):
@@ -2423,6 +2692,10 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             "bAtLeastLevel1": bool,
             "bGithubFullySynced": bool,
             "bZenodoFullySynced": bool,
+            "bGithubRepositoryPublic": bool,
+            "bZenodoArchivePublic": bool,
+            "dictPublicAccessStates": {sService: {sState, sReason}},
+            "dictPublishedCopyStates": {sService: {sState, sReason}},
             "bArxivFullySynced": bool,
             "bAiDeclarationAttested": bool,
             "bAiModelsDeclared": bool,
@@ -2437,7 +2710,14 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
         }
 
     The frontend PROOF tab consumes this dict directly; each False
-    entry maps to a red row with a "fix here" link. ``bArxivFullySynced``
+    entry maps to a red row with a "fix here" link, except the four
+    GitHub and Zenodo rows, which render the state their authority gave
+    (``dictPublicAccessStates`` from :func:`fdictDescribePublicAccess`,
+    ``dictPublishedCopyStates`` from :func:`fdictDescribePublishedCopy`,
+    each keyed by ``github`` and ``zenodo``): an ``unknown`` record is
+    evidence that cannot answer, never a failure, and its reason is
+    shown. ``bGithubRepositoryPublic`` and ``bZenodoArchivePublic`` are
+    True only for ``public``. ``bArxivFullySynced``
     is True trivially when the workflow records no arXiv submission so
     an untracked manuscript does not surface a fake gap.
     ``bAiDeclarationAttested`` requires the step to exist AND carry
@@ -2487,10 +2767,24 @@ def _fdictCollectLevel2Gaps(dictWorkflow, filesRepo):
     bArchiveAnswered = fbImageArchiveQuestionSettled(
         dictWorkflow, filesRepo,
     )
+    dictPublicAccessStates = {
+        sService: fdictDescribePublicAccess(dictWorkflow, filesRepo, sService)
+        for sService in T_READER_ACCESS_SERVICES
+    }
     return {
         "bAtLeastLevel1": bL1,
         "bGithubFullySynced": bGithub,
         "bZenodoFullySynced": bZenodo,
+        "bGithubRepositoryPublic": fbGithubRepositoryIsPublic(
+            dictWorkflow, filesRepo),
+        "bZenodoArchivePublic": fbZenodoArchiveIsPublic(
+            dictWorkflow, filesRepo),
+        "dictPublicAccessStates": dictPublicAccessStates,
+        "dictPublishedCopyStates": {
+            sService: fdictDescribePublishedCopy(
+                dictWorkflow, filesRepo, sService)
+            for sService in T_READER_ACCESS_SERVICES
+        },
         "bArxivFullySynced": bArxiv,
         "bAiDeclarationAttested": bDecl,
         "bAiModelsDeclared": bModels,
@@ -2594,8 +2888,14 @@ def _flistComputeLevel2Blockers(dictWorkflow, filesRepo):
     listBlockers.extend(_flistGithubLevel2Blockers(
         dictWorkflow, filesRepo,
     ))
+    listBlockers.extend(_flistPublicAccessLevel2Blockers(
+        dictWorkflow, filesRepo, "github",
+    ))
     listBlockers.extend(_flistZenodoLevel2Blockers(
         dictWorkflow, filesRepo,
+    ))
+    listBlockers.extend(_flistPublicAccessLevel2Blockers(
+        dictWorkflow, filesRepo, "zenodo",
     ))
     listBlockers.extend(_flistBasenameCollisionLevel2Blockers(dictWorkflow))
     listBlockers.extend(_flistAiDeclarationLevel2Blockers(
@@ -2625,6 +2925,10 @@ def _flistGithubLevel2Blockers(dictWorkflow, filesRepo):
     )
     if _fbSyncCacheStale(dictStatus):
         return [_fdictGithubVerifyStaleBlocker()]
+    sUncovered = _fsDescribeUncoveredRemote(dictWorkflow, dictStatus, "github")
+    if sUncovered:
+        return [_fdictStaleBlockerSaying(
+            _fdictGithubVerifyStaleBlocker(), sUncovered)]
     if not _fbLevel2UnchangedSinceVerify(
         dictWorkflow, filesRepo, dictStatus,
     ):
@@ -2656,6 +2960,14 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
     )
     if _fbSyncCacheStale(dictStatus):
         return [_fdictZenodoVerifyStaleBlocker()]
+    sUncovered = _fsDescribeUncoveredRemote(dictWorkflow, dictStatus, "zenodo")
+    if sUncovered:
+        return [_fdictStaleBlockerSaying(
+            _fdictZenodoVerifyStaleBlocker(), sUncovered)]
+    if dictStatus.get("bComparisonWithheld"):
+        # Nothing was compared, so no copy claim either way: the archive's
+        # not-public blocker is this service's one charge.
+        return []
     if not _fbLevel2UnchangedSinceVerify(
         dictWorkflow, filesRepo, dictStatus,
     ):
@@ -2674,6 +2986,34 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
     ):
         return listBlockers
     return [_fdictZenodoUnexplainedRefusalBlocker(dictStatus)]
+
+
+def _flistPublicAccessLevel2Blockers(dictWorkflow, filesRepo, sService):
+    """Return the workflow-scope blocker for a copy known not to be public.
+
+    Only ``not-public`` fires. ``unknown`` is already charged to the
+    service by its stale blocker, so a remote with no current evidence
+    costs one criterion, never two. The hint is the reason the verify
+    recorded, which names the remedy.
+    """
+    dictAccess = fdictDescribePublicAccess(dictWorkflow, filesRepo, sService)
+    if dictAccess["sState"] != S_ACCESS_NOT_PUBLIC:
+        return []
+    if sService == "github":
+        return [_fdictWorkflowScopeLevel2Blocker(
+            sCriterion="github-repository-not-public",
+            sRemediationHint=dictAccess["sReason"],
+        )]
+    return [_fdictWorkflowScopeLevel2Blocker(
+        sCriterion="zenodo-archive-not-public",
+        sRemediationHint=dictAccess["sReason"],
+    )]
+
+
+def _fdictStaleBlockerSaying(dictStaleBlocker, sReason):
+    """Return a stale blocker that names why the evidence cannot answer."""
+    dictStaleBlocker["sRemediationHint"] = sReason
+    return dictStaleBlocker
 
 
 S_BASENAME_COLLISION_CRITERION = "basename-collision"
@@ -4491,6 +4831,12 @@ _T_WORKFLOW_LEVEL2_BASE_CRITERIA = (
     # can ever fire.
     "github-verify-stale", "zenodo-verify-stale",
     "not-in-github-mirror", "not-in-zenodo-deposit",
+    # Being public and matching are SEPARATE requirements, as in the
+    # paper's Level 2 table, so a private repository with a diverged
+    # file is charged twice. Staleness still excludes every other
+    # criterion for its service: an unknown record emits the stale
+    # blocker alone.
+    "github-repository-not-public", "zenodo-archive-not-public",
     # The AI-provenance declarations count here (2026-08-27 ruling):
     # they are independent project-level checks, so a green one earns
     # the header cell partial credit — without them a project whose
@@ -4600,8 +4946,13 @@ def _fdictStepProjectionContext(
     dictContext["bGithubCacheStale"] = _fbAnyWorkflowCriterion(
         listLevel2Blockers, "github-verify-stale",
     )
+    # A withheld comparison compared nothing, so a step's Zenodo cell is
+    # as unknowable as under a stale cache; every archive known not to
+    # be public is a withheld one.
     dictContext["bZenodoCacheStale"] = _fbAnyWorkflowCriterion(
         listLevel2Blockers, "zenodo-verify-stale",
+    ) or _fbAnyWorkflowCriterion(
+        listLevel2Blockers, "zenodo-archive-not-public",
     )
     dictContext["bHostMode"] = _fbAnyWorkflowCriterion(
         listLevel3Blockers, S_L3_HOST_MODE_CRITERION,

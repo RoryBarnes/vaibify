@@ -211,8 +211,11 @@ attained. The workflow header row is NOT an aggregate of the step
 rows — its cells cover only workflow-attached requirements
 (`levelGates.fdictComputeWorkflowScopeLevelStates`). L1: project repo
 present. L2: the GitHub and Zenodo published-copy checks (verify
-freshness and divergence), the AI-model and Personal AI Configuration
-declarations and the environment-archive question
+freshness and divergence) and whether a reader can retrieve each copy
+(`github-repository-not-public`, `zenodo-archive-not-public`; a record
+that cannot answer charges its service once, by the stale criterion),
+the AI-model and Personal AI Configuration declarations and the
+environment-archive question
 (`_T_WORKFLOW_LEVEL2_BASE_CRITERIA`), plus the arXiv pair while an
 arXiv submission is recorded, the Overleaf pair while an Overleaf
 project is bound, and a basename collision when one is reported. L3:

@@ -30,7 +30,7 @@ def fixtureNoNetworkForTheArchivedAttestation(monkeypatch):
     """
     monkeypatch.setattr(
         scheduledReverify, "_fjsonFetchArchivedAttestation",
-        lambda dictConfig: None,
+        lambda *listArgs, **dictKwargs: None,
     )
 
 
@@ -145,7 +145,7 @@ def testRunReverifyOnceCoversAllConfiguredServices(tmp_path):
         "vaibify.reproducibility.overleafMirror.fdictFetchRemoteHashes",
         return_value=dictOverleafMatch,
     ), patch(
-        "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
+        "vaibify.reproducibility.zenodoClient.fdictHashRecordFiles",
         return_value=dictMatch,
     ), patch(
         "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
@@ -185,7 +185,7 @@ def testRunReverifyOnceCapturesPerServiceFailures(tmp_path):
         "vaibify.reproducibility.overleafMirror.fdictFetchRemoteHashes",
         return_value={"data.csv": S_DATA_SHA},
     ), patch(
-        "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
+        "vaibify.reproducibility.zenodoClient.fdictHashRecordFiles",
         return_value=dictMatch,
     ), patch(
         "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
@@ -701,7 +701,7 @@ def testVerifyCountsDeclaredTestFilesInComparisonSet(tmp_path):
         "test_quantitative.py": S_TEST_SHA,
     })
     with patch(
-        "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
+        "vaibify.reproducibility.zenodoClient.fdictHashRecordFiles",
         mockFetch,
     ):
         dictStatus = scheduledReverify.fdictVerifyRemoteService(
@@ -722,7 +722,7 @@ def testTestFileMissingFromRemoteIsDivergenceNotError(tmp_path):
     sRepo = str(tmp_path / "project")
     dictWorkflow = _fdictWorkflowWithTestFile(sRepo)
     with patch(
-        "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
+        "vaibify.reproducibility.zenodoClient.fdictHashRecordFiles",
         return_value={"data.csv": S_DATA_SHA},
     ):
         dictStatus = scheduledReverify.fdictVerifyRemoteService(
@@ -773,7 +773,7 @@ def testVerifyExpectedHashesTrackCurrentFileContent(tmp_path):
     dictWorkflow = _fdictBuildWorkflow(sRepo)
     dictRemote = {"data.csv": S_DATA_SHA}
     with patch(
-        "vaibify.reproducibility.zenodoClient.fdictFetchRemoteHashes",
+        "vaibify.reproducibility.zenodoClient.fdictHashRecordFiles",
         return_value=dictRemote,
     ):
         dictBefore = scheduledReverify.fdictVerifyRemoteService(

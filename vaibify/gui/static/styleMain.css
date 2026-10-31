@@ -6908,6 +6908,14 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     padding: 2px 0 0 24px;
 }
 
+/* The backend's sentence for an unmet or unknown row: why it is not
+   met, in the authority's words, usually with its remedy. */
+.proof-req-reason {
+    font-size: 12px;
+    color: var(--text-primary);
+    padding: 3px 0 0 24px;
+}
+
 .proof-req-how .proof-gap-fix {
     color: var(--highlight-color);
 }
@@ -7290,6 +7298,8 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .step-blocker-glyph-l2-zenodo,
 .step-blocker-glyph-l2-github-stale,
 .step-blocker-glyph-l2-zenodo-stale,
+.step-blocker-glyph-l2-github-access,
+.step-blocker-glyph-l2-zenodo-access,
 .step-blocker-glyph-l2-ai-declaration,
 .step-blocker-glyph-l2-ai-models,
 .step-blocker-glyph-l2-personal-layer,
@@ -7924,6 +7934,19 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
        lost (reported 2026-09-02). Reasons are sanitized now, but a
        long hostname is still one token. */
     overflow-wrap: anywhere;
+}
+
+/* Whether a reader can retrieve this remote's copy, in the backend's
+   words. Not public is a requirement unmet and reads in the red text
+   tone; public and unknown make no alarm and stay secondary. */
+.requirement-row-access {
+    color: var(--text-secondary);
+    padding: 2px 0;
+    overflow-wrap: anywhere;
+}
+
+.requirement-row-access-not-public {
+    color: var(--color-red-text);
 }
 
 /* Files inside a remote's row, grouped by what the researcher must do

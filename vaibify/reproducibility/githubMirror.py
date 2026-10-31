@@ -12,13 +12,23 @@ Authenticated requests reuse the per-repo keyring slot from
 :mod:`githubAuth`. Tokens never appear in argv, environment, or
 exception messages. ``fsRedactStderr`` defends user-visible error
 strings against accidentally-echoed credentials.
+
+One request is deliberately NOT authenticated: the public-access probe
+(:func:`fdictProbePublicAccess`) asks GitHub what a READER is served,
+and a reader has no token. Its code path builds its request without
+one and never consults the keyring.
 """
 
 import hashlib
+import http.client
+import json
 import logging
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 
 from vaibify.reproducibility.credentialRedactor import (
     fsRedactCredentials,
@@ -35,10 +45,20 @@ _LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "GithubMirrorError",
+    "S_ACCESS_NOT_PUBLIC",
+    "S_ACCESS_PUBLIC",
+    "fdictProbePublicAccess",
+    "fnClearAnonymousBackoff",
     "fsResolveBranchHeadSha",
     "fdictFetchRemoteHashes",
     "fsRedactStderr",
 ]
+
+# The two verdicts a probe can reach. Anything else is UNCHECKABLE and
+# raises, because "vaibify could not ask" is not a claim about the
+# repository.
+S_ACCESS_PUBLIC = "public"
+S_ACCESS_NOT_PUBLIC = "not-public"
 
 
 _S_RAW_HOST = "https://raw.githubusercontent.com"
@@ -171,16 +191,49 @@ def _fsHashResponseStream(objectResponse):
     return fsHashFileObjectSha256(objectResponse, _I_HASH_BLOCK_SIZE)
 
 
+_I_ERROR_BODY_READ_BYTES = 4096
+
+
+def _fsReadHeader(errorHttp, sName):
+    """Return one response header of an HTTPError, "" when unreadable."""
+    try:
+        return str(errorHttp.headers.get(sName, "") or "").strip()
+    except AttributeError:
+        return ""
+
+
+def _fsReadErrorBodySafely(errorHttp):
+    """Return the start of an HTTPError's body, "" when it has none.
+
+    KeyError is Python 3.9's answer for an HTTPError built with no body:
+    its tempfile wrapper looks the missing file up in ``__dict__``.
+    """
+    try:
+        baBody = errorHttp.read(_I_ERROR_BODY_READ_BYTES) or b""
+    except (AttributeError, KeyError, OSError, ValueError):
+        return ""
+    return baBody.decode("utf-8", "replace")
+
+
 def _fbIsRateLimited(errorHttp):
-    """Return True when an HTTPError indicates GitHub primary rate limiting."""
+    """Return True when an HTTPError is one of GitHub's rate limits.
+
+    The primary limit is a 403 with ``X-RateLimit-Remaining: 0``. The
+    SECONDARY limits answer 403 or 429, and GitHub does not promise a
+    ``retry-after`` on them (REST rate-limit documentation), so a 429
+    is always a limit and a 403 is one when a header or the body says
+    so. Recognizing only the primary limit reported a secondary one as
+    a generic failure with no hint that waiting would fix it.
+    """
+    if errorHttp.code == 429:
+        return True
     if errorHttp.code != 403:
         return False
-    sRemaining = ""
-    try:
-        sRemaining = errorHttp.headers.get("X-RateLimit-Remaining", "")
-    except AttributeError:
-        return False
-    return (sRemaining or "").strip() == "0"
+    if _fsReadHeader(errorHttp, "X-RateLimit-Remaining") == "0":
+        return True
+    if _fsReadHeader(errorHttp, "Retry-After"):
+        return True
+    return "rate limit" in _fsReadErrorBodySafely(errorHttp).lower()
 
 
 def _fnRaiseClassifiedHttpError(errorHttp, sUrl):
@@ -355,3 +408,190 @@ def fsResolveBranchHeadSha(sOwner, sRepo, sBranch, sToken):
             f"of {sOwner}/{sRepo}; the verify cannot pin its ref."
         )
     return sSha
+
+
+# ----------------------------------------------------------------------
+# What a reader is served: the anonymous public-access probe
+# ----------------------------------------------------------------------
+
+# GitHub's budget for requests without a login is 60 an hour, shared by
+# every client behind the same address (REST rate-limit documentation).
+# So a refusal is a statement about EVERY probe this hub would send next,
+# and it is remembered as a deadline. Never a sleep: the probe runs in a
+# verify worker, and a sleeping worker holds its thread for nothing.
+_F_BACKOFF_FALLBACK_SECONDS = 60.0
+# A ceiling on any deadline GitHub's headers name. Its primary window is
+# one hour, so a reset beyond that is a clock or header fault, and
+# honouring it would leave every project uncheckable until a restart.
+_F_BACKOFF_CEILING_SECONDS = 3600.0
+# A repository's metadata is a few kilobytes; the cap only stops an
+# unexpected body from being read into memory whole.
+_I_PROBE_BODY_BYTE_CAP = 64 * 1024
+_DICT_ANONYMOUS_BACKOFF = {"fDeadlineEpoch": 0.0}
+_LOCK_ANONYMOUS_BACKOFF = threading.Lock()
+
+
+def fnClearAnonymousBackoff():
+    """Forget the anonymous-probe deadline (a fresh hub has none)."""
+    with _LOCK_ANONYMOUS_BACKOFF:
+        _DICT_ANONYMOUS_BACKOFF["fDeadlineEpoch"] = 0.0
+
+
+def _ffAnonymousBackoffDeadline():
+    """Return the epoch before which no anonymous probe may be sent."""
+    with _LOCK_ANONYMOUS_BACKOFF:
+        return _DICT_ANONYMOUS_BACKOFF["fDeadlineEpoch"]
+
+
+def _fnExtendAnonymousBackoff(fDeadlineEpoch):
+    """Move the deadline later, never earlier."""
+    with _LOCK_ANONYMOUS_BACKOFF:
+        _DICT_ANONYMOUS_BACKOFF["fDeadlineEpoch"] = max(
+            _DICT_ANONYMOUS_BACKOFF["fDeadlineEpoch"], fDeadlineEpoch,
+        )
+
+
+def _ffParseNonNegativeNumber(sValue):
+    """Return a header's non-negative number, or None when it is not one."""
+    try:
+        fValue = float(sValue)
+    except (TypeError, ValueError):
+        return None
+    return fValue if fValue >= 0 else None
+
+
+def _ffComputeBackoffDeadline(errorHttp, fNowEpoch):
+    """Return when GitHub said the next request may go, as an epoch.
+
+    GitHub's documented order: ``retry-after`` seconds when present;
+    otherwise ``x-ratelimit-reset`` when the remaining count is 0;
+    otherwise at least one minute.
+    """
+    fRetryAfter = _ffParseNonNegativeNumber(
+        _fsReadHeader(errorHttp, "Retry-After"))
+    fReset = _ffParseNonNegativeNumber(
+        _fsReadHeader(errorHttp, "X-RateLimit-Reset"))
+    bExhausted = _fsReadHeader(errorHttp, "X-RateLimit-Remaining") == "0"
+    if fRetryAfter is not None:
+        fDeadline = fNowEpoch + fRetryAfter
+    elif bExhausted and fReset is not None:
+        fDeadline = fReset
+    else:
+        fDeadline = fNowEpoch + _F_BACKOFF_FALLBACK_SECONDS
+    return min(max(fDeadline, fNowEpoch),
+               fNowEpoch + _F_BACKOFF_CEILING_SECONDS)
+
+
+def _fsFormatDeadline(fDeadlineEpoch):
+    """Return a deadline as a UTC clock time a researcher can read."""
+    return datetime.fromtimestamp(
+        fDeadlineEpoch, timezone.utc,
+    ).strftime("%H:%M:%S UTC")
+
+
+def _fsDescribeBackoff(sOwner, sRepo, fDeadlineEpoch):
+    """Name why the public-access check cannot run, and until when."""
+    return (
+        f"GitHub asked vaibify to wait before checking whether "
+        f"{sOwner}/{sRepo} is public: its limit for requests without a "
+        "login is shared by everything on this network address. vaibify "
+        f"asks again after {_fsFormatDeadline(fDeadlineEpoch)}; until "
+        "then this check cannot be completed."
+    )
+
+
+def _frequestBuildAnonymousProbe(sUrl):
+    """Build the probe's request. It takes no token, so it can carry none."""
+    requestProbe = urllib.request.Request(sUrl, method="GET")
+    requestProbe.add_header("Accept", "application/vnd.github+json")
+    requestProbe.add_header("User-Agent", "vaibify-githubMirror")
+    return requestProbe
+
+
+def fdictProbePublicAccess(sOwner, sRepo):
+    """Return ``{sState, sReason}``: does GitHub serve owner/repo to a READER?
+
+    Level 2 asks what a reader can retrieve, and a reader has no login,
+    so this sends one ``GET /repos/{owner}/{repo}`` with no
+    ``Authorization`` header and consults no keyring. The verify's own
+    hash fetch uses the researcher's token, which is why a PRIVATE
+    repository whose files matched used to reach Level 2.
+
+    ``public`` needs positive evidence: a 200 whose ``private`` is
+    exactly false and whose ``full_name`` is the repository asked about.
+    A 404 (private, or internal to an organization) and a 451 (withheld
+    for legal reasons) are ``not-public``. Everything else -- a rate
+    limit, a server error, a network failure, a body that does not say
+    -- raises :class:`GithubMirrorError`, because "vaibify could not
+    ask" is not a verdict. A 403 or 429 also sets the hub-wide deadline,
+    before which every probe raises at once without sending anything.
+    """
+    fnValidateOwnerRepo(sOwner, sRepo)
+    fDeadline = _ffAnonymousBackoffDeadline()
+    if time.time() < fDeadline:
+        raise GithubMirrorError(_fsDescribeBackoff(sOwner, sRepo, fDeadline))
+    sUrl = f"{_S_API_HOST}/repos/{sOwner}/{sRepo}"
+    try:
+        with _fhttpresponseOpenRequest(
+            _frequestBuildAnonymousProbe(sUrl), _F_REQUEST_TIMEOUT_SECONDS,
+        ) as httpresponseProbe:
+            baBody = httpresponseProbe.read(_I_PROBE_BODY_BYTE_CAP)
+    except urllib.error.HTTPError as errorHttp:
+        return _fdictJudgeProbeRefusal(errorHttp, sOwner, sRepo)
+    except (OSError, http.client.HTTPException) as errorNetwork:
+        sReason = fsRedactStderr(str(errorNetwork))
+        raise GithubMirrorError(
+            f"vaibify could not reach GitHub to check whether "
+            f"{sOwner}/{sRepo} is public: {sReason}"
+        ) from None
+    return _fdictJudgeProbeBody(baBody, sOwner, sRepo)
+
+
+def _fdictJudgeProbeRefusal(errorHttp, sOwner, sRepo):
+    """Map a refused probe onto a verdict, or raise when it is none."""
+    if errorHttp.code == 404:
+        return {"sState": S_ACCESS_NOT_PUBLIC, "sReason": (
+            f"GitHub serves {sOwner}/{sRepo} to your login but not to a "
+            "reader: it is private, or internal to an organization. Make "
+            "it public under Settings → General → Danger Zone → Change "
+            "visibility, then verify again."
+        )}
+    if errorHttp.code == 451:
+        return {"sState": S_ACCESS_NOT_PUBLIC, "sReason": (
+            f"GitHub withholds {sOwner}/{sRepo} from readers for legal "
+            "reasons (HTTP 451). Changing its visibility will not restore "
+            "access; the notice on the repository's page gives the reason."
+        )}
+    if errorHttp.code in (403, 429):
+        fDeadline = _ffComputeBackoffDeadline(errorHttp, time.time())
+        _fnExtendAnonymousBackoff(fDeadline)
+        raise GithubMirrorError(
+            _fsDescribeBackoff(sOwner, sRepo, fDeadline)) from None
+    raise GithubMirrorError(
+        f"GitHub answered the check of whether {sOwner}/{sRepo} is public "
+        f"with HTTP {errorHttp.code}, which says neither; verify again "
+        "later."
+    ) from None
+
+
+def _fdictJudgeProbeBody(baBody, sOwner, sRepo):
+    """Return ``public`` for an answer that proves it; raise otherwise."""
+    try:
+        dictBody = json.loads(baBody.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        dictBody = None
+    if not isinstance(dictBody, dict) or dictBody.get("private") is not False:
+        raise GithubMirrorError(
+            f"GitHub's answer for {sOwner}/{sRepo} did not say whether it "
+            "is public; verify again later."
+        )
+    sServedName = fsRedactStderr(str(dictBody.get("full_name") or ""))[:200]
+    if sServedName.lower() != f"{sOwner}/{sRepo}".lower():
+        raise GithubMirrorError(
+            f"GitHub now serves {sOwner}/{sRepo} as {sServedName}. Push to "
+            "the repository under its current name, then verify again; "
+            "the check follows the push."
+        )
+    return {"sState": S_ACCESS_PUBLIC, "sReason": (
+        f"GitHub serves {sOwner}/{sRepo} to readers without a login."
+    )}

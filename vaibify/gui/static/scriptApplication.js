@@ -3357,6 +3357,21 @@ const VaibifyApp = (function () {
                 "the Repos panel to refresh status",
             sClass: "step-blocker-glyph-l2-zenodo-stale",
         },
+        // The payload's hint is the reason the verify recorded, which
+        // names the remedy; these labels are only its fallback.
+        "github-repository-not-public": {
+            sIcon: "⚠",
+            sLabel: "A reader cannot retrieve the GitHub repository " +
+                "— make it public, then verify again",
+            sClass: "step-blocker-glyph-l2-github-access",
+        },
+        "zenodo-archive-not-public": {
+            sIcon: "⚠",
+            sLabel: "A reader cannot open every declared Zenodo " +
+                "record — set its files to public on Zenodo, then " +
+                "verify again",
+            sClass: "step-blocker-glyph-l2-zenodo-access",
+        },
         "missing-ai-declaration-step": {
             sIcon: "—",
             sLabel: "Add an AI declaration step to " +

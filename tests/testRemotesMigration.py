@@ -31,7 +31,7 @@ def fixtureNoNetworkForTheArchivedAttestation(monkeypatch):
     """Keep these tests off zenodo.org (a 503 there reddened a runner)."""
     monkeypatch.setattr(
         scheduledReverify, "_fjsonFetchArchivedAttestation",
-        lambda dictConfig: None,
+        lambda *listArgs, **dictKwargs: None,
     )
 
 DICT_MIRROR_MODULE_BY_SERVICE = {
@@ -259,8 +259,13 @@ def test_migrated_legacy_workflow_unblocks_verify_409_guard(
             "sLastPushCommit"] = "commit1"
         dictRemoteHashes = {"figures/f.pdf": sPlotSha}
     sMirrorModule = DICT_MIRROR_MODULE_BY_SERVICE[sService]
+    # Zenodo hashes each OBSERVED record; the others fetch and hash.
+    sHashFunction = (
+        "fdictHashRecordFiles" if sService == "zenodo"
+        else "fdictFetchRemoteHashes"
+    )
     with patch(
-        f"vaibify.reproducibility.{sMirrorModule}.fdictFetchRemoteHashes",
+        f"vaibify.reproducibility.{sMirrorModule}.{sHashFunction}",
         return_value=dictRemoteHashes,
     ):
         dictStatus = scheduledReverify.fdictVerifyRemoteService(

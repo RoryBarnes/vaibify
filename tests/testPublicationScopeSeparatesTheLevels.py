@@ -32,7 +32,7 @@ coverage test; removing the subset check in
 
 import pytest
 
-from tests.syncStatusFixtures import fsRecentVerifyIso
+from tests.syncStatusFixtures import fdictBuildCachedVerify, fsRecentVerifyIso
 from vaibify.reproducibility import levelGates, publicationScope
 
 
@@ -98,26 +98,15 @@ def _fdictStatus(listCompared, listDivergedPaths=(),
     # import, which is the same overnight-ageing bug in a milder form.
     if sVerified == _S_FRESHLY_VERIFIED:
         sVerified = fsRecentVerifyIso()
-    dictStatus = {
-        "sService": "github",
-        "sLastVerified": sVerified,
-        "iTotalFiles": len(listCompared),
-        "iMatching": len(listCompared) - len(listDivergedPaths),
-        "listComparedPaths": list(listCompared),
-        "listDiverged": [
-            {"sPath": s, "sExpected": "aaa", "sActual": "bbb"}
-            for s in listDivergedPaths
-        ],
+    return fdictBuildCachedVerify(
+        sService="github", listComparedPaths=listCompared,
+        listDivergedPaths=listDivergedPaths, sLastVerified=sVerified,
+        bScopeCurrent=bScopeCurrent,
         # The local hash each path was compared AS, matching the fake
         # repo's live answer — what a real verify writes since the
         # staleness fix (2026-09-01).
-        "dictComparedHashes": {s: S_VERIFIED_SHA for s in listCompared},
-    }
-    if bScopeCurrent:
-        dictStatus["iScopeVersion"] = (
-            publicationScope.I_PUBLICATION_SCOPE_VERSION
-        )
-    return dictStatus
+        dictComparedHashes={s: S_VERIFIED_SHA for s in listCompared},
+    )
 
 
 # ---------------------------------------------------------------------

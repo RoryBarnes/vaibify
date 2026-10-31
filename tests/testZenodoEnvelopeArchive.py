@@ -21,7 +21,11 @@ visibility-only, with a comment claiming it blocked attainment).
 
 import pytest
 
-from tests.syncStatusFixtures import fsRecentVerifyIso
+from tests.syncStatusFixtures import (
+    fdictBuildCachedVerify,
+    fsRecentVerifyIso,
+)
+from tests.zenodoObservationFixtures import fmockServeZenodoHashes
 from vaibify.gui import workflowManager
 from vaibify.reproducibility import (
     levelGates,
@@ -35,6 +39,15 @@ S_ENVELOPE = "reproduce.sh"
 
 
 S_VERIFIED_SHA = "cafe" * 16
+
+
+def _fdictHashDeclaredRecords(dictConfig, listRelPaths, dictExpected):
+    """Hash every declared record as the verify does once all are open."""
+    return scheduledReverify._fdictHashZenodoObservations(
+        scheduledReverify._flistObserveZenodoRecords(dictConfig),
+        listRelPaths, dictExpected,
+        dictConfig.get("sService") or "sandbox",
+    )
 
 
 class _FakeRepoFiles:
@@ -72,27 +85,18 @@ class _FakeRepoFiles:
 def _fdictStatus(listCompared, listDivergedPaths=(),
                  sVerified=fsRecentVerifyIso(),
                  dictComparedHashes=None):
-    return {
-        "sService": "zenodo",
-        "sLastVerified": sVerified,
-        "iTotalFiles": len(listCompared),
-        "iMatching": len(listCompared) - len(listDivergedPaths),
-        "listComparedPaths": list(listCompared),
-        "listDiverged": [
-            {"sPath": s, "sExpected": "aaa", "sActual": "bbb"}
-            for s in listDivergedPaths
-        ],
-        "iScopeVersion": publicationScope.I_PUBLICATION_SCOPE_VERSION,
-        "sZenodoDoi": "10.5281/zenodo.1234",
-        "sEndpointVerified": "sandbox",
+    return fdictBuildCachedVerify(
+        sService="zenodo", listComparedPaths=listCompared,
+        listDivergedPaths=listDivergedPaths, sLastVerified=sVerified,
+        sZenodoDoi="10.5281/zenodo.1234", sEndpointVerified="sandbox",
         # The local hash each path was compared AS, defaulting to the
         # fake repo's live answer so the agreement check passes unless
         # a test deliberately drifts one side.
-        "dictComparedHashes": (
+        dictComparedHashes=(
             {s: S_VERIFIED_SHA for s in listCompared}
             if dictComparedHashes is None else dict(dictComparedHashes)
         ),
-    }
+    )
 
 
 def _fbArchiveMatches(monkeypatch, dictStatus, setPresent,
@@ -371,8 +375,8 @@ def test_declared_records_lead_with_the_primary_and_deduplicate():
 
 def test_no_declared_records_still_refuses_the_verify():
     with pytest.raises(scheduledReverify.ReverifyConfigError):
-        scheduledReverify._fdictFetchZenodoHashes(
-            {"sService": "sandbox"}, [S_ENVELOPE], {},
+        scheduledReverify._flistObserveZenodoRecords(
+            {"sService": "sandbox"},
         )
 
 
@@ -399,8 +403,8 @@ def test_a_file_agrees_with_zenodo_when_any_declared_record_serves_it(
                 S_ENVELOPE: "stale" + "0" * 59},
         "222": {S_ENVELOPE: "e" * 64},
     }
-    monkeypatch.setattr(
-        scheduledReverify.zenodoClient, "fdictFetchRemoteHashes",
+    fmockServeZenodoHashes(
+        monkeypatch,
         lambda sRecordId, listRelPaths=None, sService="sandbox":
             {sPath: dictByRecord[sRecordId].get(sPath)
              for sPath in listRelPaths},
@@ -410,7 +414,7 @@ def test_a_file_agrees_with_zenodo_when_any_declared_record_serves_it(
         "listRecords": [{"sRecordId": "222"}],
     }
     dictExpected = {S_DATA: "d" * 64, S_ENVELOPE: "e" * 64}
-    dictActual = scheduledReverify._fdictFetchZenodoHashes(
+    dictActual = _fdictHashDeclaredRecords(
         dictConfig, [S_DATA, S_ENVELOPE], dictExpected,
     )
     assert dictActual[S_ENVELOPE] == "e" * 64, (
@@ -430,8 +434,8 @@ def test_a_file_in_no_declared_record_keeps_a_real_remote_hash(
         "111": {S_ENVELOPE: "1" * 64},
         "222": {S_ENVELOPE: "2" * 64},
     }  # reproduce.sh is its own basename; output.json in no record
-    monkeypatch.setattr(
-        scheduledReverify.zenodoClient, "fdictFetchRemoteHashes",
+    fmockServeZenodoHashes(
+        monkeypatch,
         lambda sRecordId, listRelPaths=None, sService="sandbox":
             {sPath: dictByRecord[sRecordId].get(sPath)
              for sPath in listRelPaths},
@@ -440,7 +444,7 @@ def test_a_file_in_no_declared_record_keeps_a_real_remote_hash(
         "sRecordId": "111", "sService": "sandbox",
         "listRecords": [{"sRecordId": "222"}],
     }
-    dictActual = scheduledReverify._fdictFetchZenodoHashes(
+    dictActual = _fdictHashDeclaredRecords(
         dictConfig, [S_ENVELOPE, S_DATA],
         {S_ENVELOPE: "e" * 64, S_DATA: "d" * 64},
     )
@@ -564,13 +568,13 @@ def test_colliding_basenames_read_not_in_deposit(monkeypatch):
     """
     sPathAlpha = "StepAlpha/tests/test_qualitative.py"
     sPathBeta = "StepBeta/tests/test_qualitative.py"
-    monkeypatch.setattr(
-        scheduledReverify.zenodoClient, "fdictFetchRemoteHashes",
+    fmockServeZenodoHashes(
+        monkeypatch,
         lambda sRecordId, listRelPaths=None, sService="sandbox":
             {sKey: {"test_qualitative.py": "a" * 64}.get(sKey)
              for sKey in listRelPaths},
     )
-    dictActual = scheduledReverify._fdictFetchZenodoHashes(
+    dictActual = _fdictHashDeclaredRecords(
         {"sRecordId": "111", "sService": "sandbox"},
         [sPathAlpha, sPathBeta],
         {sPathAlpha: "a" * 64, sPathBeta: "b" * 64},
@@ -587,11 +591,8 @@ def test_unique_basenames_map_onto_the_flat_deposit(monkeypatch):
         listRequested.extend(listRelPaths)
         return {"output.json": "d" * 64, "reproduce.sh": "e" * 64}
 
-    monkeypatch.setattr(
-        scheduledReverify.zenodoClient, "fdictFetchRemoteHashes",
-        _fdictFetch,
-    )
-    dictActual = scheduledReverify._fdictFetchZenodoHashes(
+    fmockServeZenodoHashes(monkeypatch, _fdictFetch)
+    dictActual = _fdictHashDeclaredRecords(
         {"sRecordId": "111", "sService": "sandbox"},
         [S_DATA, S_ENVELOPE],
         {S_DATA: "d" * 64, S_ENVELOPE: "e" * 64},
