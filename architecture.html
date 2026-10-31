@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.2.3.dev41 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.2.3.dev50 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=06055b6a"></script>
+      <script src="_static/documentation_options.js?v=c6b20f37"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -2501,6 +2501,92 @@ fix is to hold the drain only for the container-touching parts (the
 local hash and the <code class="docutils literal notranslate"><span class="pre">syncStatus</span></code> write) and fetch the remote outside
 it, which would also improve the manual “Verify now”. That was
 deliberately not done speculatively.</p>
+</section>
+<section id="what-a-reader-can-retrieve">
+<h2>What a reader can retrieve<a class="headerlink" href="#what-a-reader-can-retrieve" title="Link to this heading"></a></h2>
+<p>Level 2 says the work is published, which is a claim about what a
+READER can retrieve. The paper’s Level 2 table lists “GitHub repository
+is public” and “Zenodo archive is public” beside the two “files match”
+rows, and until 2026-10-30 nothing checked either. The GitHub hash fetch
+sends the researcher’s token, so a private repository whose files
+matched reached Level 2. A restricted Zenodo record answers a reader
+200 with an empty file list, so a lone one read “every file diverged,
+publish a new deposit” (an immutable version that left the record
+restricted), while an open record beside a restricted extra one passed
+outright under any-record-agrees merging.</p>
+<p><strong>Asked as a reader asks.</strong> The verify observes access with requests
+that carry no credentials (<code class="docutils literal notranslate"><span class="pre">scheduledReverify.fdictVerifyRemoteService</span></code>):</p>
+<ul class="simple">
+<li><p>GitHub: after the authenticated hash fetch,
+<code class="docutils literal notranslate"><span class="pre">githubMirror.fdictProbePublicAccess</span></code> sends one anonymous
+<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/repos/{owner}/{repo}</span></code> through a request builder that takes no
+token. A 200 whose <code class="docutils literal notranslate"><span class="pre">private</span></code> is exactly false and whose <code class="docutils literal notranslate"><span class="pre">full_name</span></code> is
+the bound repository is public; 404 and 451 are not public, each with
+its remedy; anything else is uncheckable. A 403 or 429 sets an
+in-process deadline in GitHub’s documented order (<code class="docutils literal notranslate"><span class="pre">retry-after</span></code>, then
+the reset when the count is spent, then a minute), and until it passes
+every probe raises at once. It never sleeps and never retries: the
+anonymous budget is shared by the network address, and the probe runs
+in a verify worker.</p></li>
+<li><p>Zenodo: <code class="docutils literal notranslate"><span class="pre">zenodoClient.fdictObserveRecord</span></code> fetches each declared record
+ONCE, through the one tokenless client <code class="docutils literal notranslate"><span class="pre">_fclientAnonymous</span></code>, and the
+comparison and the attestation read both consume those observations.
+The attestation reader used to fetch every record again through a
+path that re-raised 401, 403 and 404, so a record Zenodo would not
+serve aborted the verify before its verdict was saved.</p></li>
+</ul>
+<p><strong>The Zenodo precedence is a table, not an order.</strong> Every record is
+observed before any is judged. Any record known not to be public makes
+the archive not public, and the record is written with every
+per-record verdict and <code class="docutils literal notranslate"><span class="pre">bComparisonWithheld:</span> <span class="pre">true</span></code>: nothing is hashed,
+because comparing an archive a reader cannot fully open would claim
+divergence without bytes. Every record public compares as before.
+Anything else (some record unchecked, none known closed) raises and
+writes nothing. A known restriction therefore survives a sibling’s 429,
+in either declared order.</p>
+<p><strong>Evidence names the remote it is about.</strong> Each GitHub and Zenodo record
+carries <code class="docutils literal notranslate"><span class="pre">dictRemoteIdentity</span></code>: owner, repository and branch for GitHub,
+the endpoint and the sorted declared record ids for Zenodo. Records used
+to store only the commit for GitHub and only “some DOI” for Zenodo, so a
+renamed repository, a switched branch or a newly declared record kept
+Level 2 on evidence about something else.
+<code class="docutils literal notranslate"><span class="pre">levelGates._fsDescribeUncoveredRemote</span></code> compares a GitHub record with
+the host-held push binding, the record of where the copy actually
+landed. A declared <code class="docutils literal notranslate"><span class="pre">dictRemotes.github</span></code> must also agree with that
+binding, under the verify’s own rule. The branch compared is the one the
+NEXT verify would read: the binding’s, else the declared one, else the
+verify’s default (<code class="docutils literal notranslate"><span class="pre">scheduledReverify.S_DEFAULT_GITHUB_BRANCH</span></code>). An
+omitted branch is never a wildcard, because removing a declared branch
+moves the next verify to the default. It never reads <code class="docutils literal notranslate"><span class="pre">.git/config</span></code>:
+the poll cannot, and the next verify refuses an <code class="docutils literal notranslate"><span class="pre">origin</span></code> that disagrees.</p>
+<p><strong>Two authorities, and everything reads them.</strong>
+<code class="docutils literal notranslate"><span class="pre">levelGates.fdictDescribePublicAccess</span></code> answers public, not-public or
+unknown; <code class="docutils literal notranslate"><span class="pre">fdictDescribePublishedCopy</span></code> answers matched, differs or
+unknown, and the sync predicates are True exactly when it answers
+matched. Both answer unknown, naming why, for no record, a stale one,
+one about another remote, and (for access) one written before the
+question existed. Any record written before 2026-10-30 is one, so such
+a project reads below Level 2 until its next successful check. The
+scalar gate, the gaps dict, the blockers (<code class="docutils literal notranslate"><span class="pre">github-repository-not-public</span></code>,
+<code class="docutils literal notranslate"><span class="pre">zenodo-archive-not-public</span></code>, and the stale blocker carrying the
+authority’s reason), the poll’s <code class="docutils literal notranslate"><span class="pre">dictWorkflowEnvelopeDetail</span></code>, the PROOF
+tab and Published copies all render these answers. None re-derives
+them. Being public and matching are separate requirements, so the header
+charges a private repository with a diverged file twice, while an
+unknown record is charged once: by its stale blocker, or, when the record
+names its remote but never asked what a reader is served (so nothing else
+blocks), by a stale blocker the access side emits with the access reason.</p>
+<p><strong>Every lane settles the badge.</strong> The open-time refresh, the scheduled
+pass and Verify now each mark the poll’s per-project check state,
+SETTLED or UNCHECKABLE with the reason, under the container ID with the
+project’s repository. Verify now’s badge reason is its error response’s
+own detail, which is what <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">verify-remote</span></code> prints. An
+uncheckable result never writes the record; a Zenodo record known not to
+be public is a result, not a failure.</p>
+<p><strong>Out of scope.</strong> Whether a reader can retrieve the Level 3 environment
+image deposit is not checked here. Sandbox records are publicly
+readable, so they pass this check; their permanence stays with Level
+3’s <code class="docutils literal notranslate"><span class="pre">an-archive-is-a-sandbox-deposit</span></code>.</p>
 </section>
 <section id="the-memory-watch-reports-kills-it-can-prove-and-says-what-it-cannot">
 <h2>The memory watch reports kills it can prove, and says what it cannot<a class="headerlink" href="#the-memory-watch-reports-kills-it-can-prove-and-says-what-it-cannot" title="Link to this heading"></a></h2>
