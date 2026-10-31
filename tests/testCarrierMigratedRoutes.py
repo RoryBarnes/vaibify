@@ -6278,12 +6278,15 @@ def _tlistRecordEveryZenodoUpload():
     listCalls = []
     fnReal = syncDispatcher.ftResultArchiveToZenodo
 
-    def ftRecordThenArchive(connectionDocker, sContainerId, *aArgs):
+    def ftRecordThenArchive(
+        connectionDocker, sContainerId, *aArgs, **dictReceiptHook,
+    ):
         admission = mutationAdmission.fadmissionActiveForContainerId(
             sContainerId,
         )
         listCalls.append("" if admission is None else admission.sMode)
-        return fnReal(connectionDocker, sContainerId, *aArgs)
+        return fnReal(connectionDocker, sContainerId, *aArgs,
+                      **dictReceiptHook)
 
     with patch.object(
         syncDispatcher, "ftResultArchiveToZenodo", ftRecordThenArchive,

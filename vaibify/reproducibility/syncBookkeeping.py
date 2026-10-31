@@ -55,6 +55,7 @@ __all__ = [
     "fnUpdatePendingPromotion",
     "fdictReadSyncBookkeeping",
     "fnMergeSyncBookkeepingIntoWorkflow",
+    "fnRecordPublishedReceipt",
     "fnRecordZenodoPublish",
     "fnWriteSyncBookkeeping",
 ]
@@ -93,7 +94,11 @@ DICT_REMOTE_PRODUCED_FIELDS = {
     # retires. Produced, like the rest of this entry -- writing it into
     # project.json would stale the production deposit the moment it
     # was minted, and the GitHub commit before it.
-    "zenodo": ("sRecordId", "sDoi", "sService", "dictSuperseded"),
+    # dictReceipt joined on 2026-10-31: which PROOF receipt the latest
+    # published version carries, produced by every archive step.
+    "zenodo": (
+        "sRecordId", "sDoi", "sService", "dictSuperseded", "dictReceipt",
+    ),
 }
 
 S_BOOKKEEPING_SECTION_KEY = "dictProjectBookkeeping"
@@ -444,6 +449,17 @@ def _fnMutateBookkeepingSection(filesRepo, sWorkflowKey, fnApply):
         dictSections[sWorkflowKey] = dictSection
         dictDocument[S_BOOKKEEPING_SECTION_KEY] = dictSections
         filesRepo.fnWriteJsonAtomic(sRelPath, dictDocument)
+
+
+def fnRecordPublishedReceipt(dictWorkflow, dictReceiptNote):
+    """Store which PROOF receipt the latest published version carries.
+
+    Bookkeeping like the rest of the publish record, so it lands in the
+    sidecar and leaves ``project.json`` byte-identical to its archive.
+    """
+    dictZenodo = dictWorkflow.setdefault("dictRemotes", {}).setdefault(
+        "zenodo", {})
+    dictZenodo["dictReceipt"] = dict(dictReceiptNote)
 
 
 def fnRecordZenodoPublish(

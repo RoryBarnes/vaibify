@@ -31861,10 +31861,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=('        _fnRefuseBasenameCollisions(request.listFilePaths)\n'
-             '        dictResult, sZenodoService = await '
-             '_ftPerformZenodoArchive(\n'),
-        new=('        dictResult, sZenodoService = await '
-             '_ftPerformZenodoArchive(\n'),
+             '        dictResult, sZenodoService, dictCheckpoint = (\n'),
+        new=('        dictResult, sZenodoService, dictCheckpoint = (\n'),
     ),
     # --- 2026-10-20: a read-only council runs nothing. The server half
     # (no baseline re-run) predates this; the runner half removes the
@@ -39328,5 +39326,36 @@ LIST_FALSIFICATIONS = [
         source='vaibify/reproducibility/proofReceipt.py',
         old='        "listCheckpointLacks": listLacks,\n',
         new='        "listCheckpointLacks": [],\n',
+    ),
+    # --- 2026-10-31: every project deposit carries a checkpoint receipt ---
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCheckpoint.py::'
+            'testTheInventoryIsTheStagedBytesWhenAFileChangesAfterTheObservation'
+        ),
+        # The inventory taken from the repository as observed.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='            _fdictCheckpointArchive(\n                sZenodoService, dictWorkflow, iParentDepositId, listStaged),\n',
+        new='            _fdictCheckpointArchive(\n                sZenodoService, dictWorkflow, iParentDepositId, [dict(dictStaged, sSha256=((dictObservation["dictRecords"]["zenodo"] or {}).get("dictComparedHashes") or {}).get(workflowManager.fsToSyncStatusKey(dictStaged["sContainerPath"], dictWorkflow.get("sProjectRepoPath") or ""), dictStaged["sSha256"])) for dictStaged in listStaged]),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCheckpoint.py::'
+            'testTheRepositoryReceiptIsTheUploadedBytes'
+        ),
+        # The repository copy serialized a second time.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        dictCheckpoint["baReceipt"])\n',
+        new='        __import__("json").dumps(dictCheckpoint["dictReceipt"]).encode("utf-8"))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCheckpoint.py::'
+            'testACheckpointWhoseUploadFailsLeavesTheRepositoryReceiptAlone'
+        ),
+        # The repository receipt written before publication.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        dictCheckpoint.update(dictReceipt=dictReceipt, baReceipt=baReceipt)\n',
+        new='        dictCheckpoint.update(dictReceipt=dictReceipt, baReceipt=baReceipt)\n        syncDispatcher.fnWriteProofReceiptIntoProject(dictCtx["docker"], sContainerId, dictWorkflow.get("sProjectRepoPath") or "", baReceipt)\n',
     ),
 ]

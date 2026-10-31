@@ -5717,7 +5717,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3743 -> 3755 (2026-10-27, review): a logged Zenodo site is
     # one the client's table knows, so it cannot forge log lines.
     # 3755 -> 3774 (2026-10-29): token-bearing Overleaf and Zenodo actions read their target from the confirmed host binding, and a deposit moves it.
-    "routes/syncRoutes.py": 3774,
+    # 3774 -> 3860 (2026-10-31): every project deposit carries a checkpoint PROOF receipt built from the staged bytes and written into the repository only after publication (proof-receipt plan, A13).
+    "routes/syncRoutes.py": 3860,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.

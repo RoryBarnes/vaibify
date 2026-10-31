@@ -604,7 +604,8 @@ _DICT_ZENODO_API_BASE = {
 
 def ftResultArchiveToZenodo(
     connectionDocker, sContainerId, sZenodoService, listFilePaths,
-    dictMetadata=None, iParentDepositId=0,
+    dictMetadata=None, iParentDepositId=0, sExtraFileKey="",
+    fbaBuildExtraFile=None,
 ):
     """Deposit files on Zenodo from the HOST; return ``(iExitCode, sOutput)``.
 
@@ -619,6 +620,13 @@ def ftResultArchiveToZenodo(
     the versioning flow: 0 creates a fresh deposit; a positive id takes
     the parent's ``newversion`` draft, clears the inherited files and
     updates the metadata.
+
+    ``fbaBuildExtraFile``, when given, is handed the STAGED files --
+    ``{sContainerPath, sKey, sSha256, sMd5, iSizeBytes}`` each, hashed
+    from the bytes this call will upload -- and returns the bytes of one
+    more file, staged as ``sExtraFileKey`` and uploaded and checked with
+    the rest. The PROOF receipt rides this way; the dispatcher stays
+    generic.
 
     The tuple and its message vocabulary (``HTTP ...``,
     ``ARCHIVE-MISMATCH``, ``LOCAL-FILE-ERROR``, ``orphan draft``) are
@@ -648,6 +656,11 @@ def ftResultArchiveToZenodo(
         listLocalPaths = _flistStageFilesOnHost(
             connectionDocker, sContainerId, listFilePaths, sScratchDirectory,
         )
+        if fbaBuildExtraFile is not None:
+            listLocalPaths.append(_fsStageExtraFile(
+                sScratchDirectory, listFilePaths, listLocalPaths,
+                sExtraFileKey, fbaBuildExtraFile,
+            ))
     except (OSError, ValueError) as error:
         _fnRemoveScratchDirectory(sScratchDirectory)
         return (1, "LOCAL-FILE-ERROR (not a Zenodo problem): " + repr(error))
@@ -704,6 +717,41 @@ def _flistStageFilesOnHost(
             ),
         ))
     return listLocalPaths
+
+
+def _fsStageExtraFile(
+    sScratchDirectory, listFilePaths, listLocalPaths, sKey, fbaBuildExtraFile,
+):
+    """Stage one more file built from the staged ones; return its host path."""
+    import os
+    from vaibify.host.hostConfinedWrite import fsWriteFileInsideRoot
+    if not sKey or posixpath.basename(sKey) != sKey or any(
+            posixpath.basename(sPath) == sKey for sPath in listFilePaths):
+        raise ValueError(
+            f"a selected file is named {sKey!r}, which vaibify writes into "
+            "every archive itself; a Zenodo deposit is flat")
+    listStaged = [
+        _fdictDescribeStagedFile(sContainerPath, sLocalPath)
+        for sContainerPath, sLocalPath in zip(listFilePaths, listLocalPaths)
+    ]
+    baContent = fbaBuildExtraFile(listStaged)
+    return fsWriteFileInsideRoot(
+        sScratchDirectory, os.path.join(sScratchDirectory, sKey),
+        iter([baContent]),
+    )
+
+
+def _fdictDescribeStagedFile(sContainerPath, sLocalPath):
+    """Return one staged file's identity, hashed from the bytes to upload."""
+    import os
+    from vaibify.reproducibility._hashing import ftHashFileSha256AndMd5
+    sSha256, sMd5 = ftHashFileSha256AndMd5(sLocalPath)
+    return {
+        "sContainerPath": sContainerPath,
+        "sKey": os.path.basename(sLocalPath),
+        "sSha256": sSha256, "sMd5": sMd5,
+        "iSizeBytes": os.path.getsize(sLocalPath),
+    }
 
 
 def _ftDepositStagedFiles(clientZenodo, listLocalPaths, dictApi, iParent):

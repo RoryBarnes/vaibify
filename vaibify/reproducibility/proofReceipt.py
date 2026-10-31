@@ -41,8 +41,10 @@ __all__ = [
     "S_RECEIPT_KIND_CHECKPOINT",
     "S_RECEIPT_KIND_COMPLETION",
     "RecordingRepoFiles",
+    "S_RECEIPT_DEPOSIT_KEY",
     "fdictBuildCompletes",
     "fdictBuildProofReceipt",
+    "fdictDescribePublishedReceipt",
     "fdictCaptureObservation",
     "fsSerializeProofReceipt",
 ]
@@ -411,6 +413,7 @@ def _fdictAssembleObservation(
     dictEvaluation, dictWorkflowIdentity,
 ):
     """Return the observation: its labels, then everything it evaluated."""
+    from vaibify import versionIdentity
     from . import levelGates, proofCatalog, publicationScope
     dictGaps = dictEvaluation["dictGaps"]
     bHeldAtZero = dictEvaluation["bMarkersHoldLevelZero"]
@@ -431,6 +434,7 @@ def _fdictAssembleObservation(
             and not bHeldAtZero,
         },
         "dictWorkflowIdentity": dictWorkflowIdentity,
+        "dictVaibify": versionIdentity.fdictDescribeRunningVaibify(),
         **dictEvaluation,
     }
 
@@ -438,6 +442,9 @@ def _fdictAssembleObservation(
 # ── The receipt document (schema version 1) ──────────────────────────
 
 I_PROOF_RECEIPT_SCHEMA_VERSION = 1
+# The receipt's key in a deposit, which is flat: the repository copy's
+# basename, so a selected file of that name collides and is refused.
+S_RECEIPT_DEPOSIT_KEY = "proofReceipt.json"
 S_RECEIPT_KIND_CHECKPOINT = "checkpoint"
 S_RECEIPT_KIND_COMPLETION = "completion"
 S_WHAT_THIS_RECORDS = (
@@ -749,4 +756,25 @@ def fdictBuildCompletes(
         "sCheckpointReceiptSha256": str(sCheckpointReceiptSha256 or ""),
         "bCheckpointAloneSuffices": not listLacks,
         "listCheckpointLacks": listLacks,
+    }
+
+
+def fdictDescribePublishedReceipt(dictReceipt, baReceipt, dictPublished):
+    """Return the deposit record's note of the receipt a version carries.
+
+    Bookkeeping, kept in the sync sidecar: which kind of receipt the
+    version holds, its bytes' identity in the vocabulary Zenodo reports
+    (MD5 and size) beside vaibify's SHA-256, and the inventory the
+    receipt lists -- the files a completion version must inherit.
+    """
+    return {
+        "sKind": dictReceipt["sKind"],
+        "sRecordId": str(dictPublished.get("iDepositId") or ""),
+        "sDoi": str(dictPublished.get("sDoi") or ""),
+        "sKey": S_RECEIPT_DEPOSIT_KEY,
+        "sSha256": hashlib.sha256(baReceipt).hexdigest(),
+        "sMd5": hashlib.md5(baReceipt, usedforsecurity=False).hexdigest(),
+        "iSizeBytes": len(baReceipt),
+        "listContents": [dict(dictItem) for dictItem in (
+            dictReceipt["dictArchive"]["listContents"])],
     }
