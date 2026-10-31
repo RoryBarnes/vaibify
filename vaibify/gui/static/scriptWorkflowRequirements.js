@@ -1630,7 +1630,28 @@ var VaibifyWorkflowRequirements = (function () {
             bCoversArchivedManifest:
                 (dictDetail.dictArchivedAttestation || {})
                     .bCoversArchivedManifest,
+            /* Which PROOF receipt the latest version carries, and
+               whether to offer the completion: the server's verdict,
+               rendered as it says. */
+            dictProofReceipt: dictDetail.dictProofReceipt || null,
         };
+    }
+
+    function _fsRenderProofReceiptState(dictReceipt) {
+        /* The receipt the latest archive version carries, in the
+           server's words -- including "verification pending" after a
+           completion, which is the truth until a verify of the new
+           record succeeds -- and the completion button only when the
+           server offers it. Nothing here is derived in the page. */
+        if (!dictReceipt || !dictReceipt.sMessage) return "";
+        var sHtml = '<div class="detail-note proof-receipt-state" ' +
+            'data-receipt-state="' + fnEscapeHtml(dictReceipt.sState) +
+            '">' + fnEscapeHtml(dictReceipt.sMessage) + '</div>';
+        if (dictReceipt.bOfferCompletion === true) {
+            sHtml += _fsRenderActionButton("archive-zenodo-completion", "",
+                "Archive the completion receipt\u2026");
+        }
+        return sHtml;
     }
 
     function _fsRenderVerifyBeforePublishing(dictArchive) {
@@ -1816,6 +1837,7 @@ var VaibifyWorkflowRequirements = (function () {
                 dictHealth.sState === "green", sState,
                 dictArchiveInfo) +
             _fsRenderArchivedDoiRow(dictArchive.sArchivedDoi) +
+            _fsRenderProofReceiptState(dictArchive.dictProofReceipt) +
             _fsRenderVerifyBeforePublishing(dictArchive) +
             _fsRenderCrossInstanceRemedy(
                 dictArchive.dictCrossInstance) +
@@ -2718,12 +2740,16 @@ var VaibifyWorkflowRequirements = (function () {
             return {
                 sKey: "promotion-" + dictPending.sPromotionId,
                 iLevel: 3,
-                sTitle: "Interrupted promotion (" +
-                    (dictPending.sLane === "project"
-                        ? "project deposit" : "environment archive") +
-                    ")",
+                sTitle: dictPending.sLane === "completion"
+                    ? "Interrupted completion version"
+                    : "Interrupted promotion (" +
+                      (dictPending.sLane === "project"
+                          ? "project deposit" : "environment archive") +
+                      ")",
                 sState: "orange",
-                sWarning: "A promotion did not finish",
+                sWarning: dictPending.sLane === "completion"
+                    ? "A completion version did not finish"
+                    : "A promotion did not finish",
                 fsDetail: function () {
                     return _fsRenderPendingPromotionDetail(dictPending);
                 }};
@@ -2736,7 +2762,10 @@ var VaibifyWorkflowRequirements = (function () {
         var sHtml = '<div class="requirement-row-detail">' +
             '<div class="requirement-row-status">' +
             fnEscapeHtml(
-                "A promotion to production Zenodo started on " +
+                (dictPending.sLane === "completion"
+                    ? "A completion version of the latest archive " +
+                      "started on "
+                    : "A promotion to production Zenodo started on ") +
                 (dictPending.sStartedIso || "an unrecorded date") +
                 " and did not finish. " +
                 (dictPending.iDepositId

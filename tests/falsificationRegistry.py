@@ -39499,4 +39499,29 @@ LIST_FALSIFICATIONS = [
         old='    baReceipt = syncDispatcher.fbaReadPendingReceiptOrNone(\n        filesRepo, dictRecord["sPromotionId"])\n',
         new='    baReceipt = filesRepo.fbaReadBytes(".vaibify/proofReceipt.json")\n',
     ),
+    # --- 2026-10-31: the Zenodo row says which PROOF receipt it carries ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheZenodoRowSaysWhichReceiptItCarries.py::'
+            'test_the_zenodo_row_renders_the_receipt_verdict_and_its_offer'
+        ),
+        # The completion button offered without the server's offer.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictReceipt.bOfferCompletion === true) {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAFailedReverifyAfterCompletionShowsVerificationPendingNotMet'
+        ),
+        # The pending state dropped: a completion read as verified on a
+        # record about its checkpoint.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old=(
+            '    if dictStatus and not levelGates._fsDescribeUncoveredRemote(\n'
+            '            dictWorkflow, dictStatus, "zenodo"):\n'
+        ),
+        new='    if True:\n',
+    ),
 ]

@@ -875,6 +875,32 @@ var VaibifySyncManager = (function () {
             VaibifyApp.fnShowToast(
                 dictResult.sBookkeepingWarning, "info");
         }
+        if (dictResult.sProofReceiptWarning) {
+            VaibifyApp.fnShowToast(
+                dictResult.sProofReceiptWarning, "warning");
+        }
+        _fnSurfaceCompletion(dictResult.dictCompletion);
+    }
+
+    function _fnSurfaceCompletion(dictCompletion) {
+        /* The completion version the archive tried right after its
+           checkpoint, in the server's words: archived, or why not --
+           in which case the Zenodo row offers it once Level 2 holds. */
+        if (!dictCompletion) return;
+        if (dictCompletion.bCompleted === true) {
+            VaibifyApp.fnShowToast("Completion version archived" +
+                (dictCompletion.sDoi ? " (" + dictCompletion.sDoi + ")"
+                    : "") + "." +
+                (dictCompletion.sPostCompletionVerifyWarning
+                    ? " Its verification did not complete: " +
+                      dictCompletion.sPostCompletionVerifyWarning : ""),
+                dictCompletion.sPostCompletionVerifyWarning
+                    ? "warning" : "success");
+            return;
+        }
+        VaibifyApp.fnShowToast("No completion version yet: " +
+            (dictCompletion.sReason || dictCompletion.sMessage ||
+             "no reason was given"), "info");
     }
 
     async function _fnRefreshBadgesAfterSync(sContainerId) {

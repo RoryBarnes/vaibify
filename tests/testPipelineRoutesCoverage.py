@@ -1941,6 +1941,9 @@ class TestPollLevelStatePayload:
             # researcher acts on differently, and two of them must
             # never wear a divergence's colour.
             "dictImageArchive",
+            # Added 2026-10-31: which PROOF receipt the latest Zenodo
+            # version carries, and whether to offer its completion.
+            "dictProofReceipt",
             "dictDeterminism", "dictRemoteSyncs",
             # Added 2026-10-30: each remote's two Level 2 questions --
             # can a reader retrieve the copy, does it match -- in the

@@ -44,6 +44,7 @@ __all__ = [
     "S_RECEIPT_DEPOSIT_KEY",
     "fdictBuildCompletes",
     "fdictBuildProofReceipt",
+    "fdictDescribeArchiveReceiptState",
     "fdictDescribePublishedReceipt",
     "fdictCaptureObservation",
     "fsSerializeProofReceipt",
@@ -778,3 +779,78 @@ def fdictDescribePublishedReceipt(dictReceipt, baReceipt, dictPublished):
         "listContents": [dict(dictItem) for dictItem in (
             dictReceipt["dictArchive"]["listContents"])],
     }
+
+
+# ── What the dashboard says about the archive's receipt ──
+#
+# A verdict the Zenodo row renders verbatim. "Verification pending" is
+# true exactly while the Zenodo record on file is evidence about a
+# record other than the completion just published: publishing it
+# changed the declared record, so #208's identity check reads unknown
+# until a verify of the new record succeeds.
+
+S_RECEIPT_STATE_NONE = "none"
+S_RECEIPT_STATE_CHECKPOINT = "checkpoint"
+S_RECEIPT_STATE_IN_FLIGHT = "completion-in-flight"
+S_RECEIPT_STATE_PENDING = "completion-pending"
+S_RECEIPT_STATE_VERIFY_FAILED = "completion-verify-failed"
+S_RECEIPT_STATE_COMPLETION = "completion"
+
+
+def fdictDescribeArchiveReceiptState(dictWorkflow, filesRepo):
+    """Return ``{sState, sMessage, bOfferCompletion}`` for the Zenodo row."""
+    dictZenodo = ((dictWorkflow or {}).get("dictRemotes") or {}).get(
+        "zenodo") or {}
+    dictNote = dictZenodo.get("dictReceipt") or {}
+    listInFlight = [
+        dictRecord for dictRecord in
+        (dictWorkflow or {}).get("listPendingPromotions") or []
+        if isinstance(dictRecord, dict) and dictRecord.get("sLane") == (
+            "completion")]
+    if listInFlight:
+        return _fdictReceiptState(S_RECEIPT_STATE_IN_FLIGHT, (
+            "A completion version is in flight ("
+            + str(listInFlight[0].get("sPromotionId")) + "); settle it "
+            "from its row below."))
+    if not dictNote:
+        return _fdictReceiptState(S_RECEIPT_STATE_NONE, (
+            "The latest archive version carries no PROOF receipt; the "
+            "next version you archive will."))
+    sRecordId = str(dictNote.get("sRecordId") or "")
+    if dictNote.get("sKind") == S_RECEIPT_KIND_CHECKPOINT:
+        return _fdictReceiptState(S_RECEIPT_STATE_CHECKPOINT, (
+            "The latest version, record " + sRecordId + ", carries a "
+            "checkpoint receipt. Once a verify establishes Level 2, "
+            "archive the completion receipt: a new version with the "
+            "same files that records it."), bOfferCompletion=True)
+    return _fdictCompletionReceiptState(dictWorkflow, filesRepo, dictNote)
+
+
+def _fdictCompletionReceiptState(dictWorkflow, filesRepo, dictNote):
+    """Return the state of a published completion: verified, or not yet."""
+    from . import levelGates, scheduledReverify
+    sRecordId = str(dictNote.get("sRecordId") or "")
+    try:
+        dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+            filesRepo, "zenodo")
+    except (OSError, ValueError, KeyError):
+        dictStatus = None
+    if dictStatus and not levelGates._fsDescribeUncoveredRemote(
+            dictWorkflow, dictStatus, "zenodo"):
+        return _fdictReceiptState(S_RECEIPT_STATE_COMPLETION, (
+            "The latest version, record " + sRecordId + ", carries a "
+            "completion receipt: it records that Level 2 was met."))
+    if dictNote.get("sVerifyWarning"):
+        return _fdictReceiptState(S_RECEIPT_STATE_VERIFY_FAILED, (
+            "Completion archived as record " + sRecordId + "; its "
+            "verification did not complete: " + dictNote["sVerifyWarning"]
+            + " Verify now to try again."))
+    return _fdictReceiptState(S_RECEIPT_STATE_PENDING, (
+        "Completion archived as record " + sRecordId + "; verification "
+        "pending."))
+
+
+def _fdictReceiptState(sState, sMessage, bOfferCompletion=False):
+    """Return one receipt-state verdict in its wire shape."""
+    return {"sState": sState, "sMessage": sMessage,
+            "bOfferCompletion": bool(bOfferCompletion)}

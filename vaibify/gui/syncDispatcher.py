@@ -934,13 +934,37 @@ async def fdictSettlePublishedCompletion(
     await fnSettleCompletionUnderTheDrain(
         dictCtx, sContainerId, dictWorkflow, requestHttp,
         dictRecord["sPromotionId"])
+    sVerifyWarning = await fsRefreshVerifyCacheAfterPush(
+        dictCtx, sContainerId, dictWorkflow, "zenodo", requestHttp)
+    _fnRememberCompletionVerifyWarning(
+        dictCtx, sContainerId, dictWorkflow, requestHttp, sVerifyWarning)
     return {
         "bCompleted": True,
         "sDoi": str(dictPublished.get("sDoi") or ""),
         "sProofReceiptWarning": sReceiptWarning,
-        "sPostCompletionVerifyWarning": await fsRefreshVerifyCacheAfterPush(
-            dictCtx, sContainerId, dictWorkflow, "zenodo", requestHttp),
+        "sPostCompletionVerifyWarning": sVerifyWarning,
     }
+
+
+def _fnRememberCompletionVerifyWarning(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, sVerifyWarning,
+):
+    """Keep why the completion's verify failed, so the row can say so later.
+
+    Bookkeeping on the receipt note (the sidecar), saved only when there
+    is something to say; a later successful verify makes it moot, because
+    the row reads coverage first.
+    """
+    from .routeContext import fdictCommitWorkflowSave
+    if not sVerifyWarning:
+        return
+    dictNote = ((dictWorkflow.get("dictRemotes") or {}).get("zenodo") or {}
+                ).get("dictReceipt")
+    if not isinstance(dictNote, dict):
+        return
+    dictNote["sVerifyWarning"] = sVerifyWarning
+    fdictCommitWorkflowSave(dictCtx, sContainerId, dictWorkflow, requestHttp,
+                            "The Zenodo completion's verify warning")
 
 
 async def fnSettleCompletionUnderTheDrain(

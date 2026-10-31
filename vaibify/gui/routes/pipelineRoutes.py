@@ -2908,7 +2908,7 @@ def _fdictBuildWorkflowEnvelopeDetail(
     )
     from vaibify.reproducibility import (
         determinismGate, levelGates, levelOrdering, publicationScope,
-        replayGate, syncBookkeeping,
+        replayGate, syncBookkeeping, proofReceipt,
     )  # noqa: F401 -- syncBookkeeping answers the cross-instance question
     from vaibify.reproducibility.l3Attestation import (
         fbL3AttestationCurrent,
@@ -2986,6 +2986,8 @@ def _fdictBuildWorkflowEnvelopeDetail(
         # the row renders the backend's verdict rather than deriving a
         # second one in JavaScript.
         "dictImageArchive": dictImageArchive,
+        "dictProofReceipt": proofReceipt.fdictDescribeArchiveReceiptState(
+            dictWorkflow, filesRepo) if bHasRepo else None,
         "dictDeterminism":
             (dictWorkflow or {}).get("dictDeterminism") or None,
         # The VERDICT, not the raw block, because the row must not

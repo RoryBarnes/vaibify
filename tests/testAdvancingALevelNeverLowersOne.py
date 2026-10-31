@@ -158,6 +158,11 @@ DICT_LADDER_ACTION_RUNGS = {
     # Level 2 too: it changes the declared publish target, which
     # project.json carries and the published-copies rows compare.
     "publish-where-the-zenodo-record-is": 2,
+    # Records, in a completion version, that Level 2 holds. It moves no
+    # compared bytes: the version inherits the checkpoint's files by
+    # checksum, and its one new file, the PROOF receipt, is never
+    # compared; the record it writes is sidecar bookkeeping.
+    "archive-zenodo-completion": 2,
     "remove-ai-model": 0,
 }
 

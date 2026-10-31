@@ -619,3 +619,78 @@ def testACompletionNoteRecordsTheCompletionReceipt():
         BA_COMPLETION_RECEIPT).hexdigest()
     assert dictNote["listContents"] == fdictCheckpointNote()["listContents"]
     assert json.dumps(dictNote)
+
+
+# ── What the Zenodo row says ─────────────────────────────────────────
+
+
+def _fsRepoWithZenodoRecordAbout(tmp_path, listRecordIds):
+    from tests.syncStatusFixtures import fdictBuildCachedVerify, fsRecentVerifyIso
+    sRepo = str(tmp_path / "repo")
+    os.makedirs(sRepo + "/.vaibify")
+    with open(sRepo + "/.vaibify/syncStatus.json", "w") as fileStatus:
+        json.dump({"zenodo": fdictBuildCachedVerify(
+            sService="zenodo", sLastVerified=fsRecentVerifyIso(),
+            sZenodoDoi="10.5072/zenodo.101", sEndpointVerified="sandbox",
+            dictRemoteIdentity={"sEndpoint": "sandbox",
+                                "listRecordIds": listRecordIds})},
+            fileStatus)
+    return sRepo
+
+
+def _fdictWorkflowAfterCompletion(sRepo, sVerifyWarning=""):
+    dictNote = archivePromotion.fdictDescribeCompletionReceiptNote(
+        dict(fdictCompletionRecord(), iDepositId=200),
+        {"iDepositId": 200, "sDoi": "10.5072/zenodo.200"})
+    if sVerifyWarning:
+        dictNote["sVerifyWarning"] = sVerifyWarning
+    return {"sProjectRepoPath": sRepo, "sZenodoService": "sandbox",
+            "dictRemotes": {"zenodo": {
+                "sRecordId": "200", "sService": "sandbox",
+                "sDoi": "10.5072/zenodo.200", "dictReceipt": dictNote}}}
+
+
+@pytest.mark.falsification
+def testAFailedReverifyAfterCompletionShowsVerificationPendingNotMet(tmp_path):
+    """Until a verify of the NEW record succeeds, the row says pending, and why.
+
+    Kills: the pending state dropped -- a completion read as verified on
+    the strength of a record about its checkpoint.
+    """
+    from vaibify.reproducibility import proofReceipt
+    sRepo = _fsRepoWithZenodoRecordAbout(tmp_path, ["101"])
+    dictState = proofReceipt.fdictDescribeArchiveReceiptState(
+        _fdictWorkflowAfterCompletion(sRepo, "the record lags the index"),
+        sRepo)
+    assert dictState["sState"] == "completion-verify-failed"
+    assert "the record lags the index" in dictState["sMessage"]
+    assert dictState["bOfferCompletion"] is False
+    assert proofReceipt.fdictDescribeArchiveReceiptState(
+        _fdictWorkflowAfterCompletion(sRepo), sRepo)["sMessage"].endswith(
+        "verification pending.")
+
+
+def testACompletionVerifiedAgainstItsOwnRecordReadsCompletion(tmp_path):
+    from vaibify.reproducibility import proofReceipt
+    sRepo = _fsRepoWithZenodoRecordAbout(tmp_path, ["200"])
+    assert proofReceipt.fdictDescribeArchiveReceiptState(
+        _fdictWorkflowAfterCompletion(sRepo, "stale warning"), sRepo)[
+        "sState"] == "completion"
+
+
+def testACheckpointOffersTheCompletionAndAnInFlightOneDoesNot(tmp_path):
+    from vaibify.reproducibility import proofReceipt
+    sRepo = _fsRepoWithZenodoRecordAbout(tmp_path, ["101"])
+    dictWorkflow = {"sProjectRepoPath": sRepo, "dictRemotes": {"zenodo": {
+        "sRecordId": "101", "dictReceipt": fdictCheckpointNote()}}}
+    dictState = proofReceipt.fdictDescribeArchiveReceiptState(
+        dictWorkflow, sRepo)
+    assert (dictState["sState"], dictState["bOfferCompletion"]) == (
+        "checkpoint", True)
+    dictWorkflow["listPendingPromotions"] = [fdictCompletionRecord()]
+    dictState = proofReceipt.fdictDescribeArchiveReceiptState(
+        dictWorkflow, sRepo)
+    assert (dictState["sState"], dictState["bOfferCompletion"]) == (
+        "completion-in-flight", False)
+    assert proofReceipt.fdictDescribeArchiveReceiptState(
+        {"dictRemotes": {}}, sRepo)["sState"] == "none"
