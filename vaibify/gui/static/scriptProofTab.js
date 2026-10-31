@@ -112,9 +112,11 @@ var VaibifyProofTab = (function () {
         ],
         2: [
             {sStateKey: "bGithubFullySynced",
+             sStateSource: "dictPublishedCopyStates",
+             sStateService: "github",
              sLabel: "GitHub mirror",
              sWhat: "Every canonical file — scripts, outputs, tests " +
-                 "— matches your public GitHub repository at a " +
+                 "— matches your GitHub repository at a " +
                  "recently verified commit, hashed as it exists on " +
                  "disk at verification time.",
              sHow: "Commit and push from the Repos panel, then " +
@@ -122,13 +124,44 @@ var VaibifyProofTab = (function () {
                  "copies in the Project block.",
              sFixTabPanel: "repos",
              sFixLabel: "Open the Repos panel"},
+            {sStateKey: "bGithubRepositoryPublic",
+             sStateSource: "dictPublicAccessStates",
+             sStateService: "github",
+             sLabel: "GitHub repository is public",
+             sWhat: "A reader with no GitHub login can retrieve the " +
+                 "repository. Vaibify asks GitHub with no " +
+                 "credentials, as a reader would: your own login " +
+                 "reaches private repositories a reader cannot.",
+             sHow: "On GitHub, make the repository public under " +
+                 "Settings → General → Danger Zone → Change " +
+                 "visibility, then use Verify now on the GitHub row " +
+                 "under Published copies in the Project block.",
+             sFixTabPanel: "repos",
+             sFixLabel: "Open the Repos panel"},
             {sStateKey: "bZenodoFullySynced",
+             sStateSource: "dictPublishedCopyStates",
+             sStateService: "zenodo",
              sLabel: "Zenodo deposit",
              sWhat: "Published files match a Zenodo deposit with a " +
                  "DOI — the citable, permanent archive of your " +
                  "results.",
              sHow: "Publish (or re-verify) the deposit from the " +
                  "Repos panel.",
+             sFixTabPanel: "repos",
+             sFixLabel: "Open the Repos panel"},
+            {sStateKey: "bZenodoArchivePublic",
+             sStateSource: "dictPublicAccessStates",
+             sStateService: "zenodo",
+             sLabel: "Zenodo archive is public",
+             sWhat: "Every declared Zenodo record serves its files " +
+                 "to a reader with no login. A restricted or " +
+                 "embargoed record keeps its DOI but withholds its " +
+                 "files, so nothing in it can be compared with " +
+                 "yours until it opens.",
+             sHow: "On Zenodo, edit the record, set its files to " +
+                 "public and publish the edit — its DOI does not " +
+                 "change. Then use Verify now on the Zenodo row " +
+                 "under Published copies in the Project block.",
              sFixTabPanel: "repos",
              sFixLabel: "Open the Repos panel"},
             {sStateKey: "bArxivFullySynced",
@@ -690,6 +723,26 @@ var VaibifyProofTab = (function () {
         return sHtml + '</div>';
     }
 
+    // The Level 2 authorities' states, as level-cell lights. Unknown
+    // is never "not met": a stale record, one written before vaibify
+    // asked what a reader is served, one about another remote and a
+    // withheld comparison are all evidence that cannot answer.
+    var _DICT_LEVEL2_STATE_LIGHTS = {
+        "public": "attained", "matched": "attained",
+        "not-public": "none", "differs": "none",
+        "unknown": "unknown",
+    };
+
+    function _fdictLevel2BackendState(dictReq) {
+        // A Level 2 row names a remote (sStateService) and the gaps
+        // map holding its authority's answer (sStateSource). A hub
+        // that ships no such map leaves the row on its boolean.
+        if (!dictReq.sStateService) return null;
+        var dictGaps = (_dictLastReadiness || {}).dictLevel2Gaps || {};
+        var dictStates = dictGaps[dictReq.sStateSource] || {};
+        return dictStates[dictReq.sStateService] || null;
+    }
+
     function _fsRequirementStateOrEmpty(dictReq) {
         // A row may name a backend STATE instead of settling for the
         // met/not-met pair. The environment archive needs it: "not
@@ -701,6 +754,12 @@ var VaibifyProofTab = (function () {
         // re-derives it, which is the mistake the determinism row
         // shipped.
         if (!dictReq.sStateSource) return "";
+        var dictLevel2 = _fdictLevel2BackendState(dictReq);
+        if (dictLevel2) {
+            return _DICT_LEVEL2_STATE_LIGHTS[dictLevel2.sState] ||
+                "unknown";
+        }
+        if (dictReq.sStateService) return "";
         var dictState = (_dictLastL3Readiness || {})[dictReq.sStateSource];
         return (dictState && dictState.sState) || "";
     }
@@ -728,11 +787,14 @@ var VaibifyProofTab = (function () {
         if (_fbRequirementAnswerMissing(dictReq)) {
             return _fsRenderUnansweredRequirementEntry(dictReq);
         }
+        var sReason = sBackendState
+            ? ((_fdictLevel2BackendState(dictReq) || {}).sReason || "")
+            : "";
         // An unmet optional row shows the neutral dash, never a red
         // light — it is recommended, not a blocker.
         var sLight = sBackendState
             ? _fsBuildLevelLight(sBackendState,
-                dictReq.sLabel + ": " + sBackendState)
+                dictReq.sLabel + ": " + (sReason || sBackendState))
             : (!bMet && dictReq.bOptional === true)
             ? _fsBuildLevelLight("not-applicable",
                 dictReq.sLabel + ": optional, not tracked")
@@ -761,8 +823,17 @@ var VaibifyProofTab = (function () {
             fnEscapeHtml(dictReq.sLabel) + '</span></div>' +
             '<div class="proof-req-what">' +
             fnEscapeHtml(dictReq.sWhat) + '</div>' +
+            _fsRenderRequirementReason(sBackendState, sReason) +
             '<div class="proof-req-how">' +
             fnEscapeHtml(dictReq.sHow) + sLink + '</div></div>';
+    }
+
+    function _fsRenderRequirementReason(sBackendState, sReason) {
+        // The backend's own sentence for an unmet or unknown row: why,
+        // and usually the remedy. An attained row needs no reason.
+        if (!sReason || sBackendState === "attained") return "";
+        return '<div class="proof-req-reason">' +
+            fnEscapeHtml(sReason) + '</div>';
     }
 
     function _fsRenderUnansweredRequirementEntry(dictReq) {

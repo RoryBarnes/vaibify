@@ -2973,24 +2973,25 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
     return [_fdictZenodoUnexplainedRefusalBlocker(dictStatus)]
 
 
-_DICT_NOT_PUBLIC_CRITERIA = {
-    "github": "github-repository-not-public",
-    "zenodo": "zenodo-archive-not-public",
-}
-
-
 def _flistPublicAccessLevel2Blockers(dictWorkflow, filesRepo, sService):
     """Return the workflow-scope blocker for a copy known not to be public.
 
     Only ``not-public`` fires. ``unknown`` is already charged to the
     service by its stale blocker, so a remote with no current evidence
-    costs one criterion, never two.
+    costs one criterion, never two. The hint is the reason the verify
+    recorded, which names the remedy.
     """
     dictAccess = fdictDescribePublicAccess(dictWorkflow, filesRepo, sService)
     if dictAccess["sState"] != S_ACCESS_NOT_PUBLIC:
         return []
+    if sService == "github":
+        return [_fdictWorkflowScopeLevel2Blocker(
+            sCriterion="github-repository-not-public",
+            sRemediationHint=dictAccess["sReason"],
+        )]
     return [_fdictWorkflowScopeLevel2Blocker(
-        _DICT_NOT_PUBLIC_CRITERIA[sService], dictAccess["sReason"],
+        sCriterion="zenodo-archive-not-public",
+        sRemediationHint=dictAccess["sReason"],
     )]
 
 

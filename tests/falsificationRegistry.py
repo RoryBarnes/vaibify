@@ -38878,4 +38878,21 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
+    # --- 2026-10-30: the Level 2 remote rows render the authorities' states ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLevelTwoRemoteRowsRenderTheirState.py::'
+            'test_the_four_level_two_remote_rows_render_unknown_never_not_met'
+        ),
+        # The PROOF tab ignores the Level 2 states; each row falls back
+        # to its boolean and paints "not met".
+        source='vaibify/gui/static/scriptProofTab.js',
+        old=(
+            '        if (dictLevel2) {\n'
+            '            return _DICT_LEVEL2_STATE_LIGHTS[dictLevel2.sState] ||\n'
+            '                "unknown";\n'
+            '        }\n'
+        ),
+        new='',
+    ),
 ]
