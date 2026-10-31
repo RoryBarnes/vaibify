@@ -210,7 +210,8 @@ def test_the_two_keys_can_disagree_in_both_directions():
 def test_the_verify_records_the_paths_it_compared():
     """The badge's evidence has to actually be written down.
 
-    fdictVerifyRemoteService is the only producer of the field the
+    Every status record a verify writes is shaped by
+    ``_fdictBuildComparisonStatus``, the only producer of the field the
     badge reads; a change that stopped recording it would make every
     badge unknown forever, with these unit tests still green.
     """
@@ -218,7 +219,7 @@ def test_the_verify_records_the_paths_it_compared():
     from vaibify.reproducibility import scheduledReverify
 
     sSource = inspect.getsource(
-        scheduledReverify.fdictVerifyRemoteService,
+        scheduledReverify._fdictBuildComparisonStatus,
     )
     assert '"listComparedPaths"' in sSource, (
         "the verify no longer records which paths it compared, so no "

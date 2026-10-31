@@ -111,10 +111,17 @@ def fixtureClient(fixtureCtxAndApp):
 
 
 def _fnPatchService(sServiceModule, dictReturn):
-    """Patch a mirror module's fdictFetchRemoteHashes to a fixed dict."""
+    """Patch a mirror module's per-remote hash fetch to a fixed dict.
+
+    Zenodo hashes each OBSERVED record (``fdictHashRecordFiles``); the
+    other mirrors fetch and hash in one call.
+    """
+    sFunction = (
+        "fdictHashRecordFiles" if sServiceModule == "zenodoClient"
+        else "fdictFetchRemoteHashes"
+    )
     return patch(
-        f"vaibify.reproducibility.{sServiceModule}."
-        "fdictFetchRemoteHashes",
+        f"vaibify.reproducibility.{sServiceModule}.{sFunction}",
         return_value=dictReturn,
     )
 
@@ -182,7 +189,7 @@ def testVerifyOverleafWithoutRecordedPushReturns409(
 def testVerifyZenodoReturnsStatus(
     fixtureClientNoNetworkBlock, fixtureProjectRepo,
 ):
-    """Zenodo verify routes through zenodoClient.fdictFetchRemoteHashes."""
+    """Zenodo verify routes through zenodoClient.fdictHashRecordFiles."""
     sExpected = S_DATA_SHA
     with _fnPatchService(
         "zenodoClient", {"step01/data.csv": sExpected},

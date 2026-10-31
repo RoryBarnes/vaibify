@@ -166,6 +166,12 @@ __all__ = [
     "fbIsWellFormedZenodoDoi",
     "fsZenodoTokenName",
     "fdictFetchRemoteHashes",
+    "fdictHashRecordFiles",
+    "fdictObserveRecord",
+    "fjsonReadRecordFile",
+    "S_RECORD_NOT_PUBLIC",
+    "S_RECORD_PUBLIC",
+    "S_RECORD_UNCHECKED",
     "fdictDescribeLocalFileForDeposit",
     "flistDescribeDepositDisagreement",
     "flistDescribeUnexpectedDepositFiles",
@@ -284,16 +290,7 @@ class ZenodoClient:
         already owns the by-name file lookup this parallels.
         """
         dictRecord = _fdictGetRecordSafely(self, sRecordId)
-        sFileUrl = _fsFindFileUrlOrNone(dictRecord, sFileName)
-        if not sFileUrl:
-            return None
-        baContent = _fbaFetchBoundedContent(self, sFileUrl)
-        if baContent is None:
-            return None
-        try:
-            return json.loads(baContent.decode("utf-8"))
-        except (UnicodeDecodeError, ValueError):
-            return None
+        return _fjsonDecodeRecordFile(self, dictRecord, sFileName)
 
     def fdictFetchPublishedRecord(self, sRecordId):
         """Return one PUBLISHED record's metadata dict.
@@ -1024,6 +1021,157 @@ def fdictFetchRemoteHashes(
     dictRecord = _fdictGetRecordSafely(clientResolved, sRecordId)
     listFiles = list(dictRecord.get("files", []))
     return _fdictHashSelectedFiles(clientResolved, listFiles, listRelPaths)
+
+
+# ------------------------------------------------------------------
+# What a reader is served: one anonymous observation per record
+# ------------------------------------------------------------------
+
+S_RECORD_PUBLIC = "public"
+S_RECORD_NOT_PUBLIC = "not-public"
+S_RECORD_UNCHECKED = "unchecked"
+_T_RECORD_ABSENT_STATUSES = (401, 403, 404, 410)
+
+
+def fdictObserveRecord(sRecordId, sService="sandbox"):
+    """Return what Zenodo serves a READER of one record.
+
+    ``{sRecordId, sState, sReason, dictRecord}``: ``sState`` is
+    ``public``, ``not-public`` or ``unchecked``, and ``dictRecord`` is
+    the record's metadata when it was served (the files a verify then
+    hashes, never fetched a second time).
+
+    Asked as a reader asks, through :func:`_fclientAnonymous`: Level 2
+    is about what a reader can retrieve, and a restricted record
+    answers a reader 200 with an empty file list.
+    """
+    clientAnonymous = _fclientAnonymous(sService)
+    sUrl = f"{clientAnonymous._sBaseUrl}/records/{sRecordId}"
+    dictHeaders = {"Accept": "application/json"}
+    dictHeaders.update(_fdictBuildAuthHeader(clientAnonymous._fsGetToken()))
+    try:
+        responseHttp = fresponseGetWithinAllowlist(
+            sUrl, clientAnonymous.flistAllowedOrigins(),
+            dictHeaders=dictHeaders,
+        )
+    except (requests.RequestException, ZenodoError) as errorCaught:
+        return _fdictRecordObservation(
+            sRecordId, S_RECORD_UNCHECKED,
+            "vaibify could not reach Zenodo for record "
+            f"{sRecordId}: {_fsRedactToken(str(errorCaught))}",
+        )
+    return _fdictJudgeRecordResponse(sRecordId, responseHttp)
+
+
+def _fclientAnonymous(sService):
+    """Return the client every reader-access read goes through: NO token.
+
+    The one place the verify's anonymity is decided. The verify was
+    tokenless before the access question existed, but nothing pinned
+    it; every read below builds its headers from this client, so a
+    token here would travel on every request a test can see.
+    """
+    return ZenodoClient(sService=sService, sToken=None)
+
+
+def _fdictRecordObservation(sRecordId, sState, sReason, dictRecord=None):
+    """Return one observation in the shape every reader of it expects."""
+    return {
+        "sRecordId": str(sRecordId), "sState": sState,
+        "sReason": sReason, "dictRecord": dictRecord,
+    }
+
+
+def _fdictJudgeRecordResponse(sRecordId, responseHttp):
+    """Map one anonymous record answer onto a reader-access verdict."""
+    iStatus = responseHttp.status_code
+    if iStatus in _T_RECORD_ABSENT_STATUSES:
+        return _fdictRecordObservation(sRecordId, S_RECORD_NOT_PUBLIC, (
+            f"Zenodo does not serve record {sRecordId} to a reader: it "
+            "is unpublished, deleted, or the id is wrong."
+        ))
+    if iStatus != 200:
+        return _fdictRecordObservation(sRecordId, S_RECORD_UNCHECKED, (
+            f"Zenodo answered record {sRecordId} with HTTP {iStatus}, "
+            "which says neither; verify again later."
+        ))
+    try:
+        dictRecord = responseHttp.json()
+    except ValueError:
+        dictRecord = None
+    if not isinstance(dictRecord, dict):
+        return _fdictRecordObservation(sRecordId, S_RECORD_UNCHECKED, (
+            f"Zenodo's answer for record {sRecordId} was not a record; "
+            "verify again later."
+        ))
+    return _fdictJudgeAccessRight(sRecordId, dictRecord)
+
+
+def _fdictJudgeAccessRight(sRecordId, dictRecord):
+    """Read a served record's ``metadata.access_right``."""
+    dictMetadata = dictRecord.get("metadata")
+    dictMetadata = dictMetadata if isinstance(dictMetadata, dict) else {}
+    sAccessRight = dictMetadata.get("access_right")
+    if sAccessRight == "open":
+        return _fdictRecordObservation(sRecordId, S_RECORD_PUBLIC, (
+            f"Zenodo serves record {sRecordId}'s files to readers."
+        ), dictRecord)
+    if sAccessRight == "embargoed":
+        sDate = str(dictMetadata.get("embargo_date") or "an unstated date")
+        return _fdictRecordObservation(sRecordId, S_RECORD_NOT_PUBLIC, (
+            f"Zenodo record {sRecordId} is embargoed until {sDate[:40]}. "
+            "Its files become public then; verify again after that date."
+        ))
+    if sAccessRight in ("restricted", "closed"):
+        return _fdictRecordObservation(sRecordId, S_RECORD_NOT_PUBLIC, (
+            f"Zenodo record {sRecordId} restricts its files. Edit the "
+            "record on Zenodo, set its files to public, and publish the "
+            "edit; its DOI does not change."
+        ))
+    return _fdictRecordObservation(sRecordId, S_RECORD_UNCHECKED, (
+        f"Zenodo's answer for record {sRecordId} names no access level "
+        "vaibify knows; verify again later."
+    ))
+
+
+def fdictHashRecordFiles(dictObservation, listRelPaths=None, sService="sandbox"):
+    """Hash the files of an OBSERVED record; the record is not re-fetched.
+
+    The same contract as :func:`fdictFetchRemoteHashes`, over the
+    record :func:`fdictObserveRecord` already holds, through
+    :func:`_fclientAnonymous`.
+    """
+    clientAnonymous = _fclientAnonymous(sService)
+    dictRecord = dictObservation.get("dictRecord") or {}
+    listFiles = list(dictRecord.get("files", []) or [])
+    return _fdictHashSelectedFiles(clientAnonymous, listFiles, listRelPaths)
+
+
+def fjsonReadRecordFile(dictObservation, sFileName, sService="sandbox"):
+    """Return one file of an OBSERVED record decoded as JSON, or ``None``.
+
+    :meth:`ZenodoClient.fjsonFetchRecordFile` over a record already in
+    hand, so a record a reader cannot open raises nothing here: it was
+    judged when it was observed.
+    """
+    return _fjsonDecodeRecordFile(
+        _fclientAnonymous(sService),
+        dictObservation.get("dictRecord") or {}, sFileName,
+    )
+
+
+def _fjsonDecodeRecordFile(clientZenodo, dictRecord, sFileName):
+    """Return a record's file decoded as JSON; ``None`` when it is not one."""
+    sFileUrl = _fsFindFileUrlOrNone(dictRecord, sFileName)
+    if not sFileUrl:
+        return None
+    baContent = _fbaFetchBoundedContent(clientZenodo, sFileUrl)
+    if baContent is None:
+        return None
+    try:
+        return json.loads(baContent.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None
 
 
 _RECORD_ERROR_TEMPLATES = (

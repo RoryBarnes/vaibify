@@ -16,6 +16,9 @@ import requests
 
 from vaibify.reproducibility import scheduledReverify, zenodoClient
 from vaibify.reproducibility.repoFiles import HostRepoFiles
+from vaibify.reproducibility.zenodoClient import (
+    fdictObserveRecord as fdictObserveRecordUnpatched,
+)
 
 
 S_CONTAINER_ID = "c0ffee12ab34"
@@ -120,7 +123,8 @@ def fnServeRecords(monkeypatch, dictRecordFiles):
         for sRecordId, dictFiles in dictRecordFiles.items():
             sRecordUrl = "https://sandbox.zenodo.org/api/records/" + sRecordId
             if sUrl == sRecordUrl:
-                return _FakeResponse(200, {"files": [
+                return _FakeResponse(200, {
+                    "metadata": {"access_right": "open"}, "files": [
                     {"key": sKey, "links": {"self": sRecordUrl + "/f/" + sKey}}
                     for sKey in dictFiles
                 ]})
@@ -135,13 +139,20 @@ def fnServeRecords(monkeypatch, dictRecordFiles):
     ))
 
 
+def _flistObserveRecords(*listRecordIds):
+    """Observe sandbox records through the real observer, as the verify does."""
+    return [
+        fdictObserveRecordUnpatched(sRecordId, "sandbox")
+        for sRecordId in listRecordIds
+    ]
+
+
 def testNoDeclaredRecordServingAnAttestationAnswersNone(monkeypatch):
     """Records without the attestation file yield None, never a guess."""
     fnServeRecords(monkeypatch, {"101": {"data.csv": b"x"}, "102": {}})
-    assert scheduledReverify._fjsonFetchArchivedAttestation({
-        "sService": "sandbox", "sRecordId": "101",
-        "listRecords": [{"sRecordId": "102"}],
-    }) is None
+    assert scheduledReverify._fjsonFetchArchivedAttestation(
+        _flistObserveRecords("101", "102"), "sandbox",
+    ) is None
 
 
 def testTheFirstRecordServingAnAttestationWins(monkeypatch):
@@ -150,10 +161,9 @@ def testTheFirstRecordServingAnAttestationWins(monkeypatch):
         "101": {"data.csv": b"x"},
         "102": {"l3_attestation.json": b'{"sStatus": "passed"}'},
     })
-    assert scheduledReverify._fjsonFetchArchivedAttestation({
-        "sService": "sandbox", "sRecordId": "101",
-        "listRecords": [{"sRecordId": "102"}],
-    }) == {"sStatus": "passed"}
+    assert scheduledReverify._fjsonFetchArchivedAttestation(
+        _flistObserveRecords("101", "102"), "sandbox",
+    ) == {"sStatus": "passed"}
 
 
 # ── one verify attempt ───────────────────────────────────────────

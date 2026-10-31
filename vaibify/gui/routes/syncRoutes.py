@@ -975,12 +975,12 @@ def _fnRefuseWhileOtherRecordsAreDeclared(dictWorkflow):
     """Raise 409 when additional Zenodo records are declared.
 
     ALL of them, not only those classifying as sandbox. A declared
-    record carries no service of its own -- ``_fdictFetchZenodoHashes``
+    record carries no service of its own -- ``_flistObserveZenodoRecords``
     reads ONE ``sService`` off the primary and applies it to every
-    declared record, and a fetch failure on any of them aborts the
-    whole verify. So advancing the primary to production while these
-    remain declared would send them to zenodo.org, 404 them, and break
-    Zenodo verification entirely.
+    declared record. So advancing the primary to production while these
+    remain declared would send them to zenodo.org, which does not serve
+    them, and the whole archive would read not public, its comparison
+    withheld.
     """
     listExtra = [
         dictRecord for dictRecord in
