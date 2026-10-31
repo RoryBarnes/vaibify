@@ -262,6 +262,57 @@ def test_a_repository_change_invalidates_the_evidence(fixtureProjectRepo):
     assert dictCopy["sReason"].startswith("Not compared: ")
 
 
+@pytest.mark.falsification
+def test_removing_a_declared_branch_invalidates_the_evidence(fixtureProjectRepo):
+    """A record about ``release``; the declaration stops naming a branch.
+
+    The next verify reads the default branch, so a record about
+    ``release`` answers nothing about it. An omitted branch read as
+    "any branch" kept that record matched and public (found in review,
+    2026-10-31).
+
+    Kills: _fsEffectiveGithubBranch dropping the verify's default.
+    """
+    dictRelease = dict(DICT_DEFAULT_REMOTE_IDENTITY["github"], sBranch="release")
+    _fnWriteCaches(fixtureProjectRepo, dictGithub=_fdictCache(
+        "github", dictRemoteIdentity=dictRelease))
+    dictWorkflow = _fdictWorkflow(fixtureProjectRepo, dictGithub={
+        "sOwner": "someone", "sRepo": "something", "sBranch": "release"})
+    assert levelGates.fbWorkflowFullySyncedWithGithub(
+        dictWorkflow, fixtureProjectRepo) is True
+    del dictWorkflow["dictRemotes"]["github"]["sBranch"]
+    assert levelGates.fbWorkflowFullySyncedWithGithub(
+        dictWorkflow, fixtureProjectRepo) is False
+    for fdictDescribe in (levelGates.fdictDescribePublicAccess,
+                          levelGates.fdictDescribePublishedCopy):
+        dictState = fdictDescribe(dictWorkflow, fixtureProjectRepo, "github")
+        assert dictState["sState"] == "unknown", dictState
+        assert "branch release" in dictState["sReason"]
+
+
+def test_a_binding_naming_no_branch_still_reads_the_default(fixtureProjectRepo):
+    """The binding path resolves an absent branch the same way."""
+    dictRelease = dict(DICT_DEFAULT_REMOTE_IDENTITY["github"], sBranch="release")
+    _fnWriteCaches(fixtureProjectRepo, dictGithub=_fdictCache(
+        "github", dictRemoteIdentity=dictRelease))
+    dictWorkflow = _fdictWorkflow(fixtureProjectRepo, dictGithub={})
+    _fnBind(dictWorkflow, "someone", "something")
+    assert levelGates.fdictDescribePublishedCopy(
+        dictWorkflow, fixtureProjectRepo, "github")["sState"] == "unknown"
+    dictWorkflow["dictRemotes"]["github"]["sBranch"] = "release"
+    assert levelGates.fdictDescribePublishedCopy(
+        dictWorkflow, fixtureProjectRepo, "github")["sState"] == "matched"
+
+
+def test_the_verify_and_the_gate_share_one_default_branch():
+    """The record a verify writes for an omitted branch is the gate's default."""
+    dictStatus = {}
+    scheduledReverify._fnAttachServiceIdentityFields(
+        dictStatus, "github", {"sOwner": "someone", "sRepo": "something"})
+    assert dictStatus["dictRemoteIdentity"]["sBranch"] == (
+        levelGates._fsEffectiveGithubBranch({}, {}))
+
+
 def test_the_binding_compares_owner_and_repository_without_case(
     fixtureProjectRepo,
 ):

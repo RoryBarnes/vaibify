@@ -2516,7 +2516,11 @@ Level 2 on evidence about something else.
 `levelGates._fsDescribeUncoveredRemote` compares a GitHub record with
 the host-held push binding, the record of where the copy actually
 landed. A declared `dictRemotes.github` must also agree with that
-binding, under the verify's own rule. It never reads `.git/config`:
+binding, under the verify's own rule. The branch compared is the one the
+NEXT verify would read: the binding's, else the declared one, else the
+verify's default (`scheduledReverify.S_DEFAULT_GITHUB_BRANCH`). An
+omitted branch is never a wildcard, because removing a declared branch
+moves the next verify to the default. It never reads `.git/config`:
 the poll cannot, and the next verify refuses an `origin` that disagrees.
 
 **Two authorities, and everything reads them.**
@@ -2533,7 +2537,9 @@ authority's reason), the poll's `dictWorkflowEnvelopeDetail`, the PROOF
 tab and Published copies all render these answers. None re-derives
 them. Being public and matching are separate requirements, so the header
 charges a private repository with a diverged file twice, while an
-unknown record is charged once.
+unknown record is charged once: by its stale blocker, or, when the record
+names its remote but never asked what a reader is served (so nothing else
+blocks), by a stale blocker the access side emits with the access reason.
 
 **Every lane settles the badge.** The open-time refresh, the scheduled
 pass and Verify now each mark the poll's per-project check state,

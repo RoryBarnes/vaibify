@@ -304,6 +304,61 @@ def testAPrivateRepositoryIsChargedOnceForEachFailedRequirement(
     assert dictCell["iTotal"] - dictCell["iSatisfied"] == 2, dictCell
 
 
+@pytest.mark.falsification
+def testARecordThatNeverAskedAboutReadersDeniesTheHeaderItsCheck(
+    fixtureProjectRepo,
+):
+    """Fresh, matching, about this remote, and silent about readers.
+
+    The scalar gate refuses it -- absent is never public -- and the row
+    reads "?". But the copy matched and the record named its remote, so
+    no copy blocker fired, and the access side charged only "not
+    public": the header counted 9 of 9 above a row it was refusing
+    (found in review, 2026-10-31). An unknown verdict is now charged to
+    the service's stale criterion when nothing else has charged it.
+
+    Kills: _flistPublicAccessLevel2Blockers no longer charging an
+    unknown verdict.
+    """
+    _fnWriteBothServices(fixtureProjectRepo, [])
+    sPath = os.path.join(fixtureProjectRepo, ".vaibify", "syncStatus.json")
+    with open(sPath) as fileHandle:
+        dictAll = json.load(fileHandle)
+    dictAll["github"] = _fdictCacheFor("github", sPublicAccess=None)
+    with open(sPath, "w") as fileHandle:
+        json.dump(dictAll, fileHandle)
+    fnClearLevelBlockerCache()
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    assert _fbComputeLevel2(dictWorkflow, fixtureProjectRepo) is False
+    dictCell = _fdictHeaderLevel2Cell(fixtureProjectRepo, dictWorkflow)
+    assert dictCell["sState"] != "attained", (
+        "the header claims Level 2 while the gate refuses an unknown "
+        f"reader verdict: {dictCell}")
+    assert dictCell["iTotal"] - dictCell["iSatisfied"] == 1, dictCell
+    listStale = [
+        dictEntry for dictEntry in flistLevel2Blockers(
+            dictWorkflow, fixtureProjectRepo)
+        if dictEntry["sCriterion"] == "github-verify-stale"
+    ]
+    assert len(listStale) == 1
+    assert "before vaibify asked what a reader is served" in (
+        listStale[0]["sRemediationHint"])
+
+
+def testAStaleRecordIsChargedOnceThoughBothQuestionsAreUnknown(
+    fixtureProjectRepo,
+):
+    """The copy side already charged the stale criterion; access adds nothing."""
+    _fnWriteBothServices(fixtureProjectRepo, [], fHoursAgo=48.0)
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    listCriteria = [
+        dictEntry["sCriterion"] for dictEntry in flistLevel2Blockers(
+            dictWorkflow, fixtureProjectRepo)
+    ]
+    assert listCriteria.count("github-verify-stale") == 1, listCriteria
+    assert listCriteria.count("zenodo-verify-stale") == 1, listCriteria
+
+
 # ── The same asymmetry one level up ──
 
 

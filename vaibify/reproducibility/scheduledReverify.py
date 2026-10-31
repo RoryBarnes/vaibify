@@ -61,6 +61,7 @@ __all__ = [
     "S_MANIFEST_FILENAME",
     "RemoteUncheckableError",
     "ReverifyConfigError",
+    "S_DEFAULT_GITHUB_BRANCH",
     "fdictAttemptOneVerify",
     "fdictComputeLiveExpectedHashes",
     "fdictDescribeReverifySchedule",
@@ -194,6 +195,13 @@ def _fdictDeriveGithubConfig(filesRepo):
 # without it (a library caller, a unit fixture) has no hub to ask and is
 # compared as declared.
 S_HOST_GITHUB_BINDING_KEY = "_dictHostGithubBinding"
+
+# The branch a GitHub verify reads when neither the push binding nor the
+# declaration names one. One constant, because the gate must judge a
+# record against the branch the NEXT verify would read: a gate that read
+# an omitted branch as "any branch" kept evidence about a branch the
+# project had stopped declaring.
+S_DEFAULT_GITHUB_BRANCH = "main"
 
 S_GITHUB_NOT_BOUND = (
     "This project has not pushed to GitHub from this hub, so there is no "
@@ -372,7 +380,7 @@ def _fdictFetchGithubHashes(dictConfig, listRelPaths):
     """Fetch GitHub hashes; require sOwner, sRepo, sBranch."""
     sOwner = dictConfig.get("sOwner") or ""
     sRepo = dictConfig.get("sRepo") or ""
-    sBranch = dictConfig.get("sBranch") or "main"
+    sBranch = dictConfig.get("sBranch") or S_DEFAULT_GITHUB_BRANCH
     if not sOwner or not sRepo:
         raise ReverifyConfigError(S_GITHUB_NOT_CONFIGURED)
     return githubMirror.fdictFetchRemoteHashes(
@@ -908,7 +916,7 @@ def _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig):
             "sOwner": dictConfig.get("sOwner") or "",
             "sRepo": dictConfig.get("sRepo") or "",
             # The branch the fetch actually read, its default included.
-            "sBranch": dictConfig.get("sBranch") or "main",
+            "sBranch": dictConfig.get("sBranch") or S_DEFAULT_GITHUB_BRANCH,
         }
     elif sService == "zenodo":
         dictStatus["sZenodoDoi"] = dictConfig.get("sDoi") or None

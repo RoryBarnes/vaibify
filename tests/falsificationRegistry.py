@@ -38807,7 +38807,7 @@ LIST_FALSIFICATIONS = [
         ),
         # The record's remote is never compared with the push binding.
         source='vaibify/reproducibility/levelGates.py',
-        old='    if not _fbGithubRemotesAgree(dictBound, dictRecorded):\n        return _fsDescribeOtherGithubRemote(dictRecorded)\n',
+        old='    if not _fbGithubRemotesAgree(dictExpected, dictRecorded):\n        return _fsDescribeOtherGithubRemote(dictRecorded)\n',
         new='',
     ),
     Falsification(
@@ -38817,7 +38817,7 @@ LIST_FALSIFICATIONS = [
         ),
         # The declared remote is never compared with the push binding.
         source='vaibify/reproducibility/levelGates.py',
-        old='    if not _fbGithubRemotesAgree(dictDeclared, dictBound):\n        return scheduledReverify._fsDescribeBindingMismatch(dictBound)\n',
+        old='        if not _fbGithubRemotesAgree(dictDeclared, dictBound):\n            return scheduledReverify._fsDescribeBindingMismatch(dictBound)\n',
         new='',
     ),
     Falsification(
@@ -38894,5 +38894,30 @@ LIST_FALSIFICATIONS = [
             '        }\n'
         ),
         new='',
+    ),
+    # --- 2026-10-31: review findings on the reader-access gate ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectHeaderNeverOutranksItsRows.py::'
+            'testARecordThatNeverAskedAboutReadersDeniesTheHeaderItsCheck'
+        ),
+        # An unknown reader verdict charges no criterion at all.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if dictAccess["sState"] == S_EVIDENCE_UNKNOWN:\n'
+            '        return _flistUnchargedUnknownAccessBlockers(\n'
+            '            dictWorkflow, filesRepo, sService, dictAccess["sReason"])\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoAsksWhatAReaderIsServed.py::'
+            'test_removing_a_declared_branch_invalidates_the_evidence'
+        ),
+        # An omitted branch is read as any branch, not the verify's default.
+        source='vaibify/reproducibility/levelGates.py',
+        old='            or scheduledReverify.S_DEFAULT_GITHUB_BRANCH)\n',
+        new='            or "")\n',
     ),
 ]

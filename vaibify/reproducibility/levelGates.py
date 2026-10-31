@@ -2455,19 +2455,34 @@ def _fsDescribeUncoveredGithubRemote(dictWorkflow, dictRecorded):
     dictWorkflow = dictWorkflow or {}
     dictDeclared = (dictWorkflow.get("dictRemotes") or {}).get("github") or {}
     sBindingKey = scheduledReverify.S_HOST_GITHUB_BINDING_KEY
-    if sBindingKey not in dictWorkflow:
-        if _fbGithubRemotesAgree(dictDeclared, dictRecorded):
-            return ""
-        return _fsDescribeOtherGithubRemote(dictRecorded)
-    dictBound = (dictWorkflow[sBindingKey] or {}).get(
-        dictWorkflow.get("sProjectRepoPath") or "") or {}
-    if not dictBound.get("sOwner"):
-        return scheduledReverify.S_GITHUB_NOT_BOUND
-    if not _fbGithubRemotesAgree(dictDeclared, dictBound):
-        return scheduledReverify._fsDescribeBindingMismatch(dictBound)
-    if not _fbGithubRemotesAgree(dictBound, dictRecorded):
+    dictBound = {}
+    if sBindingKey in dictWorkflow:
+        dictBound = (dictWorkflow[sBindingKey] or {}).get(
+            dictWorkflow.get("sProjectRepoPath") or "") or {}
+        if not dictBound.get("sOwner"):
+            return scheduledReverify.S_GITHUB_NOT_BOUND
+        if not _fbGithubRemotesAgree(dictDeclared, dictBound):
+            return scheduledReverify._fsDescribeBindingMismatch(dictBound)
+    dictExpected = dict(
+        dictBound or dictDeclared,
+        sBranch=_fsEffectiveGithubBranch(dictDeclared, dictBound),
+    )
+    if not _fbGithubRemotesAgree(dictExpected, dictRecorded):
         return _fsDescribeOtherGithubRemote(dictRecorded)
     return ""
+
+
+def _fsEffectiveGithubBranch(dictDeclared, dictBound):
+    """Return the branch the next verify reads, its default included.
+
+    The binding's branch when it names one, else the declared one, else
+    the verify's default -- the order ``_fnRequireGithubConfigBoundToThePush``
+    and ``_fdictFetchGithubHashes`` resolve it in. An omitted branch is
+    never a wildcard: removing a declared branch moves the next verify to
+    the default, and a record about the old branch answers nothing.
+    """
+    return (dictBound.get("sBranch") or dictDeclared.get("sBranch")
+            or scheduledReverify.S_DEFAULT_GITHUB_BRANCH)
 
 
 def _fsDescribeOtherGithubRemote(dictRecorded):
@@ -2989,14 +3004,19 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
 
 
 def _flistPublicAccessLevel2Blockers(dictWorkflow, filesRepo, sService):
-    """Return the workflow-scope blocker for a copy known not to be public.
+    """Return the workflow-scope blocker for a copy that is not known public.
 
-    Only ``not-public`` fires. ``unknown`` is already charged to the
-    service by its stale blocker, so a remote with no current evidence
-    costs one criterion, never two. The hint is the reason the verify
-    recorded, which names the remedy.
+    ``not-public`` fires its own criterion, whose hint is the reason the
+    verify recorded and names the remedy. ``unknown`` is charged to the
+    service's stale criterion exactly once (see
+    :func:`_flistUnchargedUnknownAccessBlockers`), because the scalar gate
+    refuses it and a refusal no blocker names lets the header outrank
+    the row.
     """
     dictAccess = fdictDescribePublicAccess(dictWorkflow, filesRepo, sService)
+    if dictAccess["sState"] == S_EVIDENCE_UNKNOWN:
+        return _flistUnchargedUnknownAccessBlockers(
+            dictWorkflow, filesRepo, sService, dictAccess["sReason"])
     if dictAccess["sState"] != S_ACCESS_NOT_PUBLIC:
         return []
     if sService == "github":
@@ -3008,6 +3028,27 @@ def _flistPublicAccessLevel2Blockers(dictWorkflow, filesRepo, sService):
         sCriterion="zenodo-archive-not-public",
         sRemediationHint=dictAccess["sReason"],
     )]
+
+
+def _flistUnchargedUnknownAccessBlockers(
+    dictWorkflow, filesRepo, sService, sReason,
+):
+    """Charge an unknown reader verdict to the stale criterion, unless done.
+
+    When the record cannot answer at all (none, stale, about another
+    remote) the copy blockers have already emitted this service's stale
+    blocker, and a second would say the same thing twice. A record that
+    names its remote but never asked what a reader is served is NOT
+    caught there: its copy may match, so nothing else blocks, and the
+    header painted Level 2 over a row that read "?".
+    """
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        filesRepo, sService)
+    if _fsDescribeEvidenceGap(dictWorkflow, dictStatus, sService):
+        return []
+    fdictStaleBlocker = (_fdictGithubVerifyStaleBlocker if sService == "github"
+                         else _fdictZenodoVerifyStaleBlocker)
+    return [_fdictStaleBlockerSaying(fdictStaleBlocker(), sReason)]
 
 
 def _fdictStaleBlockerSaying(dictStaleBlocker, sReason):

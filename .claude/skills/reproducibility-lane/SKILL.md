@@ -102,8 +102,11 @@ things not to undo, each kill-confirmed in
 - **Absent is not public, and evidence names its remote.** A record with
   no `dictPublicAccess` reads unknown, never public, so a project does
   not keep its level by having been verified before the question
-  existed. A record whose `dictRemoteIdentity` disagrees with the push
-  binding, the declared remote or the declared record set is unknown.
+  existed, and an unknown verdict always charges a criterion, or the
+  header outranks the row. A record whose `dictRemoteIdentity` disagrees
+  with the push binding, the declared remote, the branch the next verify
+  would read (an omitted branch is the default, never "any") or the
+  declared record set is unknown.
 - **The backoff is a deadline, never a sleep.** A 403 or 429 sets an
   in-process deadline before which every probe raises without sending.
 
