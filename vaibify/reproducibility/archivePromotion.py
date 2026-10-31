@@ -41,6 +41,7 @@ __all__ = [
     "fdictBuildPendingCompletion",
     "fdictDescribeCompletionReceiptNote",
     "fdictReconcileCompletion",
+    "fbDepositFileMatches",
     "flistDescribeCompletionInventoryMismatch",
     "flistDescribeInheritedMismatch",
     "fsDescribeStoredReceiptMismatch",
@@ -614,7 +615,17 @@ def _fbFileAgrees(dictIntended, dictRemote):
     iRemoteBytes = dictRemote.get("filesize")
     if sRemoteMd5 != str(dictIntended.get("sMd5") or ""):
         return False
-    return int(iRemoteBytes or -1) == int(dictIntended.get("iBytes") or 0)
+    # A size of zero is a size: an empty file inherited intact matches.
+    if iRemoteBytes is None:
+        return False
+    return int(iRemoteBytes) == int(dictIntended.get("iBytes") or 0)
+
+
+def fbDepositFileMatches(dictItem, dictRemote):
+    """Return True iff a deposit file has an inventory item's MD5 and size."""
+    return _fbFileAgrees(
+        {"sMd5": dictItem.get("sMd5"), "iBytes": dictItem.get("iSizeBytes")},
+        dictRemote)
 
 
 def _fdictOutcome(sOutcome, sMessage, sDoi="", sConceptDoi=""):

@@ -691,9 +691,12 @@ def _ftRunCompletionStep(ftStep):
 def _fiOpenCompletionDraft(clientZenodo, dictRecord, dictApi, dictJournalHooks):
     """Return the completion's draft id: re-found when recorded, else new.
 
-    A new-version call that hands back a draft stamped by ANOTHER
-    operation is refused; one carrying no stamp is a fresh draft,
-    recorded at once and then stamped with this completion's id.
+    Ownership is settled BEFORE anything changes. Zenodo's new-version
+    call hands back an unpublished draft that already exists, and a
+    researcher's own draft carries no vaibify stamp, so "no stamp" can
+    never mean "fresh": an existing draft is used only when it carries
+    THIS completion's stamp, and refused, untouched, otherwise. Only
+    when no draft exists is one opened, recorded at once, and stamped.
     """
     from vaibify.reproducibility import archivePromotion
     if int(dictRecord.get("iDepositId") or 0):
@@ -702,7 +705,14 @@ def _fiOpenCompletionDraft(clientZenodo, dictRecord, dictApi, dictJournalHooks):
                                   dictRecord)
         return iDraft
     iParent = int(dictRecord.get("iParentDepositId") or 0)
-    _fnRefuseANewerVersion(clientZenodo.fdictGetDeposit(iParent), iParent)
+    dictParent = clientZenodo.fdictGetDeposit(iParent)
+    _fnRefuseANewerVersion(dictParent, iParent)
+    iExisting = _fiExistingDraftOfConcept(clientZenodo, dictParent, iParent)
+    if iExisting:
+        _fnRequireAnExistingDraftIsOurs(
+            clientZenodo.fdictGetDeposit(iExisting), iExisting, dictRecord)
+        dictJournalHooks["fnNoteDraft"](iExisting)
+        return iExisting
     dictDraft = clientZenodo.fdictGetNewVersionDraft(iParent)
     sForeign = archivePromotion.fsForeignPromotionStamp(
         (dictDraft.get("metadata") or {}).get("description"),
@@ -720,6 +730,45 @@ def _fiOpenCompletionDraft(clientZenodo, dictRecord, dictApi, dictJournalHooks):
         dictApi.get("description"), dictRecord["sPromotionId"])
     clientZenodo.fnSetMetadata(iDraft, dictStamped)
     return iDraft
+
+
+def _fiExistingDraftOfConcept(clientZenodo, dictParent, iParent):
+    """Return the id of an unpublished draft this archive already has, or 0.
+
+    Asked two ways, because a new version's draft is reused rather than
+    reopened: the parent's ``links.latest_draft`` naming a deposit other
+    than itself, then the token's own depositions of the same concept
+    that are not yet submitted.
+    """
+    sLatestDraft = str((dictParent.get("links") or {}).get("latest_draft")
+                       or "")
+    sDraftId = sLatestDraft.rstrip("/").rsplit("/", 1)[-1]
+    if sDraftId.isdigit() and int(sDraftId) != int(iParent):
+        return int(sDraftId)
+    sConcept = str(dictParent.get("conceptrecid") or "")
+    if not sConcept:
+        return 0
+    for dictDeposit in clientZenodo.flistSearchDeposits(
+            "conceptrecid:" + sConcept) or []:
+        if (str(dictDeposit.get("conceptrecid") or "") == sConcept
+                and dictDeposit.get("submitted") is False
+                and int(dictDeposit.get("id") or 0) != int(iParent)):
+            return int(dictDeposit["id"])
+    return 0
+
+
+def _fnRequireAnExistingDraftIsOurs(dictDraft, iDraft, dictRecord):
+    """Refuse, touching nothing, a draft this completion did not open."""
+    from vaibify.reproducibility import archivePromotion
+    if archivePromotion.fbDescriptionCarriesPromotionId(
+            (dictDraft.get("metadata") or {}).get("description"),
+            dictRecord.get("sPromotionId")):
+        return
+    raise _CompletionRefusal(
+        f"FOREIGN-DRAFT (nothing was published): this archive already has "
+        f"an unpublished draft, deposit {iDraft}, that vaibify did not open "
+        "for this completion. Vaibify will not change or publish someone "
+        "else's draft; publish or discard it on Zenodo, then try again.")
 
 
 def _fnRefuseANewerVersion(dictParentDeposit, iParent):
@@ -783,26 +832,28 @@ def _fnReplaceCompletionReceipt(
 ):
     """Delete the inherited receipt and upload the stored bytes, unless done.
 
-    The bytes are checked against the journal first, on every path: a
-    resume reads them back from disk, where they could have changed.
+    A draft already holding the JOURNALED receipt (its MD5 and size)
+    needs no bytes at all, so a resume can publish it after the stored
+    copy is gone. Otherwise the stored bytes are checked against the
+    journal before they are uploaded: a resume reads them back from
+    disk, where they could have changed.
     """
-    import hashlib
     import os
     from vaibify.host.hostConfinedWrite import fsWriteFileInsideRoot
     from vaibify.reproducibility import archivePromotion
-    sStored = archivePromotion.fsDescribeStoredReceiptMismatch(
-        dictRecord, baReceipt)
-    if sStored:
-        raise _CompletionRefusal(
-            "RECEIPT-MISMATCH (nothing was published): " + sStored)
     dictWanted = dictRecord["dictCompletionReceipt"]
     dictPresent = next((
         dictFile for dictFile in dictDeposit.get("files") or []
         if (dictFile.get("filename") or dictFile.get("key"))
         == dictWanted["sKey"]), None)
-    if dictPresent and str(dictPresent.get("checksum") or "").split(":")[
-            -1] == hashlib.md5(baReceipt, usedforsecurity=False).hexdigest():
+    if dictPresent and archivePromotion.fbDepositFileMatches(
+            dictWanted, dictPresent):
         return
+    sStored = archivePromotion.fsDescribeStoredReceiptMismatch(
+        dictRecord, baReceipt)
+    if sStored:
+        raise _CompletionRefusal(
+            "RECEIPT-MISMATCH (nothing was published): " + sStored)
     if dictPresent:
         clientZenodo.fnDeleteDraftFile(
             iDraft, dictPresent.get("id") or dictPresent.get("file_id"))

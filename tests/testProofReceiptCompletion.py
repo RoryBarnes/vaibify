@@ -74,6 +74,9 @@ class _ArchiveZenodo:
         self.dictDeposits = {}
         self.iLatest = 101
         self.iNextId = 200
+        # An unpublished new-version draft that already exists; Zenodo's
+        # new-version call hands it back rather than opening another.
+        self.iOpenDraft = 0
         self.listCalls = []
         self.fnAddVersion(101, {"out.csv": BA_DATA,
                                 S_RECEIPT_KEY: BA_CHECKPOINT_RECEIPT})
@@ -92,7 +95,11 @@ class _ArchiveZenodo:
             "id": dictDeposit["id"], "state": dictDeposit["state"],
             "metadata": copy.deepcopy(dictDeposit["metadata"]),
             "links": {"bucket": f"bucket/{dictDeposit['id']}",
-                      "latest": f"https://zenodo/api/records/{self.iLatest}"},
+                      "latest": f"https://zenodo/api/records/{self.iLatest}",
+                      "latest_draft": "https://zenodo/api/deposit/"
+                      f"depositions/{self.iOpenDraft or dictDeposit['id']}"},
+            "conceptrecid": "100",
+            "submitted": dictDeposit["state"] == "done",
             "doi": f"10.5072/zenodo.{dictDeposit['id']}",
             "conceptdoi": "10.5072/zenodo.100",
             "files": [{"filename": d["filename"], "id": d["id"],
@@ -102,6 +109,8 @@ class _ArchiveZenodo:
 
     def fdictGetNewVersionDraft(self, iParent):
         self.listCalls.append(("newversion", iParent))
+        if self.iOpenDraft:
+            return self.fdictGetDeposit(self.iOpenDraft)
         iDraft = self.iNextId
         self.iNextId += 1
         dictParent = self.dictDeposits[int(iParent)]
@@ -109,7 +118,18 @@ class _ArchiveZenodo:
             "id": iDraft, "state": "unsubmitted",
             "metadata": copy.deepcopy(dictParent["metadata"]),
             "listFiles": copy.deepcopy(dictParent["listFiles"])}
+        self.iOpenDraft = iDraft
         return self.fdictGetDeposit(iDraft)
+
+    def flistSearchDeposits(self, sQuery):
+        self.listCalls.append(("search", sQuery))
+        return [self.fdictGetDeposit(iId) for iId in sorted(self.dictDeposits)]
+
+    def fnDownloadFile(self, iRecordId, sFileName, sDestination):
+        dictFile = next(d for d in self.dictDeposits[int(iRecordId)][
+            "listFiles"] if d["filename"] == sFileName)
+        with open(sDestination, "wb") as fileDownloaded:
+            fileDownloaded.write(dictFile["baContent"])
 
     def fnSetMetadata(self, iDepositId, dictApi):
         self.listCalls.append(("metadata", iDepositId))
@@ -135,6 +155,8 @@ class _ArchiveZenodo:
         self.listCalls.append(("publish", int(iDepositId)))
         self.dictDeposits[int(iDepositId)]["state"] = "done"
         self.iLatest = int(iDepositId)
+        if self.iOpenDraft == int(iDepositId):
+            self.iOpenDraft = 0
         return {"doi": f"10.5072/zenodo.{iDepositId}",
                 "conceptdoi": "10.5072/zenodo.100",
                 "links": {"html": f"https://zenodo/record/{iDepositId}"}}
@@ -210,7 +232,8 @@ def testAForeignUnpublishedDraftIsRefused():
             "Data.", "promotion-" + "d" * 32))
     iExit, sOut = _ftPublish(clientZenodo)
     assert iExit == 1 and sOut.startswith("FOREIGN-DRAFT")
-    assert set(clientZenodo.flistPhases()) == {"newversion"}
+    assert not {"metadata", "delete", "upload", "publish"} & set(
+        clientZenodo.flistPhases())
 
 
 @pytest.mark.falsification
@@ -694,3 +717,100 @@ def testACheckpointOffersTheCompletionAndAnInFlightOneDoesNot(tmp_path):
         "completion-in-flight", False)
     assert proofReceipt.fdictDescribeArchiveReceiptState(
         {"dictRemotes": {}}, sRepo)["sState"] == "none"
+
+
+# ── Review findings, 2026-10-31 ──────────────────────────────────────
+
+
+@pytest.mark.falsification
+def testAResearchersOpenDraftIsNeverPublished():
+    """Zenodo hands back an existing unpublished draft; vaibify must not own it.
+
+    A researcher's draft carries no vaibify stamp, so "no stamp" cannot
+    mean "fresh". Ownership is established before anything is changed.
+
+    Kills: the parent's existing open draft not checked before the
+    draft is stamped and published.
+    """
+    clientZenodo = _ArchiveZenodo()
+    clientZenodo.fnAddVersion(250, {"out.csv": BA_DATA,
+                                    S_RECEIPT_KEY: BA_CHECKPOINT_RECEIPT},
+                              sState="unsubmitted",
+                              sDescription="My own notes for the next version.")
+    clientZenodo.iOpenDraft = 250
+    listNotes = []
+    iExit, sOut = _ftPublish(clientZenodo, listNotes=listNotes)
+    assert iExit == 1 and sOut.startswith("FOREIGN-DRAFT") and "250" in sOut
+    assert not {"metadata", "delete", "upload", "publish"} & set(
+        clientZenodo.flistPhases())
+    assert listNotes == []
+    assert clientZenodo.dictDeposits[250]["metadata"]["description"] == (
+        "My own notes for the next version.")
+
+
+@pytest.mark.falsification
+def testAnInheritedEmptyFileIsInheritedIntact():
+    """A zero-byte file is a size, not a missing one.
+
+    Kills: a zero file size read as absent (``filesize or -1``).
+    """
+    clientZenodo = _ArchiveZenodo()
+    clientZenodo.fnAddVersion(101, {"out.csv": BA_DATA, "empty.txt": b"",
+                                    S_RECEIPT_KEY: BA_CHECKPOINT_RECEIPT})
+    dictNote = fdictCheckpointNote()
+    dictNote["listContents"].append(_fdictItem("empty.txt", "Step/empty.txt",
+                                               b""))
+    dictRecord = archivePromotion.fdictBuildPendingCompletion(
+        S_PROMOTION_ID, "sandbox", dictNote,
+        _fdictItem(S_RECEIPT_KEY, ".vaibify/proofReceipt.json",
+                   BA_COMPLETION_RECEIPT))
+    iExit, sOut = _ftPublish(clientZenodo, dictRecord)
+    assert iExit == 0, sOut
+
+
+def _fnAddPublishableDraft(clientZenodo):
+    clientZenodo.fnAddVersion(
+        200, {"out.csv": BA_DATA, S_RECEIPT_KEY: BA_COMPLETION_RECEIPT},
+        sState="unsubmitted",
+        sDescription=archivePromotion.fsStampPromotionIdIntoDescription(
+            "Data.", S_PROMOTION_ID))
+
+
+@pytest.mark.falsification
+def testAPublishableDraftResumesWithoutTheStoredBytes():
+    """Every intended file is already up: resume publishes, uploading nothing.
+
+    Reconciliation offers resume on such a draft whether or not the
+    stored receipt survived, so resume must not demand it.
+
+    Kills: the stored receipt demanded before the draft's own receipt is
+    checked against the journal.
+    """
+    clientZenodo = _ArchiveZenodo()
+    _fnAddPublishableDraft(clientZenodo)
+    dictRecord = dict(fdictCompletionRecord(), iDepositId=200)
+    assert _fdictReconcile(clientZenodo, dictRecord, baStored=None)[
+        "listActions"] == ["resume", "discard"]
+    iExit, sOut = syncDispatcher.ftResultFinishCompletionDraft(
+        clientZenodo, dictRecord, None, fdictJournalHooks([]))
+    assert iExit == 0, sOut
+    assert "upload" not in clientZenodo.flistPhases()
+    assert clientZenodo.dictDeposits[200]["state"] == "done"
+
+
+def testAResumedPublishRestoresTheRepositoryReceiptFromTheVersion(
+    monkeypatch, tmp_path,
+):
+    """With the stored bytes gone, the repository copy comes from Zenodo, checked."""
+    import asyncio
+    sRepo = str(tmp_path / "repo")
+    os.makedirs(sRepo + "/.vaibify")
+    clientZenodo = _ArchiveZenodo()
+    _fnAddPublishableDraft(clientZenodo)
+    dictRecord = dict(fdictCompletionRecord(), iDepositId=200)
+    listSettled = _fnStandInRecoveryCarriers(monkeypatch, clientZenodo, sRepo)
+    monkeypatch.setattr(promotionRecoveryRoutes, "_fclientForPromotion",
+                        lambda *_listArgs: clientZenodo)
+    asyncio.run(promotionRecoveryRoutes._fdictResumeCompletion(
+        {}, S_CONTAINER_ID, {"sProjectRepoPath": sRepo}, dictRecord, None))
+    assert listSettled[0][6] == BA_COMPLETION_RECEIPT

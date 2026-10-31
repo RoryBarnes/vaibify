@@ -6951,8 +6951,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # researcher-command declaration on the exec that runs the
     # researcher's own program (execLane holds the rule).
     # 2142 -> 2144 (2026-10-28): the integrity-read lane on the digest read.
-    # 2144 -> 2490 (2026-10-31): the PROOF receipt's narrow write and staging hook, and the completion version's Zenodo steps and settlement (proof-receipt plan, A13).
-    "syncDispatcher.py": 2490,
+    # 2144 -> 2541 (2026-10-31): the PROOF receipt's narrow write and staging hook, and the completion version's Zenodo steps and settlement (proof-receipt plan, A13).
+    "syncDispatcher.py": 2541,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the

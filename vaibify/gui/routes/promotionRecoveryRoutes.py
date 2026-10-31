@@ -518,9 +518,15 @@ async def _fdictResumeCompletion(
         sContainerId, fdictFinish, "zenodo-completion-resume", requestHttp)
     if iExit != 0:
         raise HTTPException(409, sOut)
+    # The repository copy: the stored bytes when they are still the
+    # journaled ones, else the published version's own, checked.
+    baForRepository = await asyncio.to_thread(
+        _fbaRestoreCompletionReceiptOrNone, dictCtx, sContainerId,
+        dictWorkflow, filesRepo, dictRecord,
+    )
     return await syncDispatcher.fdictSettlePublishedCompletion(
         dictCtx, sContainerId, dictWorkflow, requestHttp, dictRecord,
-        _fdictParsePublished(sOut), baReceipt,
+        _fdictParsePublished(sOut), baForRepository,
     )
 
 

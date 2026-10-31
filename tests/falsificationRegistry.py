@@ -39386,7 +39386,7 @@ LIST_FALSIFICATIONS = [
         ),
         # The latest-version check removed.
         source='vaibify/gui/syncDispatcher.py',
-        old='    _fnRefuseANewerVersion(clientZenodo.fdictGetDeposit(iParent), iParent)\n',
+        old='    _fnRefuseANewerVersion(dictParent, iParent)\n',
         new='',
     ),
     Falsification(
@@ -39523,5 +39523,46 @@ LIST_FALSIFICATIONS = [
             '            dictWorkflow, dictStatus, "zenodo"):\n'
         ),
         new='    if True:\n',
+    ),
+    # --- 2026-10-31: review findings on the completion version ---
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAResearchersOpenDraftIsNeverPublished'
+        ),
+        # The parent's existing open draft not checked before the draft
+        # is stamped and published.
+        source='vaibify/gui/syncDispatcher.py',
+        old='    iExisting = _fiExistingDraftOfConcept(clientZenodo, dictParent, iParent)\n',
+        new='    iExisting = 0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAnInheritedEmptyFileIsInheritedIntact'
+        ),
+        # A zero file size read as absent.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old=(
+            '    if iRemoteBytes is None:\n'
+            '        return False\n'
+            '    return int(iRemoteBytes) == int(dictIntended.get("iBytes") or 0)\n'
+        ),
+        new='    return int(iRemoteBytes or -1) == int(dictIntended.get("iBytes") or 0)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAPublishableDraftResumesWithoutTheStoredBytes'
+        ),
+        # The stored receipt demanded before the draft's own receipt is
+        # checked against the journal.
+        source='vaibify/gui/syncDispatcher.py',
+        old=(
+            '    if dictPresent and archivePromotion.fbDepositFileMatches(\n'
+            '            dictWanted, dictPresent):\n'
+            '        return\n'
+        ),
+        new='',
     ),
 ]
