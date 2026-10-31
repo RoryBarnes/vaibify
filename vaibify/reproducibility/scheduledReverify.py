@@ -50,6 +50,7 @@ from vaibify.reproducibility import (
     overleafMirror,
     overleafSync,
     publicationScope,
+    remoteCheckState,
     zenodoClient,
 )
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
@@ -1196,26 +1197,55 @@ def fdictRunReverifyOnce(dictCtx, listWorkflows, sNowIso=None):
     sIso = sNowIso or _fsBuildIsoTimestamp()
     listResults = []
     for entryWorkflow in listWorkflows:
-        dictWorkflow, filesRepo = _ftResolveWorkflowEntry(
+        sContainerId, dictWorkflow, filesRepo = _ftResolveWorkflowEntry(
             dictCtx, entryWorkflow,
         )
         dictWorkflowReport = fdictRunReverifyForWorkflow(
             dictWorkflow, sNowIso=sIso, filesRepo=filesRepo,
         )
+        _fnRecordCheckOutcomes(
+            sContainerId, dictWorkflow, dictWorkflowReport["listResults"])
         for dictResult in dictWorkflowReport["listResults"]:
             listResults.append(dictResult)
     return {"sNowIso": sIso, "listResults": listResults}
 
 
+def _fnRecordCheckOutcomes(sContainerId, dictWorkflow, listResults):
+    """Settle each service's badge state the way the open-time refresh does.
+
+    Keyed exactly as the poll reads it -- the container ID the loop
+    enumerated, with the project's repository -- because the scheduled
+    pass used to leave a failed check as it found it, so a remote that
+    had stopped answering kept the badge's last reading with no word of
+    why. A bare workflow (a library caller) has no container to key by,
+    and records nothing.
+    """
+    if not sContainerId:
+        return
+    tCheckKey = remoteCheckState.ftProjectCheckKey(
+        sContainerId, dictWorkflow.get("sProjectRepoPath", ""),
+    )
+    for dictResult in listResults:
+        if dictResult.get("sStatus") == "ok":
+            remoteCheckState.fnMarkSettled(tCheckKey, dictResult["sService"])
+            continue
+        remoteCheckState.fnMarkUncheckable(
+            tCheckKey, dictResult["sService"], dictResult.get("sError", ""),
+        )
+
+
 def _ftResolveWorkflowEntry(dictCtx, entryWorkflow):
-    """Return ``(dictWorkflow, filesRepo_or_None)`` for one loop entry."""
+    """Return ``(sContainerId, dictWorkflow, filesRepo_or_None)`` for one entry.
+
+    A bare workflow dict has no container, so its id is ``""``.
+    """
     if isinstance(entryWorkflow, dict):
-        return entryWorkflow, None
+        return "", entryWorkflow, None
     sContainerId, dictWorkflow = entryWorkflow
     fnFiles = dictCtx.get("files") if dictCtx else None
     if fnFiles is None:
-        return dictWorkflow, None
-    return dictWorkflow, fnFiles(sContainerId)
+        return sContainerId, dictWorkflow, None
+    return sContainerId, dictWorkflow, fnFiles(sContainerId)
 
 
 def _flistEnumerateWorkflows(dictCtx):

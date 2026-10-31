@@ -38850,4 +38850,32 @@ LIST_FALSIFICATIONS = [
         old='    "github-repository-not-public", "zenodo-archive-not-public",\n',
         new='',
     ),
+    # --- 2026-10-30: every verify lane settles the poll's check state ---
+    Falsification(
+        nodeid=(
+            'tests/testEveryVerifyLaneSettlesItsBadge.py::'
+            'test_the_scheduled_pass_settles_each_project_under_its_own_key'
+        ),
+        # The scheduled pass records no check outcome at all.
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old=(
+            '        _fnRecordCheckOutcomes(\n'
+            '            sContainerId, dictWorkflow,'
+            ' dictWorkflowReport["listResults"])\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEveryVerifyLaneSettlesItsBadge.py::'
+            'test_verify_now_records_a_failed_check_under_the_container_id'
+        ),
+        # Verify now raises its error without settling the badge.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        remoteCheckState.fnMarkUncheckable(\n'
+            '            tCheckKey, sService, str(errorHttp.detail))\n'
+        ),
+        new='',
+    ),
 ]
