@@ -39565,4 +39565,15 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testADraftChangedBetweenTheCheckAndTheRequestIsRefused'
+        ),
+        # The returned draft taken without checking it is a fresh copy of
+        # its parent.
+        source='vaibify/gui/syncDispatcher.py',
+        old='    _fnRequireAFreshCopyOfTheCheckpoint(dictDraft, iDraft, dictParent)\n',
+        new='',
+    ),
 ]

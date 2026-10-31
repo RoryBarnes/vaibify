@@ -724,6 +724,7 @@ def _fiOpenCompletionDraft(clientZenodo, dictRecord, dictApi, dictJournalHooks):
             f"operation ({sForeign}). Vaibify will not clear or publish "
             "someone else's draft; finish or discard it on Zenodo first.")
     iDraft = int(dictDraft["id"])
+    _fnRequireAFreshCopyOfTheCheckpoint(dictDraft, iDraft, dictParent)
     dictJournalHooks["fnNoteDraft"](iDraft)
     dictStamped = dict(dictApi)
     dictStamped["description"] = archivePromotion.fsStampPromotionIdIntoDescription(
@@ -755,6 +756,36 @@ def _fiExistingDraftOfConcept(clientZenodo, dictParent, iParent):
                 and int(dictDeposit.get("id") or 0) != int(iParent)):
             return int(dictDeposit["id"])
     return 0
+
+
+def _fnRequireAFreshCopyOfTheCheckpoint(dictDraft, iDraft, dictParent):
+    """Refuse, touching nothing, a returned draft that holds anyone's work.
+
+    The new-version call answers the same whether it opened the draft or
+    handed back one somebody opened since the existence check, and no
+    Zenodo response tells the two apart, so ownership of an unstamped
+    draft cannot be proven. What can be checked is that the draft holds
+    no one's work: exactly the checkpoint's files, and its title and
+    description, as the parent holds them. A draft that departs from
+    either was changed by someone, and is refused.
+    """
+    from vaibify.reproducibility import archivePromotion
+    listDeparted = archivePromotion.flistDescribeDepartureFromParent(
+        dictDraft, dictParent)
+    dictDraftMetadata = dictDraft.get("metadata") or {}
+    dictParentMetadata = dictParent.get("metadata") or {}
+    listDeparted += [
+        sField for sField in ("title", "description")
+        if (dictDraftMetadata.get(sField) or "") != (
+            dictParentMetadata.get(sField) or "")]
+    if not listDeparted:
+        return
+    raise _CompletionRefusal(
+        f"FOREIGN-DRAFT (nothing was published): Zenodo handed back draft "
+        f"{iDraft}, which is not a fresh copy of the checkpoint (it differs "
+        "in " + ", ".join(listDeparted) + "), so someone else opened and "
+        "changed it. Vaibify will not change or publish it; publish or "
+        "discard it on Zenodo, then try again.")
 
 
 def _fnRequireAnExistingDraftIsOurs(dictDraft, iDraft, dictRecord):

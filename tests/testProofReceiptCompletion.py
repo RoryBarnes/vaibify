@@ -77,6 +77,9 @@ class _ArchiveZenodo:
         # An unpublished new-version draft that already exists; Zenodo's
         # new-version call hands it back rather than opening another.
         self.iOpenDraft = 0
+        # Another actor, acting between vaibify's existence check and its
+        # new-version request.
+        self.fnActBeforeNewVersion = None
         self.listCalls = []
         self.fnAddVersion(101, {"out.csv": BA_DATA,
                                 S_RECEIPT_KEY: BA_CHECKPOINT_RECEIPT})
@@ -109,6 +112,8 @@ class _ArchiveZenodo:
 
     def fdictGetNewVersionDraft(self, iParent):
         self.listCalls.append(("newversion", iParent))
+        if self.fnActBeforeNewVersion:
+            self.fnActBeforeNewVersion(self)
         if self.iOpenDraft:
             return self.fdictGetDeposit(self.iOpenDraft)
         iDraft = self.iNextId
@@ -727,7 +732,9 @@ def testAResearchersOpenDraftIsNeverPublished():
     """Zenodo hands back an existing unpublished draft; vaibify must not own it.
 
     A researcher's draft carries no vaibify stamp, so "no stamp" cannot
-    mean "fresh". Ownership is established before anything is changed.
+    mean "fresh". This one was opened before the completion started and
+    is still unchanged, so only the existence check, made before
+    anything is changed, can tell it from a draft vaibify opened.
 
     Kills: the parent's existing open draft not checked before the
     draft is stamped and published.
@@ -735,8 +742,7 @@ def testAResearchersOpenDraftIsNeverPublished():
     clientZenodo = _ArchiveZenodo()
     clientZenodo.fnAddVersion(250, {"out.csv": BA_DATA,
                                     S_RECEIPT_KEY: BA_CHECKPOINT_RECEIPT},
-                              sState="unsubmitted",
-                              sDescription="My own notes for the next version.")
+                              sState="unsubmitted")
     clientZenodo.iOpenDraft = 250
     listNotes = []
     iExit, sOut = _ftPublish(clientZenodo, listNotes=listNotes)
@@ -744,8 +750,7 @@ def testAResearchersOpenDraftIsNeverPublished():
     assert not {"metadata", "delete", "upload", "publish"} & set(
         clientZenodo.flistPhases())
     assert listNotes == []
-    assert clientZenodo.dictDeposits[250]["metadata"]["description"] == (
-        "My own notes for the next version.")
+    assert clientZenodo.dictDeposits[250]["state"] == "unsubmitted"
 
 
 @pytest.mark.falsification
@@ -814,3 +819,40 @@ def testAResumedPublishRestoresTheRepositoryReceiptFromTheVersion(
     asyncio.run(promotionRecoveryRoutes._fdictResumeCompletion(
         {}, S_CONTAINER_ID, {"sProjectRepoPath": sRepo}, dictRecord, None))
     assert listSettled[0][6] == BA_COMPLETION_RECEIPT
+
+
+def _fnOpenADraftInTheWindow(dictFiles, sDescription):
+    """Another actor opens draft 777 between the check and the request."""
+    def fnAct(clientZenodo):
+        clientZenodo.fnAddVersion(777, dictFiles, sState="unsubmitted",
+                                  sDescription=sDescription)
+        clientZenodo.iOpenDraft = 777
+    return fnAct
+
+
+@pytest.mark.falsification
+def testADraftChangedBetweenTheCheckAndTheRequestIsRefused():
+    """A draft somebody opened and changed in the window is never touched.
+
+    The existence check finds nothing; another actor then opens draft
+    777 and starts work on it; the new-version request hands 777 back.
+
+    Kills: the returned draft taken without checking it is a fresh copy
+    of the checkpoint.
+    """
+    for dictFiles, sDescription in (
+        ({"out.csv": BA_DATA, S_RECEIPT_KEY: BA_CHECKPOINT_RECEIPT},
+         "My notes for the next version."),
+        ({"out.csv": BA_DATA, S_RECEIPT_KEY: BA_CHECKPOINT_RECEIPT,
+          "draft-figure.pdf": b"%PDF"}, ""),
+    ):
+        clientZenodo = _ArchiveZenodo()
+        clientZenodo.fnActBeforeNewVersion = _fnOpenADraftInTheWindow(
+            dictFiles, sDescription)
+        listNotes = []
+        iExit, sOut = _ftPublish(clientZenodo, listNotes=listNotes)
+        assert iExit == 1 and sOut.startswith("FOREIGN-DRAFT"), sOut
+        assert "777" in sOut and listNotes == []
+        assert not {"metadata", "delete", "upload", "publish"} & set(
+            clientZenodo.flistPhases())
+        assert clientZenodo.dictDeposits[777]["state"] == "unsubmitted"

@@ -43,6 +43,7 @@ __all__ = [
     "fdictReconcileCompletion",
     "fbDepositFileMatches",
     "flistDescribeCompletionInventoryMismatch",
+    "flistDescribeDepartureFromParent",
     "flistDescribeInheritedMismatch",
     "fsDescribeStoredReceiptMismatch",
     "fsForeignPromotionStamp",
@@ -748,6 +749,30 @@ def flistDescribeInheritedMismatch(dictRecord, dictDeposit):
             listProblems.append(str(dictItem.get("sKey")))
     return listProblems + sorted(
         sKey for sKey in dictRemote if sKey not in setKnown)
+
+
+def flistDescribeDepartureFromParent(dictDraft, dictParent):
+    """Name every file in which a new-version draft is not its parent's copy.
+
+    A draft fresh from the new-version call holds exactly its parent's
+    files; one holding anything else -- a changed file, an extra one, a
+    missing one -- holds somebody's work. Compared as Zenodo reports
+    both, by key, MD5 and size; whether the parent matches the journal is
+    a separate question, asked by :func:`flistDescribeInheritedMismatch`.
+    """
+    dictDraftFiles = _fdictRemoteFilesByKey(dictDraft)
+    dictParentFiles = _fdictRemoteFilesByKey(dictParent)
+    return sorted(
+        sKey for sKey in set(dictDraftFiles) | set(dictParentFiles)
+        if sKey not in dictDraftFiles or sKey not in dictParentFiles
+        or _fsChecksumAndSize(dictDraftFiles[sKey])
+        != _fsChecksumAndSize(dictParentFiles[sKey]))
+
+
+def _fsChecksumAndSize(dictRemote):
+    """Return one deposit file's MD5 and size as one comparable string."""
+    return (str(dictRemote.get("checksum") or "").split(":")[-1] + "/"
+            + str(dictRemote.get("filesize")))
 
 
 def flistDescribeCompletionInventoryMismatch(dictRecord, dictDeposit):
