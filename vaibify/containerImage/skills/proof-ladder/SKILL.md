@@ -182,6 +182,20 @@ never report them as gaps. The criteria:
   Zenodo (`bZenodoFullySynced`); Overleaf (`bOverleafFullySynced`) and
   arXiv (`bArxivFullySynced`) only when bound or recorded. No two
   compared files may share a basename (`bNoBasenameCollisions`).
+- **Published copies are public**: a reader with no login can retrieve
+  the GitHub repository (`bGithubRepositoryPublic`) and every declared
+  Zenodo record (`bZenodoArchivePublic`). The verify asks with no
+  credentials, so a private repository fails this even when its files
+  match. Making a repository public or a record's files public is the
+  researcher's decision; relay the remedy, never change visibility.
+  When a criterion reads `false`, `dictPublicAccessStates` and
+  `dictPublishedCopyStates` give its state and reason; relay that
+  `sReason` verbatim. `unknown` means the last check cannot answer (it
+  is stale, about another remote, or predates the question): Verify
+  now, never a fix. A Zenodo comparison the verify withheld because a
+  record is restricted is "not compared", never "diverged". Do not
+  publish a new deposit for it: opening the record's files and
+  verifying again is the remedy, and the DOI does not change.
 - **AI Declaration** signed and still current
   (`bAiDeclarationAttested`). A sign-off the files have moved past
   reads as stale.

@@ -2463,6 +2463,91 @@ local hash and the `syncStatus` write) and fetch the remote outside
 it, which would also improve the manual "Verify now". That was
 deliberately not done speculatively.
 
+## What a reader can retrieve
+
+Level 2 says the work is published, which is a claim about what a
+READER can retrieve. The paper's Level 2 table lists "GitHub repository
+is public" and "Zenodo archive is public" beside the two "files match"
+rows, and until 2026-10-30 nothing checked either. The GitHub hash fetch
+sends the researcher's token, so a private repository whose files
+matched reached Level 2. A restricted Zenodo record answers a reader
+200 with an empty file list, so a lone one read "every file diverged,
+publish a new deposit" (an immutable version that left the record
+restricted), while an open record beside a restricted extra one passed
+outright under any-record-agrees merging.
+
+**Asked as a reader asks.** The verify observes access with requests
+that carry no credentials (`scheduledReverify.fdictVerifyRemoteService`):
+
+* GitHub: after the authenticated hash fetch,
+  `githubMirror.fdictProbePublicAccess` sends one anonymous
+  `GET /repos/{owner}/{repo}` through a request builder that takes no
+  token. A 200 whose `private` is exactly false and whose `full_name` is
+  the bound repository is public; 404 and 451 are not public, each with
+  its remedy; anything else is uncheckable. A 403 or 429 sets an
+  in-process deadline in GitHub's documented order (`retry-after`, then
+  the reset when the count is spent, then a minute), and until it passes
+  every probe raises at once. It never sleeps and never retries: the
+  anonymous budget is shared by the network address, and the probe runs
+  in a verify worker.
+* Zenodo: `zenodoClient.fdictObserveRecord` fetches each declared record
+  ONCE, through the one tokenless client `_fclientAnonymous`, and the
+  comparison and the attestation read both consume those observations.
+  The attestation reader used to fetch every record again through a
+  path that re-raised 401, 403 and 404, so a record Zenodo would not
+  serve aborted the verify before its verdict was saved.
+
+**The Zenodo precedence is a table, not an order.** Every record is
+observed before any is judged. Any record known not to be public makes
+the archive not public, and the record is written with every
+per-record verdict and `bComparisonWithheld: true`: nothing is hashed,
+because comparing an archive a reader cannot fully open would claim
+divergence without bytes. Every record public compares as before.
+Anything else (some record unchecked, none known closed) raises and
+writes nothing. A known restriction therefore survives a sibling's 429,
+in either declared order.
+
+**Evidence names the remote it is about.** Each GitHub and Zenodo record
+carries `dictRemoteIdentity`: owner, repository and branch for GitHub,
+the endpoint and the sorted declared record ids for Zenodo. Records used
+to store only the commit for GitHub and only "some DOI" for Zenodo, so a
+renamed repository, a switched branch or a newly declared record kept
+Level 2 on evidence about something else.
+`levelGates._fsDescribeUncoveredRemote` compares a GitHub record with
+the host-held push binding, the record of where the copy actually
+landed. A declared `dictRemotes.github` must also agree with that
+binding, under the verify's own rule. It never reads `.git/config`:
+the poll cannot, and the next verify refuses an `origin` that disagrees.
+
+**Two authorities, and everything reads them.**
+`levelGates.fdictDescribePublicAccess` answers public, not-public or
+unknown; `fdictDescribePublishedCopy` answers matched, differs or
+unknown, and the sync predicates are True exactly when it answers
+matched. Both answer unknown, naming why, for no record, a stale one,
+one about another remote, and (for access) one written before the
+question existed. Any record written before 2026-10-30 is one, so such
+a project reads below Level 2 until its next successful check. The
+scalar gate, the gaps dict, the blockers (`github-repository-not-public`,
+`zenodo-archive-not-public`, and the stale blocker carrying the
+authority's reason), the poll's `dictWorkflowEnvelopeDetail`, the PROOF
+tab and Published copies all render these answers. None re-derives
+them. Being public and matching are separate requirements, so the header
+charges a private repository with a diverged file twice, while an
+unknown record is charged once.
+
+**Every lane settles the badge.** The open-time refresh, the scheduled
+pass and Verify now each mark the poll's per-project check state,
+SETTLED or UNCHECKABLE with the reason, under the container ID with the
+project's repository. Verify now's badge reason is its error response's
+own detail, which is what `vaibify do verify-remote` prints. An
+uncheckable result never writes the record; a Zenodo record known not to
+be public is a result, not a failure.
+
+**Out of scope.** Whether a reader can retrieve the Level 3 environment
+image deposit is not checked here. Sandbox records are publicly
+readable, so they pass this check; their permanence stays with Level
+3's `an-archive-is-a-sandbox-deposit`.
+
 ## The memory watch reports kills it can prove, and says what it cannot
 
 A container that reaches its memory limit has a process killed by the

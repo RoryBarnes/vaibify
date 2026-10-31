@@ -1367,12 +1367,16 @@ def fbWorkflowHasProjectRepo(filesRepo):
 def fbAtLeastLevel2(dictWorkflow, filesRepo):
     """Return True iff the workflow meets the L2 Publication gate.
 
-    L2 builds on L1 with three additional criteria: every canonical
-    file's hash matches the GitHub mirror at a recently-verified
-    SHA, every Zenodo-published file's hash matches at a known DOI on
-    the workflow's configured endpoint, and the workflow contains an
+    L2 builds on L1. Every published file's hash matches the GitHub
+    mirror at a recently-verified SHA and the Zenodo archive at a known
+    DOI on the configured endpoint, each record about the remote the
+    project publishes to now; a reader with no login can retrieve the
+    repository and every declared record; the workflow carries an
     attested AI Declaration step (the declaration only has meaning at
-    publication, so its sign-off lives here, not at L1).
+    publication, so its sign-off lives here, not at L1); and the AI
+    models, Personal AI Configuration and environment-archive questions
+    are answered. Overleaf and arXiv join only when bound or recorded.
+    ``_fbComputeLevel2`` is the conjunction.
     """
     dictMemo = _fdictActiveLevelMemo()
     if dictMemo is not None and "bL2" in dictMemo:
@@ -2688,6 +2692,10 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             "bAtLeastLevel1": bool,
             "bGithubFullySynced": bool,
             "bZenodoFullySynced": bool,
+            "bGithubRepositoryPublic": bool,
+            "bZenodoArchivePublic": bool,
+            "dictPublicAccessStates": {sService: {sState, sReason}},
+            "dictPublishedCopyStates": {sService: {sState, sReason}},
             "bArxivFullySynced": bool,
             "bAiDeclarationAttested": bool,
             "bAiModelsDeclared": bool,
@@ -2702,7 +2710,14 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
         }
 
     The frontend PROOF tab consumes this dict directly; each False
-    entry maps to a red row with a "fix here" link. ``bArxivFullySynced``
+    entry maps to a red row with a "fix here" link, except the four
+    GitHub and Zenodo rows, which render the state their authority gave
+    (``dictPublicAccessStates`` from :func:`fdictDescribePublicAccess`,
+    ``dictPublishedCopyStates`` from :func:`fdictDescribePublishedCopy`,
+    each keyed by ``github`` and ``zenodo``): an ``unknown`` record is
+    evidence that cannot answer, never a failure, and its reason is
+    shown. ``bGithubRepositoryPublic`` and ``bZenodoArchivePublic`` are
+    True only for ``public``. ``bArxivFullySynced``
     is True trivially when the workflow records no arXiv submission so
     an untracked manuscript does not surface a fake gap.
     ``bAiDeclarationAttested`` requires the step to exist AND carry
