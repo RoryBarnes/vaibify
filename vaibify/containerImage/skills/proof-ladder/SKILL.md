@@ -248,6 +248,22 @@ in this comparison.
    **Check this before concluding a green L2 cell is a bug.** A
    requirement row reads what the last verify recorded, not what
    github.com holds right now.
+6. **GitHub and Zenodo face the same two questions but play different
+   roles.** GitHub is the living copy and should track the working
+   tree; a Zenodo deposit is a checkpoint, immutable, and lags the tree
+   by design. Every project archive is published as a PAIR: a
+   checkpoint version whose `.vaibify/proofReceipt.json` records the
+   state at archiving, then, once a verify establishes Level 2, a
+   completion version with the same files and a receipt recording that
+   Level 2 was met. Vaibify publishes the completion itself when it
+   can; otherwise the Zenodo row offers **Archive the completion
+   receipt** (`archive-zenodo-completion`, USER-ONLY). After a
+   completion the row reads "verification pending" until a verify of
+   the new version succeeds; that is the truth, not a fault. **Never
+   mint a version to chase the working tree**, and never to record
+   that Level 2 is not met. The receipt is committed and never
+   compared; do not edit it, and do not treat its "not compared" badge
+   as a gap.
 
 ## L3 — Reproducible
 
