@@ -393,7 +393,7 @@ def _fdictAssembleObservation(
     dictEvaluation, dictWorkflowIdentity,
 ):
     """Return the observation: its labels, then everything it evaluated."""
-    from . import levelGates, publicationScope
+    from . import levelGates, proofCatalog, publicationScope
     dictGaps = dictEvaluation["dictGaps"]
     bHeldAtZero = dictEvaluation["bMarkersHoldLevelZero"]
     return {
@@ -404,6 +404,7 @@ def _fdictAssembleObservation(
         "listChangedReads": list(listChangedReads),
         "iPublicationScopeVersion":
             publicationScope.I_PUBLICATION_SCOPE_VERSION,
+        "iCriteriaVersion": proofCatalog.I_PROOF_CATALOG_VERSION,
         "fMaxStaleHours": float(levelGates.F_MAX_STALE_HOURS),
         "dictVerdict": {
             "bAtLeastLevel1": bool(dictGaps["bAtLeastLevel1"])

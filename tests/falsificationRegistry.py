@@ -39107,4 +39107,165 @@ LIST_FALSIFICATIONS = [
         old='    listChangedReads = filesRecorder.flistReplayChangedReads()\n',
         new='    listChangedReads = sorted(filesRecorder.setChangedReads)\n',
     ),
+    # --- 2026-10-31: the Level 2 catalog agrees with every copy ---
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixEverythingPasses'
+        ),
+        # The gate's final return made False.
+        source='vaibify/reproducibility/levelGates.py',
+        old='        return False\n    return True\n\n\ndef fbImageArchiveQuestionSettled',
+        new='        return False\n    return False\n\n\ndef fbImageArchiveQuestionSettled',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixGithubPrivateFilesMatch'
+        ),
+        # The GitHub reader-access conjunct removed from the gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not fbGithubRepositoryIsPublic(dictWorkflow, filesRepo):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixGithubRecordAboutAnotherRemote'
+        ),
+        # The remote-identity check dropped from the evidence gap.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return _fsDescribeUncoveredRemote(dictWorkflow, dictStatus, sService)\n',
+        new='    return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixGithubFileDiverged'
+        ),
+        # The unclaimed divergence blocker dropped.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not listUnclaimed:\n        return []\n',
+        new='    if True:\n        return []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixZenodoRecordRestricted'
+        ),
+        # A withheld comparison mapped to differs instead of unknown.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if dictStatus.get("bComparisonWithheld"):\n        return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, "Not compared: " + str(\n',
+        new='    if dictStatus.get("bComparisonWithheld"):\n        return _fdictEvidenceState(S_COPY_DIFFERS, "Not compared: " + str(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixZenodoRecordStale'
+        ),
+        # Staleness dropped from the evidence gap.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if _fbSyncCacheStale(dictStatus):\n        return (\n',
+        new='    if False:\n        return (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixZenodoRecordPredatesTheReaderQuestion'
+        ),
+        # Absent reader evidence read as public.
+        source='vaibify/reproducibility/levelGates.py',
+        old='        return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, (\n            f"The last {_DICT_READER_SERVICE_NAMES[sService]} check was "\n',
+        new='        return _fdictEvidenceState(S_ACCESS_PUBLIC, (\n            f"The last {_DICT_READER_SERVICE_NAMES[sService]} check was "\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixDeclarationFreshnessUncheckable'
+        ),
+        # The declaration's unknown criterion dropped from the catalog.
+        source='vaibify/reproducibility/proofCatalog.py',
+        old='        tUnknownCriteria=("ai-declaration-uncheckable",)),\n',
+        new='        tUnknownCriteria=()),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixDeclarationUnattested'
+        ),
+        # The AI Declaration conjunct removed from the gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not fbWorkflowAiDeclarationAttested(dictWorkflow, filesRepo):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixModelsUndeclared'
+        ),
+        # The ai-models-undeclared blocker no longer emitted.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not replayGate.fbWorkflowDeclaresAiModels(dictWorkflow):\n        listBlockers.append(',
+        new='    if False:\n        listBlockers.append(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixImagePinnedQuestionUnanswered'
+        ),
+        # The environment-archive gaps key no longer read from the gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    bArchiveAnswered = fbImageArchiveQuestionSettled(\n        dictWorkflow, filesRepo,\n    )\n',
+        new='    bArchiveAnswered = True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixNoImagePinned'
+        ),
+        # The image-pinned applicability read as always.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='        "image-pinned": isinstance(dictContainer, dict) and bool(\n            dictContainer.get("sImageDigest")),\n',
+        new='        "image-pinned": True,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixOverleafBoundCheckStale'
+        ),
+        # The Overleaf conjunct removed from the gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixTwoPublishedFilesShareABasename'
+        ),
+        # The basename-collision conjunct removed from the gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if flistLevel2BasenameCollisions(dictWorkflow):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testAnAuthorityAnswerOutsideTheTableRaises'
+        ),
+        # An unknown authority answer defaulted to met.
+        source='vaibify/reproducibility/proofCatalog.py',
+        old='    if sAnswer not in DICT_AUTHORITY_TO_STATE:\n        raise ValueError(\n',
+        new='    if sAnswer not in DICT_AUTHORITY_TO_STATE:\n        return S_STATE_MET\n        raise ValueError(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testDiffersBecomesNotMetAndSurvivesVerbatimAsEvidence'
+        ),
+        # The authority's answer passed through untranslated.
+        source='vaibify/reproducibility/proofCatalog.py',
+        old='        return (fsTranslateAuthorityState(dictAnswer.get("sState")),\n',
+        new='        return (dictAnswer.get("sState"),\n',
+    ),
 ]
