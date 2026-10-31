@@ -203,10 +203,14 @@ def _fsReadHeader(errorHttp, sName):
 
 
 def _fsReadErrorBodySafely(errorHttp):
-    """Return the start of an HTTPError's body, "" when it has none."""
+    """Return the start of an HTTPError's body, "" when it has none.
+
+    KeyError is Python 3.9's answer for an HTTPError built with no body:
+    its tempfile wrapper looks the missing file up in ``__dict__``.
+    """
     try:
         baBody = errorHttp.read(_I_ERROR_BODY_READ_BYTES) or b""
-    except (AttributeError, OSError, ValueError):
+    except (AttributeError, KeyError, OSError, ValueError):
         return ""
     return baBody.decode("utf-8", "replace")
 
