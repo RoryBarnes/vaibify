@@ -135,6 +135,7 @@ __all__ = [
     "flistLevel3Blockers",
     "fnClearLevelBlockerCache",
     "fcontextLevelComputation",
+    "fcontextPinnedEvaluation",
 ]
 
 
@@ -183,6 +184,71 @@ def fcontextLevelComputation():
 def _fdictActiveLevelMemo():
     """Return the active per-call memo, or None when no context is active."""
     return getattr(_THREAD_LOCAL, "dictMemo", None)
+
+
+# One observation at one instant. A PROOF receipt records the gates'
+# verdicts, requirements and evidence as ONE observation, so all of
+# them must see the same clock and the same network answers: the gate,
+# the gaps and the blockers each read the clock and each ask arXiv,
+# and a verdict taken at 23h59m beside a blocker list taken at 24h01m
+# is no observation at all. Kept apart from the level memo, which is
+# not nest-safe (its exit sets None rather than restoring), so a gaps
+# call inside a capture cannot drop the pin.
+@contextmanager
+def fcontextPinnedEvaluation(datetimeEvaluatedAt):
+    """Pin the gates' one clock read; ask each arXiv question once.
+
+    While active, ``_fbCachedSyncStatusFresh`` measures age against the
+    pinned instant, ``flistLevel2Blockers`` neither reads nor writes its
+    cross-poll cache (whose key carries no instant), and each arXiv
+    question is asked once and its answer -- an error included -- is
+    replayed. Nest-safe: entry saves the thread's previous pin and
+    answers, exit restores them. Yields the answers dict.
+    """
+    datetimePreviousPin = getattr(
+        _THREAD_LOCAL, "datetimePinnedEvaluation", None)
+    dictPreviousAnswers = getattr(_THREAD_LOCAL, "dictPinnedAnswers", None)
+    _THREAD_LOCAL.datetimePinnedEvaluation = datetimeEvaluatedAt
+    _THREAD_LOCAL.dictPinnedAnswers = {}
+    try:
+        yield _THREAD_LOCAL.dictPinnedAnswers
+    finally:
+        _THREAD_LOCAL.datetimePinnedEvaluation = datetimePreviousPin
+        _THREAD_LOCAL.dictPinnedAnswers = dictPreviousAnswers
+
+
+def _fbEvaluationIsPinned():
+    """Return True while a pinned evaluation is active on this thread."""
+    return getattr(_THREAD_LOCAL, "datetimePinnedEvaluation", None) is not None
+
+
+def _fdatetimeEvaluationInstant():
+    """Return the pinned instant, or the clock when nothing is pinned."""
+    datetimePinned = getattr(_THREAD_LOCAL, "datetimePinnedEvaluation", None)
+    if datetimePinned is not None:
+        return datetimePinned
+    return datetime.now(timezone.utc)
+
+
+def _fgenericAskArxivOnce(tQuestion, fnAsk):
+    """Return ``fnAsk()``; under a pin, ask each question once and replay it.
+
+    An ``ArxivError`` is replayed too: asked a second time, a failure
+    must not turn into a success inside one observation.
+    """
+    from . import arxivClient
+    dictAnswers = getattr(_THREAD_LOCAL, "dictPinnedAnswers", None)
+    if dictAnswers is None:
+        return fnAsk()
+    if tQuestion not in dictAnswers:
+        try:
+            dictAnswers[tQuestion] = (True, fnAsk())
+        except arxivClient.ArxivError as error:
+            dictAnswers[tQuestion] = (False, error)
+    bAnswered, genericAnswer = dictAnswers[tQuestion]
+    if not bAnswered:
+        raise genericAnswer
+    return genericAnswer
 
 
 # Cross-poll blocker-list memo.
@@ -2062,7 +2128,7 @@ def _fbCachedSyncStatusFresh(dictStatus, fMaxStaleHours):
     if dtVerified.tzinfo is None:
         dtVerified = dtVerified.replace(tzinfo=timezone.utc)
     fDeltaHours = (
-        datetime.now(timezone.utc) - dtVerified
+        _fdatetimeEvaluationInstant() - dtVerified
     ).total_seconds() / 3600.0
     return fDeltaHours <= fMaxStaleHours
 
@@ -2645,9 +2711,13 @@ def _fbArxivHashesCoverPushList(
     dictPathMap = dictArxiv.get("dictPathMap") or None
     sCacheDir = scheduledReverify.fsArxivCacheDir(filesRepo)
     try:
-        dictHashes = arxivClient.fdictFetchRemoteHashes(
-            sArxivId, listPushed,
-            dictPathMap=dictPathMap, sCacheDir=sCacheDir,
+        dictHashes = _fgenericAskArxivOnce(
+            ("remote-hashes", sArxivId, tuple(listPushed),
+             json.dumps(dictPathMap, sort_keys=True), sCacheDir),
+            lambda: arxivClient.fdictFetchRemoteHashes(
+                sArxivId, listPushed,
+                dictPathMap=dictPathMap, sCacheDir=sCacheDir,
+            ),
         )
     except arxivClient.ArxivError:
         return False
@@ -2685,9 +2755,11 @@ def _fbArxivVersionCurrent(dictArxiv):
     sRecorded = dictArxiv.get("sArxivVersion") or ""
     if not sRecorded:
         return False
+    sArxivId = dictArxiv.get("sArxivId") or ""
     try:
-        sLatest = arxivClient.fsResolveLatestVersion(
-            dictArxiv.get("sArxivId") or "",
+        sLatest = _fgenericAskArxivOnce(
+            ("latest-version", sArxivId),
+            lambda: arxivClient.fsResolveLatestVersion(sArxivId),
         )
     except arxivClient.ArxivError:
         return False
@@ -2888,6 +2960,8 @@ def flistLevel2Blockers(dictWorkflow, filesRepo):
     recorded — the arXiv claim is opt-in).
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if _fbEvaluationIsPinned():
+        return _flistComputeLevel2Blockers(dictWorkflow, filesRepo)
     tCacheKey = (
         "L2",
         _fsWorkflowBlockerFingerprint(dictWorkflow),

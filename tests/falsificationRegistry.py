@@ -39030,4 +39030,81 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
+    # --- 2026-10-31: one observation at one instant (the PROOF receipt's capture) ---
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testACaptureIsUnchangedWhenTheClockMovesDuringIt'
+        ),
+        # The freshness check ignores the pin.
+        source='vaibify/reproducibility/levelGates.py',
+        old='        _fdatetimeEvaluationInstant() - dtVerified\n',
+        new='        datetime.now(timezone.utc) - dtVerified\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testAnUnpinnedFreshnessCheckStillReadsTheClock'
+        ),
+        # The pin made permanent: its context no longer restores the previous one.
+        source='vaibify/reproducibility/levelGates.py',
+        old='        _THREAD_LOCAL.datetimePinnedEvaluation = datetimePreviousPin\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testAPinnedEvaluationNeverReadsTheBlockerCache'
+        ),
+        # The blocker-cache bypass under a pin removed.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if _fbEvaluationIsPinned():\n'
+            '        return _flistComputeLevel2Blockers(dictWorkflow, filesRepo)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testArxivIsAskedOncePerQuestionInACapture'
+        ),
+        # The arXiv memo removed: every caller asks again.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if dictAnswers is None:\n        return fnAsk()\n',
+        new='    if True:\n        return fnAsk()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testAnArxivFailureStaysAFailureWhenAskedTwiceInOneCapture'
+        ),
+        # Errors left out of the arXiv memo.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        except arxivClient.ArxivError as error:\n'
+            '            dictAnswers[tQuestion] = (False, error)\n'
+        ),
+        new='        except arxivClient.ArxivError:\n            raise\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testASnapshotMissAGateSwallowedStillRestartsTheCaptureLive'
+        ),
+        # A snapshot capture that missed a read is kept, not redone live.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='    return None if filesRecorder.bMissedSample else dictEvaluation\n',
+        new='    return dictEvaluation\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testAFileChangedBetweenTwoLiveReadsMakesTheObservationIncoherent'
+        ),
+        # The replay of every live read at the end removed.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='    listChangedReads = filesRecorder.flistReplayChangedReads()\n',
+        new='    listChangedReads = sorted(filesRecorder.setChangedReads)\n',
+    ),
 ]
