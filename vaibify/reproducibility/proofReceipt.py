@@ -16,17 +16,35 @@ inputs, and the receipt says which:
 
 An observation is never a mixture of the two. Only a coherent one may
 authorize a completion; a checkpoint carries whatever was seen, labeled.
+
+The receipt document is built from an observation by pure builders --
+no clock, no I/O -- and serialized once, so one observation always
+gives the same bytes. Its schema (version 1) is permanent: it is
+archived. Every catalog entry appears, required or not; requirement
+states come from the gate's own answers through the catalog, and each
+authority's own answer is kept verbatim as evidence. The deposit that
+RECEIVES the receipt (``dictArchive``) is kept apart from the records
+the evidence is about (``dictEvidence``).
 """
 
 import hashlib
 import json
 from datetime import datetime, timezone
 
+from .publicationScope import S_PROOF_RECEIPT_REPO_PATH
+
 __all__ = [
+    "I_PROOF_RECEIPT_SCHEMA_VERSION",
     "S_INPUTS_LIVE_READS",
     "S_INPUTS_ONE_SNAPSHOT",
+    "S_PROOF_RECEIPT_REPO_PATH",
+    "S_RECEIPT_KIND_CHECKPOINT",
+    "S_RECEIPT_KIND_COMPLETION",
     "RecordingRepoFiles",
+    "fdictBuildCompletes",
+    "fdictBuildProofReceipt",
     "fdictCaptureObservation",
+    "fsSerializeProofReceipt",
 ]
 
 
@@ -96,7 +114,7 @@ class RecordingRepoFiles:
         self.dictReads[tKey] = (fnRead, listArgs, genericAnswer)
 
     def flistReplayChangedReads(self):
-        """Ask every recorded read again; return the paths whose answer moved."""
+        """Ask every recorded read again; return paths whose answer moved."""
         setChanged = set(self.setChangedReads)
         for fnRead, listArgs, genericFirst in list(self.dictReads.values()):
             try:
@@ -414,4 +432,321 @@ def _fdictAssembleObservation(
         },
         "dictWorkflowIdentity": dictWorkflowIdentity,
         **dictEvaluation,
+    }
+
+
+# ── The receipt document (schema version 1) ──────────────────────────
+
+I_PROOF_RECEIPT_SCHEMA_VERSION = 1
+S_RECEIPT_KIND_CHECKPOINT = "checkpoint"
+S_RECEIPT_KIND_COMPLETION = "completion"
+S_WHAT_THIS_RECORDS = (
+    "vaibify's Level 2 verdicts at the moment in "
+    "dictObservation.sEvaluatedAtUtc. A record of what was observed, not "
+    "a claim about now.")
+S_CIRCUMSTANCE_COMPLETION_ALONE = (
+    "Level 2 was met against the declared records named in "
+    "dictEvidence.zenodo, and the checkpoint version alone holds every "
+    "Level 2 file.")
+S_CIRCUMSTANCE_COMPLETION_TOGETHER = (
+    "Level 2 was met against the declared records together; the "
+    "checkpoint version alone lacks the files listed in "
+    "dictCompletes.listCheckpointLacks.")
+S_CIRCUMSTANCE_CHECKPOINT_FIRST = (
+    "No archive existed before this one. Level 2 requires the files to "
+    "match an archive, which this deposit is the first to provide; a "
+    "completion version records whether they do.")
+S_CIRCUMSTANCE_CHECKPOINT_LATER = (
+    "Level 2 was checked against the previously declared records (see "
+    "dictEvidence.zenodo). This version is what the next verify compares "
+    "the files with.")
+_T_OBSERVATION_FIELDS = (
+    "sEvaluatedAtUtc", "sInputs", "sInputsReason", "bCoherent",
+    "listChangedReads", "iPublicationScopeVersion", "iCriteriaVersion",
+    "fMaxStaleHours")
+_T_LIST_SORT_KEYS = (
+    "sId", "sKey", "sPath", "sRecordId", "sStepLabel", "sQuestion")
+
+
+def fdictBuildProofReceipt(dictObservation, sKind, dictArchive, dictCompletes):
+    """Return the receipt document for one observation; pure, no clock, no I/O.
+
+    ``dictArchive`` describes the deposit RECEIVING the receipt, built by
+    the caller from the staged files; ``dictCompletes`` is ``None`` for a
+    checkpoint and :func:`fdictBuildCompletes`'s answer for a completion.
+    """
+    return {
+        "iSchemaVersion": I_PROOF_RECEIPT_SCHEMA_VERSION,
+        "sKind": sKind,
+        "sWhatThisRecords": S_WHAT_THIS_RECORDS,
+        "sCircumstance": _fsChooseCircumstance(
+            sKind, dictArchive, dictCompletes),
+        "dictObservation": {
+            sField: dictObservation[sField]
+            for sField in _T_OBSERVATION_FIELDS},
+        "dictVaibify": dict(dictObservation.get("dictVaibify") or {}),
+        "dictWorkflow": dict(dictObservation["dictWorkflowIdentity"]),
+        "dictVerdict": dict(dictObservation["dictVerdict"]),
+        "listRequirements": _flistBuildRequirements(dictObservation),
+        "dictEvidence": _fdictBuildEvidence(dictObservation),
+        "dictArchive": _fdictBuildArchiveElement(dictArchive),
+        "dictCompletes": None if dictCompletes is None else dict(
+            dictCompletes),
+    }
+
+
+def fsSerializeProofReceipt(dictReceipt):
+    """Return the receipt's bytes as text: sorted keys, every list sorted."""
+    return json.dumps(
+        _fgenericSortLists(dictReceipt), indent=2, sort_keys=True) + "\n"
+
+
+def _fgenericSortLists(genericValue):
+    """Return a copy with every list in one deterministic order."""
+    if isinstance(genericValue, dict):
+        return {sKey: _fgenericSortLists(genericItem)
+                for sKey, genericItem in genericValue.items()}
+    if not isinstance(genericValue, list):
+        return genericValue
+    listSorted = [
+        _fgenericSortLists(genericItem) for genericItem in genericValue]
+    return sorted(listSorted, key=_fsListSortKey)
+
+
+def _fsListSortKey(genericItem):
+    """Order dicts by their identifying field, everything else canonically."""
+    if isinstance(genericItem, dict):
+        for sKey in _T_LIST_SORT_KEYS:
+            if sKey in genericItem:
+                return "0" + str(genericItem[sKey])
+    return "1" + json.dumps(genericItem, sort_keys=True, default=str)
+
+
+def _fsChooseCircumstance(sKind, dictArchive, dictCompletes):
+    """Return the one sentence that says what this version records."""
+    if sKind == S_RECEIPT_KIND_COMPLETION:
+        if (dictCompletes or {}).get("bCheckpointAloneSuffices"):
+            return S_CIRCUMSTANCE_COMPLETION_ALONE
+        return S_CIRCUMSTANCE_COMPLETION_TOGETHER
+    if not (dictArchive or {}).get("sFollowsRecordId"):
+        return S_CIRCUMSTANCE_CHECKPOINT_FIRST
+    return S_CIRCUMSTANCE_CHECKPOINT_LATER
+
+
+def _flistBuildRequirements(dictObservation):
+    """Return every catalog entry, derived from the gate's own answers."""
+    from . import proofCatalog
+    dictGaps = dict(
+        dictObservation["dictGaps"],
+        bAtLeastLevel1=dictObservation["dictVerdict"]["bAtLeastLevel1"])
+    listRequirements = proofCatalog.flistDeriveLevel2Requirements(
+        dictGaps, dictObservation["listLevel2Blockers"],
+        dictObservation["dictApplicability"])
+    return listRequirements
+
+
+def _fdictBuildArchiveElement(dictArchive):
+    """Return the receiving deposit: where, after what, and what it holds."""
+    dictArchive = dictArchive or {}
+    return {
+        "sEndpoint": str(dictArchive.get("sEndpoint") or ""),
+        "sConceptDoi": str(dictArchive.get("sConceptDoi") or ""),
+        "sFollowsRecordId": str(dictArchive.get("sFollowsRecordId") or ""),
+        "listContents": [
+            {sField: dictItem.get(sField, "" if sField != "iSizeBytes" else 0)
+             for sField in ("sKey", "sRepoPath", "sSha256", "sMd5",
+                            "iSizeBytes")}
+            for dictItem in dictArchive.get("listContents") or []
+        ],
+    }
+
+
+def _fdictBuildEvidence(dictObservation):
+    """Return one evidence entry per applicable service, each its own shape."""
+    dictApplicability = dictObservation["dictApplicability"]
+    dictEvidence = {
+        sService: _fdictBuildRemoteEvidence(dictObservation, sService)
+        for sService in ("github", "zenodo")
+    }
+    if dictApplicability.get("overleaf-bound"):
+        dictEvidence["overleaf"] = _fdictBuildOverleafEvidence(dictObservation)
+    if dictApplicability.get("arxiv-recorded"):
+        dictEvidence["arxiv"] = _fdictBuildArxivEvidence(dictObservation)
+    return dictEvidence
+
+
+def _fdictBuildRemoteEvidence(dictObservation, sService):
+    """Return GitHub's or Zenodo's evidence: remote, authorities, files."""
+    dictRecord = dictObservation["dictRecords"].get(sService) or {}
+    dictGaps = dictObservation["dictGaps"]
+    dictAccess = dict(dictGaps["dictPublicAccessStates"][sService])
+    dictEvidence = {
+        "dictRemote": _fdictRemoteIdentity(dictRecord, sService),
+        "sCheckedAtUtc": str(dictRecord.get("sLastVerified") or ""),
+        "dictPublicAccess": dictAccess,
+        "dictPublishedCopy": dict(
+            dictGaps["dictPublishedCopyStates"][sService]),
+        "dictComparison": _fdictBuildComparison(dictRecord, sService),
+    }
+    if sService == "github":
+        dictEvidence["sCommittedShaVerified"] = str(
+            dictRecord.get("sCommittedShaVerified") or "")
+        return dictEvidence
+    dictAccess["listRecords"] = [
+        {sField: str((dictItem or {}).get(sField) or "")
+         for sField in ("sRecordId", "sState", "sReason")}
+        for dictItem in (dictRecord.get("dictPublicAccess") or {}).get(
+            "listRecords") or []
+    ]
+    dictEvidence["sDoi"] = str(dictRecord.get("sZenodoDoi") or "")
+    return dictEvidence
+
+
+def _fdictRemoteIdentity(dictRecord, sService):
+    """Return the remote a record is about, ``""`` where it says nothing."""
+    dictIdentity = dictRecord.get("dictRemoteIdentity") or {}
+    if sService == "github":
+        return {sField: str(dictIdentity.get(sField) or "")
+                for sField in ("sOwner", "sRepo", "sBranch")}
+    return {"sEndpoint": str(dictIdentity.get("sEndpoint") or ""),
+            "listRecordIds": [str(sId) for sId in dictIdentity.get(
+                "listRecordIds") or []]}
+
+
+def _fdictBuildComparison(dictRecord, sService):
+    """Return the per-file Level 2 outcomes the record itself carries."""
+    from .publicationScope import fsetSelectLevel2Paths
+    dictExpected = dictRecord.get("dictComparedHashes") or {}
+    dictDiverged = {
+        dictEntry.get("sPath"): dictEntry
+        for dictEntry in dictRecord.get("listDiverged") or []
+        if isinstance(dictEntry, dict)
+    }
+    listRecordIds = (dictRecord.get("dictRemoteIdentity") or {}).get(
+        "listRecordIds") or []
+    listOutcomes = []
+    for sPath in sorted(fsetSelectLevel2Paths(
+            dictRecord.get("listComparedPaths") or [])):
+        dictOutcome = _fdictOneOutcome(
+            sPath, str(dictExpected.get(sPath) or ""), dictDiverged.get(sPath))
+        if sService == "zenodo":
+            dictOutcome["sMatchedInRecordId"] = str(listRecordIds[0]) if (
+                dictOutcome["sOutcome"] == "matched"
+                and len(listRecordIds) == 1) else ""
+        listOutcomes.append(dictOutcome)
+    return {"bWithheld": bool(dictRecord.get("bComparisonWithheld")),
+            "listOutcomes": listOutcomes}
+
+
+def _fdictOneOutcome(sPath, sExpected, dictDiverged):
+    """Return one file's outcome: a match observed its expected bytes."""
+    if dictDiverged is None:
+        return {"sPath": sPath, "sExpectedSha256": sExpected,
+                "sObservedSha256": sExpected, "sOutcome": "matched"}
+    sObserved = str(dictDiverged.get("sActual") or "")
+    return {"sPath": sPath,
+            "sExpectedSha256": sExpected or str(
+                dictDiverged.get("sExpected") or ""),
+            "sObservedSha256": sObserved,
+            "sOutcome": "differs" if sObserved else "absent"}
+
+
+def _fdictBuildOverleafEvidence(dictObservation):
+    """Return vaibify's Overleaf comparison only; never a project id."""
+    from .publicationScope import fbCachedScopeIsCurrent
+    dictRecord = dictObservation["dictRecords"].get("overleaf") or {}
+    dictManuscript = dictObservation["dictManuscript"]
+    return {
+        "sCheckedAtUtc": str(dictRecord.get("sLastVerified") or ""),
+        "bFresh": bool(dictObservation["dictRecordFresh"].get("overleaf")),
+        "bScopeCurrent": fbCachedScopeIsCurrent(dictRecord),
+        "iMatching": int(dictRecord.get("iMatching") or 0),
+        "iTotalFiles": int(dictRecord.get("iTotalFiles") or 0),
+        "listDivergedPaths": sorted(
+            str(dictEntry.get("sPath") or "")
+            for dictEntry in dictRecord.get("listDiverged") or []
+            if isinstance(dictEntry, dict)),
+        "sLastPushCommit": dictManuscript["sLastPushCommit"],
+        "listPushedFigures": list(dictManuscript["listPushedFigures"]),
+        "listNotFrozen": [
+            {"sStepLabel": str(dictBlocker.get("sStepLabel") or ""),
+             "listFigures": list(dictBlocker.get("listOffendingFiles") or [])}
+            for dictBlocker in dictObservation["listLevel2Blockers"]
+            if dictBlocker.get("sCriterion") == "figure-not-frozen"
+        ],
+    }
+
+
+def _fdictBuildArxivEvidence(dictObservation):
+    """Return the arXiv answers the gates got, errors kept as errors."""
+    dictManuscript = dictObservation["dictManuscript"]
+    dictLatest = _fdictArxivAnswer(dictManuscript, "latest-version")
+    dictRemote = _fdictArxivAnswer(dictManuscript, "remote-hashes")
+    dictObserved = dictRemote["genericAnswer"] or {}
+    dictExpected = dictManuscript["dictLocalFigureHashes"]
+    return {
+        "sArxivId": dictManuscript["sArxivId"],
+        "sRecordedVersion": dictManuscript["sRecordedVersion"],
+        "dictLatestVersion": {
+            "sAnswer": str(dictLatest["genericAnswer"] or ""),
+            "sError": dictLatest["sError"]},
+        "bVersionCurrent": bool(dictLatest["genericAnswer"]) and str(
+            dictLatest["genericAnswer"]) == dictManuscript["sRecordedVersion"],
+        "dictFigureComparison": {
+            "listOutcomes": [_fdictFigureOutcome(
+                sPath, dictExpected, dictObserved) for sPath in sorted(
+                dictManuscript["listPushedFigures"])] if not dictRemote[
+                "sError"] and dictRemote["genericAnswer"] is not None else [],
+            "sError": dictRemote["sError"]},
+        "sLastPushCommit": dictManuscript["sLastPushCommit"],
+    }
+
+
+def _fdictArxivAnswer(dictManuscript, sQuestion):
+    """Return one memoized arXiv answer, or an unasked one."""
+    for dictAnswer in dictManuscript["listArxivAnswers"]:
+        if dictAnswer["sQuestion"] == sQuestion:
+            return dictAnswer
+    return {"sQuestion": sQuestion, "genericAnswer": None, "sError": ""}
+
+
+def _fdictFigureOutcome(sPath, dictExpected, dictObserved):
+    """Return one pushed figure: its local hash beside the e-print's."""
+    sExpected = str(dictExpected.get(sPath) or "")
+    sObserved = str(dictObserved.get(sPath) or "")
+    if not sObserved:
+        sOutcome = "absent"
+    else:
+        sOutcome = "matched" if sObserved == sExpected else "differs"
+    return {"sPath": sPath, "sExpectedSha256": sExpected,
+            "sObservedSha256": sObserved, "sOutcome": sOutcome}
+
+
+def fdictBuildCompletes(
+    dictObservation, sCheckpointRecordId, sCheckpointDoi,
+    sCheckpointReceiptSha256, listCheckpointInventory,
+):
+    """Return what a completion claims about its checkpoint.
+
+    The verify accepts a file from ANY declared record, so the claim is
+    "met against the declared record set" and, separately, whether the
+    checkpoint ALONE holds every Level 2 file: a Level 2 path lacks
+    when no checkpoint item has its repository path and observed bytes.
+    """
+    from .publicationScope import fsetSelectLevel2Paths
+    dictRecord = dictObservation["dictRecords"].get("zenodo") or {}
+    dictObserved = dictRecord.get("dictComparedHashes") or {}
+    setHeld = {(str(dictItem.get("sRepoPath") or ""),
+                str(dictItem.get("sSha256") or ""))
+               for dictItem in listCheckpointInventory or []}
+    listLacks = sorted(
+        sPath for sPath in fsetSelectLevel2Paths(
+            dictRecord.get("listComparedPaths") or [])
+        if (sPath, str(dictObserved.get(sPath) or "")) not in setHeld)
+    return {
+        "sCheckpointRecordId": str(sCheckpointRecordId or ""),
+        "sCheckpointDoi": str(sCheckpointDoi or ""),
+        "sCheckpointReceiptSha256": str(sCheckpointReceiptSha256 or ""),
+        "bCheckpointAloneSuffices": not listLacks,
+        "listCheckpointLacks": listLacks,
     }

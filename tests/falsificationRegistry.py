@@ -39268,4 +39268,65 @@ LIST_FALSIFICATIONS = [
         old='        return (fsTranslateAuthorityState(dictAnswer.get("sState")),\n',
         new='        return (dictAnswer.get("sState"),\n',
     ),
+    # --- 2026-10-31: the PROOF receipt document, schema version 1 ---
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testTwoBuildsFromOneObservationAreByteIdentical'
+        ),
+        # The builder reads the clock.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='        "sWhatThisRecords": S_WHAT_THIS_RECORDS,\n',
+        new='        "sWhatThisRecords": S_WHAT_THIS_RECORDS + datetime.now(timezone.utc).isoformat(),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testARequirementStateIsTheGatesNotTheRecords'
+        ),
+        # The builder recomputes access from the verify record.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='    dictGaps = dict(\n        dictObservation["dictGaps"],\n        bAtLeastLevel1=dictObservation["dictVerdict"]["bAtLeastLevel1"])\n',
+        new='    dictGaps = dict(\n        dictObservation["dictGaps"],\n        dictPublicAccessStates={sService: {sKey: ((dictObservation["dictRecords"][sService] or {}).get("dictPublicAccess") or {}).get(sKey, "unknown") for sKey in ("sState", "sReason")} for sService in ("github", "zenodo")},\n        bAtLeastLevel1=dictObservation["dictVerdict"]["bAtLeastLevel1"])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testNotRequiredEntriesAppearWithTheirReasons'
+        ),
+        # The builder filters the requirements to required ones.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='    return listRequirements\n',
+        new='    return [dictRow for dictRow in listRequirements if dictRow["sStatus"] != "not-required"]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testTheEvidenceRemotesAndTheReceivingDepositAreKeptApart'
+        ),
+        # dictArchive filled from the verify record.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='        "dictArchive": _fdictBuildArchiveElement(dictArchive),\n',
+        new='        "dictArchive": _fdictBuildArchiveElement(dict(dictArchive, sConceptDoi=str((dictObservation["dictRecords"]["zenodo"] or {}).get("sZenodoDoi") or ""))),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testAnOverleafBoundReceiptCarriesOverleafsEvidenceAndNoProjectId'
+        ),
+        # The Overleaf entry given the authorities' shape.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='        "listNotFrozen": [\n',
+        new='        "dictPublicAccess": {}, "dictPublishedCopy": {},\n        "listNotFrozen": [\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testACompletionNamesTheRecordSetAndWhatTheCheckpointAloneLacks'
+        ),
+        # listCheckpointLacks dropped from the completion's claim.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='        "listCheckpointLacks": listLacks,\n',
+        new='        "listCheckpointLacks": [],\n',
+    ),
 ]

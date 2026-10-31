@@ -405,11 +405,12 @@ def fnAssertMatrixRow(tmp_path, monkeypatch, sRowId):
     dictGaps = dictObservation["dictGaps"]
     dictStates = _fdictDefaultStates()
     dictStates.update(dictExpected)
-    listDerived = proofCatalog.flistDeriveLevel2Requirements(
-        dictGaps, dictObservation["listLevel2Blockers"],
-        dictObservation["dictApplicability"])
-    assert {d["sId"]: d["sState"] for d in listDerived} == dictStates
+    dictReceipt = proofReceipt.fdictBuildProofReceipt(
+        dictObservation, proofReceipt.S_RECEIPT_KIND_CHECKPOINT, {}, None)
+    assert {d["sId"]: d["sState"]
+            for d in dictReceipt["listRequirements"]} == dictStates
     assert dictObservation["dictVerdict"]["bAtLeastLevel2"] is bGate
+    assert dictReceipt["dictVerdict"]["bAtLeastLevel2"] is bGate
     assert (dictObservation["dictHeaderCell"]["sState"] == "attained") is (
         bHeader)
     assert {d["sCriterion"] for d in dictObservation[
