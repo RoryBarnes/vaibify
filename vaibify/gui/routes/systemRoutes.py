@@ -786,7 +786,7 @@ def _fdictDescribeEnvironment(dictCtx, sContainerId):
     versions and already runs them inside the container when handed a
     container-rooted adapter.
     """
-    import vaibify
+    from ...versionIdentity import fdictDescribeRunningVaibify
     from ...reproducibility.environmentSnapshot import (
         fdictCaptureSystemTools,
         fsReadImageArchitecture,
@@ -822,7 +822,7 @@ def _fdictDescribeEnvironment(dictCtx, sContainerId):
         "sArchitecture": fsReadImageArchitecture(sImageReference),
         "sRecipeFingerprint": fsReadImageRecipeLabel(sImageReference),
         "sToolchainEpoch": fsReadImageToolchainEpoch(sImageReference),
-        "sVaibifyVersion": getattr(vaibify, "__version__", "") or "",
+        "sVaibifyVersion": fdictDescribeRunningVaibify()["sDescribe"],
         "dictSystemTools": dictTools,
     }
 

@@ -38920,4 +38920,34 @@ LIST_FALSIFICATIONS = [
         old='            or scheduledReverify.S_DEFAULT_GITHUB_BRANCH)\n',
         new='            or "")\n',
     ),
+    # --- 2026-10-31: a truthful vaibify identity (plan A5) ---
+    Falsification(
+        nodeid=(
+            'tests/testVersionIdentity.py::'
+            'testTheIdentityFlagsHeadMovedSinceStartup'
+        ),
+        # The digest is no longer recomputed at use: the startup digest
+        # is compared with itself, so nothing ever reads as changed.
+        source='vaibify/versionIdentity.py',
+        old=(
+            '    sCurrentSha256 = _fsSourceTreeSha256OrEmpty('
+            'sPackageDirectory, listErrors)\n'
+        ),
+        new='    sCurrentSha256 = dictIdentity["sSourceTreeSha256"]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVersionIdentity.py::'
+            'testTheIdentityFlagsACleanTreeMadeDirtyWithHeadUnchanged'
+        ),
+        # "Changed" is decided by asking whether HEAD moved, so a tree
+        # made dirty with HEAD unchanged reads as the code it started as.
+        source='vaibify/versionIdentity.py',
+        old='    if sCurrentSha256 == sStartSha256:\n',
+        new=(
+            '    if _ftRunGit(["rev-parse", "--verify", "HEAD"], '
+            'os.path.dirname(sPackageDirectory))[0] == '
+            'dictIdentity["sCommit"]:\n'
+        ),
+    ),
 ]

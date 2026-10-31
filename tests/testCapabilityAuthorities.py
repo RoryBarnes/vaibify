@@ -698,6 +698,25 @@ DICT_NAMED_AUTHORITIES = {
             "Enumerates tracked files with `git ls-files` in a host "
             "checkout.",
         ),
+    # -- the running vaibify's identity ---------------------------------
+    "versionIdentity.py|<module>|process-launch|subprocess|import|0":
+        _fdictAuthority(
+            ["host-cli", "http", "background"],
+            "Asks git what vaibify ITSELF is: describe, HEAD and the "
+            "untracked files of the checkout the package was imported "
+            "from, and only when the package's parent directory holds "
+            ".git, so a package installed inside another repository is "
+            "never described as it. Captured once at the CLI entry and "
+            "the server start; at use (the environment-info route, the "
+            "attestation both lanes build, the reproduction report, the "
+            "session slot) only HEAD is asked again, and only when the "
+            "source digest changed. One launch site, _ftRunGit: a fixed "
+            "argv list with no shell, BOTH gitHardening lists, a "
+            "five-second timeout, GIT_TERMINAL_PROMPT=0 and an "
+            "environment scrubbed of repository-selecting variables. No "
+            "value from a request, a project or a container reaches "
+            "argv; it writes nothing and reaches no container.",
+        ),
 }
 
 

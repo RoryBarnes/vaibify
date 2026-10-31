@@ -27,6 +27,7 @@ __all__ = [
     "testAnUnlabelledImageReportsUnknownRatherThanAGuess",
     "testAFailedToolProbeYieldsNoRowsRatherThanAPartialClaim",
     "testTheIdentityIsReadFromTheConnectTimeCache",
+    "testTheVaibifyVersionIsTheDescribeOfTheRunningCode",
     "testTheShippedDockerfileStampsTheEpochLabel",
 ]
 
@@ -119,6 +120,17 @@ def testTheIdentityIsReadFromTheConnectTimeCache():
     assert dictInfo["sImageId"] == S_IMAGE_ID
     assert dictInfo["sImageDigest"] == "sha256:" + "cd" * 32
     assert dictInfo["sContainerId"] == S_CONTAINER
+
+
+def testTheVaibifyVersionIsTheDescribeOfTheRunningCode():
+    """Not the install-time ``_version.py``, which stops describing a
+    checkout the moment it moves."""
+    with mock.patch(
+        "vaibify.versionIdentity.fdictDescribeRunningVaibify",
+        return_value={"sDescribe": "v9.9.9-2-gcccccccc"},
+    ):
+        dictInfo = _fdictDrive()
+    assert dictInfo["sVaibifyVersion"] == "v9.9.9-2-gcccccccc"
 
 
 def testTheShippedDockerfileStampsTheEpochLabel():

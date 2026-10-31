@@ -122,6 +122,22 @@ def test_I_MAX_SESSIONS_is_99():
     assert I_MAX_SESSIONS == 99
 
 
+@pytest.mark.parametrize("sDescribe, sExpected", [
+    ("v9.9.9-2-gcccccccc-dirty", "v9.9.9-2-gcccccccc-dirty"),
+    ("", "unknown"),
+])
+def test_the_slot_version_is_the_describe_of_the_running_code(
+    monkeypatch, sDescribe, sExpected,
+):
+    """The startup describe, never the install-time ``_version.py``."""
+    from vaibify import versionIdentity
+    from vaibify.config.sessionRegistry import fsRunningVaibifyVersion
+    monkeypatch.setattr(
+        versionIdentity, "fdictDescribeRunningVaibify",
+        lambda: {"sDescribe": sDescribe})
+    assert fsRunningVaibifyVersion() == sExpected
+
+
 def test_fnAcquireSessionSlot_second_acquire_from_same_process_is_idempotent(
     tmp_session_dir,
 ):

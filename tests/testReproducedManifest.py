@@ -264,7 +264,8 @@ def test_a_v4_attestation_reads_with_the_new_fields_none(tmp_path):
         "listCarriedPaths": [], "dictRerunFailure": {},
     }))
     dictRead = fdictReadAttestation(str(pathRepo))
-    assert dictRead["iSchemaVersion"] == I_SCHEMA_VERSION == 7
+    assert dictRead["iSchemaVersion"] == I_SCHEMA_VERSION == 8
+    assert dictRead["dictVaibify"] is None
     assert dictRead["listFileOutcomes"] is None
     assert dictRead["dictReproductionProvenance"] is None
     assert dictRead["sReproducedManifestPath"] is None

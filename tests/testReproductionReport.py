@@ -119,6 +119,24 @@ def test_a_report_carries_only_the_redacted_source_facts():
     }
 
 
+def test_a_report_names_the_vaibify_that_ran(monkeypatch):
+    """The describe of the running code, never the install-time version."""
+    dictIdentity = {
+        "sSource": "checkout", "sDescribe": "v9.9.9-0-gcccccccc",
+        "sCommit": "c" * 40, "bModified": False,
+        "sSourceTreeSha256": "d" * 64, "bSourceChangedSinceStart": False,
+        "sMeaning": "the code this process started with",
+    }
+    monkeypatch.setattr(
+        reproductionReport, "fdictDescribeRunningVaibify",
+        lambda: dict(dictIdentity))
+    dictReport = fdictBuildReproductionReport(
+        _fdictSource(), _fdictAcquired(), _fdictOutcome(), {}, 0.1,
+    )
+    assert dictReport["sVaibifyVersion"] == "v9.9.9-0-gcccccccc"
+    assert dictReport["dictVaibify"] == dictIdentity
+
+
 def test_a_report_is_written_beside_staging_and_read_back_by_id():
     dictReport = fdictBuildReproductionReport(
         _fdictSource(), _fdictAcquired(), _fdictOutcome(), {}, 0.1,

@@ -31,7 +31,6 @@ import secrets
 import time
 from datetime import datetime, timezone
 
-from vaibify import __version__
 from vaibify.reproducibility import comparisonPolicyV1
 from vaibify.reproducibility import imageAcquisition
 from vaibify.reproducibility import imageArchive
@@ -41,6 +40,7 @@ from vaibify.reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
 )
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+from vaibify.versionIdentity import fdictDescribeRunningVaibify
 
 
 __all__ = [
@@ -135,13 +135,18 @@ def fdictBuildReproductionReport(
     re-check's verdict. Every count and every diverged path comes from
     the outcome, nothing is inferred from an exit code, and the carried
     paths ride beside the counts because a ratio displayed without them
-    turns a narrow true statement into a broad false one.
+    turns a narrow true statement into a broad false one. The vaibify
+    that ran is named by ``versionIdentity``, whose describe stands in
+    ``sVaibifyVersion``; the install-time ``_version.py`` stops
+    describing a checkout the moment it moves.
     """
     bRerunAttempted = bool(dictOutcome.get("bRerunAttempted", True))
+    dictVaibify = fdictDescribeRunningVaibify()
     return {
         "sReportId": secrets.token_hex(8),
         "iSchemaVersion": I_REPORT_SCHEMA_VERSION,
-        "sVaibifyVersion": str(__version__),
+        "sVaibifyVersion": dictVaibify["sDescribe"],
+        "dictVaibify": dictVaibify,
         "sCreatedAtIso": datetime.now(timezone.utc).isoformat(),
         "dictSource": _fdictSourceFacts(dictSource),
         "sManifestDigest": str(
