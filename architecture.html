@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.2.3.dev50 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.2.3.dev65 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=c6b20f37"></script>
+      <script src="_static/documentation_options.js?v=33ebe145"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -2587,6 +2587,64 @@ be public is a result, not a failure.</p>
 image deposit is not checked here. Sandbox records are publicly
 readable, so they pass this check; their permanence stays with Level
 3’s <code class="docutils literal notranslate"><span class="pre">an-archive-is-a-sandbox-deposit</span></code>.</p>
+</section>
+<section id="the-archive-is-a-checkpoint">
+<h2>The archive is a checkpoint<a class="headerlink" href="#the-archive-is-a-checkpoint" title="Link to this heading"></a></h2>
+<p><strong>Symmetric gates, asymmetric roles.</strong> GitHub and Zenodo face the same
+two Level 2 questions: is the copy public, and do its files match. Their
+roles differ. GitHub is the living copy, and should track the working
+tree. Zenodo is a checkpoint: it lags the working tree by design, its
+versions are immutable, and it is the only copy with a preservation
+commitment. So the archive carries the evidence of what was met when it
+was made, and a lagging archive is never “fixed” by minting versions to
+chase the working tree.</p>
+<p><strong>A deposit cannot contain its own verification, so it is a pair.</strong> Every
+project archive (the promotion included; never the environment image)
+publishes a <strong>checkpoint</strong> version whose receipt records the state at
+archiving and the exact bytes uploaded. Once a verify establishes Level
+2, a <strong>completion</strong> version follows: it inherits the checkpoint’s files,
+checked by key, MD5 and size, and replaces only the receipt with one
+saying what was established, and against which records. Because the
+Zenodo verify accepts a file from any declared record, the completion
+claims “met against the declared record set” and says separately whether
+the checkpoint alone holds every Level 2 file. No version is ever minted
+to say “not met”. The completion runs automatically when the
+post-publish verify’s single new observation attains Level 2, is
+coherent and drew no warning; otherwise the Zenodo row offers it, through
+the user-only <code class="docutils literal notranslate"><span class="pre">archive-completion</span></code> route.</p>
+<p><strong>The receipt</strong> (<code class="docutils literal notranslate"><span class="pre">.vaibify/proofReceipt.json</span></code>, schema version 1) is built
+by pure builders in <code class="docutils literal notranslate"><span class="pre">proofReceipt</span></code> from ONE observation: the gate, the
+gaps, both authorities per service, the blockers, the header cell, the
+verify records and every arXiv answer, evaluated once at one pinned
+instant (<code class="docutils literal notranslate"><span class="pre">levelGates.fcontextPinnedEvaluation</span></code>), over one container
+snapshot or over live reads that are replayed at the end to prove nothing
+changed. An observation is never a mixture, and says which it is; only a
+coherent one may authorize a completion. Requirement states come from
+the gate’s own answers through the Level 2 catalog (<code class="docutils literal notranslate"><span class="pre">proofCatalog</span></code>), and
+each authority’s own answer is kept verbatim as evidence. The receipt is
+serialized once; those bytes are uploaded, checked in the draft, and
+written into the repository only after the version is published, by a
+narrow backend write to two constant paths (the caller-supplied write
+keeps refusing <code class="docutils literal notranslate"><span class="pre">.vaibify</span></code>). It is committed with the canonical files and
+never compared, one of the “committed, never compared” category in
+<code class="docutils literal notranslate"><span class="pre">publicationScope</span></code>.</p>
+<p><strong>The journal.</strong> The completion is the first project-side journal
+writer: a <code class="docutils literal notranslate"><span class="pre">completion</span></code> lane in <code class="docutils literal notranslate"><span class="pre">archivePromotion</span></code>. Its receipt’s bytes
+are stored in <code class="docutils literal notranslate"><span class="pre">.vaibify/pendingReceipts/</span></code> before the intent is recorded;
+its inventory is exact, the receipt included, and on this lane an
+unlisted file is a non-match too, so a version still holding the
+checkpoint’s receipt never reads published. A draft whose only missing
+file is the receipt may be resumed, because the stored bytes survive;
+the project and image lanes still offer only discard on a partial
+upload. Adoption records the version and restores the repository
+receipt; it never reaches the image adopter.</p>
+<p><strong>The guarantee is narrower than “levels never drop”.</strong> Completion
+changes no compared content: the inherited files are identical by
+checksum, and the receipt is never compared. But publishing the
+completion changes the declared record, so the Zenodo copy reads unknown
+until a verify of the new record succeeds, and the row says
+“verification pending” until then, with the reason when that verify
+fails.</p>
 </section>
 <section id="the-memory-watch-reports-kills-it-can-prove-and-says-what-it-cannot">
 <h2>The memory watch reports kills it can prove, and says what it cannot<a class="headerlink" href="#the-memory-watch-reports-kills-it-can-prove-and-says-what-it-cannot" title="Link to this heading"></a></h2>

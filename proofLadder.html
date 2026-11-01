@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The PROOF Ladder &mdash; Vaibify 0.2.3.dev50 documentation</title>
+  <title>The PROOF Ladder &mdash; Vaibify 0.2.3.dev65 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=c6b20f37"></script>
+      <script src="_static/documentation_options.js?v=33ebe145"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -476,6 +476,24 @@ stores only a label, the file’s SHA-256, its size, and the date.</p>
 <p>Remote checks are cached. A GitHub or Zenodo verdict older than a day
 reads as unknown (<strong>?</strong>) rather than passing; <strong>Verify now</strong> refreshes
 it, and vaibify also re-verifies on a schedule while the hub runs.</p>
+<p><strong>The archive carries a PROOF receipt.</strong> GitHub is the living copy of a
+project; a Zenodo deposit is a checkpoint, the only copy with a
+preservation commitment, so every project deposit carries
+<code class="docutils literal notranslate"><span class="pre">.vaibify/proofReceipt.json</span></code>: vaibify’s Level 2 verdicts, every Level 2
+requirement (met or not, required or not, with the reason it is or is
+not required), and the evidence each was judged on, all observed at one
+moment. A deposit cannot contain its own verification, so each archive
+is published as a pair. The <strong>checkpoint</strong> version’s receipt records the
+state at archiving and the exact files uploaded. Once a verify
+establishes Level 2, a <strong>completion</strong> version follows with the same
+files and a receipt saying Level 2 was met, against which records, and
+whether the checkpoint alone holds every Level 2 file. Vaibify publishes
+the completion at once when it can, and otherwise the Zenodo row offers
+<strong>Archive the completion receipt</strong>; it never mints a version to say
+“not met”. After a completion the Zenodo row reads <em>verification
+pending</em> until a verify of the new version succeeds. The receipt is
+committed with the project and never compared, so its badge reads “not
+compared”.</p>
 </section>
 <section id="level-3-requirements">
 <h3>Level 3 requirements<a class="headerlink" href="#level-3-requirements" title="Link to this heading"></a></h3>

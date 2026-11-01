@@ -492,6 +492,11 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": False,
      "sDescription": "Archive outputs to Zenodo. User-only: a Zenodo "
                      "DOI is a public research artifact."},
+    {"sName": "archive-zenodo-completion", "sCategory": "sync",
+     "sMethod": "POST", "bAgentSafe": False,
+     "sPath": "/api/zenodo/{sContainerId}/archive-completion",
+     "sDescription": "Archive the completion version recording that Level "
+                     "2 holds. User-only: it mints a public DOI."},
     {"sName": "set-zenodo-metadata", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/zenodo/{sContainerId}/metadata",
