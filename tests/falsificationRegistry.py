@@ -39358,6 +39358,16 @@ LIST_FALSIFICATIONS = [
         old='        dictCheckpoint.update(dictReceipt=dictReceipt, baReceipt=baReceipt)\n',
         new='        dictCheckpoint.update(dictReceipt=dictReceipt, baReceipt=baReceipt)\n        syncDispatcher.fnWriteProofReceiptIntoProject(dictCtx["docker"], sContainerId, dictWorkflow.get("sProjectRepoPath") or "", baReceipt)\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCheckpoint.py::'
+            'testASelectedFileNamedLikeTheReceiptIsRefused'
+        ),
+        # The receipt-key refusal never firing.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if listNamed:\n',
+        new='    if False:\n',
+    ),
     # --- 2026-10-31: the journaled completion version and its recovery ---
     Falsification(
         nodeid=(
@@ -39384,10 +39394,10 @@ LIST_FALSIFICATIONS = [
             'tests/testProofReceiptCompletion.py::'
             'testANewerConceptVersionRefusesTheCompletion'
         ),
-        # The latest-version check removed.
+        # The latest-version check never refusing.
         source='vaibify/gui/syncDispatcher.py',
-        old='    _fnRefuseANewerVersion(dictParent, iParent)\n',
-        new='',
+        old='    if sLatestId.isdigit() and int(sLatestId) != int(iParent):\n',
+        new='    if False:\n',
     ),
     Falsification(
         nodeid=(
@@ -39446,7 +39456,7 @@ LIST_FALSIFICATIONS = [
         ),
         # bCoherent ignored by the completion's authorization.
         source='vaibify/gui/routes/syncRoutes.py',
-        old='    if not dictObservation["bCoherent"]:\n',
+        old='    if not dictObservation.get("bCoherent"):\n',
         new='    if False:\n',
     ),
     Falsification(
@@ -39456,7 +39466,7 @@ LIST_FALSIFICATIONS = [
         ),
         # The attained check removed from the authorization.
         source='vaibify/gui/routes/syncRoutes.py',
-        old='    if not dictObservation["dictVerdict"]["bAtLeastLevel2"]:\n',
+        old='    if not (dictObservation.get("dictVerdict") or {}).get("bAtLeastLevel2"):\n',
         new='    if False:\n',
     ),
     Falsification(
@@ -39466,8 +39476,8 @@ LIST_FALSIFICATIONS = [
         ),
         # A second capture after authorization.
         source='vaibify/gui/routes/syncRoutes.py',
-        old='        return await _fdictPerformCompletion(\n            dictCtx, sContainerId, dictWorkflow, requestHttp, dictObservation)\n    except HTTPException as errorRefused:\n',
-        new='        return await _fdictPerformCompletion(\n            dictCtx, sContainerId, dictWorkflow, requestHttp, await _fdictCaptureUnderTheDrain(dictCtx, sContainerId, dictWorkflow, requestHttp))\n    except HTTPException as errorRefused:\n',
+        old='    if sWhy:\n        return {"bCompleted": False, "sReason": sWhy}\n    return await _fdictPerformCompletion(\n        dictCtx, sContainerId, dictWorkflow, requestHttp, dictObservation)\n',
+        new='    if sWhy:\n        return {"bCompleted": False, "sReason": sWhy}\n    return await _fdictPerformCompletion(\n        dictCtx, sContainerId, dictWorkflow, requestHttp, await _fdictCaptureUnderTheDrain(dictCtx, sContainerId, dictWorkflow, requestHttp))\n',
     ),
     Falsification(
         nodeid=(
@@ -39575,5 +39585,35 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/syncDispatcher.py',
         old='    _fnRequireAFreshCopyOfTheCheckpoint(dictDraft, iDraft, dictParent)\n',
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testTheArchiveRefusesWhileACompletionIsInFlight'
+        ),
+        # The in-flight refusal returning as if nothing were in flight.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if not listLive:\n        return\n    raise HTTPException(409, (\n',
+        new='    if True:\n        return\n    raise HTTPException(409, (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testARefusedDrainIsTheCompletionsReasonNeverARaise'
+        ),
+        # The control-plane refusal escaping the automatic completion.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    except ControlPlaneRefusalError as errorRefused:\n        return {"bCompleted": False, "sReason": (\n',
+        new='    except ZeroDivisionError as errorRefused:\n        return {"bCompleted": False, "sReason": (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testARefusalInsideTheCaptureSettlesItsRecordBeforeRaising'
+        ),
+        # The capture worker raising a refusal instead of carrying it back.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='            return {"errorRefused": errorRefused, "objResult": None}\n\n    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictCapture, "proof-observation", requestHttp)\n',
+        new='            raise\n\n    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictCapture, "proof-observation", requestHttp)\n',
     ),
 ]

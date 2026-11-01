@@ -15,7 +15,9 @@ import time
 from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
-from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from vaibify.config.mutationAdmission import (
+    ControlPlaneRefusalError, fnReRaiseControlPlaneRefusal,
+)
 from .. import containerGit, workflowManager
 from ..actionCatalog import ffnAgentAction
 from ..remoteBindingContext import (
@@ -1300,6 +1302,7 @@ def _ftArchiveWithCheckpointReceipt(
         dictObservation = proofReceipt.fdictCaptureObservation(
             dictCtx, sContainerId, dictWorkflow)
     except Exception as error:  # noqa: BLE001 -- refused before any upload
+        fnReRaiseControlPlaneRefusal(error)
         logger.warning("Level 2 observation failed for %s: %r",
                        sContainerId, error)
         return (1, "LOCAL-FILE-ERROR (not a Zenodo problem; nothing was "
@@ -1487,31 +1490,44 @@ def _fsWhyAnObservationCannotComplete(dictObservation):
     if dictObservation.get("sCaptureError"):
         return ("vaibify could not observe Level 2: "
                 + dictObservation["sCaptureError"])
-    if not dictObservation["dictVerdict"]["bAtLeastLevel2"]:
+    if not (dictObservation.get("dictVerdict") or {}).get("bAtLeastLevel2"):
         return ("Level 2 is not met in vaibify's observation, so no "
                 "completion version can record that it is.")
-    if not dictObservation["bCoherent"]:
+    if not dictObservation.get("bCoherent"):
         return ("files changed while vaibify was reading them ("
-                + ", ".join(dictObservation["listChangedReads"])
+                + ", ".join(dictObservation.get("listChangedReads") or [])
                 + "); try again when nothing is writing to the project.")
     return ""
+
+
+def _fdictCaptureObservationOrItsFailure(dictCtx, sContainerId, dictWorkflow):
+    """Capture one observation; any failure but a refusal is described."""
+    from vaibify.reproducibility import proofReceipt
+    try:
+        return proofReceipt.fdictCaptureObservation(
+            dictCtx, sContainerId, dictWorkflow)
+    except Exception as error:  # noqa: BLE001 -- a read; nothing written
+        fnReRaiseControlPlaneRefusal(error)
+        return {"sCaptureError": repr(error)}
 
 
 async def _fdictCaptureUnderTheDrain(
     dictCtx, sContainerId, dictWorkflow, requestHttp,
 ):
-    """Capture one observation in a mode-(b) worker; a failure is a value."""
-    from vaibify.reproducibility import proofReceipt
+    """Capture one observation in a mode-(b) worker; a failure is a value.
 
+    A control-plane refusal is carried back rather than raised in the
+    worker: the capture wrote nothing, so its journal record settles and
+    the refusal is raised out here, never quarantining the container.
+    """
     def fdictCapture(supervisor=None):
         del supervisor
         try:
             return {"errorRefused": None,
-                    "objResult": proofReceipt.fdictCaptureObservation(
+                    "objResult": _fdictCaptureObservationOrItsFailure(
                         dictCtx, sContainerId, dictWorkflow)}
-        except Exception as error:  # noqa: BLE001 -- a read; nothing written
-            return {"errorRefused": None,
-                    "objResult": {"sCaptureError": repr(error)}}
+        except ControlPlaneRefusalError as errorRefused:
+            return {"errorRefused": errorRefused, "objResult": None}
 
     return await fgenericRunWorkerUnderTheDrain(
         sContainerId, fdictCapture, "proof-observation", requestHttp)
@@ -1525,21 +1541,35 @@ async def _fdictCompleteAfterCheckpoint(
     That observation both authorizes the completion and is what its
     receipt records; there is no second capture. Any reason it cannot
     run is returned, never raised: the checkpoint stands, and the
-    dashboard offers the completion button.
+    dashboard offers the completion button. A verify that warned is
+    checked first, so a failed verify starts no further operation, and a
+    control-plane refusal (a quarantined journal) is the reason given.
     """
+    if dictResult.get("sPostPushVerifyWarning"):
+        return {"bCompleted": False, "sReason": (
+            "the Zenodo verify after publishing warned: "
+            + dictResult["sPostPushVerifyWarning"])}
+    try:
+        return await _fdictCompleteFromOneObservation(
+            dictCtx, sContainerId, dictWorkflow, requestHttp)
+    except HTTPException as errorRefused:
+        return {"bCompleted": False, "sReason": str(errorRefused.detail)}
+    except ControlPlaneRefusalError as errorRefused:
+        return {"bCompleted": False, "sReason": (
+            "the completion was not attempted: " + str(errorRefused))}
+
+
+async def _fdictCompleteFromOneObservation(
+    dictCtx, sContainerId, dictWorkflow, requestHttp,
+):
+    """Capture once; complete only when that observation authorizes it."""
     dictObservation = await _fdictCaptureUnderTheDrain(
         dictCtx, sContainerId, dictWorkflow, requestHttp)
     sWhy = _fsWhyAnObservationCannotComplete(dictObservation)
-    if not sWhy and dictResult.get("sPostPushVerifyWarning"):
-        sWhy = ("the Zenodo verify after publishing warned: "
-                + dictResult["sPostPushVerifyWarning"])
     if sWhy:
         return {"bCompleted": False, "sReason": sWhy}
-    try:
-        return await _fdictPerformCompletion(
-            dictCtx, sContainerId, dictWorkflow, requestHttp, dictObservation)
-    except HTTPException as errorRefused:
-        return {"bCompleted": False, "sReason": str(errorRefused.detail)}
+    return await _fdictPerformCompletion(
+        dictCtx, sContainerId, dictWorkflow, requestHttp, dictObservation)
 
 
 async def _fdictPerformCompletion(

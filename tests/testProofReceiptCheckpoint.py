@@ -203,7 +203,12 @@ def testAnObservationThatFailsRefusesBeforeAnyUpload(
     assert clientZenodoFake.listBuilt == []
 
 
+@pytest.mark.falsification
 def testASelectedFileNamedLikeTheReceiptIsRefused():
+    """A selected file named like the receipt would collide in a flat deposit.
+
+    Kills: the receipt-key refusal never firing.
+    """
     from fastapi import HTTPException
     with pytest.raises(HTTPException) as excInfo:
         syncRoutes._fnRefuseBasenameCollisions(

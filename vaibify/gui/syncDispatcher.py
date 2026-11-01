@@ -24,6 +24,7 @@ from vaibify.reproducibility.overleafAuth import (
     fsWriteAskpassScript,
 )
 
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from vaibify.config.registryManager import fbIsHostProject
 
 from . import stateContract
@@ -1668,7 +1669,8 @@ def _fbHostGithubCredentialAvailable(sRemoteUrl):
     )
     try:
         return bool(fsResolveToken(fsKeyringSlotFromRemoteUrl(sRemoteUrl)))
-    except Exception:
+    except Exception as error:
+        fnReRaiseControlPlaneRefusal(error)
         return False
 
 

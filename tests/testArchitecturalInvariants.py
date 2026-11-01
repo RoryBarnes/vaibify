@@ -5720,7 +5720,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3755 -> 3774 (2026-10-29): token-bearing Overleaf and Zenodo actions read their target from the confirmed host binding, and a deposit moves it.
     # 3774 -> 3860 (2026-10-31): every project deposit carries a checkpoint PROOF receipt built from the staged bytes and written into the repository only after publication (proof-receipt plan, A13).
     # 3860 -> 4157 (2026-10-31): the journaled completion version -- automatic after a checkpoint, the user-only retry route, and the archive's refusal while one is in flight (proof-receipt plan, A13).
-    "routes/syncRoutes.py": 4157,
+    # 4157 -> 4187 (2026-10-31): the automatic completion returns a control-plane refusal as its reason, and its capture worker carries one back rather than quarantining the container (proof-receipt plan, A13).
+    "routes/syncRoutes.py": 4187,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -6952,7 +6953,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # researcher's own program (execLane holds the rule).
     # 2142 -> 2144 (2026-10-28): the integrity-read lane on the digest read.
     # 2144 -> 2572 (2026-10-31): the PROOF receipt's narrow write and staging hook, and the completion version's Zenodo steps and settlement (proof-receipt plan, A13).
-    "syncDispatcher.py": 2572,
+    # 2572 -> 2574 (2026-10-31): the GitHub credential probe passes control-plane refusals through, now that the module imports the carrier (proof-receipt plan, A13).
+    "syncDispatcher.py": 2574,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the

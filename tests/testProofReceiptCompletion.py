@@ -245,7 +245,7 @@ def testAForeignUnpublishedDraftIsRefused():
 def testANewerConceptVersionRefusesTheCompletion():
     """A completion only follows the checkpoint it completes.
 
-    Kills: the latest-version check removed.
+    Kills: the latest-version check never refusing.
     """
     clientZenodo = _ArchiveZenodo()
     clientZenodo.fnAddVersion(102, {"out.csv": BA_DATA})
@@ -437,11 +437,72 @@ def testNoCompletionIsMintedWhileLevelTwoIsNotAttained(monkeypatch):
 
 
 def testAVerifyWarningAuthorizesNoCompletion(monkeypatch):
+    """A warned verify starts nothing: no observation is served, so a capture would raise."""
     listPerformed = []
-    _fnServeObservations(monkeypatch, [_fdictObservation()], listPerformed)
+    _fnServeObservations(monkeypatch, [], listPerformed)
     dictOutcome = _fdictCompleteAutomatically(
         {"sPostPushVerifyWarning": "the record lags Zenodo's index"})
     assert dictOutcome["bCompleted"] is False and listPerformed == []
+    assert "the record lags Zenodo's index" in dictOutcome["sReason"]
+
+
+S_QUARANTINE_SENTENCE = (
+    "Container 'c' has a quarantined journal record (r1): a 'helper' "
+    "operation was left unfinished")
+
+
+@pytest.mark.falsification
+def testARefusedDrainIsTheCompletionsReasonNeverARaise(monkeypatch):
+    """A quarantined journal refuses the completion; the checkpoint's answer stands.
+
+    Kills: the control-plane refusal escaping the automatic completion.
+    """
+    from vaibify.gui.commitCarrier import CommitRefusedError
+    listPerformed = []
+
+    async def fgenericRefuse(*_listArgs):
+        raise CommitRefusedError(S_QUARANTINE_SENTENCE)
+
+    async def fdictPerform(*listArgs):
+        listPerformed.append(listArgs)
+
+    monkeypatch.setattr(syncRoutes, "fgenericRunWorkerUnderTheDrain",
+                        fgenericRefuse)
+    monkeypatch.setattr(syncRoutes, "_fdictPerformCompletion", fdictPerform)
+    dictOutcome = _fdictCompleteAutomatically()
+    assert dictOutcome["bCompleted"] is False and listPerformed == []
+    assert S_QUARANTINE_SENTENCE in dictOutcome["sReason"]
+
+
+@pytest.mark.falsification
+def testARefusalInsideTheCaptureSettlesItsRecordBeforeRaising(monkeypatch):
+    """The capture worker returns a refusal; raising it would poison the record.
+
+    Kills: the capture worker raising a refusal instead of carrying it back.
+    """
+    from vaibify.config.mutationAdmission import MutationNotAdmittedError
+    from vaibify.reproducibility import proofReceipt
+    listPoisoned = []
+
+    def fdictRefuse(*_listArgs):
+        raise MutationNotAdmittedError(S_QUARANTINE_SENTENCE)
+
+    async def fgenericDrainLikeTheCarrier(_sId, fnWorker, _sTarget, _r):
+        try:
+            dictCarried = fnWorker()
+        except Exception:
+            listPoisoned.append(True)
+            raise
+        if dictCarried["errorRefused"] is not None:
+            raise dictCarried["errorRefused"]
+        return dictCarried["objResult"]
+
+    monkeypatch.setattr(proofReceipt, "fdictCaptureObservation", fdictRefuse)
+    monkeypatch.setattr(syncRoutes, "fgenericRunWorkerUnderTheDrain",
+                        fgenericDrainLikeTheCarrier)
+    dictOutcome = _fdictCompleteAutomatically()
+    assert listPoisoned == [] and dictOutcome["bCompleted"] is False
+    assert S_QUARANTINE_SENTENCE in dictOutcome["sReason"]
 
 
 @pytest.mark.falsification
@@ -518,7 +579,12 @@ def testTheRetryRefusesWhenTheLatestVersionIsAlreadyACompletion(
         f"/api/zenodo/{S_CONTAINER_ID}/archive-completion").status_code == 409
 
 
+@pytest.mark.falsification
 def testTheArchiveRefusesWhileACompletionIsInFlight():
+    """An unsettled completion blocks a new archive, naming the completion.
+
+    Kills: the in-flight refusal returning as if nothing were in flight.
+    """
     from fastapi import HTTPException
     with pytest.raises(HTTPException) as excInfo:
         syncRoutes._fnRefuseWhileACompletionIsInFlight(
