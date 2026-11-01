@@ -44,6 +44,7 @@ import click
 import uvicorn
 
 from vaibify.docker.bridgeGateway import fsResolveDockerBridgeGateway
+from vaibify.versionIdentity import fnCaptureStartupIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -301,7 +302,13 @@ def fnRunServer(
     binds exactly one address. ``host`` and ``port`` on the config are
     then descriptive — uvicorn reads them for its own log line, never
     to bind — and are kept truthful for that reason.
+
+    The running vaibify's identity is captured before the first request
+    can be served. The CLI entry has normally captured it already, and
+    then this does nothing; a server started any other way would
+    otherwise capture it at first use, perhaps hours into its life.
     """
+    fnCaptureStartupIdentity()
     listSockets = flistBindServerSockets(
         flistResolveBindAddresses(sHost, bServeContainerAgents), iPort,
     )

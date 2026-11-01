@@ -15,7 +15,9 @@ import time
 from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
-from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from vaibify.config.mutationAdmission import (
+    ControlPlaneRefusalError, fnReRaiseControlPlaneRefusal,
+)
 from .. import containerGit, workflowManager
 from ..actionCatalog import ffnAgentAction
 from ..remoteBindingContext import (
@@ -841,22 +843,26 @@ def _fnRegisterZenodoArchive(app, dictCtx):
         )
         _fnRefuseBasenameCollisions(request.listFilePaths)
         _fnRefuseCrossInstanceParent(dictWorkflow)
+        _fnRefuseWhileACompletionIsInFlight(dictWorkflow)
         _fnLogPublishRequested(
             "Zenodo", sContainerId,
             f"files={len(request.listFilePaths)} site="
             f"{_fsLoggableZenodoSite(dictWorkflow.get('sZenodoService'))}",
         )
-        dictResult, sZenodoService = await _ftPerformZenodoArchive(
-            syncDispatcher, dictCtx, sContainerId, dictWorkflow,
-            request, requestHttp,
-        )
+        dictResult, sZenodoService, dictCheckpoint = (
+            await _ftPerformZenodoArchive(
+                syncDispatcher, dictCtx, sContainerId, dictWorkflow,
+                request, requestHttp,
+            ))
         if not dictResult["bSuccess"]:
             _fnLogPublishOutcome("Zenodo", sContainerId, dictResult)
             return dictResult
         await _fnPersistZenodoArchiveSuccess(
             dictCtx, sContainerId, dictWorkflow, request,
-            dictResult, sZenodoService, requestHttp,
+            dictResult, sZenodoService, requestHttp, dictCheckpoint,
         )
+        dictResult["dictCompletion"] = await _fdictCompleteAfterCheckpoint(
+            dictCtx, sContainerId, dictWorkflow, requestHttp, dictResult)
         _fnLogPublishOutcome(
             "Zenodo", sContainerId, dictResult,
             sIdentifier=dictWorkflow.get("sZenodoLatestDoi", ""),
@@ -893,6 +899,7 @@ def _fnRegisterZenodoPromote(app, dictCtx):
         )
         _fnRequireSandboxProjectDeposit(dictWorkflow)
         _fnRefuseWhileOtherRecordsAreDeclared(dictWorkflow)
+        _fnRefuseWhileACompletionIsInFlight(dictWorkflow)
         # The union is collected HERE when the caller names no files.
         # A promotion publishes what the gates compare, and the
         # frontend deriving that set would be a second authority on
@@ -912,11 +919,12 @@ def _fnRegisterZenodoPromote(app, dictCtx):
             dictWorkflow.get("sProjectRepoPath") or "",
         )
         _fnRefuseBasenameCollisions(request.listFilePaths)
-        dictResult, sZenodoService = await _ftPerformZenodoArchive(
-            syncDispatcher, dictCtx, sContainerId, dictWorkflow,
-            request, requestHttp,
-            sServiceOverride="zenodo", iParentOverride=0,
-        )
+        dictResult, sZenodoService, dictCheckpoint = (
+            await _ftPerformZenodoArchive(
+                syncDispatcher, dictCtx, sContainerId, dictWorkflow,
+                request, requestHttp,
+                sServiceOverride="zenodo", iParentOverride=0,
+            ))
         if not dictResult["bSuccess"]:
             # SAID in the log, because the toast that pointed a
             # researcher here found nothing: a refused publish
@@ -931,8 +939,10 @@ def _fnRegisterZenodoPromote(app, dictCtx):
         _fnRetireSupersededZenodoRecord(dictWorkflow)
         await _fnPersistZenodoArchiveSuccess(
             dictCtx, sContainerId, dictWorkflow, request,
-            dictResult, sZenodoService, requestHttp,
+            dictResult, sZenodoService, requestHttp, dictCheckpoint,
         )
+        dictResult["dictCompletion"] = await _fdictCompleteAfterCheckpoint(
+            dictCtx, sContainerId, dictWorkflow, requestHttp, dictResult)
         return dictResult
 
 
@@ -1117,7 +1127,7 @@ def _fnClearPrimaryZenodoRecord(dictWorkflow):
         (dictWorkflow or {}).get("dictRemotes") or {}
     ).get("zenodo")
     if isinstance(dictZenodo, dict):
-        for sField in ("sRecordId", "sDoi", "sService"):
+        for sField in ("sRecordId", "sDoi", "sService", "dictReceipt"):
             dictZenodo.pop(sField, None)
     for sKey in (
         "sZenodoDepositionId", "sZenodoLatestDoi",
@@ -1180,6 +1190,7 @@ def _fnRefuseBasenameCollisions(listFilePaths):
         listPaths for listPaths in dictByBasename.values()
         if len(listPaths) > 1
     ]
+    _fnRefuseTheReceiptKey(dictByBasename)
     if not listCollisions:
         return
     sPairs = "; ".join(
@@ -1197,15 +1208,30 @@ def _fnRefuseBasenameCollisions(listFilePaths):
     )
 
 
+def _fnRefuseTheReceiptKey(dictByBasename):
+    """Refuse a selected file named like the PROOF receipt every archive adds."""
+    from vaibify.reproducibility.proofReceipt import S_RECEIPT_DEPOSIT_KEY
+    listNamed = dictByBasename.get(S_RECEIPT_DEPOSIT_KEY) or []
+    if listNamed:
+        raise HTTPException(status_code=400, detail=(
+            "vaibify writes " + S_RECEIPT_DEPOSIT_KEY + " into every archive "
+            "itself, and a Zenodo deposit is flat, so a selected file of "
+            "that name would collide with it: " + ", ".join(listNamed)
+            + ". Deselect it, then archive again."))
+
+
 async def _ftPerformZenodoArchive(
     syncDispatcher, dictCtx, sContainerId, dictWorkflow, request,
     requestHttp, sServiceOverride="", iParentOverride=None,
 ):
     """Upload to Zenodo under the drain and parse the deposit response.
 
-    Returns ``(dictResult, sZenodoService)``. On failure the parsed
-    Zenodo metadata is not merged into ``dictResult`` so callers can
-    short-circuit before persisting.
+    Returns ``(dictResult, sZenodoService, dictCheckpoint)``. On failure
+    the parsed Zenodo metadata is not merged into ``dictResult`` so
+    callers can short-circuit before persisting. ``dictCheckpoint`` holds
+    the checkpoint receipt -- its document and its ONE serialization --
+    for the persist step to record and to write into the repository
+    once the version is published.
 
     Mode (b): the upload streams the researcher's selected outputs to a
     remote archive from inside the container, for as long as the files
@@ -1239,12 +1265,15 @@ async def _ftPerformZenodoArchive(
         if iParentOverride is None else int(iParentOverride)
     )
 
+    dictCheckpoint = {}
+
     def fdictArchiveToZenodo(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
-            lambda: syncDispatcher.ftResultArchiveToZenodo(
-                dictCtx["docker"], sContainerId, sZenodoService,
-                request.listFilePaths, dictMetadata, iParentDepositId,
+            lambda: _ftArchiveWithCheckpointReceipt(
+                syncDispatcher, dictCtx, sContainerId, dictWorkflow,
+                request.listFilePaths, sZenodoService, dictMetadata,
+                iParentDepositId, dictCheckpoint,
             ),
         )
 
@@ -1254,12 +1283,75 @@ async def _ftPerformZenodoArchive(
     dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
     if dictResult["bSuccess"]:
         dictResult.update(_fdictParseZenodoResult(sOut))
-    return dictResult, sZenodoService
+    return dictResult, sZenodoService, dictCheckpoint
+
+
+def _ftArchiveWithCheckpointReceipt(
+    moduleSyncDispatcher, dictCtx, sContainerId, dictWorkflow, listFilePaths,
+    sZenodoService, dictMetadata, iParentDepositId, dictCheckpoint,
+):
+    """Observe Level 2 once, then archive with a receipt built from the staged bytes.
+
+    The observation precedes staging; the receipt's inventory is the
+    STAGED files' hashes, because a file can change between a read of
+    the repository and its staging. The receipt is serialized once and
+    those bytes are the ones uploaded, checked and later written.
+    """
+    from vaibify.reproducibility import proofReceipt
+    try:
+        dictObservation = proofReceipt.fdictCaptureObservation(
+            dictCtx, sContainerId, dictWorkflow)
+    except Exception as error:  # noqa: BLE001 -- refused before any upload
+        fnReRaiseControlPlaneRefusal(error)
+        logger.warning("Level 2 observation failed for %s: %r",
+                       sContainerId, error)
+        return (1, "LOCAL-FILE-ERROR (not a Zenodo problem; nothing was "
+                   "published): vaibify could not observe Level 2 for the "
+                   "archive's PROOF receipt: " + repr(error))
+
+    def fbaBuildCheckpointReceipt(listStaged):
+        dictReceipt = proofReceipt.fdictBuildProofReceipt(
+            dictObservation, proofReceipt.S_RECEIPT_KIND_CHECKPOINT,
+            _fdictCheckpointArchive(
+                sZenodoService, dictWorkflow, iParentDepositId, listStaged),
+            None)
+        baReceipt = proofReceipt.fsSerializeProofReceipt(
+            dictReceipt).encode("utf-8")
+        dictCheckpoint.update(dictReceipt=dictReceipt, baReceipt=baReceipt)
+        return baReceipt
+
+    return moduleSyncDispatcher.ftResultArchiveToZenodo(
+        dictCtx["docker"], sContainerId, sZenodoService, listFilePaths,
+        dictMetadata, iParentDepositId,
+        sExtraFileKey=proofReceipt.S_RECEIPT_DEPOSIT_KEY,
+        fbaBuildExtraFile=fbaBuildCheckpointReceipt,
+    )
+
+
+def _fdictCheckpointArchive(
+    sZenodoService, dictWorkflow, iParentDepositId, listStaged,
+):
+    """Return the receiving deposit for a checkpoint, from the staged files."""
+    sRepo = dictWorkflow.get("sProjectRepoPath") or ""
+    bFollows = int(iParentDepositId or 0) > 0
+    return {
+        "sEndpoint": sZenodoService,
+        "sConceptDoi": str(dictWorkflow.get("sZenodoConceptDoi") or "")
+        if bFollows else "",
+        "sFollowsRecordId": str(iParentDepositId) if bFollows else "",
+        "listContents": [{
+            "sKey": dictStaged["sKey"],
+            "sRepoPath": workflowManager.fsToSyncStatusKey(
+                dictStaged["sContainerPath"], sRepo),
+            "sSha256": dictStaged["sSha256"], "sMd5": dictStaged["sMd5"],
+            "iSizeBytes": dictStaged["iSizeBytes"],
+        } for dictStaged in listStaged],
+    }
 
 
 async def _fnPersistZenodoArchiveSuccess(
     dictCtx, sContainerId, dictWorkflow, request,
-    dictResult, sZenodoService, requestHttp,
+    dictResult, sZenodoService, requestHttp, dictCheckpoint=None,
 ):
     """Persist the publish record, refresh digests, save the workflow.
 
@@ -1272,6 +1364,7 @@ async def _fnPersistZenodoArchiveSuccess(
     _fnPersistZenodoPublishRecord(
         dictWorkflow, dictResult, sZenodoService,
     )
+    _fnRecordPublishedReceipt(dictWorkflow, dictResult, dictCheckpoint)
     # The hub made this deposit, so the confirmed target follows it:
     # the next action matches the record the deposit minted.
     fnRecordZenodoOutcomeInBinding(
@@ -1303,6 +1396,9 @@ async def _fnPersistZenodoArchiveSuccess(
         dictCtx, sContainerId, dictWorkflow, requestHttp,
         "The Zenodo archive record",
     )
+    _fnWriteRepositoryReceipt(
+        dictCtx, sContainerId, dictWorkflow, requestHttp, dictResult,
+        dictCheckpoint)
     # AFTER the save: fnSaveWorkflowToContainer derives
     # dictRemotes.zenodo from the deposit id this archive just
     # recorded, and the verify needs that record. The hop is the same
@@ -1318,6 +1414,361 @@ async def _fnPersistZenodoArchiveSuccess(
     )
     if sVerifyWarning:
         dictResult["sPostPushVerifyWarning"] = sVerifyWarning
+
+
+def _fnRecordPublishedReceipt(dictWorkflow, dictResult, dictCheckpoint):
+    """Note on the deposit record which receipt the published version carries."""
+    from vaibify.reproducibility import proofReceipt
+    if not dictCheckpoint:
+        return
+    syncBookkeeping.fnRecordPublishedReceipt(
+        dictWorkflow, proofReceipt.fdictDescribePublishedReceipt(
+            dictCheckpoint["dictReceipt"], dictCheckpoint["baReceipt"],
+            dictResult))
+
+
+def _fnWriteRepositoryReceipt(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, dictResult,
+    dictCheckpoint,
+):
+    """Write the published version's receipt into the repository, or warn.
+
+    Only after publication, so a failed upload leaves the previous
+    receipt in place. A failed write never fails the archive: the
+    version exists, and the next published archive step rewrites the
+    file.
+    """
+    from .. import syncDispatcher
+    if not dictCheckpoint:
+        return
+    sWarning = syncDispatcher.fsCommitProofReceiptWrite(
+        dictCtx, sContainerId, dictWorkflow, requestHttp,
+        dictCheckpoint["baReceipt"])
+    if not sWarning:
+        return
+    logger.warning("The PROOF receipt for %s was not written: %s",
+                   sContainerId, sWarning)
+    dictResult["sProofReceiptWarning"] = (
+        "The archive was published, but its PROOF receipt could not be "
+        "written into the repository (" + sWarning + "). The next "
+        "published archive step rewrites it.")
+
+
+def _fnRefuseWhileACompletionIsInFlight(dictWorkflow):
+    """Refuse a new archive while a completion version is unsettled.
+
+    The archive would rewrite the repository receipt beneath a
+    completion that has not yet written its own, and open a version
+    the completion's draft does not follow.
+    """
+    from vaibify.reproducibility import archivePromotion
+    listLive = [
+        dictRecord for dictRecord in
+        (dictWorkflow or {}).get("listPendingPromotions") or []
+        if isinstance(dictRecord, dict)
+        and dictRecord.get("sLane") == archivePromotion.S_LANE_COMPLETION
+    ]
+    if not listLive:
+        return
+    raise HTTPException(409, (
+        "A completion version of the last archive is still in flight ("
+        + str(listLive[0].get("sPromotionId")) + "). Settle it from its "
+        "row under Published copies -- resume, adopt or discard -- before "
+        "archiving again. Nothing was published."))
+
+
+def _fdictLatestReceiptNote(dictWorkflow):
+    """Return the note of the receipt the latest recorded version carries."""
+    dictZenodo = ((dictWorkflow or {}).get("dictRemotes") or {}).get(
+        "zenodo") or {}
+    dictNote = dictZenodo.get("dictReceipt")
+    return dictNote if isinstance(dictNote, dict) else {}
+
+
+def _fsWhyAnObservationCannotComplete(dictObservation):
+    """Return why one observation authorizes no completion, or ``""``."""
+    if dictObservation.get("sCaptureError"):
+        return ("vaibify could not observe Level 2: "
+                + dictObservation["sCaptureError"])
+    if not (dictObservation.get("dictVerdict") or {}).get("bAtLeastLevel2"):
+        return ("Level 2 is not met in vaibify's observation, so no "
+                "completion version can record that it is.")
+    if not dictObservation.get("bCoherent"):
+        return ("files changed while vaibify was reading them ("
+                + ", ".join(dictObservation.get("listChangedReads") or [])
+                + "); try again when nothing is writing to the project.")
+    return ""
+
+
+def _fdictCaptureObservationOrItsFailure(dictCtx, sContainerId, dictWorkflow):
+    """Capture one observation; any failure but a refusal is described."""
+    from vaibify.reproducibility import proofReceipt
+    try:
+        return proofReceipt.fdictCaptureObservation(
+            dictCtx, sContainerId, dictWorkflow)
+    except Exception as error:  # noqa: BLE001 -- a read; nothing written
+        fnReRaiseControlPlaneRefusal(error)
+        return {"sCaptureError": repr(error)}
+
+
+async def _fdictCaptureUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, requestHttp,
+):
+    """Capture one observation in a mode-(b) worker; a failure is a value.
+
+    A control-plane refusal is carried back rather than raised in the
+    worker: the capture wrote nothing, so its journal record settles and
+    the refusal is raised out here, never quarantining the container.
+    """
+    def fdictCapture(supervisor=None):
+        del supervisor
+        try:
+            return {"errorRefused": None,
+                    "objResult": _fdictCaptureObservationOrItsFailure(
+                        dictCtx, sContainerId, dictWorkflow)}
+        except ControlPlaneRefusalError as errorRefused:
+            return {"errorRefused": errorRefused, "objResult": None}
+
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictCapture, "proof-observation", requestHttp)
+
+
+async def _fdictCompleteAfterCheckpoint(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, dictResult,
+):
+    """Publish the completion now when ONE new observation establishes Level 2.
+
+    That observation both authorizes the completion and is what its
+    receipt records; there is no second capture. Any reason it cannot
+    run is returned, never raised: the checkpoint stands, and the
+    dashboard offers the completion button. A verify that warned is
+    checked first, so a failed verify starts no further operation, and a
+    control-plane refusal (a quarantined journal) is the reason given.
+    """
+    if dictResult.get("sPostPushVerifyWarning"):
+        return {"bCompleted": False, "sReason": (
+            "the Zenodo verify after publishing warned: "
+            + dictResult["sPostPushVerifyWarning"])}
+    try:
+        return await _fdictCompleteFromOneObservation(
+            dictCtx, sContainerId, dictWorkflow, requestHttp)
+    except HTTPException as errorRefused:
+        return {"bCompleted": False, "sReason": str(errorRefused.detail)}
+    except ControlPlaneRefusalError as errorRefused:
+        return {"bCompleted": False, "sReason": (
+            "the completion was not attempted: " + str(errorRefused))}
+
+
+async def _fdictCompleteFromOneObservation(
+    dictCtx, sContainerId, dictWorkflow, requestHttp,
+):
+    """Capture once; complete only when that observation authorizes it."""
+    dictObservation = await _fdictCaptureUnderTheDrain(
+        dictCtx, sContainerId, dictWorkflow, requestHttp)
+    sWhy = _fsWhyAnObservationCannotComplete(dictObservation)
+    if sWhy:
+        return {"bCompleted": False, "sReason": sWhy}
+    return await _fdictPerformCompletion(
+        dictCtx, sContainerId, dictWorkflow, requestHttp, dictObservation)
+
+
+async def _fdictPerformCompletion(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, dictObservation,
+):
+    """Publish the journaled completion version; return its outcome as a value."""
+    from vaibify.reproducibility import archivePromotion
+    from .. import syncDispatcher as moduleSyncDispatcher
+    sService = fdictRequireBoundZenodoTarget(
+        dictCtx, sContainerId, dictWorkflow, "")["sInstance"]
+    baReceipt = _fbaBuildCompletionReceipt(
+        dictWorkflow, dictObservation, _fdictLatestReceiptNote(dictWorkflow),
+        sService)
+    dictRecord = archivePromotion.fdictBuildPendingCompletion(
+        archivePromotion.fsGeneratePromotionId(), sService,
+        _fdictLatestReceiptNote(dictWorkflow),
+        _fdictDescribeCompletionReceiptFile(baReceipt))
+    dictMetadata = _fdictResolveZenodoMetadataForArchive(dictWorkflow)
+
+    def fdictComplete(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _ftRunJournaledCompletion(
+                dictCtx, sContainerId, dictWorkflow, dictRecord, baReceipt,
+                dictMetadata))
+
+    iExit, sOut = await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictComplete, "zenodo-completion", requestHttp)
+    syncBookkeeping.fnMirrorPendingPromotions(
+        ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+        moduleSyncDispatcher.fsResolveSidecarKey(
+            dictCtx, sContainerId, dictWorkflow), dictWorkflow)
+    if iExit != 0:
+        return {"bCompleted": False, "sPromotionId": dictRecord["sPromotionId"],
+                **moduleSyncDispatcher.fdictSyncResult(iExit, sOut)}
+    return await moduleSyncDispatcher.fdictSettlePublishedCompletion(
+        dictCtx, sContainerId, dictWorkflow, requestHttp, dictRecord,
+        _fdictParseZenodoResult(sOut), baReceipt)
+
+
+def _fbaBuildCompletionReceipt(
+    dictWorkflow, dictObservation, dictNote, sService,
+):
+    """Return the completion receipt's ONE serialization."""
+    from vaibify.reproducibility import proofReceipt
+    dictCompletes = proofReceipt.fdictBuildCompletes(
+        dictObservation, dictNote.get("sRecordId"), dictNote.get("sDoi"),
+        dictNote.get("sSha256"), dictNote.get("listContents"))
+    dictReceipt = proofReceipt.fdictBuildProofReceipt(
+        dictObservation, proofReceipt.S_RECEIPT_KIND_COMPLETION, {
+            "sEndpoint": sService,
+            "sConceptDoi": str(dictWorkflow.get("sZenodoConceptDoi") or ""),
+            "sFollowsRecordId": str(dictNote.get("sRecordId") or ""),
+            "listContents": dictNote.get("listContents") or [],
+        }, dictCompletes)
+    return proofReceipt.fsSerializeProofReceipt(dictReceipt).encode("utf-8")
+
+
+def _fdictDescribeCompletionReceiptFile(baReceipt):
+    """Return the completion receipt's identity as the journal records it."""
+    from vaibify.reproducibility import proofReceipt
+    return {
+        "sKey": proofReceipt.S_RECEIPT_DEPOSIT_KEY,
+        "sRepoPath": proofReceipt.S_PROOF_RECEIPT_REPO_PATH,
+        "sSha256": hashlib.sha256(baReceipt).hexdigest(),
+        "sMd5": hashlib.md5(baReceipt, usedforsecurity=False).hexdigest(),
+        "iSizeBytes": len(baReceipt),
+    }
+
+
+def _ftRunJournaledCompletion(
+    dictCtx, sContainerId, dictWorkflow, dictRecord, baReceipt, dictMetadata,
+):
+    """Store the receipt, record the intent, then run the Zenodo steps.
+
+    The bytes are stored BEFORE the journal entry exists: a crash
+    between the two leaves a file no entry names, which the next sweep
+    deletes, never an entry whose bytes are gone.
+    """
+    from vaibify.docker.confinedWrite import ContainerWriteRefusedError
+    from .. import syncDispatcher as moduleSyncDispatcher
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    sWorkflowKey = moduleSyncDispatcher.fsResolveSidecarKey(
+        dictCtx, sContainerId, dictWorkflow)
+    sPromotionId = dictRecord["sPromotionId"]
+    moduleSyncDispatcher.fnSweepOrphanPendingReceipts(filesRepo)
+    try:
+        moduleSyncDispatcher.fnWritePendingReceipt(
+            dictCtx["docker"], sContainerId,
+            dictWorkflow.get("sProjectRepoPath") or "", sPromotionId,
+            baReceipt)
+    except (ContainerWriteRefusedError, OSError, ValueError) as error:
+        return (1, "LOCAL-FILE-ERROR (not a Zenodo problem; nothing was "
+                   "published): the completion receipt could not be "
+                   "stored: " + str(error))
+    syncBookkeeping.fnUpdatePendingPromotion(
+        filesRepo, sWorkflowKey, sPromotionId, dictRecord)
+    return moduleSyncDispatcher.ftResultPublishCompletion(
+        dictCtx["docker"], sContainerId, dictRecord["sTargetService"],
+        dictRecord, baReceipt, dictMetadata,
+        moduleSyncDispatcher.fdictCompletionJournalHooks(
+            filesRepo, sWorkflowKey, sPromotionId))
+
+
+def _fnRegisterZenodoCompletion(app, dictCtx):
+    """Register POST /api/zenodo/{id}/archive-completion."""
+
+    @ffnAgentAction("archive-zenodo-completion")
+    @app.post("/api/zenodo/{sContainerId}/archive-completion")
+    @ffnDeclareCarrierMode(
+        S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
+    )
+    async def fdictArchiveZenodoCompletion(
+        sContainerId: str, requestHttp: Request,
+    ):
+        """Publish the completion version the automatic step could not.
+
+        User-only, like the archive: it mints a public DOI. Any journaled
+        completion is reconciled first, so a second request never opens
+        a second draft. ONE observation both authorizes the completion
+        and is what its receipt records.
+        """
+        dictCtx["require"](sContainerId)
+        _fnRequireNetworkAccess(sContainerId)
+        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
+        await _fnReconcileLiveCompletionFirst(
+            dictCtx, sContainerId, dictWorkflow, requestHttp)
+        _fnRequireACheckpointToComplete(dictWorkflow)
+        dictObservation = await _fdictCaptureUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, requestHttp)
+        sWhy = _fsWhyAnObservationCannotComplete(dictObservation)
+        if sWhy:
+            raise HTTPException(409, "No completion was archived: " + sWhy)
+        return await _fdictPerformCompletion(
+            dictCtx, sContainerId, dictWorkflow, requestHttp, dictObservation)
+
+
+def _fnRequireACheckpointToComplete(dictWorkflow):
+    """Refuse unless the latest recorded version is a checkpoint."""
+    dictNote = _fdictLatestReceiptNote(dictWorkflow)
+    if not dictNote:
+        raise HTTPException(409, (
+            "The latest archive version carries no PROOF receipt to "
+            "complete; archive a new version first."))
+    if dictNote.get("sKind") == "completion":
+        raise HTTPException(409, (
+            "The latest archive version is already a completion version, "
+            "so there is nothing to complete."))
+
+
+async def _fnReconcileLiveCompletionFirst(
+    dictCtx, sContainerId, dictWorkflow, requestHttp,
+):
+    """Settle a completion Zenodo says is gone; refuse over any other."""
+    from vaibify.reproducibility import archivePromotion
+    from .. import syncDispatcher as moduleSyncDispatcher
+    listLive = [
+        dictRecord for dictRecord in
+        (dictWorkflow or {}).get("listPendingPromotions") or []
+        if isinstance(dictRecord, dict)
+        and dictRecord.get("sLane") == archivePromotion.S_LANE_COMPLETION
+    ]
+    if not listLive:
+        return
+    dictRecord = listLive[0]
+    dictOutcome = await asyncio.to_thread(
+        _fdictReconcileOneCompletion, dictCtx, sContainerId, dictWorkflow,
+        dictRecord)
+    if dictOutcome["sOutcome"] == archivePromotion.S_OUTCOME_GONE:
+        await moduleSyncDispatcher.fnSettleCompletionUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            dictRecord["sPromotionId"])
+        return
+    raise HTTPException(409, (
+        "A completion is already in flight (" + dictRecord["sPromotionId"]
+        + "): " + dictOutcome["sMessage"] + " Settle it from its row under "
+        "Published copies; vaibify will not open a second draft."))
+
+
+def _fdictReconcileOneCompletion(dictCtx, sContainerId, dictWorkflow, dictRecord):
+    """Ask Zenodo what became of one journaled completion."""
+    from vaibify.reproducibility import archivePromotion
+    from vaibify.reproducibility.zenodoClient import ZenodoClient
+    from .. import syncDispatcher as moduleSyncDispatcher, zenodoTokenAccess
+    if not int(dictRecord.get("iDepositId") or 0):
+        return {"sOutcome": archivePromotion.S_OUTCOME_GONE,
+                "sMessage": "No deposit was created."}
+    sService = fdictRequireBoundZenodoTarget(
+        dictCtx, sContainerId, dictWorkflow,
+        str(dictRecord.get("sTargetService") or ""),
+        bInstanceOnly=True)["sInstance"]
+    clientZenodo = ZenodoClient(sService, sToken=(
+        zenodoTokenAccess.fsActiveZenodoToken(
+            dictCtx["docker"], sContainerId, sService) or ""))
+    return archivePromotion.fdictReconcileCompletion(
+        dictRecord, clientZenodo.fdictGetDeposit,
+        moduleSyncDispatcher.fbaReadPendingReceiptOrNone(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            dictRecord["sPromotionId"]))
 
 
 def _fnRegisterZenodoDeposit(app, dictCtx):
@@ -3646,6 +4097,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterOverleafMirrorDelete(app, dictCtx)
     _fnRegisterZenodoArchive(app, dictCtx)
     _fnRegisterZenodoPromote(app, dictCtx)
+    _fnRegisterZenodoCompletion(app, dictCtx)
     _fnRegisterZenodoStartNewConcept(app, dictCtx)
     _fnRegisterZenodoPublishWhereTheRecordIs(app, dictCtx)
     _fnRegisterZenodoMetadata(app, dictCtx)

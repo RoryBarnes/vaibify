@@ -50,6 +50,7 @@ from vaibify.reproducibility.manifestWriter import (
     fsRenderReproducedManifest,
 )
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+from vaibify.versionIdentity import fdictDescribeRunningVaibify
 
 
 __all__ = [
@@ -80,7 +81,7 @@ __all__ = [
 ]
 
 
-I_SCHEMA_VERSION = 7
+I_SCHEMA_VERSION = 8
 S_ATTESTATION_FILENAME = "l3_attestation.json"
 S_ATTESTATION_HISTORY_DIR = "l3_attestations"
 S_STATUS_PASSED = "passed"
@@ -241,6 +242,22 @@ def _fdictMigrateAttestationV6ToV7(dictPayload):
     return dictMigrated
 
 
+def _fdictMigrateAttestationV7ToV8(dictPayload):
+    """Bring a v7 record to v8: the vaibify that ran was not identified then.
+
+    ``None`` for ``dictVaibify``. A v7 record named no vaibify at all,
+    and the version string vaibify carried then came from an
+    install-time file that could predate the code by months; nothing
+    can be reconstructed now. The record's verdict and its currency are
+    untouched: which vaibify ran is evidence about the check, never a
+    condition of it.
+    """
+    dictMigrated = dict(dictPayload)
+    dictMigrated["iSchemaVersion"] = 8
+    dictMigrated["dictVaibify"] = None
+    return dictMigrated
+
+
 # Forward-migration chain for older attestation records. Each entry is
 # (iFromVersion, fnMigrate) where fnMigrate(dictPayload) transforms a
 # v=iFromVersion record into v=iFromVersion+1 form. Future L4 / L6 work
@@ -252,6 +269,7 @@ _LIST_ATTESTATION_MIGRATORS = [
     (4, _fdictMigrateAttestationV4ToV5),
     (5, _fdictMigrateAttestationV5ToV6),
     (6, _fdictMigrateAttestationV6ToV7),
+    (7, _fdictMigrateAttestationV7ToV8),
 ]
 
 
@@ -411,12 +429,12 @@ def fdictBuildAttestation(
     sAttestedAtUtc="", iPinnedInputsUnchanged=None, iPinnedInputsTotal=None,
     dictPreRerunClearing=None, dictAssessmentFields=None,
 ):
-    """Return a fully-populated attestation dict (no file IO).
+    """Return a fully-populated attestation dict (no repository IO).
 
     The shape is fixed by the schema documented in the PROOF plan;
-    extracting it as a pure builder keeps the writer thin and lets
-    tests assert payload contents without round-tripping through
-    disk. ``dictAiProvenance`` is the machine-captured Replay-axis
+    extracting it as a builder keeps the writer thin and lets tests
+    assert payload contents without round-tripping through disk.
+    ``dictAiProvenance`` is the machine-captured Replay-axis
     stamp (:mod:`vaibify.reproducibility.aiProvenanceStamp`), rebuilt
     fresh at attestation time; ``None`` records that no capture was
     possible, never that provenance was clean.
@@ -473,6 +491,13 @@ def fdictBuildAttestation(
     outcome -- and every absent field is ``None``. ``bHistorical`` is
     False for every record this builder makes; only the migration of an
     older record sets it.
+
+    ``dictVaibify`` names the vaibify that built the record:
+    :func:`~vaibify.versionIdentity.fdictDescribeRunningVaibify`, asked
+    here so that both lanes, which write the same file, record it alike
+    and neither can leave it out. It reads vaibify's own package source,
+    never the project's. It is evidence about the check and never enters
+    currency (:func:`fbL3AttestationCurrent`).
     """
     return {
         "iSchemaVersion": I_SCHEMA_VERSION,
@@ -512,6 +537,7 @@ def fdictBuildAttestation(
         "sRunLogPath": sRunLogPath,
         "dictAiProvenance": dictAiProvenance,
         "bHistorical": False,
+        "dictVaibify": fdictDescribeRunningVaibify(),
         **{sKey: (dictAssessmentFields or {}).get(sKey)
            for sKey in _T_ASSESSMENT_FIELDS},
     }

@@ -14,6 +14,7 @@ import pytest
 
 from tests.levelGateStubs import fdictCurrentAssessmentFields
 
+from vaibify.reproducibility import l3Attestation
 from vaibify.reproducibility.l3Attestation import (
     I_SCHEMA_VERSION,
     S_ATTESTATION_FILENAME,
@@ -205,3 +206,73 @@ def test_unknown_future_schema_version_passes_through(tmp_path):
     )
     dictRead = fdictReadAttestation(str(tmp_path))
     assert dictRead["iSchemaVersion"] == 99
+
+
+# ------------------------------------------------------------------
+# Schema v8 (the vaibify that built the record)
+# ------------------------------------------------------------------
+
+
+def _fdictIdentityStandIn(sDescribe):
+    """Return an identity in the shape ``versionIdentity`` describes."""
+    return {
+        "sSource": "checkout", "sDescribe": sDescribe, "sCommit": "c" * 40,
+        "bModified": False, "sSourceTreeSha256": "d" * 64,
+        "bSourceChangedSinceStart": False,
+        "sMeaning": "the code this process started with",
+    }
+
+
+def _fnWriteRaw(tmp_path, dictPayload):
+    pathVaibify = tmp_path / ".vaibify"
+    pathVaibify.mkdir(exist_ok=True)
+    (pathVaibify / S_ATTESTATION_FILENAME).write_text(json.dumps(dictPayload))
+
+
+def test_a_fresh_attestation_records_the_running_vaibify(monkeypatch):
+    """Both lanes build through this one builder, so neither can omit it."""
+    dictIdentity = _fdictIdentityStandIn("v9.9.9-0-gcccccccc")
+    monkeypatch.setattr(
+        l3Attestation, "fdictDescribeRunningVaibify",
+        lambda: dict(dictIdentity))
+    dictAtt = fdictBuildAttestation(
+        S_STATUS_PASSED, "sha256:abc", "", 1.0, 1, 1, [], "",
+    )
+    assert dictAtt["iSchemaVersion"] == I_SCHEMA_VERSION == 8
+    assert dictAtt["dictVaibify"] == dictIdentity
+
+
+def test_a_v7_attestation_migrates_naming_no_vaibify(tmp_path):
+    """``None``: a v7 record named no vaibify, and none can be supplied now."""
+    _fnWriteManifest(tmp_path)
+    dictV7 = fdictBuildAttestation(
+        S_STATUS_PASSED, fsCurrentManifestDigest(str(tmp_path)), "",
+        1.0, 1, 1, [], "",
+        dictAssessmentFields=fdictCurrentAssessmentFields(),
+    )
+    dictV7["iSchemaVersion"] = 7
+    del dictV7["dictVaibify"]
+    _fnWriteRaw(tmp_path, dictV7)
+    dictRead = fdictReadAttestation(str(tmp_path))
+    assert dictRead["iSchemaVersion"] == I_SCHEMA_VERSION
+    assert dictRead["dictVaibify"] is None
+    assert dictRead["bHistorical"] is False
+    assert fbL3AttestationCurrent(str(tmp_path), {})
+
+
+def test_which_vaibify_built_a_record_never_decides_its_currency(tmp_path):
+    """Two records differing only in ``dictVaibify`` are equally current."""
+    _fnWriteManifest(tmp_path)
+    dictFirst = fdictBuildAttestation(
+        S_STATUS_PASSED, fsCurrentManifestDigest(str(tmp_path)), "",
+        1.0, 1, 1, [], "",
+        dictAssessmentFields=fdictCurrentAssessmentFields(),
+    )
+    for dictVaibify in (
+        _fdictIdentityStandIn("v1.0.0-0-gaaaaaaaa"),
+        {**_fdictIdentityStandIn("v2.0.0-3-gbbbbbbbb-dirty"),
+         "bModified": True, "bSourceChangedSinceStart": True},
+    ):
+        _fnWriteRaw(tmp_path, {**dictFirst, "dictVaibify": dictVaibify})
+        assert fdictReadAttestation(str(tmp_path))["dictVaibify"] == dictVaibify
+        assert fbL3AttestationCurrent(str(tmp_path), {})

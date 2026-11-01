@@ -2554,6 +2554,68 @@ image deposit is not checked here. Sandbox records are publicly
 readable, so they pass this check; their permanence stays with Level
 3's `an-archive-is-a-sandbox-deposit`.
 
+## The archive is a checkpoint
+
+**Symmetric gates, asymmetric roles.** GitHub and Zenodo face the same
+two Level 2 questions: is the copy public, and do its files match. Their
+roles differ. GitHub is the living copy, and should track the working
+tree. Zenodo is a checkpoint: it lags the working tree by design, its
+versions are immutable, and it is the only copy with a preservation
+commitment. So the archive carries the evidence of what was met when it
+was made, and a lagging archive is never "fixed" by minting versions to
+chase the working tree.
+
+**A deposit cannot contain its own verification, so it is a pair.** Every
+project archive (the promotion included; never the environment image)
+publishes a **checkpoint** version whose receipt records the state at
+archiving and the exact bytes uploaded. Once a verify establishes Level
+2, a **completion** version follows: it inherits the checkpoint's files,
+checked by key, MD5 and size, and replaces only the receipt with one
+saying what was established, and against which records. Because the
+Zenodo verify accepts a file from any declared record, the completion
+claims "met against the declared record set" and says separately whether
+the checkpoint alone holds every Level 2 file. No version is ever minted
+to say "not met". The completion runs automatically when the
+post-publish verify's single new observation attains Level 2, is
+coherent and drew no warning; otherwise the Zenodo row offers it, through
+the user-only `archive-completion` route.
+
+**The receipt** (`.vaibify/proofReceipt.json`, schema version 1) is built
+by pure builders in `proofReceipt` from ONE observation: the gate, the
+gaps, both authorities per service, the blockers, the header cell, the
+verify records and every arXiv answer, evaluated once at one pinned
+instant (`levelGates.fcontextPinnedEvaluation`), over one container
+snapshot or over live reads that are replayed at the end to prove nothing
+changed. An observation is never a mixture, and says which it is; only a
+coherent one may authorize a completion. Requirement states come from
+the gate's own answers through the Level 2 catalog (`proofCatalog`), and
+each authority's own answer is kept verbatim as evidence. The receipt is
+serialized once; those bytes are uploaded, checked in the draft, and
+written into the repository only after the version is published, by a
+narrow backend write to two constant paths (the caller-supplied write
+keeps refusing `.vaibify`). It is committed with the canonical files and
+never compared, one of the "committed, never compared" category in
+`publicationScope`.
+
+**The journal.** The completion is the first project-side journal
+writer: a `completion` lane in `archivePromotion`. Its receipt's bytes
+are stored in `.vaibify/pendingReceipts/` before the intent is recorded;
+its inventory is exact, the receipt included, and on this lane an
+unlisted file is a non-match too, so a version still holding the
+checkpoint's receipt never reads published. A draft whose only missing
+file is the receipt may be resumed, because the stored bytes survive;
+the project and image lanes still offer only discard on a partial
+upload. Adoption records the version and restores the repository
+receipt; it never reaches the image adopter.
+
+**The guarantee is narrower than "levels never drop".** Completion
+changes no compared content: the inherited files are identical by
+checksum, and the receipt is never compared. But publishing the
+completion changes the declared record, so the Zenodo copy reads unknown
+until a verify of the new record succeeds, and the row says
+"verification pending" until then, with the reason when that verify
+fails.
+
 ## The memory watch reports kills it can prove, and says what it cannot
 
 A container that reaches its memory limit has a process killed by the

@@ -35,8 +35,18 @@ __all__ = [
     "fsStampPromotionIdIntoDescription",
     "S_BYTES_FROM_ARCHIVE",
     "S_BYTES_FROM_LOCAL_IMAGE",
+    "S_LANE_COMPLETION",
     "S_LANE_IMAGE",
     "S_LANE_PROJECT",
+    "fdictBuildPendingCompletion",
+    "fdictDescribeCompletionReceiptNote",
+    "fdictReconcileCompletion",
+    "fbDepositFileMatches",
+    "flistDescribeCompletionInventoryMismatch",
+    "flistDescribeDepartureFromParent",
+    "flistDescribeInheritedMismatch",
+    "fsDescribeStoredReceiptMismatch",
+    "fsForeignPromotionStamp",
     "S_PHASE_ADOPTED",
     "S_PHASE_DRAFTED",
     "S_PHASE_INTENDED",
@@ -60,6 +70,10 @@ from vaibify.reproducibility._hashing import ftHashFileSha256AndMd5
 
 S_LANE_IMAGE = "image"
 S_LANE_PROJECT = "project"
+# A project archive's completion version: inherited files, one receipt
+# replaced. The first project-side journal writer; see
+# fdictBuildPendingCompletion.
+S_LANE_COMPLETION = "completion"
 
 # The phases a promotion passes through, and each is a different
 # recovery question. "intended" means nothing remote exists yet;
@@ -507,9 +521,17 @@ def fdictReconcilePromotion(dictRecord, fdictGetDeposit):
 
 
 def _fdictJudgeDeposit(dictRecord, dictDeposit):
-    """Return the outcome one Zenodo deposition response licenses."""
+    """Return the outcome one Zenodo deposition response licenses.
+
+    On the completion lane only, a file the deposit holds that the
+    record does not name is also a non-match: a completion's inventory
+    is exact, so a version holding an unlisted file is not the one
+    intended. The other lanes judge as they always have.
+    """
     sState = str(dictDeposit.get("state") or "")
     listMissing = _flistFilesNotMatching(dictRecord, dictDeposit)
+    if dictRecord.get("sLane") == S_LANE_COMPLETION:
+        listMissing += _flistUnexpectedFiles(dictRecord, dictDeposit)
     if sState == "error":
         return _fdictOutcome(
             S_OUTCOME_ERRORED,
@@ -532,11 +554,13 @@ def _fdictJudgeDeposit(dictRecord, dictDeposit):
             sConceptDoi=str(dictDeposit.get("conceptdoi") or ""),
         )
     if listMissing:
-        return _fdictOutcome(
+        dictOutcome = _fdictOutcome(
             S_OUTCOME_RESUMABLE,
             "This deposit is still a draft and is missing " +
             str(len(listMissing)) + " of its files.",
         )
+        dictOutcome["listNotMatching"] = listMissing
+        return dictOutcome
     return _fdictOutcome(
         S_OUTCOME_PUBLISHABLE,
         "This deposit is still a draft and already holds every "
@@ -565,13 +589,44 @@ def _flistFilesNotMatching(dictRecord, dictDeposit):
     return listMissing
 
 
+def _fdictRemoteFilesByKey(dictDeposit):
+    """Return a deposition's files keyed by their deposit key."""
+    return {
+        str(dictFile.get("filename") or dictFile.get("key") or ""): dictFile
+        for dictFile in dictDeposit.get("files") or []
+        if isinstance(dictFile, dict)
+    }
+
+
+def _flistUnexpectedFiles(dictRecord, dictDeposit):
+    """Return the deposit keys the record does not name."""
+    setIntended = {
+        str(dictIntended.get("sBasename") or "")
+        for dictIntended in dictRecord.get("listFiles") or []
+    }
+    return sorted(
+        sKey for sKey in _fdictRemoteFilesByKey(dictDeposit)
+        if sKey not in setIntended
+    )
+
+
 def _fbFileAgrees(dictIntended, dictRemote):
     """Return True iff one remote file matches the intended bytes."""
     sRemoteMd5 = str(dictRemote.get("checksum") or "").split(":")[-1]
     iRemoteBytes = dictRemote.get("filesize")
     if sRemoteMd5 != str(dictIntended.get("sMd5") or ""):
         return False
-    return int(iRemoteBytes or -1) == int(dictIntended.get("iBytes") or 0)
+    # A size of zero is a size: an empty file inherited intact matches.
+    if iRemoteBytes is None:
+        return False
+    return int(iRemoteBytes) == int(dictIntended.get("iBytes") or 0)
+
+
+def fbDepositFileMatches(dictItem, dictRemote):
+    """Return True iff a deposit file has an inventory item's MD5 and size."""
+    return _fbFileAgrees(
+        {"sMd5": dictItem.get("sMd5"), "iBytes": dictItem.get("iSizeBytes")},
+        dictRemote)
 
 
 def _fdictOutcome(sOutcome, sMessage, sDoi="", sConceptDoi=""):
@@ -582,4 +637,201 @@ def _fdictOutcome(sOutcome, sMessage, sDoi="", sConceptDoi=""):
         "listActions": flistOfferedActionsFor(sOutcome),
         "sDoi": sDoi,
         "sConceptDoi": sConceptDoi,
+    }
+
+
+# ── The completion lane ──
+#
+# A project archive is published as a PAIR: a checkpoint version, then
+# a completion version that inherits the same files and replaces only
+# the receipt. The completion's receipt is stored before any draft
+# exists, its hashes are journaled, and its inventory is EXACT: the
+# checkpoint's files, with the checkpoint's receipt replaced by the
+# completion's (same key, different bytes). Because the receipt is in
+# the inventory, a version still holding the old receipt, or none,
+# never reads published -- however well the data files match.
+
+
+def fdictDescribeInventoryFile(dictItem):
+    """Return one receipt-inventory item in the record's file shape."""
+    return {
+        "sSourcePath": str(dictItem.get("sRepoPath") or ""),
+        "sBasename": str(dictItem.get("sKey") or ""),
+        "sSha256": str(dictItem.get("sSha256") or ""),
+        "sMd5": str(dictItem.get("sMd5") or ""),
+        "iBytes": int(dictItem.get("iSizeBytes") or 0),
+    }
+
+
+def fdictBuildPendingCompletion(
+    sPromotionId, sTargetService, dictCheckpointNote, dictCompletionReceipt,
+):
+    """Return the crash-recovery record for one completion, before it starts.
+
+    ``dictCheckpointNote`` is the deposit record's note of the receipt
+    the checkpoint carries (``proofReceipt.fdictDescribePublishedReceipt``);
+    ``dictCompletionReceipt`` the stored completion receipt's
+    ``{sKey, sRepoPath, sSha256, sMd5, iSizeBytes}``.
+    """
+    dictCheckpointReceipt = {
+        sField: dictCheckpointNote[sField]
+        for sField in ("sKey", "sSha256", "sMd5", "iSizeBytes")}
+    listDataFiles = list(dictCheckpointNote.get("listContents") or [])
+    dictRecord = fdictBuildPendingPromotion(
+        sPromotionId, S_LANE_COMPLETION, sTargetService,
+        [fdictDescribeInventoryFile(dictItem) for dictItem in
+         listDataFiles + [dictCompletionReceipt]],
+        iParentDepositId=int(dictCheckpointNote.get("sRecordId") or 0),
+    )
+    dictRecord.update({
+        "sCheckpointRecordId": str(dictCheckpointNote.get("sRecordId") or ""),
+        "sCheckpointDoi": str(dictCheckpointNote.get("sDoi") or ""),
+        "sCheckpointReceiptSha256": dictCheckpointReceipt["sSha256"],
+        "listCheckpointInventory": [
+            {sField: dictItem.get(sField) for sField in (
+                "sKey", "sSha256", "sMd5", "iSizeBytes")}
+            for dictItem in listDataFiles + [dictCheckpointReceipt]],
+        "dictCompletionReceipt": {
+            sField: dictCompletionReceipt[sField]
+            for sField in ("sKey", "sSha256", "sMd5", "iSizeBytes")},
+    })
+    return dictRecord
+
+
+def fsDescribeStoredReceiptMismatch(dictRecord, baStoredReceipt):
+    """Return why stored receipt bytes are not the journaled ones, or ``""``."""
+    import hashlib
+    if baStoredReceipt is None:
+        return "the stored completion receipt is missing"
+    dictWanted = dictRecord.get("dictCompletionReceipt") or {}
+    if hashlib.sha256(baStoredReceipt).hexdigest() != dictWanted.get(
+            "sSha256") or len(baStoredReceipt) != int(
+            dictWanted.get("iSizeBytes") or -1):
+        return ("the stored completion receipt is not the one this "
+                "completion journaled; it was altered or replaced")
+    return ""
+
+
+def fsForeignPromotionStamp(sDescription, sPromotionId):
+    """Return another promotion's id a description carries, or ``""``.
+
+    Matched anywhere in the text, because Zenodo stores descriptions as
+    HTML and may wrap the stamp's line in markup.
+    """
+    import re
+    for sStamped in re.findall(
+            re.escape(_S_STAMP_PREFIX) + r"(promotion-[0-9a-f]{32})",
+            str(sDescription or "")):
+        if sStamped != sPromotionId:
+            return sStamped
+    return ""
+
+
+def flistDescribeInheritedMismatch(dictRecord, dictDeposit):
+    """Name each checkpoint file a new draft did not inherit intact.
+
+    Compared by key, MD5 and size against the journaled inventory, never
+    by key alone. The receipt's key is exempt -- it holds either receipt
+    -- and any key the checkpoint never had is named too.
+    """
+    sReceiptKey = (dictRecord.get("dictCompletionReceipt") or {}).get("sKey")
+    dictRemote = _fdictRemoteFilesByKey(dictDeposit)
+    listProblems = []
+    setKnown = set()
+    for dictItem in dictRecord.get("listCheckpointInventory") or []:
+        setKnown.add(dictItem.get("sKey"))
+        if dictItem.get("sKey") == sReceiptKey:
+            continue
+        dictFound = dictRemote.get(dictItem.get("sKey"))
+        if not dictFound or not _fbFileAgrees(
+                {"sMd5": dictItem.get("sMd5"),
+                 "iBytes": dictItem.get("iSizeBytes")}, dictFound):
+            listProblems.append(str(dictItem.get("sKey")))
+    return listProblems + sorted(
+        sKey for sKey in dictRemote if sKey not in setKnown)
+
+
+def flistDescribeDepartureFromParent(dictDraft, dictParent):
+    """Name every file in which a new-version draft is not its parent's copy.
+
+    A draft fresh from the new-version call holds exactly its parent's
+    files; one holding anything else -- a changed file, an extra one, a
+    missing one -- holds somebody's work. Compared as Zenodo reports
+    both, by key, MD5 and size; whether the parent matches the journal is
+    a separate question, asked by :func:`flistDescribeInheritedMismatch`.
+    """
+    dictDraftFiles = _fdictRemoteFilesByKey(dictDraft)
+    dictParentFiles = _fdictRemoteFilesByKey(dictParent)
+    return sorted(
+        sKey for sKey in set(dictDraftFiles) | set(dictParentFiles)
+        if sKey not in dictDraftFiles or sKey not in dictParentFiles
+        or _fsChecksumAndSize(dictDraftFiles[sKey])
+        != _fsChecksumAndSize(dictParentFiles[sKey]))
+
+
+def _fsChecksumAndSize(dictRemote):
+    """Return one deposit file's MD5 and size as one comparable string."""
+    return (str(dictRemote.get("checksum") or "").split(":")[-1] + "/"
+            + str(dictRemote.get("filesize")))
+
+
+def flistDescribeCompletionInventoryMismatch(dictRecord, dictDeposit):
+    """Name every file keeping a draft from the EXACT expected inventory."""
+    return _flistFilesNotMatching(dictRecord, dictDeposit) + (
+        _flistUnexpectedFiles(dictRecord, dictDeposit))
+
+
+def fdictReconcileCompletion(dictRecord, fdictGetDeposit, baStoredReceipt):
+    """Ask Zenodo what happened to one completion, and offer what it licenses.
+
+    The project and image lanes offer only discard on a partial upload,
+    because their bytes did not survive. That reason does not hold
+    here: the one file that can be missing is the STORED receipt, so a
+    draft whose only non-matching file is the receipt, with the stored
+    bytes still the journaled ones, may be resumed.
+    """
+    dictOutcome = fdictReconcilePromotion(dictRecord, fdictGetDeposit)
+    if dictOutcome["sOutcome"] != S_OUTCOME_RESUMABLE:
+        return dictOutcome
+    sReceiptKey = (dictRecord.get("dictCompletionReceipt") or {}).get("sKey")
+    sStored = fsDescribeStoredReceiptMismatch(dictRecord, baStoredReceipt)
+    if dictOutcome.get("listNotMatching") == [sReceiptKey] and not sStored:
+        dictOutcome["listActions"] = [S_ACTION_RESUME, S_ACTION_DISCARD]
+        dictOutcome["sMessage"] = (
+            "This completion is still a draft and only its receipt is "
+            "missing or wrong. Vaibify still holds the stored receipt, so "
+            "resuming uploads exactly those bytes, checks the draft, and "
+            "publishes.")
+        return dictOutcome
+    dictOutcome["listActions"] = [S_ACTION_DISCARD]
+    dictOutcome["sMessage"] += (
+        " Resume is not offered: " + (sStored or (
+            "files other than the receipt differ from what was intended: "
+            + ", ".join(dictOutcome.get("listNotMatching") or []))) + ".")
+    return dictOutcome
+
+
+def fdictDescribeCompletionReceiptNote(dictRecord, dictPublished):
+    """Return the deposit record's note of a published completion's receipt.
+
+    The same shape the checkpoint's note has, built from the journal:
+    the completion receipt's identity, and the inherited data files.
+    """
+    dictReceipt = dictRecord.get("dictCompletionReceipt") or {}
+    return {
+        "sKind": "completion",
+        "sRecordId": str(dictPublished.get("iDepositId")
+                         or dictRecord.get("iDepositId") or ""),
+        "sDoi": str(dictPublished.get("sDoi") or ""),
+        "sKey": str(dictReceipt.get("sKey") or ""),
+        "sSha256": str(dictReceipt.get("sSha256") or ""),
+        "sMd5": str(dictReceipt.get("sMd5") or ""),
+        "iSizeBytes": int(dictReceipt.get("iSizeBytes") or 0),
+        "listContents": [
+            {"sKey": dictFile["sBasename"], "sRepoPath": dictFile["sSourcePath"],
+             "sSha256": dictFile["sSha256"], "sMd5": dictFile["sMd5"],
+             "iSizeBytes": dictFile["iBytes"]}
+            for dictFile in dictRecord.get("listFiles") or []
+            if dictFile.get("sBasename") != dictReceipt.get("sKey")
+        ],
     }

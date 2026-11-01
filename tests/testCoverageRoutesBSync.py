@@ -158,7 +158,7 @@ def testAFailedPromotionPersistsNothing(monkeypatch, tmp_path):
 
     def ftRefusedUpload(
         connectionDocker, sContainerId, sService, listFilePaths,
-        dictMetadata, iParentDepositId,
+        dictMetadata, iParentDepositId, **dictReceiptHook,
     ):
         listUploads.append((sService, list(listFilePaths), iParentDepositId))
         return (1, "HTTP 401 Unauthorized: the token was rejected")
@@ -190,7 +190,7 @@ def testAnEmptySelectionPromotesTheCollectedUnion(monkeypatch, tmp_path):
 
     def ftRefusedUpload(
         connectionDocker, sContainerId, sService, listFilePaths,
-        dictMetadata, iParentDepositId,
+        dictMetadata, iParentDepositId, **dictReceiptHook,
     ):
         listSelections.append(list(listFilePaths))
         return (1, "refused")

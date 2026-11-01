@@ -417,3 +417,38 @@ def testASandboxArchiveBlocksTheScalarGateAndTheRowsTogether(
     assert fbAtLeastLevel3(
         dictWorkflow, fixtureProjectRepo, False,
     ) is False
+
+
+@pytest.mark.falsification
+def testACachedBlockerListNamesAVerifyThatAgedPastItsWindow(
+    fixtureProjectRepo, monkeypatch,
+):
+    """A list cached while a record was fresh must not outlive its window.
+
+    The blocker list is cached across polls, and nothing rewrites the
+    record when a verify fails (a laptop offline for a day), so only the
+    clock moves. The stale criteria depend on it, so the header counted
+    a 25-hour-old record as fresh while the scalar gate refused it.
+
+    Kills: freshness dropped from the blocker cache key.
+    """
+    from vaibify.reproducibility import levelGates
+    fnClearLevelBlockerCache()
+    _fnWriteBothServices(fixtureProjectRepo, [])
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    assert _fdictHeaderLevel2Cell(
+        fixtureProjectRepo, dictWorkflow)["sState"] == "attained"
+    dtLater = datetime.now(timezone.utc) + timedelta(hours=25)
+
+    class _ClockTwentyFiveHoursLater(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dtLater if tz else dtLater.replace(tzinfo=None)
+
+    monkeypatch.setattr(levelGates, "datetime", _ClockTwentyFiveHoursLater)
+    setCriteria = {dictEntry["sCriterion"] for dictEntry in
+                   flistLevel2Blockers(dictWorkflow, fixtureProjectRepo)}
+    assert {"github-verify-stale", "zenodo-verify-stale"} <= setCriteria, (
+        f"a day-old verify still reads fresh in the cached list: {setCriteria}")
+    assert _fdictHeaderLevel2Cell(
+        fixtureProjectRepo, dictWorkflow)["sState"] != "attained"

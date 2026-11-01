@@ -4587,6 +4587,26 @@ const VaibifyApp = (function () {
             },
             sToast: "The interrupted promotion was discarded.",
         },
+        "archive-zenodo-completion": {
+            /* The completion version the automatic step could not
+               archive. Its outcome -- archived, or the server's reason
+               it was not -- is the server's, shown as it says. */
+            sAbsolutePath:
+                "/api/zenodo/{sContainerId}/archive-completion",
+            sBusyLabel: "Archiving\u2026",
+            dictConfirm: {
+                sTitle: "Archive the completion receipt",
+                sMessage: "Zenodo publishes a NEW version of this " +
+                    "archive holding exactly the files of the latest " +
+                    "version, with only the PROOF receipt replaced: " +
+                    "the new receipt records that Level 2 was met. " +
+                    "Vaibify first checks Level 2 again and refuses, " +
+                    "saying why, if it is not met. A new version " +
+                    "mints a new DOI, and Zenodo versions cannot be " +
+                    "deleted.",
+            },
+            fdictAfterResponse: fdictDescribeCompletionOutcome,
+        },
         "promote-project-deposit": {
             /* Not under /api/workflow/{id}: the project deposit's
                routes live under /api/zenodo/{id}, beside the archive
@@ -5060,6 +5080,30 @@ const VaibifyApp = (function () {
         }
         return sDistilled.replace(/<[^>]*>/g, " ")
             .replace(/\s+/g, " ").trim();
+    }
+
+    function fdictDescribeCompletionOutcome(dictResult) {
+        /* A completion that did not publish answers 200 with
+           ``bCompleted: false`` and the reason; one that did may still
+           carry a verify warning, which the Zenodo row also keeps. */
+        if (!dictResult || dictResult.bCompleted !== true) {
+            return {
+                sMessage: "No completion version was archived: " +
+                    ((dictResult || {}).sReason ||
+                     (dictResult || {}).sMessage ||
+                     "no reason was given"),
+                sType: "warning",
+            };
+        }
+        return {
+            sMessage: "Completion version archived" +
+                (dictResult.sDoi ? " (" + dictResult.sDoi + ")" : "") +
+                "." + (dictResult.sPostCompletionVerifyWarning
+                    ? " Its verification did not complete: " +
+                      dictResult.sPostCompletionVerifyWarning : ""),
+            sType: dictResult.sPostCompletionVerifyWarning
+                ? "warning" : "success",
+        };
     }
 
     function fdictDescribePromoteOutcome(dictResult) {
@@ -7989,6 +8033,7 @@ const VaibifyApp = (function () {
         fnCompareManifests: fnCompareManifests,
         fnShowL3AttestationModal: fnShowL3AttestationModal,
         fdictDescribePromoteOutcome: fdictDescribePromoteOutcome,
+        fdictDescribeCompletionOutcome: fdictDescribeCompletionOutcome,
         fnShowInputModal: fnShowInputModal,
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,

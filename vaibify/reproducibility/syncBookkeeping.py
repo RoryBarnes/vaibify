@@ -49,12 +49,14 @@ __all__ = [
     "S_REMOTE_BOOKKEEPING_KEY",
     "T_BOOKKEEPING_TOP_KEYS",
     "fdictExtractSyncBookkeeping",
+    "flistAllPendingPromotionIds",
     "flistReadPendingPromotions",
     "fnMirrorPendingPromotions",
     "fnRemovePendingPromotion",
     "fnUpdatePendingPromotion",
     "fdictReadSyncBookkeeping",
     "fnMergeSyncBookkeepingIntoWorkflow",
+    "fnRecordPublishedReceipt",
     "fnRecordZenodoPublish",
     "fnWriteSyncBookkeeping",
 ]
@@ -93,7 +95,11 @@ DICT_REMOTE_PRODUCED_FIELDS = {
     # retires. Produced, like the rest of this entry -- writing it into
     # project.json would stale the production deposit the moment it
     # was minted, and the GitHub commit before it.
-    "zenodo": ("sRecordId", "sDoi", "sService", "dictSuperseded"),
+    # dictReceipt joined on 2026-10-31: which PROOF receipt the latest
+    # published version carries, produced by every archive step.
+    "zenodo": (
+        "sRecordId", "sDoi", "sService", "dictSuperseded", "dictReceipt",
+    ),
 }
 
 S_BOOKKEEPING_SECTION_KEY = "dictProjectBookkeeping"
@@ -409,6 +415,20 @@ def fnUpdatePendingPromotion(
     _fnMutateBookkeepingSection(filesRepo, sWorkflowKey, _fnApply)
 
 
+def flistAllPendingPromotionIds(filesRepo):
+    """Return every in-flight promotion id, across every project's section."""
+    dictSections = _fdictFetchDocumentOrEmpty(filesRepo).get(
+        S_BOOKKEEPING_SECTION_KEY)
+    if not isinstance(dictSections, dict):
+        return []
+    return sorted(
+        str(dictRecord.get("sPromotionId") or "")
+        for dictSection in dictSections.values() if isinstance(
+            dictSection, dict)
+        for dictRecord in dictSection.get("listPendingPromotions") or []
+        if isinstance(dictRecord, dict))
+
+
 def fnRemovePendingPromotion(filesRepo, sWorkflowKey, sPromotionId):
     """Drop one settled promotion record from the sidecar."""
     def _fnApply(dictSection):
@@ -444,6 +464,17 @@ def _fnMutateBookkeepingSection(filesRepo, sWorkflowKey, fnApply):
         dictSections[sWorkflowKey] = dictSection
         dictDocument[S_BOOKKEEPING_SECTION_KEY] = dictSections
         filesRepo.fnWriteJsonAtomic(sRelPath, dictDocument)
+
+
+def fnRecordPublishedReceipt(dictWorkflow, dictReceiptNote):
+    """Store which PROOF receipt the latest published version carries.
+
+    Bookkeeping like the rest of the publish record, so it lands in the
+    sidecar and leaves ``project.json`` byte-identical to its archive.
+    """
+    dictZenodo = dictWorkflow.setdefault("dictRemotes", {}).setdefault(
+        "zenodo", {})
+    dictZenodo["dictReceipt"] = dict(dictReceiptNote)
 
 
 def fnRecordZenodoPublish(

@@ -106,6 +106,21 @@ def _fnServeCompletionRequestBeforeLoadingEveryCommand():
 
 _fnServeCompletionRequestBeforeLoadingEveryCommand()
 
+
+def _fnCaptureIdentityBeforeLoadingEveryCommand():
+    """Record the running vaibify's identity before the commands are imported.
+
+    Every command and every server this process starts reads its code
+    from disk lazily, so the identity is captured here, ahead of the
+    imports below, rather than when it is first asked for. A TAB
+    completion, served above, never pays for it.
+    """
+    from vaibify.versionIdentity import fnCaptureStartupIdentity
+    fnCaptureStartupIdentity()
+
+
+_fnCaptureIdentityBeforeLoadingEveryCommand()
+
 from .actionCommands import fnDoCommand
 from .commandBuild import fnBuildCommand
 from .commandCat import fnCatCommand

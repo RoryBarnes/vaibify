@@ -110,6 +110,66 @@ things not to undo, each kill-confirmed in
 - **The backoff is a deadline, never a sleep.** A 403 or 429 sets an
   in-process deadline before which every probe raises without sending.
 
+**The archive is a checkpoint, and carries a PROOF receipt
+(2026-10-31).** GitHub and Zenodo face the same Level 2 gates; their
+roles differ, so every project deposit (the promotion included, never
+the environment image) is published as a PAIR: a checkpoint version,
+then, once one coherent observation attains Level 2, a journaled
+completion version with the same files and one receipt replaced.
+`docs/architecture.md` "The archive is a checkpoint" has the model;
+`proofCatalog` states Level 2 as data and `tests/testProofCatalogAgrees.py`
+holds every copy to it; `proofReceipt` captures the observation and
+builds schema version 1, which is archived and cannot change. Each item
+below was proposed, and refuted, while the design was reviewed. Do not
+reintroduce any of them:
+
+- **Building the checkpoint receipt from repository reads.** A file can
+  change between the read and staging; the inventory is the STAGED
+  bytes, and exactly those bytes are uploaded.
+- **"Level 2 met against the checkpoint."** The Zenodo verify accepts
+  any declared record, so the completion claims "met against the
+  declared record set" and says separately whether the checkpoint ALONE
+  holds every Level 2 file (`listCheckpointLacks`).
+- **Matching inherited files by key.** By MD5 and size, against the
+  journaled inventory.
+- **Rebuilding the completion receipt on resume.** Its bytes are stored
+  in `.vaibify/pendingReceipts/` before the draft exists; resume
+  uploads or compares only those, checked against the journal first.
+- **An inventory without the receipt.** The reconciler ignores files it
+  is not told about, so a version holding the checkpoint's receipt would
+  read published. On the completion lane an unlisted file is a
+  non-match too.
+- **Sending the completion lane through the existing adopt.** It would
+  reach the image adopter and stamp `environment.json`.
+- **Putting the pin in `fcontextLevelComputation`'s memo.** Nested
+  contexts reset it; `fcontextPinnedEvaluation` saves and restores.
+- **Reading the blocker cache during a capture.** Its key has no instant;
+  a pinned evaluation bypasses it. (Since A20 the key carries each
+  record's present freshness, so an aged record busts it too.)
+- **Asking arXiv more than once per capture,** errors included: the
+  gate, gaps and blockers would each ask, and could disagree.
+- **Accepting `ffilesSnapshotForWorkflow`'s silent fallback.** An
+  observation is all-snapshot or all-live, says which, and a snapshot
+  miss (even one a gate swallowed) restarts it live.
+- **Letting live reads authorize a completion because they are
+  labeled.** Only a coherent observation, every read replayed unchanged,
+  may; a checkpoint carries an incoherent one, labeled.
+- **Writing the repository receipt before publication.** A failed
+  upload would leave the repository describing a version that does not
+  exist; both kinds are written only after their version is published.
+- **Deciding "the code changed" by comparing commits.** A tree goes
+  dirty with HEAD unchanged; `versionIdentity` compares source digests.
+- **"Levels never drop."** Publishing the completion changes the
+  declared record, so the Zenodo copy reads unknown ("verification
+  pending") until a verify of the new record succeeds. The guarantee is
+  narrower: completion changes no compared content.
+- **Minting a version to say "not met",** or to chase the working tree.
+- **Fixtures that make exactly one entry fail.** Real failures come
+  together; use the expected-state matrix.
+- **Passing authority states through untranslated.** The receipt uses
+  requirement states through one fixed table, which raises on an
+  unknown answer, and keeps the authority's own answer as evidence.
+
 **Two level readings that must not be widened back (2026-10-27).**
 The step save and the test-execution routes detect a crossing of
 Level 1, so they read `fiComputeProofLevelUpToOne` (the marker rule

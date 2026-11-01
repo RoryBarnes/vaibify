@@ -268,11 +268,16 @@ def test_zenodo_archive_success(clientHttp):
         "sCommitMessage": "Archive data",
     }
     # The deposit runs on the host with the project's active token since
-    # 2026-10-29; this test is about the route.
+    # 2026-10-29; this test is about the route. The PROOF receipt's
+    # observation reads files this mock connection does not serve, and
+    # an archive that cannot observe Level 2 is refused, so it is given.
     with patch(
         "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
         return_value=(0, 'ZENODO_RESULT={"iDepositId": 1, "sDoi": '
                       '"10.5072/zenodo.1", "sConceptDoi": "", "sHtmlUrl": ""}'),
+    ), patch(
+        "vaibify.reproducibility.proofReceipt.fdictCaptureObservation",
+        return_value={},
     ):
         responseHttp = clientHttp.post(
             f"/api/zenodo/{S_CONTAINER_ID}/archive",

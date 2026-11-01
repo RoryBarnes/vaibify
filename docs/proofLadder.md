@@ -269,6 +269,25 @@ Remote checks are cached. A GitHub or Zenodo verdict older than a day
 reads as unknown (**?**) rather than passing; **Verify now** refreshes
 it, and vaibify also re-verifies on a schedule while the hub runs.
 
+**The archive carries a PROOF receipt.** GitHub is the living copy of a
+project; a Zenodo deposit is a checkpoint, the only copy with a
+preservation commitment, so every project deposit carries
+`.vaibify/proofReceipt.json`: vaibify's Level 2 verdicts, every Level 2
+requirement (met or not, required or not, with the reason it is or is
+not required), and the evidence each was judged on, all observed at one
+moment. A deposit cannot contain its own verification, so each archive
+is published as a pair. The **checkpoint** version's receipt records the
+state at archiving and the exact files uploaded. Once a verify
+establishes Level 2, a **completion** version follows with the same
+files and a receipt saying Level 2 was met, against which records, and
+whether the checkpoint alone holds every Level 2 file. Vaibify publishes
+the completion at once when it can, and otherwise the Zenodo row offers
+**Archive the completion receipt**; it never mints a version to say
+"not met". After a completion the Zenodo row reads *verification
+pending* until a verify of the new version succeeds. The receipt is
+committed with the project and never compared, so its badge reads "not
+compared".
+
 ### Level 3 requirements
 
 | Requirement | Scope | Meaning |

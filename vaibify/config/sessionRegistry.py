@@ -116,12 +116,13 @@ def fsRunningVaibifyVersion():
     a hub slot on the expected port does not answer it -- a hub of any
     other version satisfies that equally. The version is written into
     the slot so the question has an answer at all.
+
+    It is the describe of the code this process STARTED with (see
+    ``versionIdentity``), not the install-time ``_version.py``, which
+    stops describing a checkout the moment it moves.
     """
-    try:
-        from vaibify import __version__
-        return str(__version__)
-    except Exception:
-        return "unknown"
+    from vaibify.versionIdentity import fdictDescribeRunningVaibify
+    return fdictDescribeRunningVaibify()["sDescribe"] or "unknown"
 
 
 def _fnWriteSlotPayload(fileHandle, sRole, iPort):

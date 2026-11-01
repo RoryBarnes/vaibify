@@ -567,7 +567,7 @@ def testTheAttestationRecordsThePinnedInputSplitAndTheDeletions():
         dictPreRerunClearing={
             "listDeletedOutputs": ["result.txt"], "listClearedScratch": []},
     )
-    assert dictAttestation["iSchemaVersion"] == 7
+    assert dictAttestation["iSchemaVersion"] == 8
     assert dictAttestation["iPinnedInputsUnchanged"] == 4
     assert dictAttestation["dictPreRerunClearing"][
         "listDeletedOutputs"] == ["result.txt"]

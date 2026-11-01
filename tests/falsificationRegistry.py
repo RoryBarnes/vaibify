@@ -31861,10 +31861,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=('        _fnRefuseBasenameCollisions(request.listFilePaths)\n'
-             '        dictResult, sZenodoService = await '
-             '_ftPerformZenodoArchive(\n'),
-        new=('        dictResult, sZenodoService = await '
-             '_ftPerformZenodoArchive(\n'),
+             '        dictResult, sZenodoService, dictCheckpoint = (\n'),
+        new=('        dictResult, sZenodoService, dictCheckpoint = (\n'),
     ),
     # --- 2026-10-20: a read-only council runs nothing. The server half
     # (no baseline re-run) predates this; the runner half removes the
@@ -38919,5 +38917,703 @@ LIST_FALSIFICATIONS = [
         source='vaibify/reproducibility/levelGates.py',
         old='            or scheduledReverify.S_DEFAULT_GITHUB_BRANCH)\n',
         new='            or "")\n',
+    ),
+    # --- 2026-10-31: a truthful vaibify identity (plan A5) ---
+    Falsification(
+        nodeid=(
+            'tests/testVersionIdentity.py::'
+            'testTheIdentityFlagsHeadMovedSinceStartup'
+        ),
+        # The digest is no longer recomputed at use: the startup digest
+        # is compared with itself, so nothing ever reads as changed.
+        source='vaibify/versionIdentity.py',
+        old=(
+            '    sCurrentSha256 = _fsSourceTreeSha256OrEmpty('
+            'sPackageDirectory, listErrors)\n'
+        ),
+        new='    sCurrentSha256 = dictIdentity["sSourceTreeSha256"]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVersionIdentity.py::'
+            'testTheIdentityFlagsACleanTreeMadeDirtyWithHeadUnchanged'
+        ),
+        # "Changed" is decided by asking whether HEAD moved, so a tree
+        # made dirty with HEAD unchanged reads as the code it started as.
+        source='vaibify/versionIdentity.py',
+        old='    if sCurrentSha256 == sStartSha256:\n',
+        new=(
+            '    if _ftRunGit(["rev-parse", "--verify", "HEAD"], '
+            'os.path.dirname(sPackageDirectory))[0] == '
+            'dictIdentity["sCommit"]:\n'
+        ),
+    ),
+    # --- 2026-10-31: the PROOF receipt's narrow backend write ---
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptWrite.py::'
+            'testTheCallerSuppliedWriteStillRefusesVaibify'
+        ),
+        # The caller-supplied write's denylist loses .vaibify.
+        source='vaibify/docker/confinedWrite.py',
+        old='T_WRITE_DENYLISTED_NAMES = (".git", ".vaibify", "project.json")\n',
+        new='T_WRITE_DENYLISTED_NAMES = (".git", "project.json")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptWrite.py::'
+            'testTheNarrowWriteRefusesAPlantedSymlinkAtTheReceipt'
+        ),
+        # The narrow write's host leg follows links: a plain open.
+        source='vaibify/gui/syncDispatcher.py',
+        old=(
+            '    fsWriteFileInsideRoot(\n'
+            '        sRealRoot, os.path.join(sRealRoot, *listParts), iter([baContent]),\n'
+            '    )\n'
+        ),
+        new=(
+            '    with open(os.path.join(sRealRoot, *listParts), "wb") as fileReceipt:\n'
+            '        fileReceipt.write(baContent)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptWrite.py::'
+            'testThePendingPathRefusesAMalformedPromotionId'
+        ),
+        # The promotion-id pattern check removed before the path is composed.
+        source='vaibify/gui/syncDispatcher.py',
+        old=(
+            '    if not isinstance(sPromotionId, str) or not _RE_PROMOTION_ID.fullmatch(\n'
+            '            sPromotionId):\n'
+        ),
+        new='    if not isinstance(sPromotionId, str):\n',
+    ),
+    # --- 2026-10-31: committed, never compared ---
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_the_proof_receipt_reads_not_compared'
+        ),
+        # The PROOF receipt dropped from the never-compared set.
+        source='vaibify/reproducibility/publicationScope.py',
+        old=(
+            '    ".vaibify/outputProvenance.json",\n'
+            '    S_PROOF_RECEIPT_REPO_PATH,\n'
+            ')\n'
+        ),
+        new='    ".vaibify/outputProvenance.json",\n)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPublicationScopeSeparatesTheLevels.py::'
+            'test_output_provenance_reads_not_compared'
+        ),
+        # outputProvenance.json dropped from the never-compared set.
+        source='vaibify/reproducibility/publicationScope.py',
+        old='    ".gitignore",\n    ".vaibify/outputProvenance.json",\n',
+        new='    ".gitignore",\n',
+    ),
+    # --- 2026-10-31: A20, the cached Level 2 blocker list ages with the clock ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectHeaderNeverOutranksItsRows.py::'
+            'testACachedBlockerListNamesAVerifyThatAgedPastItsWindow'
+        ),
+        # Freshness dropped from the blocker cache key.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        # And the clock: the same record turns stale with time alone.\n'
+            '        _fsSyncFreshnessFingerprint(filesRepo),\n'
+        ),
+        new='',
+    ),
+    # --- 2026-10-31: one observation at one instant (the PROOF receipt's capture) ---
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testACaptureIsUnchangedWhenTheClockMovesDuringIt'
+        ),
+        # The freshness check ignores the pin.
+        source='vaibify/reproducibility/levelGates.py',
+        old='        _fdatetimeEvaluationInstant() - dtVerified\n',
+        new='        datetime.now(timezone.utc) - dtVerified\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testAnUnpinnedFreshnessCheckStillReadsTheClock'
+        ),
+        # The pin made permanent: its context no longer restores the previous one.
+        source='vaibify/reproducibility/levelGates.py',
+        old='        _THREAD_LOCAL.datetimePinnedEvaluation = datetimePreviousPin\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testAPinnedEvaluationNeverReadsTheBlockerCache'
+        ),
+        # The blocker-cache bypass under a pin removed.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if _fbEvaluationIsPinned():\n'
+            '        return _flistComputeLevel2Blockers(dictWorkflow, filesRepo)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testArxivIsAskedOncePerQuestionInACapture'
+        ),
+        # The arXiv memo removed: every caller asks again.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if dictAnswers is None:\n        return fnAsk()\n',
+        new='    if True:\n        return fnAsk()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testAnArxivFailureStaysAFailureWhenAskedTwiceInOneCapture'
+        ),
+        # Errors left out of the arXiv memo.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        except arxivClient.ArxivError as error:\n'
+            '            dictAnswers[tQuestion] = (False, error)\n'
+        ),
+        new='        except arxivClient.ArxivError:\n            raise\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testASnapshotMissAGateSwallowedStillRestartsTheCaptureLive'
+        ),
+        # A snapshot capture that missed a read is kept, not redone live.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='    return None if filesRecorder.bMissedSample else dictEvaluation\n',
+        new='    return dictEvaluation\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofObservation.py::'
+            'testAFileChangedBetweenTwoLiveReadsMakesTheObservationIncoherent'
+        ),
+        # The replay of every live read at the end removed.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='    listChangedReads = filesRecorder.flistReplayChangedReads()\n',
+        new='    listChangedReads = sorted(filesRecorder.setChangedReads)\n',
+    ),
+    # --- 2026-10-31: the Level 2 catalog agrees with every copy ---
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixEverythingPasses'
+        ),
+        # The gate's final return made False.
+        source='vaibify/reproducibility/levelGates.py',
+        old='        return False\n    return True\n\n\ndef fbImageArchiveQuestionSettled',
+        new='        return False\n    return False\n\n\ndef fbImageArchiveQuestionSettled',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixGithubPrivateFilesMatch'
+        ),
+        # The GitHub reader-access conjunct removed from the gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not fbGithubRepositoryIsPublic(dictWorkflow, filesRepo):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixGithubRecordAboutAnotherRemote'
+        ),
+        # The remote-identity check dropped from the evidence gap.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return _fsDescribeUncoveredRemote(dictWorkflow, dictStatus, sService)\n',
+        new='    return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixGithubFileDiverged'
+        ),
+        # The unclaimed divergence blocker dropped.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not listUnclaimed:\n        return []\n',
+        new='    if True:\n        return []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixZenodoRecordRestricted'
+        ),
+        # A withheld comparison mapped to differs instead of unknown.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if dictStatus.get("bComparisonWithheld"):\n        return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, "Not compared: " + str(\n',
+        new='    if dictStatus.get("bComparisonWithheld"):\n        return _fdictEvidenceState(S_COPY_DIFFERS, "Not compared: " + str(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixZenodoRecordStale'
+        ),
+        # Staleness dropped from the evidence gap.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if _fbSyncCacheStale(dictStatus):\n        return (\n',
+        new='    if False:\n        return (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixZenodoRecordPredatesTheReaderQuestion'
+        ),
+        # Absent reader evidence read as public.
+        source='vaibify/reproducibility/levelGates.py',
+        old='        return _fdictEvidenceState(S_EVIDENCE_UNKNOWN, (\n            f"The last {_DICT_READER_SERVICE_NAMES[sService]} check was "\n',
+        new='        return _fdictEvidenceState(S_ACCESS_PUBLIC, (\n            f"The last {_DICT_READER_SERVICE_NAMES[sService]} check was "\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixDeclarationFreshnessUncheckable'
+        ),
+        # The declaration's unknown criterion dropped from the catalog.
+        source='vaibify/reproducibility/proofCatalog.py',
+        old='        tUnknownCriteria=("ai-declaration-uncheckable",)),\n',
+        new='        tUnknownCriteria=()),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixDeclarationUnattested'
+        ),
+        # The AI Declaration conjunct removed from the gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not fbWorkflowAiDeclarationAttested(dictWorkflow, filesRepo):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixModelsUndeclared'
+        ),
+        # The ai-models-undeclared blocker no longer emitted.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not replayGate.fbWorkflowDeclaresAiModels(dictWorkflow):\n        listBlockers.append(',
+        new='    if False:\n        listBlockers.append(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixImagePinnedQuestionUnanswered'
+        ),
+        # The environment-archive gaps key no longer read from the gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    bArchiveAnswered = fbImageArchiveQuestionSettled(\n        dictWorkflow, filesRepo,\n    )\n',
+        new='    bArchiveAnswered = True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixNoImagePinned'
+        ),
+        # The image-pinned applicability read as always.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='        "image-pinned": isinstance(dictContainer, dict) and bool(\n            dictContainer.get("sImageDigest")),\n',
+        new='        "image-pinned": True,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixOverleafBoundCheckStale'
+        ),
+        # The Overleaf conjunct removed from the gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if _flistOverleafLevel2Blockers(dictWorkflow, filesRepo):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testMatrixTwoPublishedFilesShareABasename'
+        ),
+        # The basename-collision conjunct removed from the gate.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if flistLevel2BasenameCollisions(dictWorkflow):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testAnAuthorityAnswerOutsideTheTableRaises'
+        ),
+        # An unknown authority answer defaulted to met.
+        source='vaibify/reproducibility/proofCatalog.py',
+        old='    if sAnswer not in DICT_AUTHORITY_TO_STATE:\n        raise ValueError(\n',
+        new='    if sAnswer not in DICT_AUTHORITY_TO_STATE:\n        return S_STATE_MET\n        raise ValueError(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofCatalogAgrees.py::'
+            'testDiffersBecomesNotMetAndSurvivesVerbatimAsEvidence'
+        ),
+        # The authority's answer passed through untranslated.
+        source='vaibify/reproducibility/proofCatalog.py',
+        old='        return (fsTranslateAuthorityState(dictAnswer.get("sState")),\n',
+        new='        return (dictAnswer.get("sState"),\n',
+    ),
+    # --- 2026-10-31: the PROOF receipt document, schema version 1 ---
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testTwoBuildsFromOneObservationAreByteIdentical'
+        ),
+        # The builder reads the clock.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='        "sWhatThisRecords": S_WHAT_THIS_RECORDS,\n',
+        new='        "sWhatThisRecords": S_WHAT_THIS_RECORDS + datetime.now(timezone.utc).isoformat(),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testARequirementStateIsTheGatesNotTheRecords'
+        ),
+        # The builder recomputes access from the verify record.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='    dictGaps = dict(\n        dictObservation["dictGaps"],\n        bAtLeastLevel1=dictObservation["dictVerdict"]["bAtLeastLevel1"])\n',
+        new='    dictGaps = dict(\n        dictObservation["dictGaps"],\n        dictPublicAccessStates={sService: {sKey: ((dictObservation["dictRecords"][sService] or {}).get("dictPublicAccess") or {}).get(sKey, "unknown") for sKey in ("sState", "sReason")} for sService in ("github", "zenodo")},\n        bAtLeastLevel1=dictObservation["dictVerdict"]["bAtLeastLevel1"])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testNotRequiredEntriesAppearWithTheirReasons'
+        ),
+        # The builder filters the requirements to required ones.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='    return listRequirements\n',
+        new='    return [dictRow for dictRow in listRequirements if dictRow["sStatus"] != "not-required"]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testTheEvidenceRemotesAndTheReceivingDepositAreKeptApart'
+        ),
+        # dictArchive filled from the verify record.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='        "dictArchive": _fdictBuildArchiveElement(dictArchive),\n',
+        new='        "dictArchive": _fdictBuildArchiveElement(dict(dictArchive, sConceptDoi=str((dictObservation["dictRecords"]["zenodo"] or {}).get("sZenodoDoi") or ""))),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testAnOverleafBoundReceiptCarriesOverleafsEvidenceAndNoProjectId'
+        ),
+        # The Overleaf entry given the authorities' shape.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='        "listNotFrozen": [\n',
+        new='        "dictPublicAccess": {}, "dictPublishedCopy": {},\n        "listNotFrozen": [\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptDocument.py::'
+            'testACompletionNamesTheRecordSetAndWhatTheCheckpointAloneLacks'
+        ),
+        # listCheckpointLacks dropped from the completion's claim.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old='        "listCheckpointLacks": listLacks,\n',
+        new='        "listCheckpointLacks": [],\n',
+    ),
+    # --- 2026-10-31: every project deposit carries a checkpoint receipt ---
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCheckpoint.py::'
+            'testTheInventoryIsTheStagedBytesWhenAFileChangesAfterTheObservation'
+        ),
+        # The inventory taken from the repository as observed.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='            _fdictCheckpointArchive(\n                sZenodoService, dictWorkflow, iParentDepositId, listStaged),\n',
+        new='            _fdictCheckpointArchive(\n                sZenodoService, dictWorkflow, iParentDepositId, [dict(dictStaged, sSha256=((dictObservation["dictRecords"]["zenodo"] or {}).get("dictComparedHashes") or {}).get(workflowManager.fsToSyncStatusKey(dictStaged["sContainerPath"], dictWorkflow.get("sProjectRepoPath") or ""), dictStaged["sSha256"])) for dictStaged in listStaged]),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCheckpoint.py::'
+            'testTheRepositoryReceiptIsTheUploadedBytes'
+        ),
+        # The repository copy serialized a second time.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        dictCheckpoint["baReceipt"])\n',
+        new='        __import__("json").dumps(dictCheckpoint["dictReceipt"]).encode("utf-8"))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCheckpoint.py::'
+            'testACheckpointWhoseUploadFailsLeavesTheRepositoryReceiptAlone'
+        ),
+        # The repository receipt written before publication.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        dictCheckpoint.update(dictReceipt=dictReceipt, baReceipt=baReceipt)\n',
+        new='        dictCheckpoint.update(dictReceipt=dictReceipt, baReceipt=baReceipt)\n        syncDispatcher.fnWriteProofReceiptIntoProject(dictCtx["docker"], sContainerId, dictWorkflow.get("sProjectRepoPath") or "", baReceipt)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCheckpoint.py::'
+            'testASelectedFileNamedLikeTheReceiptIsRefused'
+        ),
+        # The receipt-key refusal never firing.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if listNamed:\n',
+        new='    if False:\n',
+    ),
+    # --- 2026-10-31: the journaled completion version and its recovery ---
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testACompletionRefusesAnInheritedFileWhoseMd5OrSizeDiffers'
+        ),
+        # The inherited-file check compares keys only.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='        if not dictFound or not _fbFileAgrees(\n                {"sMd5": dictItem.get("sMd5"),\n                 "iBytes": dictItem.get("iSizeBytes")}, dictFound):\n',
+        new='        if not dictFound:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAForeignUnpublishedDraftIsRefused'
+        ),
+        # A draft adopted without its stamp.
+        source='vaibify/gui/syncDispatcher.py',
+        old='    if sForeign:\n        raise _CompletionRefusal(\n',
+        new='    if False:\n        raise _CompletionRefusal(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testANewerConceptVersionRefusesTheCompletion'
+        ),
+        # The latest-version check never refusing.
+        source='vaibify/gui/syncDispatcher.py',
+        old='    if sLatestId.isdigit() and int(sLatestId) != int(iParent):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAPublishedVersionStillHoldingTheCheckpointReceiptIsMismatched'
+        ),
+        # The inventory names the checkpoint's receipt instead of the completion's.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='         listDataFiles + [dictCompletionReceipt]],\n',
+        new='         listDataFiles + [dict(dictCheckpointNote, sRepoPath="")]],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAPublishedVersionMissingTheReceiptIsMismatched'
+        ),
+        # The receipt left out of the completion's inventory.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='         listDataFiles + [dictCompletionReceipt]],\n',
+        new='         listDataFiles],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAStoredReceiptAlteredOnDiskIsNotResumed'
+        ),
+        # The stored bytes not checked against the journal.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='    sStored = fsDescribeStoredReceiptMismatch(dictRecord, baStoredReceipt)\n',
+        new='    sStored = ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testADraftHoldingAnExtraFileIsNotResumed'
+        ),
+        # The completion lane's extra-file check removed.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='    if dictRecord.get("sLane") == S_LANE_COMPLETION:\n        listMissing += _flistUnexpectedFiles(dictRecord, dictDeposit)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testTheProjectAndImageLanesStillOfferOnlyDiscardOnAPartialUpload'
+        ),
+        # The completion lane's resume applied to every lane.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old='    S_OUTCOME_RESUMABLE: (S_ACTION_DISCARD,),\n',
+        new='    S_OUTCOME_RESUMABLE: (S_ACTION_RESUME, S_ACTION_DISCARD),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAnIncoherentObservationAuthorizesNoCompletion'
+        ),
+        # bCoherent ignored by the completion's authorization.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if not dictObservation.get("bCoherent"):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testNoCompletionIsMintedWhileLevelTwoIsNotAttained'
+        ),
+        # The attained check removed from the authorization.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if not (dictObservation.get("dictVerdict") or {}).get("bAtLeastLevel2"):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testTheCompletionIsAuthorizedByTheObservationItRecords'
+        ),
+        # A second capture after authorization.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if sWhy:\n        return {"bCompleted": False, "sReason": sWhy}\n    return await _fdictPerformCompletion(\n        dictCtx, sContainerId, dictWorkflow, requestHttp, dictObservation)\n',
+        new='    if sWhy:\n        return {"bCompleted": False, "sReason": sWhy}\n    return await _fdictPerformCompletion(\n        dictCtx, sContainerId, dictWorkflow, requestHttp, await _fdictCaptureUnderTheDrain(dictCtx, sContainerId, dictWorkflow, requestHttp))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testARetryNeverOpensASecondDraftOverALiveCompletion'
+        ),
+        # Reconciliation skipped before the retry.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        await _fnReconcileLiveCompletionFirst(\n            dictCtx, sContainerId, dictWorkflow, requestHttp)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAdoptingACompletionNeverReachesTheImageAdopter'
+        ),
+        # The completion lane sent to the image adopter.
+        source='vaibify/gui/routes/promotionRecoveryRoutes.py',
+        old='    if dictRecord.get("sLane") == archivePromotion.S_LANE_COMPLETION:\n        return await _fdictAdoptCompletionDeposit(\n',
+        new='    if False:\n        return await _fdictAdoptCompletionDeposit(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testResumeUploadsTheStoredBytesNotTheRepositoryCopy'
+        ),
+        # Resume reads the repository copy instead of the stored receipt.
+        source='vaibify/gui/routes/promotionRecoveryRoutes.py',
+        old='    baReceipt = syncDispatcher.fbaReadPendingReceiptOrNone(\n        filesRepo, dictRecord["sPromotionId"])\n',
+        new='    baReceipt = filesRepo.fbaReadBytes(".vaibify/proofReceipt.json")\n',
+    ),
+    # --- 2026-10-31: the Zenodo row says which PROOF receipt it carries ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheZenodoRowSaysWhichReceiptItCarries.py::'
+            'test_the_zenodo_row_renders_the_receipt_verdict_and_its_offer'
+        ),
+        # The completion button offered without the server's offer.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictReceipt.bOfferCompletion === true) {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAFailedReverifyAfterCompletionShowsVerificationPendingNotMet'
+        ),
+        # The pending state dropped: a completion read as verified on a
+        # record about its checkpoint.
+        source='vaibify/reproducibility/proofReceipt.py',
+        old=(
+            '    if dictStatus and not levelGates._fsDescribeUncoveredRemote(\n'
+            '            dictWorkflow, dictStatus, "zenodo"):\n'
+        ),
+        new='    if True:\n',
+    ),
+    # --- 2026-10-31: review findings on the completion version ---
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAResearchersOpenDraftIsNeverPublished'
+        ),
+        # The parent's existing open draft not checked before the draft
+        # is stamped and published.
+        source='vaibify/gui/syncDispatcher.py',
+        old='    iExisting = _fiExistingDraftOfConcept(clientZenodo, dictParent, iParent)\n',
+        new='    iExisting = 0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAnInheritedEmptyFileIsInheritedIntact'
+        ),
+        # A zero file size read as absent.
+        source='vaibify/reproducibility/archivePromotion.py',
+        old=(
+            '    if iRemoteBytes is None:\n'
+            '        return False\n'
+            '    return int(iRemoteBytes) == int(dictIntended.get("iBytes") or 0)\n'
+        ),
+        new='    return int(iRemoteBytes or -1) == int(dictIntended.get("iBytes") or 0)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testAPublishableDraftResumesWithoutTheStoredBytes'
+        ),
+        # The stored receipt demanded before the draft's own receipt is
+        # checked against the journal.
+        source='vaibify/gui/syncDispatcher.py',
+        old=(
+            '    if dictPresent and archivePromotion.fbDepositFileMatches(\n'
+            '            dictWanted, dictPresent):\n'
+            '        return\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testADraftChangedBetweenTheCheckAndTheRequestIsRefused'
+        ),
+        # The returned draft taken without checking it is a fresh copy of
+        # its parent.
+        source='vaibify/gui/syncDispatcher.py',
+        old='    _fnRequireAFreshCopyOfTheCheckpoint(dictDraft, iDraft, dictParent)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testTheArchiveRefusesWhileACompletionIsInFlight'
+        ),
+        # The in-flight refusal returning as if nothing were in flight.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    if not listLive:\n        return\n    raise HTTPException(409, (\n',
+        new='    if True:\n        return\n    raise HTTPException(409, (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testARefusedDrainIsTheCompletionsReasonNeverARaise'
+        ),
+        # The control-plane refusal escaping the automatic completion.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    except ControlPlaneRefusalError as errorRefused:\n        return {"bCompleted": False, "sReason": (\n',
+        new='    except ZeroDivisionError as errorRefused:\n        return {"bCompleted": False, "sReason": (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProofReceiptCompletion.py::'
+            'testARefusalInsideTheCaptureSettlesItsRecordBeforeRaising'
+        ),
+        # The capture worker raising a refusal instead of carrying it back.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='            return {"errorRefused": errorRefused, "objResult": None}\n\n    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictCapture, "proof-observation", requestHttp)\n',
+        new='            raise\n\n    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictCapture, "proof-observation", requestHttp)\n',
     ),
 ]

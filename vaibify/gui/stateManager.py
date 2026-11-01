@@ -124,6 +124,8 @@ S_VAIBIFY_GITIGNORE_BODY = (
     # reproduction export refuse.
     "test_markers/*/*.lock\n"
     "test_markers/*/*.tmp\n"
+    # In-flight completion receipts; proofReceipt.json is the record.
+    "pendingReceipts/\n"
 )
 
 T_STATEFUL_STEP_FIELDS = (
