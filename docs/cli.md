@@ -66,6 +66,7 @@ directory.
 | `secret` | Store, check, or delete an agent provider's API key |
 | `credential set\|status\|delete` | Store, inspect, or delete the GitHub, Overleaf, and Zenodo credentials a project publishes with |
 | `revoke github\|overleaf\|zenodo` | Remove a stored credential and revoke it upstream where possible |
+| `bindings` | Show where this workflow's tokens may be spent, and the command that confirms it |
 | `remote DESTINATION` | Open a dashboard for another machine over SSH |
 | `remote-helper` | The far end of `vaibify remote`; not run by hand |
 
@@ -598,8 +599,27 @@ invalidate a token that may have been copied elsewhere. A Zenodo token
 is stored per project, so `revoke zenodo` clears one project's slot
 for one instance. A token moved out of an older container awaits your
 decision in the dashboard, or with `vaibify do
-decide-migrated-zenodo-token sSlot=<slot> sDecision=confirm|decline`
+decide-migrated-zenodo-token sSlot=<slot> sDecision=confirm|decline`,
+and the notice to regenerate your tokens is answered with `vaibify do
+decide-token-rotation sDecision=regenerated|kept`
 (see [External Resources](externalResources.md)).
+
+### vaibify bindings
+
+```bash
+vaibify bindings [-p NAME] [--workflow PATH] [--all] [--json]
+```
+
+Read-only. Prints, for the workflow's Overleaf project and each Zenodo
+project record and environment archive that applies or is already
+confirmed (every entry with `--all`): what `project.json` names, what
+you confirmed, what the hub could see with your own token, and the exact
+`vaibify do confirm-remote-binding` command that confirms what it
+showed. Run that command to confirm; the hub refuses it if the workflow
+or its target has moved since you looked. A binding record vaibify
+cannot read is named, with the remedy. Like `vaibify do`, it claims the
+container for the moment it asks, so release the container from the
+dashboard first.
 
 ## Remote machines
 

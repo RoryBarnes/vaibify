@@ -243,6 +243,12 @@ container only once that is recorded, checked against Zenodo from the
 host, and spent by nothing until the researcher confirms it in the
 dashboard or with `vaibify do decide-migrated-zenodo-token` (the
 container keyring is agent-writable, so the token may not be theirs).
+Where a token is spent is the researcher's too: each Overleaf project,
+Zenodo project record and environment archive is confirmed in a
+host-side binding record, on evidence the hub fetched with the
+researcher's own token, and pinned to what was reviewed, so an agent
+that edits `project.json` cannot redirect a token
+([External Resources](externalResources.md)).
 No credentials volume is created for a new container; an existing one
 stays mounted until the move out of it has finished, and **Delete
 environment…** on the environment's tile menu removes it.

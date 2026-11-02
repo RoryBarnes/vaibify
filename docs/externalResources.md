@@ -102,16 +102,73 @@ The project ID and the Zenodo record a workflow names live in
 trusts lives on your machine, under `~/.vaibify/bindings/`, in a record
 keyed by the project's own identity (a random `sProjectUuid` in the
 registry, kept across renames) and by the workflow (its file path and
-name). Only you write that record: the Remotes panel's binding view
-(`GET /api/bindings/...`) shows what `project.json` names beside what
-your own token fetched about it, and **Confirm** (or, on the host,
-`vaibify do confirm-remote-binding sService=overleaf` or
-`sService=zenodo`) records it. Every Overleaf push, pull and mirror
-refresh, and every Zenodo deposit, publish and Make Permanent, reads
-its target from that record and refuses when `project.json` disagrees,
-naming both values. A workflow you move or rename has no binding until
-you confirm again; the confirmation can carry the old one across. After
-a deposit vaibify made, the record follows the new deposition itself.
+name). Only you write that record, one confirmation at a time, and it
+holds three kinds of entry for each workflow:
+
+- **Overleaf**: the project your Overleaf token may push to and pull
+  from.
+- **The Zenodo project record**, one entry for each site. On the site
+  `project.json` declares, the entry names the record (concept DOI and
+  deposition) that site's deposits continue, and `project.json` must
+  agree with it. On the other site `project.json` says nothing, and the
+  entry governs alone. An entry that names no record yet authorizes a
+  **new** record there: promoting a project from the Zenodo sandbox
+  (testing) to zenodo.org (permanent) needs exactly that.
+- **The Zenodo environment archive**, one entry for each site: whether
+  the container image may be deposited there. It names no record, is
+  never compared with `project.json`, and no project deposit touches it.
+
+**Notices and the review.** When a project opens, a notice appears for
+each entry that applies and is not confirmed, or that `project.json`
+disagrees with, and its **Review and confirm…** button opens the review.
+An action that needs an entry you have not confirmed opens the same
+review instead of failing. The review sets side by side what
+`project.json` names, what you confirmed and what vaibify could see with
+your own token, and says what **Confirm** authorizes. Confirm records
+exactly that entry, and the refused action runs again, once. If the
+project view changes while you are confirming, the review closes and
+nothing is run again. A disagreement carries the sentence "If you did
+not make this change, an agent edited project.json."
+
+**The evidence**, strongest first, is checked by the hub before anything
+is recorded:
+
+- a deposition your token can read;
+- a published record, whose title and owner are shown for you to
+  recognize; a public record proves no ownership;
+- for a new record or an environment archive, that the site accepts
+  your token;
+- for Overleaf, that your token can read the project, with its file
+  count and latest commit. Overleaf's Git access gives no title, so the
+  review claims none, and links to the project instead.
+
+With no token stored for the site, the review offers to store one and
+then checks again. Evidence that could not be fetched reads "couldn't
+check", in neutral gray, and Confirm stays off until **Retry** succeeds.
+
+**On the host**, `vaibify bindings -p <project>` prints the same review
+and the exact `vaibify do confirm-remote-binding ... sRecordKind=...
+sWorkflowKey=... dictTarget='{...}'` command that confirms what it
+showed. A confirmation carries what was reviewed: one made for another
+workflow, or for a target that has moved since, is refused as stale,
+and so is a bare `sService=...` with nothing reviewed.
+
+**Every token-bearing action** (each Overleaf push, pull and mirror
+refresh; each Zenodo deposit, publish, promotion and recovery; Auto
+Archive) reads its target from that record and refuses with a coded
+reason: `BINDING-REQUIRED` (nothing confirmed), `BINDING-MISMATCH`
+(`project.json` disagrees, naming both values), `ZENODO-TOKEN-MISSING`
+or `BINDING-RECORD-INVALID`. A workflow you move or rename has no
+binding until you confirm again; the confirmation can carry the old one
+across. After a project deposit vaibify made, including one it adopted
+after an interrupted promotion, the project-record entry follows the new
+deposition itself; an environment deposit never changes the record.
+
+**A record vaibify cannot read** is never treated as "nothing
+confirmed" and never converted. The record is written in schema version
+2, and a file in any other form, including one written before November
+2026, refuses every action, naming the file and the remedy: move it
+aside (vaibify reads only `<project id>.json`) and confirm again.
 
 **Connect** stores the token and immediately tests it against the
 service. If the test fails, vaibify restores the token you had before
@@ -152,8 +209,13 @@ The record of the move lives in `~/.vaibify/migrations/` and holds
 slot names and states, never a value. Moving a token does not revoke
 copies an agent may already have read, so the banner also asks you to
 regenerate your Zenodo tokens (and your Overleaf token) on each
-service's account page; vaibify cannot revoke them for you. No
-credentials volume is created for a new container; one that already
+service's account page; vaibify cannot revoke them for you. Answer it
+with **I've regenerated them**, after which vaibify asks for each new
+token, or **Keep the current tokens**. Either answer, with its date,
+retires the notice, which returns only if a token is found in a
+container again (a token held in a conflict is found at every open). On
+the host: `vaibify do decide-token-rotation sDecision=regenerated|kept`.
+No credentials volume is created for a new container; one that already
 exists stays mounted until the move out of it has finished.
 
 ## GitHub

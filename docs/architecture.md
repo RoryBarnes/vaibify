@@ -4041,6 +4041,28 @@ and a request waits for it at most 45 seconds before answering that
 it is still running, since an in-container agent's client gives up at
 60 and used to report a busy host as an unreachable one.
 
+## Where a token may be spent is the researcher's record
+
+A token-bearing action reads its target from a host-side binding record
+the researcher writes, never from `project.json`, which the
+in-container agent can edit; a confirmation therefore pins exactly what
+was reviewed (the workflow key and the target the review offered, both
+re-checked when the confirmation arrives, on evidence the hub fetched
+itself) so that an agent's edit between the review and the click is
+refused as stale rather than confirmed. The Zenodo record kinds are
+separate because a workflow spends one token on two different things:
+its project record, which `project.json` names and must agree with on
+the instance it declares, and its environment archive, which names an
+instance and nothing else, so neither confirmation can widen or block
+the other and a promotion can be authorized to mint without disturbing
+the sandbox record it leaves. Both host stores this touches, the binding
+record and the token migration journal, change by reading a whole file
+and replacing it, and they run in more than one thread (a migration pass
+at connect outside the drain, decisions under it, the hub moving a
+target after a deposit), so each read-modify-write holds an `flock` on a
+sibling file, and a pass or decision holds a per-project pass lock taken
+exactly once (`vaibify/config/lockedJsonRecord.py`).
+
 ## Sealed networks and display authorizations beside the lifecycle gateway
 
 Two per-container resources live on the host and are made and removed
