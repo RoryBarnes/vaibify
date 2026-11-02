@@ -38516,9 +38516,9 @@ LIST_FALSIFICATIONS = [
         new='        pass\n',
     ),
     Falsification(
-        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndAllowlistAndExcludesThePair',
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndWebAndExcludesThePair',
         source='vaibify/gui/static/scriptWorkflowManager.js',
-        old='        dictData.sNetworkMode = "allowlist";\n',
+        old='        dictData.sNetworkMode = "web";\n',
         new='        dictData.sNetworkMode = "open";\n',
     ),
     Falsification(
@@ -39873,5 +39873,12 @@ LIST_FALSIFICATIONS = [
         source='vaibify/config/projectConfig.py',
         old='    sNetworkMode: str = S_NETWORK_MODE_OPEN\n',
         new='    sNetworkMode: str = S_NETWORK_MODE_WEB\n',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testEveryNewProjectPathWritesWeb',
+        # init leaving the mode to the configuration's own default (open).
+        source='vaibify/cli/commandInit.py',
+        old='    config.sNetworkMode = S_NEW_PROJECT_NETWORK_MODE\n',
+        new='',
     ),
 ]

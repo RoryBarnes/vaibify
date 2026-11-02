@@ -7391,7 +7391,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2646 -> 2653 (2026-10-29): turning x11Forwarding off revokes the
     # running container's X authorization at once.
     # 2653 -> 2793 (2026-10-29): the network mode in the wizard and settings, the allow-host route and the YAML list append.
-    "registryRoutes.py": 2793,
+    # 2793 -> 2798 (2026-11-02): a creation request that names no mode gets the new-project mode, web (web network mode plan, A5).
+    "registryRoutes.py": 2798,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

@@ -57,14 +57,14 @@ def _fnAdvanceToTheRuntimeOptions(page):
 
 
 @pytest.mark.falsification
-def testTheWizardOffersX11OffAndAllowlistAndExcludesThePair(
+def testTheWizardOffersX11OffAndWebAndExcludesThePair(
     pageDashboard, serverHub,
 ):
-    """Kills: a wizard whose new project is not sealed by default (ruling D2)."""
+    """Kills: a wizard whose new project is not sealed in web mode by default (ruling D2, amended)."""
     _fnOpenTheConvertWizard(pageDashboard, serverHub)
     _fnAdvanceToTheRuntimeOptions(pageDashboard)
     assert not pageDashboard.is_checked("#wizardX11Forwarding")
-    assert pageDashboard.input_value("#wizardNetworkMode") == "allowlist"
+    assert pageDashboard.input_value("#wizardNetworkMode") == "web"
     assert pageDashboard.is_disabled("#wizardX11Forwarding")
     pageDashboard.select_option("#wizardNetworkMode", "open")
     assert pageDashboard.is_enabled("#wizardX11Forwarding")

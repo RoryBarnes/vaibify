@@ -287,3 +287,73 @@ def testAKeylessLegacyFileStillLoadsOpen(tmp_path):
     assert projectConfig.ProjectConfig(sProjectName="legacyProject").sNetworkMode == "open"
     assert projectConfig.fconfigFromYamlDict(
         {"projectName": "demo", "networkMode": "web"}).sNetworkMode == "web"
+
+
+def _fnIsolateTheRegistry(tmp_path, monkeypatch):
+    from vaibify.config import registryManager
+    sDirectory = str(tmp_path / "registryHome")
+    monkeypatch.setattr(registryManager, "_S_REGISTRY_DIRECTORY", sDirectory)
+    monkeypatch.setattr(registryManager, "_S_REGISTRY_PATH", sDirectory + "/registry.json")
+    monkeypatch.setattr(registryManager, "_S_LOCK_PATH", sDirectory + "/registry.lock")
+
+
+def _fsModeWrittenByInit(tmp_path, monkeypatch, sFolder, listArguments):
+    from click.testing import CliRunner
+    from vaibify.cli import commandInit
+    pathProject = tmp_path / sFolder
+    pathProject.mkdir()
+    monkeypatch.chdir(pathProject)
+    resultInit = CliRunner().invoke(commandInit.fnInitCommand, listArguments)
+    assert resultInit.exit_code == 0, resultInit.output
+    return projectConfig.fconfigLoadFromFile(str(pathProject / "vaibify.yml")).sNetworkMode
+
+
+@pytest.mark.falsification
+def testEveryNewProjectPathWritesWeb(tmp_path, monkeypatch):
+    """Plain, minimal and template init, and the creation route, all start at web.
+
+    Kills: init leaving the mode to the configuration's own default,
+    which is what a file that names no mode means: open.
+    """
+    from vaibify.cli import commandInit
+    from vaibify.config import templateManager
+    from vaibify.gui import registryRoutes
+    _fnIsolateTheRegistry(tmp_path, monkeypatch)
+    pathTemplates = tmp_path / "templates"
+    (pathTemplates / "custom").mkdir(parents=True)
+    (pathTemplates / "custom" / "container.conf").write_text("")
+    monkeypatch.setattr(commandInit, "fsTemplatePath", lambda sName: str(pathTemplates / sName))
+    monkeypatch.setattr(templateManager, "_PATH_TEMPLATES", pathTemplates)
+    assert _fsModeWrittenByInit(tmp_path, monkeypatch, "plain", ["--name", "plainProject"]) == "web"
+    assert _fsModeWrittenByInit(
+        tmp_path, monkeypatch, "minimal", ["--name", "minimalProject", "--minimal"]) == "web"
+    assert _fsModeWrittenByInit(
+        tmp_path, monkeypatch, "template",
+        ["--template", "custom", "--name", "templateProject"]) == "web"
+    requestBare = registryRoutes.CreateProjectRequest(
+        sDirectory=str(tmp_path), sProjectName="routeProject", sTemplateName="")
+    assert registryRoutes.fsNetworkModeOfRequest(requestBare) == "web"
+    requestOld = registryRoutes.CreateProjectRequest(
+        sDirectory=str(tmp_path), sProjectName="routeProject", sTemplateName="",
+        bNetworkIsolation=True)
+    assert registryRoutes.fsNetworkModeOfRequest(requestOld) == "isolated"
+
+
+def testTheNetworkRowSaysWhetherTheModeIsSealed(monkeypatch):
+    from vaibify.config import registryManager
+    from vaibify.gui import pipelineServer
+    from vaibify.gui.routes import systemRoutes
+    from vaibify.docker import projectEgress
+    monkeypatch.setattr(
+        projectEgress, "fdictDescribeProjectEgress",
+        lambda sProjectUuid: {"sProxyState": "running", "listRefused": []})
+    monkeypatch.setattr(pipelineServer, "fsContainerNameForId", lambda *tArgs: "sealedProject")
+    monkeypatch.setattr(registryManager, "fdictGetProject", lambda sName: {"sProjectUuid": "a" * 32})
+    for sMode, bSealed in (("web", True), ("allowlist", True), ("open", False),
+                           ("isolated", False)):
+        monkeypatch.setattr(
+            systemRoutes, "_fconfigForContainerOrNone",
+            lambda *tArgs, sMode=sMode: SimpleNamespace(sNetworkMode=sMode))
+        dictNetwork = systemRoutes._fdictDescribeNetwork(None, "cid")
+        assert (dictNetwork["sMode"], dictNetwork["bSealed"]) == (sMode, bSealed)
+        assert (dictNetwork["sProxyState"] == "running") is bSealed

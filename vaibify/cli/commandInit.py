@@ -175,14 +175,18 @@ def fnWriteDefaultConfig(sProjectName, bMinimal=False):
     packages — which is what a scripted environment (CI, a fresh clone,
     a reproduction attempt) wants when it needs a container and nothing
     else. It is the one statement of "minimal config", so a workflow
-    file never has to hand-write another.
+    file never has to hand-write another. Every form of ``init`` writes
+    through here, so every new project names the new-project network
+    mode rather than inheriting what a file that names none means.
     """
     from vaibify.config.projectConfig import (
+        S_NEW_PROJECT_NETWORK_MODE,
         ProjectConfig,
         fnSaveToFile,
     )
     sConfigPath = fsConfigPath()
     config = ProjectConfig(sProjectName=sProjectName)
+    config.sNetworkMode = S_NEW_PROJECT_NETWORK_MODE
     if bMinimal:
         config.listSystemPackages = []
         config.listPythonPackages = []
