@@ -8,6 +8,7 @@ hub, the release, the reconcile, and the refused-destination tally.
 The live counterpart is ``tests/testProjectEgressLive.py``.
 """
 
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -107,7 +108,7 @@ def testAnEngineThatRejectsTheOptionIsRefusedByName(docker):
     assert "28.0.0" in str(errorRaised.value) and "gateway_mode_ipv4" in str(errorRaised.value)
 
 
-def testTheProxyIsHardenedPinnedToTheHubAndForwardsThePublishedPorts(docker, tmp_path):
+def testTheProxyIsHardenedPinnedToTheHubAndForwardsThePublishedPorts(docker):
     dictEgress = projectEgress.fdictPrepareProjectEgress(
         _fconfig(listPorts=[{"host": 8888, "container": 8888}]), S_UUID, 8050)
     assert dictEgress == {"sNetworkName": S_NETWORK, "sProxyName": S_PROXY,
@@ -127,7 +128,7 @@ def testTheProxyIsHardenedPinnedToTheHubAndForwardsThePublishedPorts(docker, tmp
     assert listCommand[listCommand.index("--forward") + 1] == "8888=sealedProject:8888"
     assert "data.example.org" in listCommand[listCommand.index("--allowlist") + 1]
     sMount = listRun[listRun.index("--mount") + 1]
-    assert "readonly" in sMount and str(tmp_path) in sMount
+    assert "readonly" in sMount and projectEgress._fsEgressRoot() in sMount
     assert ["network", "connect", "bridge", S_PROXY] in docker.listCommands
 
 
@@ -146,13 +147,14 @@ def testAProxyThatExitsOnStartupReportsItsLog(docker):
         projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
 
 
-def testTheReleaseRemovesProxyNetworkAndScript(docker, tmp_path):
+def testTheReleaseRemovesProxyNetworkAndScript(docker):
+    sScriptDirectory = os.path.join(projectEgress._fsEgressRoot(), S_UUID)
     projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
-    assert (tmp_path / ".vaibify" / "egress" / S_UUID).is_dir()
+    assert os.path.isdir(sScriptDirectory)
     projectEgress.fnReleaseProjectEgressQuietly(S_UUID)
     assert ["rm", "-f", S_PROXY] in docker.listCommands[-3:]
     assert ["network", "rm", S_NETWORK] in docker.listCommands[-3:]
-    assert not (tmp_path / ".vaibify" / "egress" / S_UUID).exists()
+    assert not os.path.exists(sScriptDirectory)
     projectEgress.fnReleaseProjectEgressQuietly("not an identity")
 
 

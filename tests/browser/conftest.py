@@ -440,7 +440,13 @@ def _fnIsolateProjectRegistry():
         # every later hub whose startup resolution met them.
         from vaibify.config import preferencesStore
         from vaibify.config import containerLock, operationJournal
+        # The hub's scheduled re-verify stamps its first pass a short
+        # delay after start, outside any test's own redirect.
+        from vaibify.reproducibility import scheduledReverify
         with patch.object(
+            scheduledReverify, "fsReverifyStatePath",
+            lambda: os.path.join(sHome, "reverifyState.json"),
+        ), patch.object(
             registryManager, "_S_REGISTRY_DIRECTORY", sHome,
         ), patch.object(
             registryManager, "_S_REGISTRY_PATH", sRegistry,

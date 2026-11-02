@@ -5795,9 +5795,12 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid='tests/testStartReservationFalsification.py::testTheJournalDirectoryIsIsolatedForTheseTests',
+        # The journal dropped from the declared stores, so it keeps the
+        # real ~/.vaibify/journal it resolved at import. The test only
+        # reads the constant; nothing is written.
         source='tests/conftest.py',
-        old='    fnRedirectDirectory(operationJournal, "_S_JOURNAL_DIRECTORY", "journal")',
-        new='    monkeypatch.setattr(operationJournal, "_S_JOURNAL_DIRECTORY", os.path.expanduser("~/.vaibify/journal"))',
+        old='    StateStoreRedirect("vaibify.config.operationJournal", "_S_JOURNAL_DIRECTORY", "journal"),\n',
+        new='',
     ),
     Falsification(
         nodeid='tests/testHostTransfer.py::testBarrierTransferAdoptsAStillRunningStart',
@@ -39615,5 +39618,38 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/routes/syncRoutes.py',
         old='            return {"errorRefused": errorRefused, "objResult": None}\n\n    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictCapture, "proof-observation", requestHttp)\n',
         new='            raise\n\n    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictCapture, "proof-observation", requestHttp)\n',
+    ),
+    # --- 2026-11-02: every store under ~/.vaibify is redirected into
+    # the test home, or exempted with a reason ---
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testEveryHomeStateStoreIsRedirectedForTestsOrExempted'
+        ),
+        # The migrations store dropped from the declared tuple.
+        source='tests/conftest.py',
+        old=(
+            '    StateStoreRedirect(\n'
+            '        "vaibify.config.zenodoMigrationJournal", "fsMigrationsDirectory",\n'
+            '        "migrations",\n'
+            '    ),\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStateStoresStayInTheTestHome.py::'
+            'testAStoreWriteLandsInTheTestHome'
+        ),
+        # The same drop: the journal resolves through expanduser again,
+        # so its write lands in the surrogate HOME.
+        source='tests/conftest.py',
+        old=(
+            '    StateStoreRedirect(\n'
+            '        "vaibify.config.zenodoMigrationJournal", "fsMigrationsDirectory",\n'
+            '        "migrations",\n'
+            '    ),\n'
+        ),
+        new='',
     ),
 ]

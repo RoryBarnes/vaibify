@@ -55,6 +55,7 @@ __all__ = [
     "testLockPayloadCarriesStartedIso",
     "testSetAllowedContainersRemoved",
     "testKeepAliveDirectoryChmod700",
+    "testEveryHomeStateStoreIsRedirectedForTestsOrExempted",
 ]
 
 
@@ -8973,3 +8974,211 @@ def testProviderClientConstructionOnlyInProviderApiTransport():
         "transport authority instead of constructing a second "
         "client:\n  " + "\n  ".join(listOffenders)
     )
+
+
+# ---------------------------------------------------------------------------
+# Every store under ~/.vaibify is redirected for tests, or says why not
+# ---------------------------------------------------------------------------
+
+_S_HOME_STATE_FRAGMENT = ".vaibify"
+
+_S_REASON_PER_LANE = (
+    "the hub reads it at request time, so each lane that boots a hub "
+    "redirects it at its own scope (see fnIsolateVaibifyStateDirectories)"
+)
+_S_REASON_FOLLOWS_HOME = (
+    "resolved from HOME at call time and predates the declared tuple; "
+    "the tests that reach it set HOME themselves, and the session "
+    "sentinel in tests/conftest.py reports any write that reaches the "
+    "real home"
+)
+
+# Sites the scan below finds that tests/conftest.py's
+# T_REDIRECTED_STATE_STORES deliberately does not list, keyed by
+# (dotted module, function or module-level name), each with its reason.
+DICT_HOME_STATE_EXEMPTIONS = {
+    ("vaibify.config.registryManager", "_S_REGISTRY_DIRECTORY"):
+        _S_REASON_PER_LANE,
+    ("vaibify.config.preferencesStore", "_S_PREFERENCES_DIRECTORY"):
+        _S_REASON_PER_LANE,
+    ("vaibify.install.shellSetup", "_MARKER_DIR"): (
+        "redirected when tests/conftest.py is imported, before collection, "
+        "by _fnKeepFirstTimeSetupOffTheResearchersShellConfiguration"
+    ),
+    ("vaibify.cli.main", "_fnConfigureErrorLogging"): (
+        "redirected for the session by fnRedirectVaibifyLogFileForTests"
+    ),
+    ("vaibify.gui.agentCouncilStore", "fsResolveDurableStoreRoot"): (
+        "redirected per test by fnKeepEveryTestOutOfTheRealCouncilStore, "
+        "which a test opts out of only with the realCouncilStoreRoot marker"
+    ),
+    ("vaibify.gui.agentCouncilContext", "_fsCreateSnapshotDirectory"): (
+        "a default for a caller that passes no store root; the one "
+        "production caller (councilRoutes) passes the durable store root, "
+        "which fnKeepEveryTestOutOfTheRealCouncilStore redirects"
+    ),
+    ("vaibify.reproducibility.overleafSync", "_fsEphemeralRoot"): (
+        "its expanduser branch runs only when vaibify.config cannot be "
+        "imported (script mode); otherwise it asks ephemeralStore, which "
+        "fnKeepSecretFilesOutOfTheResearchersHome redirects for the session"
+    ),
+    ("vaibify.config.bindMountValidator", "_fnRejectDeniedPrefix"): (
+        "reads only: it refuses a bind mount under the state directory"
+    ),
+    ("vaibify.cli.commandInit", "_fnApplyInstallerAgentDefaults"): (
+        "reads only: the installer's agent-defaults file"
+    ),
+    ("vaibify.cli.doctorHostChecks", "flistCheckDepositScratchSpace"): (
+        "reads only: the free space where deposits stage their tarball"
+    ),
+    ("vaibify.gui.routes.pipelineRoutes", "_fsResolveHostLogPath"): (
+        "reads only: the log file, whose writer the session fixture redirects"
+    ),
+    ("vaibify.reproducibility.imageDeposit",
+     "fsResolveDepositScratchDirectory"): _S_REASON_FOLLOWS_HOME,
+    ("vaibify.reproducibility.overleafMirror", "fsGetMirrorRoot"):
+        _S_REASON_FOLLOWS_HOME,
+    ("vaibify.reproducibility.scheduledReverify", "fsArxivCacheDir"):
+        _S_REASON_FOLLOWS_HOME,
+}
+
+
+def _fbIsHomeResolution(nodeCall):
+    """Return True for ``os.path.expanduser("~…")`` or ``Path.home()``."""
+    if not isinstance(nodeCall, ast.Call):
+        return False
+    nodeFunction = nodeCall.func
+    sCalled = (
+        nodeFunction.attr if isinstance(nodeFunction, ast.Attribute)
+        else getattr(nodeFunction, "id", "")
+    )
+    if sCalled == "home" and isinstance(nodeFunction, ast.Attribute):
+        nodeOwner = nodeFunction.value
+        return "Path" in (
+            nodeOwner.attr if isinstance(nodeOwner, ast.Attribute)
+            else getattr(nodeOwner, "id", "")
+        )
+    if sCalled != "expanduser" or not nodeCall.args:
+        return False
+    return any(
+        isinstance(nodeInner, ast.Constant)
+        and isinstance(nodeInner.value, str)
+        and nodeInner.value.startswith("~")
+        for nodeInner in ast.walk(nodeCall.args[0])
+    )
+
+
+def _fsetStateDirectoryConstants(treeModule):
+    """Return the module-level names whose value spells the state directory."""
+    setNames = set()
+    for nodeStatement in treeModule.body:
+        if not isinstance(nodeStatement, (ast.Assign, ast.AnnAssign)):
+            continue
+        if not _fbMentionsStateDirectory(nodeStatement.value, set()):
+            continue
+        listTargets = (
+            nodeStatement.targets if isinstance(nodeStatement, ast.Assign)
+            else [nodeStatement.target]
+        )
+        setNames.update(
+            nodeTarget.id for nodeTarget in listTargets
+            if isinstance(nodeTarget, ast.Name)
+        )
+    return setNames
+
+
+def _fbMentionsStateDirectory(nodeScope, setConstantNames):
+    """Return True when the scope spells ``.vaibify`` or names a constant that does."""
+    for nodeInner in ast.walk(nodeScope):
+        if isinstance(nodeInner, ast.Constant) and isinstance(
+            nodeInner.value, str,
+        ) and _S_HOME_STATE_FRAGMENT in nodeInner.value:
+            return True
+        if isinstance(nodeInner, ast.Name) and nodeInner.id in setConstantNames:
+            return True
+    return False
+
+
+def _flistScopesOfModule(treeModule):
+    """Return ``(sName, node)`` for each module-level binding and function."""
+    listScopes = []
+    for nodeStatement in treeModule.body:
+        if isinstance(nodeStatement, (ast.Assign, ast.AnnAssign)):
+            listTargets = (
+                nodeStatement.targets if isinstance(nodeStatement, ast.Assign)
+                else [nodeStatement.target]
+            )
+            listScopes.extend(
+                (nodeTarget.id, nodeStatement.value)
+                for nodeTarget in listTargets if isinstance(nodeTarget, ast.Name)
+            )
+        elif isinstance(nodeStatement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            listScopes.append((nodeStatement.name, nodeStatement))
+        elif isinstance(nodeStatement, ast.ClassDef):
+            listScopes.extend(
+                (f"{nodeStatement.name}.{nodeMethod.name}", nodeMethod)
+                for nodeMethod in nodeStatement.body
+                if isinstance(nodeMethod, (ast.FunctionDef, ast.AsyncFunctionDef))
+            )
+    return listScopes
+
+
+def fsetHomeStateResolvers():
+    """Return ``(sModule, sName)`` for every scope resolving a path under ~/.vaibify.
+
+    A scope resolves one when it both reaches the home directory
+    (``os.path.expanduser`` of a ``~`` string, or ``Path.home()``) and
+    spells ``.vaibify``, directly or through a module-level constant.
+    """
+    setFound = set()
+    for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):
+        if _fbIsExcludedScanPath(pathFile):
+            continue
+        treeModule = ast.parse(fsReadSource(pathFile))
+        setConstantNames = _fsetStateDirectoryConstants(treeModule)
+        sModule = ".".join(pathFile.relative_to(REPO_ROOT).with_suffix("").parts)
+        for sName, nodeScope in _flistScopesOfModule(treeModule):
+            if any(
+                _fbIsHomeResolution(nodeInner) for nodeInner in ast.walk(nodeScope)
+            ) and _fbMentionsStateDirectory(nodeScope, setConstantNames):
+                setFound.add((sModule, sName))
+    return setFound
+
+
+@pytest.mark.falsification
+def testEveryHomeStateStoreIsRedirectedForTestsOrExempted():
+    """A store under ~/.vaibify is declared for the test home, or says why not.
+
+    The suite once wrote over a thousand Zenodo migration journals into
+    the researcher's real ~/.vaibify, because a store added after the
+    isolation fixture was written was never added to it. Every scope in
+    vaibify/ that resolves a path under ~/.vaibify must now be listed in
+    tests/conftest.py's T_REDIRECTED_STATE_STORES or in
+    DICT_HOME_STATE_EXEMPTIONS above with its reason, and neither list
+    may name a site that no longer exists.
+
+    Kills: deleting the migrations entry from T_REDIRECTED_STATE_STORES.
+    """
+    from tests.conftest import T_REDIRECTED_STATE_STORES
+    setFound = fsetHomeStateResolvers()
+    setDeclared = {
+        (tStore.sModule, tStore.sAttribute)
+        for tStore in T_REDIRECTED_STATE_STORES
+    }
+    setUndeclared = setFound - setDeclared - set(DICT_HOME_STATE_EXEMPTIONS)
+    assert not setUndeclared, (
+        "These resolve a path under ~/.vaibify, so a test that reaches "
+        "them writes into the researcher's real home. Add each to "
+        "T_REDIRECTED_STATE_STORES in tests/conftest.py, or to "
+        "DICT_HOME_STATE_EXEMPTIONS with the reason it is safe:\n  "
+        + "\n  ".join(f"{sModule}.{sName}" for sModule, sName in sorted(setUndeclared))
+    )
+    setStaleExemptions = set(DICT_HOME_STATE_EXEMPTIONS) - setFound
+    assert not setStaleExemptions, (
+        f"exemptions that no longer match a resolver: {sorted(setStaleExemptions)}"
+    )
+    for tStore in T_REDIRECTED_STATE_STORES:
+        assert hasattr(importlib.import_module(tStore.sModule), tStore.sAttribute), (
+            f"T_REDIRECTED_STATE_STORES names {tStore.sModule}.{tStore.sAttribute}, "
+            f"which does not exist"
+        )

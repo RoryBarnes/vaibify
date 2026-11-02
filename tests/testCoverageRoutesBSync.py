@@ -49,6 +49,10 @@ def fixtureIsolateHostState(tmp_path, monkeypatch):
         os.path.join(sRegistryDirectory, "registry.json"),
     )
     monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH",
+        os.path.join(sRegistryDirectory, "registry.lock"),
+    )
+    monkeypatch.setattr(
         containerManager, "fbContainerIsNetworkIsolated",
         lambda sContainerId: False,
     )
@@ -611,9 +615,10 @@ def testReverifyScheduleSaysWhenItNeverRan(monkeypatch, tmp_path):
 def testReverifyScheduleReportsTheRecordedPass(
     monkeypatch, tmp_path, fixtureIsolateHostState,
 ):
-    sStateDirectory = os.path.join(fixtureIsolateHostState, ".vaibify")
-    os.makedirs(sStateDirectory, exist_ok=True)
-    with open(os.path.join(sStateDirectory, "reverifyState.json"), "w") as fileHandle:
+    from vaibify.reproducibility import scheduledReverify
+    sStatePath = scheduledReverify.fsReverifyStatePath()
+    os.makedirs(os.path.dirname(sStatePath), exist_ok=True)
+    with open(sStatePath, "w") as fileHandle:
         json.dump({"sLastReverifyIso": "2026-01-02T03:04:05Z"}, fileHandle)
     dictWorkflow = {"sProjectRepoPath": str(tmp_path), "listSteps": []}
     clientSync, _, _ = ftBuildClient(

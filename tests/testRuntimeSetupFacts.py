@@ -148,6 +148,7 @@ def testAnUnreadableRegistryCountsEveryRunningContainer(
     pathRegistry = tmp_path / "registry.json"
     pathRegistry.write_text("{ this is not json")
     monkeypatch.setattr(registryManager, "_S_REGISTRY_PATH", str(pathRegistry))
+    monkeypatch.setattr(registryManager, "_S_LOCK_PATH", str(tmp_path / "registry.lock"))
     monkeypatch.setattr(
         factsModule, "_ftRunProbe",
         lambda listCommand, dictEnvironment=None: (
@@ -163,6 +164,7 @@ def testAReadableRegistryProtectsOnlyItsOwnContainers(tmp_path, monkeypatch):
     pathRegistry.write_text(json.dumps({"listProjects": [
         {"sName": "alpha", "sContainerName": "projectAlphaBox"}]}))
     monkeypatch.setattr(registryManager, "_S_REGISTRY_PATH", str(pathRegistry))
+    monkeypatch.setattr(registryManager, "_S_LOCK_PATH", str(tmp_path / "registry.lock"))
     monkeypatch.setattr(
         factsModule, "_ftRunProbe",
         lambda listCommand, dictEnvironment=None: (

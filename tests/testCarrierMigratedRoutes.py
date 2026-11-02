@@ -6551,14 +6551,22 @@ def _fnGithubPushHostSidePlanted():
 
 
 def _fresponsePostGithubPush(client):
-    """Push one file through the migrated GitHub push route."""
-    return client.post(
-        f"/api/github/{S_CONTAINER_ID}/push",
-        json={
-            "listFilePaths": [S_SYNC_PUSHABLE_FILE],
-            "sCommitMessage": "carrier probe",
-        },
-    )
+    """Push one file through the migrated GitHub push route.
+
+    The route records the remote it reached in the host registry, which
+    this module does not redirect: unstubbed, every push here rewrote
+    the researcher's real ~/.vaibify/registry.json, and created one on a
+    fresh home.
+    """
+    from vaibify.config import registryManager
+    with patch.object(registryManager, "fnRecordPushedGithubRemote"):
+        return client.post(
+            f"/api/github/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": [S_SYNC_PUSHABLE_FILE],
+                "sCommitMessage": "carrier probe",
+            },
+        )
 
 
 @pytest.mark.falsification

@@ -33,6 +33,9 @@ def fixtureIsolateRegistry(tmp_path, monkeypatch):
     monkeypatch.setattr(
         registryManager, "_S_REGISTRY_PATH", sRegistryPath,
     )
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH", os.path.join(sRegistryDir, "registry.lock"),
+    )
 
 
 def _fnWriteMinimalConfig(tmp_path, sProjectName="test-project"):

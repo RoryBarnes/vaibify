@@ -598,7 +598,9 @@ def test_a_partial_without_a_sidecar_is_unusable_and_a_tmp_directory_is_legacy()
 S_CHILD_PROGRAM = textwrap.dedent("""
     import json, sys
     sys.path.insert(0, sys.argv[1])
+    from vaibify.config import keepAliveManager
     from vaibify.reproducibility import downloadPartial, resumableDownload
+    keepAliveManager._fiSpawnCaffeinate = lambda *aArguments: 0
     downloadPartial._S_DOWNLOAD_ROOT = sys.argv[2]
     resumableDownload._I_CHECKPOINT_BYTES = 64 * 1024
     dictRecord = json.loads(sys.argv[4])
@@ -612,8 +614,14 @@ S_CHILD_PROGRAM = textwrap.dedent("""
 
 
 @pytest.mark.falsification
-def test_a_download_killed_mid_stream_is_interrupted_not_lost_and_is_adopted(serverFault):
+def test_a_download_killed_mid_stream_is_interrupted_not_lost_and_is_adopted(
+    serverFault, tmp_path,
+):
     """A real process, really killed; its lock frees and its bytes are resumed.
+
+    The child gets its own HOME and launches no caffeinate, as the
+    suite's own process does not: its keep-alive would otherwise record
+    a pid in the researcher's real ~/.vaibify/caffeinate.
 
     Kills: never adopting an interrupted partial (every download starts at 0).
     """
@@ -624,6 +632,7 @@ def test_a_download_killed_mid_stream_is_interrupted_not_lost_and_is_adopted(ser
         [sys.executable, "-c", S_CHILD_PROGRAM, os.path.dirname(sRepository), sRoot,
          serverFault.sFileUrl, json.dumps(fdictRecord())],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env=dict(os.environ, HOME=str(tmp_path)),
     )
     try:
         sAcquisitionId = processChild.stdout.readline().strip()

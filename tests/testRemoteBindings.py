@@ -106,9 +106,10 @@ def testReRegistrationGetsANewIdentityAndNoBindings(tmp_path):
     """
     sUuid = _fsRegister(tmp_path, S_PROJECT_NAME)
     fnConfirmBinding(sUuid, S_KEY, "study", "overleaf", {"sProjectId": "ol-1"}, "researcher")
-    assert os.path.exists(os.path.join(str(tmp_path), ".vaibify", "bindings", sUuid + ".json"))
+    sBindingPath = os.path.join(remoteBindings.fsBindingsDirectory(), sUuid + ".json")
+    assert os.path.exists(sBindingPath)
     registryManager.fnRemoveProject(S_PROJECT_NAME)
-    assert not os.path.exists(os.path.join(str(tmp_path), ".vaibify", "bindings", sUuid + ".json"))
+    assert not os.path.exists(sBindingPath)
     sUuidAgain = _fsRegister(tmp_path, S_PROJECT_NAME)
     assert sUuidAgain != sUuid
     assert fdictConfirmedBinding(sUuidAgain, S_KEY, "overleaf") is None
@@ -178,9 +179,9 @@ def testTheHubMovesAConfirmedZenodoTargetButCannotCreateOne():
     }
 
 
-def testTheRecordIsPrivateAndHoldsNoSecret(tmp_path):
+def testTheRecordIsPrivateAndHoldsNoSecret():
     fnConfirmBinding("e" * 32, S_KEY, "study", "overleaf", {"sProjectId": "ol-1"}, "researcher")
-    sDirectory = os.path.join(str(tmp_path), ".vaibify", "bindings")
+    sDirectory = remoteBindings.fsBindingsDirectory()
     sPath = os.path.join(sDirectory, "e" * 32 + ".json")
     assert stat.S_IMODE(os.stat(sDirectory).st_mode) == 0o700
     assert stat.S_IMODE(os.stat(sPath).st_mode) == 0o600
