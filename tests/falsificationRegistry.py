@@ -39812,4 +39812,26 @@ LIST_FALSIFICATIONS = [
         old='    if request.sWorkflowKey != sWorkflowKey:\n',
         new='    if False:\n',
     ),
+    # --- 2026-11-02: CLI refusals name their cause, and only a way out
+    # that exists ---
+    Falsification(
+        nodeid=(
+            'tests/testCliMessagesPointTheRightWay.py::'
+            'testAShadowedPackageStopsNamingTheFolderAndTheFix'
+        ),
+        # The shadow check returns before it looks at the package.
+        source='vaibify/cli/packageShadowGuard.py',
+        old='    if modulePackage is None or getattr(modulePackage, "__file__", None):\n        return\n',
+        new='    if True:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCliMessagesPointTheRightWay.py::'
+            'testAResearcherOnlyActionNeverNamesTheAgentLane'
+        ),
+        # The agent-lane pointer appended whatever the action.
+        source='vaibify/cli/hubSession.py',
+        old='        S_AGENT_LANE_POINTER if bAgentLaneCanRunIt else S_RESEARCHER_ONLY_WAY_OUT\n',
+        new='        S_AGENT_LANE_POINTER\n',
+    ),
 ]

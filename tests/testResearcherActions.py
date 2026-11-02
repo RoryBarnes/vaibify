@@ -93,7 +93,9 @@ def _fdictDispatch(sAction, listArgs):
                 "sContainerName": sContainerName, "sContainerId": "",
                 "sLeaseId": "", "sWorkflowPath": ""}
 
-    def fdictResearcher(sContainerName, iPort=None, sWorkflowPath=None):
+    def fdictResearcher(
+        sContainerName, iPort=None, sWorkflowPath=None, bAgentLaneCanRunIt=False,
+    ):
         dictSent["listOpened"].append(("claim", sContainerName))
         return {"sBaseUrl": "http://127.0.0.1:1", "sCredential": "c",
                 "sContainerName": sContainerName, "sContainerId": "cid-77",
