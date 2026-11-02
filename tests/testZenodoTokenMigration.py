@@ -511,3 +511,71 @@ def testAQuietPassNeverRaises(tMigration, monkeypatch):
         ),
     )
     zenodoTokenMigration.fnRunMigrationPassQuietly(None, S_CONTAINER_ID)
+
+
+# ---------------------------------------------------------------------------
+# The rotation notice: one answer retires it until a token is found again
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fnTickTheJournalClock(monkeypatch):
+    """Give every journal stamp its own later second, so order is never a tie."""
+    listTicks = [0]
+
+    def fsNextStamp():
+        listTicks[0] += 1
+        return f"2026-01-01T00:00:{listTicks[0]:02d}+00:00"
+
+    monkeypatch.setattr(journal, "_fsNow", fsNextStamp)
+
+
+@pytest.mark.falsification
+def testARotationAnswerRetiresTheNoticeUntilATokenIsFoundAgain(
+    tMigration, fnTickTheJournalClock,
+):
+    """The notice reads the answer, and a later find re-arms it.
+
+    Kills: the describe step reporting ``bRotationAdvised`` from the
+    advice alone, without asking whether a decision covers it.
+    """
+    source, _, _ = tMigration
+    source.dictSlots[S_SANDBOX_SLOT] = S_TOKEN
+    assert _fnRun()["bRotationAdvised"] is True
+    journal.fnRecordRotationDecision(S_UUID, journal.S_ROTATION_REGENERATED)
+    dictDescribed = fdictDescribeMigration(None, S_CONTAINER_ID)
+    assert dictDescribed["bRotationAdvised"] is False
+    assert dictDescribed["sRotationDecision"] == "regenerated"
+    assert dictDescribed["sRotationDecidedAt"]
+    source.dictSlots[S_SANDBOX_SLOT] = "a-token-written-later"
+    assert _fnRun()["bRotationAdvised"] is True
+
+
+def testAConflictKeepsTheNoticeUpUntilItIsResolved(
+    tMigration, fnTickTheJournalClock,
+):
+    source, _, _ = tMigration
+    slots.fnStoreActiveToken("sandbox", S_UUID, "the-host-token")
+    source.dictSlots[S_SANDBOX_SLOT] = S_TOKEN
+    _fnRun()
+    assert _fsState() == journal.S_STATE_CONFLICT
+    journal.fnRecordRotationDecision(S_UUID, journal.S_ROTATION_KEPT)
+    assert _fnRun()["bRotationAdvised"] is True
+    fdictDecideMigratedToken(None, S_CONTAINER_ID, S_SANDBOX_SLOT, S_DECISION_KEEP_HOST)
+    journal.fnRecordRotationDecision(S_UUID, journal.S_ROTATION_KEPT)
+    assert _fnRun()["bRotationAdvised"] is False
+
+
+def testARotationAnswerNeedsANoticeAndAKnownDecision():
+    with pytest.raises(journal.RotationNotAdvisedError, match="no rotation to decide"):
+        journal.fnRecordRotationDecision(S_UUID, journal.S_ROTATION_KEPT)
+    with pytest.raises(ValueError, match="not a rotation decision"):
+        journal.fnRecordRotationDecision(S_UUID, "shrug")
+
+
+def testANoticeRecordedBeforeTheFoundStampIsRetiredByAnAnswer():
+    assert journal.fbRotationStillAdvised({"bRotationAdvised": True}) is True
+    assert journal.fbRotationStillAdvised({
+        "bRotationAdvised": True, "sRotationDecidedAt": "2026-01-01T00:00:01+00:00",
+    }) is False
+    assert journal.fbRotationStillAdvised({}) is False

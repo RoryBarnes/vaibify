@@ -7615,7 +7615,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # lines of work above, merged.
     # 1599 -> 1603 (2026-10-29): allow-network-host is excluded from the agent lane, with why.
     # 1603 -> 1608 (2026-10-31): archive-zenodo-completion, the user-only retry for a PROOF completion version (proof-receipt plan, A11).
-    "actionCatalog.py": 1608,
+    # 1608 -> 1619 (2026-11-02): decide-token-rotation, the user-only answer to the token rotation notice (binding-and-rotation plan, A2, A5).
+    "actionCatalog.py": 1619,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

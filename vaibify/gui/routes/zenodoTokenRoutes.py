@@ -7,7 +7,8 @@ container keyring is agent-writable, so the token may not be the
 researcher's). These routes are that confirmation: the GET shows each
 slot's state, how the host-side validation went and what Zenodo reports
 about the token; the POSTs record a decision -- confirm, decline, or
-resolve a conflict -- and run a migration pass. Every one of them is
+resolve a conflict -- and run a migration pass, or answer the rotation
+notice (the tokens were regenerated, or kept). Every one of them is
 researcher-only twice over, in the catalog and in the handler.
 """
 
@@ -18,6 +19,7 @@ import asyncio
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
+from vaibify.config import zenodoMigrationJournal
 from vaibify.config.zenodoTokenSlots import TokenStoreUnreadable
 
 from .. import zenodoTokenMigration
@@ -27,7 +29,8 @@ from ..routeContext import (
     fnRejectAgentTokenLane,
 )
 from ..routeScope import (
-    S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_TYPED_READ, ffnDeclareCarrierMode,
+    S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_SEPARATE_AUTHORITY,
+    S_CARRIER_TYPED_READ, ffnDeclareCarrierMode,
 )
 
 
@@ -36,6 +39,10 @@ class ZenodoTokenDecisionRequest(BaseModel):
     sDecision: str
     sInstance: str = ""
     bReplaceActive: bool = False
+
+
+class ZenodoRotationDecisionRequest(BaseModel):
+    sDecision: str
 
 
 def _fnRegisterDescribe(app, dictCtx):
@@ -122,8 +129,37 @@ def _fnRegisterMigrate(app, dictCtx):
         )
 
 
+def _fnRegisterRotationDecision(app, dictCtx):
+    """Register POST /api/zenodo-tokens/{sContainerId}/rotation-decision."""
+
+    @ffnAgentAction("decide-token-rotation")
+    @app.post("/api/zenodo-tokens/{sContainerId}/rotation-decision")
+    # separate-authority: the write is the host's migration journal under
+    # ~/.vaibify, and the container is neither read nor written.
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictDecideZenodoTokenRotation(
+        sContainerId: str, request: ZenodoRotationDecisionRequest,
+        requestHttp: Request,
+    ):
+        fnRejectAgentTokenLane(requestHttp)
+        dictCtx["require"](sContainerId)
+        if request.sDecision not in zenodoMigrationJournal.T_ROTATION_DECISIONS:
+            raise HTTPException(400, (
+                f"{request.sDecision!r} is not a rotation decision; the "
+                f"decisions are {list(zenodoMigrationJournal.T_ROTATION_DECISIONS)}"
+            ))
+        try:
+            return await asyncio.to_thread(
+                zenodoTokenMigration.fdictDecideTokenRotation,
+                dictCtx["docker"], sContainerId, request.sDecision,
+            )
+        except (ValueError, TokenStoreUnreadable) as error:
+            raise HTTPException(409, str(error)) from error
+
+
 def fnRegisterAll(app, dictCtx):
     """Register the Zenodo token migration routes."""
     _fnRegisterDescribe(app, dictCtx)
     _fnRegisterDecide(app, dictCtx)
     _fnRegisterMigrate(app, dictCtx)
+    _fnRegisterRotationDecision(app, dictCtx)

@@ -180,3 +180,31 @@ def testAConfirmAndTheHubsTargetUpdateBothPersist():
         assert remoteBindings.fdictConfirmedBinding(
             sIdentity, sKey, "zenodo",
         )["dictTarget"]["sDepositionId"] == sDeposition
+
+
+def testARotationAnswerAndAPassBothPersist(tMigration):
+    source, _, _ = tMigration
+    slots.fnStoreActiveToken("sandbox", S_UUID, "the-host-token")
+    source.dictSlots[S_SANDBOX_SLOT] = S_TOKEN
+    fdictRunMigrationPass(None, S_CONTAINER_ID)
+    for _ in range(20):
+        barrierStart = threading.Barrier(2)
+
+        def fnAnswer():
+            barrierStart.wait()
+            journal.fnRecordRotationDecision(S_UUID, journal.S_ROTATION_KEPT)
+
+        def fnPass():
+            barrierStart.wait()
+            fdictRunMigrationPass(None, S_CONTAINER_ID)
+
+        sFoundBefore = journal.fdictReadJournal(S_UUID)["sLastTokenFoundAt"]
+        listThreads = [_fthreadStartDaemon(fnAnswer), _fthreadStartDaemon(fnPass)]
+        for threadWorker in listThreads:
+            threadWorker.join(timeout=F_DECISION_TIMEOUT_SECONDS)
+        dictJournal = journal.fdictReadJournal(S_UUID)
+        assert dictJournal["sRotationDecision"] == journal.S_ROTATION_KEPT
+        assert dictJournal["sLastTokenFoundAt"] > sFoundBefore
+        assert dictJournal["dictSlots"][S_SANDBOX_SLOT]["sState"] == (
+            journal.S_STATE_CONFLICT
+        )

@@ -4117,5 +4117,9 @@ var VaibifyWorkflowRequirements = (function () {
         // button exists to avoid.
         fnRecordPromotionOutcome: fnRecordPromotionOutcome,
         fnFollowArchiveChoice: fnFollowArchiveChoice,
+        // The dashboard's one vocabulary for the two Zenodo sites, so a
+        // notice elsewhere never writes "production" or an instance key.
+        fsZenodoSitePhrase: _fsZenodoSitePhrase,
+        fsDescribeZenodoService: _fsDescribeZenodoService,
     };
 })();

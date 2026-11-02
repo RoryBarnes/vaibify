@@ -39680,4 +39680,33 @@ LIST_FALSIFICATIONS = [
             '        return fdictRunMigrationPass(connectionDocker, sContainerId)\n'
         ),
     ),
+    # --- 2026-11-02: the token rotation notice is answered once, and
+    # only the researcher answers it ---
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testARotationAnswerRetiresTheNoticeUntilATokenIsFoundAgain'
+        ),
+        # The describe step reporting the advice without the decision.
+        source='vaibify/gui/zenodoTokenMigration.py',
+        old='        "bRotationAdvised": journal.fbRotationStillAdvised(dictJournal),\n',
+        new='        "bRotationAdvised": bool(dictJournal.get("bRotationAdvised")),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenRoutes.py::'
+            'testTheAgentLaneCannotAnswerTheRotationNotice'
+        ),
+        # The rotation-decision handler without its agent-lane refusal.
+        source='vaibify/gui/routes/zenodoTokenRoutes.py',
+        old=(
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"](sContainerId)\n'
+            '        if request.sDecision not in zenodoMigrationJournal.T_ROTATION_DECISIONS:\n'
+        ),
+        new=(
+            '        dictCtx["require"](sContainerId)\n'
+            '        if request.sDecision not in zenodoMigrationJournal.T_ROTATION_DECISIONS:\n'
+        ),
+    ),
 ]

@@ -57,6 +57,7 @@ __all__ = [
     "fnRunMigrationPassQuietly",
     "fdictDescribeMigration",
     "fdictDecideMigratedToken",
+    "fdictDecideTokenRotation",
 ]
 
 import logging
@@ -386,7 +387,9 @@ def fdictDescribeMigration(connectionDocker, sContainerId):
         },
         "listSlots": listSlots,
         "bAwaitingDecision": any(dictSlot["bAwaitingDecision"] for dictSlot in listSlots),
-        "bRotationAdvised": bool(dictJournal.get("bRotationAdvised")),
+        "bRotationAdvised": journal.fbRotationStillAdvised(dictJournal),
+        "sRotationDecision": dictJournal.get("sRotationDecision", ""),
+        "sRotationDecidedAt": dictJournal.get("sRotationDecidedAt", ""),
         "dictTokenPages": dict(DICT_TOKEN_PAGES),
     }
 
@@ -462,6 +465,23 @@ def _fnApplyDecision(sProjectUuid, sSlot, sDecision, sInstance, bReplaceActive):
         _fnDeclinePending(sProjectUuid, sSlot)
     else:
         journal.fnRecordConflictChoice(sProjectUuid, sSlot, sDecision)
+
+
+def fdictDecideTokenRotation(connectionDocker, sContainerId, sDecision):
+    """Record the researcher's answer to the rotation notice; return the new description.
+
+    Raises ``ValueError`` (a :class:`~vaibify.config.zenodoMigrationJournal.RotationNotAdvisedError`
+    when no rotation was advised) with the sentence to show.
+    """
+    sProjectUuid = zenodoTokenAccess.fsProjectUuidForContainer(
+        connectionDocker, sContainerId,
+    )
+    if not sProjectUuid:
+        raise journal.RotationNotAdvisedError(
+            "This container is not a registered project.",
+        )
+    journal.fnRecordRotationDecision(sProjectUuid, sDecision)
+    return fdictDescribeMigration(connectionDocker, sContainerId)
 
 
 def _fsResolveConfirmInstance(sProjectUuid, sSlot, sInstance):

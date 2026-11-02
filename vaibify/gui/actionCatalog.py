@@ -1290,6 +1290,17 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Run the Zenodo token migration pass again now, "
                      "retrying a validation the host could not complete. "
                      "Human-only."},
+    {"sName": "decide-token-rotation", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/zenodo-tokens/{sContainerId}/rotation-decision",
+     "bAgentSafe": False,
+     "sDescription": "Answer the notice that a token found in this "
+                     "project's container may have been read there. Args: "
+                     "{sDecision: regenerated|kept}. Either answer, with "
+                     "its date, retires the notice until a token is found "
+                     "in the container again. Human-only: only the "
+                     "researcher knows whether they regenerated their "
+                     "tokens."},
 ]
 
 
