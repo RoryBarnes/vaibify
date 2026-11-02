@@ -33,12 +33,12 @@ def fixtureBindingsFollowProjectJson(monkeypatch):
         return sProjectId
 
     def fdictZenodoFromProject(
-        dictCtx, sContainerId, dictWorkflow, sInstanceOverride=None,
-        bInstanceOnly=False,
+        dictCtx, sContainerId, dictWorkflow, sRecordKind, sInstance="",
+        bInstanceOnly=False, bMint=False,
     ):
-        del dictCtx, sContainerId, bInstanceOnly
+        del dictCtx, sContainerId, sRecordKind, bInstanceOnly, bMint
         return {
-            "sInstance": sInstanceOverride
+            "sInstance": sInstance
             or str(dictWorkflow.get("sZenodoService") or "sandbox"),
             "sConceptDoi": str(dictWorkflow.get("sZenodoConceptDoi") or ""),
             "sDepositionId": str(dictWorkflow.get("sZenodoDepositionId") or ""),

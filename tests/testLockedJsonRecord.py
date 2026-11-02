@@ -75,7 +75,7 @@ def testTwoBindingWritersLoseNothing():
     sIdentity = "race" + "1" * 28
     iLost = _fiLostUpdates(
         lambda sKey: remoteBindings.fnConfirmBinding(
-            sIdentity, sKey, "study", "overleaf",
+            sIdentity, sKey, "study", "overleaf", "",
             {"sProjectId": "overleafProjectSynthetic"}, "researcher",
         ),
         lambda sKey: sKey in remoteBindings.fdictReadBindings(
@@ -149,7 +149,8 @@ def testAConfirmAndTheHubsTargetUpdateBothPersist():
     sIdentity = "race" + "2" * 28
     sKey = "projects/study.json::study"
     remoteBindings.fnConfirmBinding(
-        sIdentity, sKey, "study", "zenodo", {"sInstance": "sandbox"}, "researcher",
+        sIdentity, sKey, "study", "zenodo", "project", {"sInstance": "sandbox"},
+        "researcher",
     )
     for iRound in range(50):
         barrierStart = threading.Barrier(2)
@@ -159,14 +160,14 @@ def testAConfirmAndTheHubsTargetUpdateBothPersist():
         def fnConfirmOverleaf():
             barrierStart.wait()
             remoteBindings.fnConfirmBinding(
-                sIdentity, sKey, "study", "overleaf",
+                sIdentity, sKey, "study", "overleaf", "",
                 {"sProjectId": sProjectId}, "researcher",
             )
 
         def fnMoveZenodo():
             barrierStart.wait()
             remoteBindings.fnUpdateBoundTarget(
-                sIdentity, sKey, "zenodo", {"sDepositionId": sDeposition},
+                sIdentity, sKey, "sandbox", {"sDepositionId": sDeposition},
             )
 
         listThreads = [
@@ -178,7 +179,7 @@ def testAConfirmAndTheHubsTargetUpdateBothPersist():
             sIdentity, sKey, "overleaf",
         )["dictTarget"]["sProjectId"] == sProjectId
         assert remoteBindings.fdictConfirmedBinding(
-            sIdentity, sKey, "zenodo",
+            sIdentity, sKey, "zenodo", "project", "sandbox",
         )["dictTarget"]["sDepositionId"] == sDeposition
 
 

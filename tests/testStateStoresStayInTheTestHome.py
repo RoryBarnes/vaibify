@@ -73,7 +73,7 @@ def _fsWriteMigrationJournal(sIdentity):
 def _fsWriteBinding(sIdentity):
     from vaibify.config import remoteBindings
     remoteBindings.fnConfirmBinding(
-        sIdentity, "projects/study.json::study", "study", "overleaf",
+        sIdentity, "projects/study.json::study", "study", "overleaf", "",
         {"sProjectId": "overleafProjectSynthetic"}, "researcher",
     )
     return f"{sIdentity}.json"

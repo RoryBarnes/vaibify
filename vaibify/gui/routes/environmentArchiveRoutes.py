@@ -27,6 +27,10 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request
 
+from vaibify.config.remoteBindings import (
+    S_INSTANCE_ZENODO, S_RECORD_KIND_ENVIRONMENT,
+)
+
 from .. import archiveProgress
 from ..actionCatalog import ffnAgentAction
 from ..remoteBindingContext import fdictRequireBoundZenodoTarget
@@ -375,10 +379,11 @@ def _fnRegisterDepositEnvironmentArchive(app, dictCtx):
             dictContainer, dictBody,
         )
         # The archive is its own record, but it spends the researcher's
-        # token on an INSTANCE, which must be the confirmed one.
+        # token on an INSTANCE, which the researcher must have confirmed
+        # for this workflow's environment archive.
         fdictRequireBoundZenodoTarget(
-            dictCtx, sContainerId, dictWorkflow,
-            dictDestination["sZenodoService"], bInstanceOnly=True,
+            dictCtx, sContainerId, dictWorkflow, S_RECORD_KIND_ENVIRONMENT,
+            dictDestination["sZenodoService"],
         )
         sToken = await asyncio.to_thread(
             _fsReadZenodoTokenFromHost,
@@ -765,6 +770,13 @@ def _fnRegisterPromoteEnvironmentArchive(app, dictCtx):
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         dictContainer = _fdictRequireEnvelopeContainerBlock(filesRepo)
         _fnRequireSandboxImageDeposit(dictContainer)
+        # Policy before credentials: the zenodo.org token is not read
+        # until the researcher has confirmed this workflow's environment
+        # archive may be deposited there.
+        fdictRequireBoundZenodoTarget(
+            dictCtx, sContainerId, dictWorkflow, S_RECORD_KIND_ENVIRONMENT,
+            S_INSTANCE_ZENODO,
+        )
         sToken = await asyncio.to_thread(
             _fsReadProductionTokenFromHost,
             dictCtx["docker"], sContainerId,

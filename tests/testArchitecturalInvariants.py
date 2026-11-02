@@ -5492,7 +5492,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1019 -> 1041 (2026-10-27): a settled deposit or promotion is
     # logged by its version DOI, as its failure already was.
     # 1041 -> 1048 (2026-10-29): the deposit requires the confirmed Zenodo instance.
-    "routes/environmentArchiveRoutes.py": 1048,
+    # 1048 -> 1056 (2026-11-02): the promotion requires the environment-archive authorization on zenodo.org before it reads the token (binding-and-rotation plan, A12, A5).
+    "routes/environmentArchiveRoutes.py": 1056,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5722,7 +5723,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3774 -> 3860 (2026-10-31): every project deposit carries a checkpoint PROOF receipt built from the staged bytes and written into the repository only after publication (proof-receipt plan, A13).
     # 3860 -> 4157 (2026-10-31): the journaled completion version -- automatic after a checkpoint, the user-only retry route, and the archive's refusal while one is in flight (proof-receipt plan, A13).
     # 4157 -> 4187 (2026-10-31): the automatic completion returns a control-plane refusal as its reason, and its capture worker carries one back rather than quarantining the container (proof-receipt plan, A13).
-    "routes/syncRoutes.py": 4187,
+    # 4187 -> 4189 (2026-11-02): project deposits name the project-record kind, and a promotion asks for the mint authorization (binding-and-rotation plan, A12, A5).
+    "routes/syncRoutes.py": 4189,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5799,7 +5801,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # workflow-epoch origins join the container-keyed sweep list.
     # 2658 -> 2692 (2026-10-29): the unattended auto-archive takes its
     # Overleaf and Zenodo targets from the host-side binding record.
-    "fileStatusManager.py": 2692,
+    # 2692 -> 2694 (2026-11-02): it names the project-record kind and logs a coded refusal's sentence (binding-and-rotation plan, A3, A5).
+    "fileStatusManager.py": 2694,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,

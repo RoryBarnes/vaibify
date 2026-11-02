@@ -2233,11 +2233,13 @@ def _fsBoundAutoArchiveTarget(connectionDocker, sContainerId, dictWorkflow, sSer
                 dictCtx, sContainerId, dictWorkflow,
             )
         return remoteBindingContext.fdictRequireBoundZenodoTarget(
-            dictCtx, sContainerId, dictWorkflow,
+            dictCtx, sContainerId, dictWorkflow, "project",
         )["sInstance"]
     except HTTPException as error:
         logging.getLogger("vaibify").warning(
-            "Auto Archive: %s push refused: %s", sService, error.detail,
+            "Auto Archive: %s push refused: %s", sService,
+            (error.detail or {}).get("sMessage", "")
+            if isinstance(error.detail, dict) else error.detail,
         )
         return ""
 

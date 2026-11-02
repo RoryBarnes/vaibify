@@ -23,7 +23,10 @@ from vaibify.config import remoteBindings
 
 from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import fdictRequireWorkflow
-from ..remoteBindingContext import fdictProjectTargets, ftBindingScope
+from ..remoteBindingContext import (
+    S_BINDING_RECORD_INVALID, fdictProjectTargets, fnRaiseForBindingError,
+    fsDeclaredZenodoInstance, ftBindingScope,
+)
 from ..routeContext import fnRejectAgentTokenLane
 from ..routeScope import (
     S_CARRIER_SEPARATE_AUTHORITY, S_CARRIER_TYPED_READ, ffnDeclareCarrierMode,
@@ -32,6 +35,7 @@ from ..routeScope import (
 
 class BindingConfirmRequest(BaseModel):
     sService: str
+    sRecordKind: str = ""
     dictTarget: Optional[dict] = None
     sCarryFromWorkflowKey: str = ""
 
@@ -92,39 +96,88 @@ _DICT_EVIDENCE_FETCHERS = {
     remoteBindings.S_SERVICE_ZENODO: _fdictFetchZenodoEvidence,
 }
 
+# Every entry a workflow's record can hold, in the order the dashboard
+# lists them: (service, record kind, instance).
+_T_ENTRY_ADDRESSES = (
+    (remoteBindings.S_SERVICE_OVERLEAF, "", ""),
+) + tuple(
+    (remoteBindings.S_SERVICE_ZENODO, sRecordKind, sInstance)
+    for sRecordKind in remoteBindings.T_ZENODO_RECORD_KINDS
+    for sInstance in remoteBindings.T_ZENODO_INSTANCES
+)
 
-def _fdictDescribeBindings(dictCtx, sContainerId, dictWorkflow):
-    """Return, per service, the project's target, the binding and the evidence."""
-    sProjectUuid, sWorkflowKey, sWorkflowName = ftBindingScope(
-        dictCtx, sContainerId, dictWorkflow,
-    )
+
+def _fdictProjectTargetFor(dictWorkflow, sService, sRecordKind, sInstance):
+    """Return what ``project.json`` says about one entry, or None when it says nothing.
+
+    ``project.json`` names the Overleaf project, and the project record
+    on the instance it declares. It says nothing about the other
+    instance's project record, nor about the environment archive.
+    """
     dictTargets = fdictProjectTargets(dictWorkflow)
-    dictServices = {}
-    for sService in remoteBindings.T_BINDING_SERVICES:
-        dictBound = remoteBindings.fdictConfirmedBinding(
-            sProjectUuid, sWorkflowKey, sService,
-        )
-        dictServices[sService] = {
-            "dictProjectTarget": dictTargets[sService],
-            "dictBinding": dictBound,
-            "dictFetched": _DICT_EVIDENCE_FETCHERS[sService](
-                dictCtx, sContainerId, dictTargets[sService],
-            ),
-            "bAgrees": _fbTargetsAgree(sService, dictTargets[sService], dictBound),
-        }
+    if sService == remoteBindings.S_SERVICE_OVERLEAF:
+        return dictTargets[sService]
+    if sRecordKind != remoteBindings.S_RECORD_KIND_PROJECT or (
+        sInstance != fsDeclaredZenodoInstance(dictWorkflow)
+    ):
+        return None
+    return dict(dictTargets[sService], sInstance=sInstance)
+
+
+def _fsAgreementState(dictProjectTarget, dictConfirmed):
+    """Return ``unconfirmed``, ``confirmed``, ``agrees`` or ``differs``."""
+    if dictConfirmed is None:
+        return "unconfirmed"
+    if dictProjectTarget is None:
+        return "confirmed"
+    bAgrees = all(
+        not sValue or dictConfirmed["dictTarget"].get(sField) == sValue
+        for sField, sValue in dictProjectTarget.items()
+    )
+    return "agrees" if bAgrees else "differs"
+
+
+def _fdictDescribeEntry(dictCtx, sContainerId, dictWorkflow, dictServices, tAddress):
+    sService, sRecordKind, sInstance = tAddress
+    dictProjectTarget = _fdictProjectTargetFor(dictWorkflow, *tAddress)
+    dictConfirmed = remoteBindings.fdictLookUpEntry(dictServices, *tAddress)
+    dictEvidenceTarget = (dictConfirmed or {}).get("dictTarget") or dictProjectTarget
     return {
-        "sProjectUuid": sProjectUuid, "sWorkflowKey": sWorkflowKey,
-        "sWorkflowName": sWorkflowName, "dictServices": dictServices,
+        "sService": sService, "sRecordKind": sRecordKind, "sInstance": sInstance,
+        "dictProjectTarget": dictProjectTarget, "dictConfirmed": dictConfirmed,
+        "sState": _fsAgreementState(dictProjectTarget, dictConfirmed),
+        "dictFetched": _DICT_EVIDENCE_FETCHERS[sService](
+            dictCtx, sContainerId, dictEvidenceTarget or {"sInstance": sInstance},
+        ),
     }
 
 
-def _fbTargetsAgree(sService, dictProjectTarget, dictBound):
-    if dictBound is None:
-        return False
-    return all(
-        not sValue or dictBound["dictTarget"].get(sField) == sValue
-        for sField, sValue in dictProjectTarget.items()
+def _fdictDescribeBindings(dictCtx, sContainerId, dictWorkflow):
+    """Return the record's state and every entry, with what project.json names."""
+    sProjectUuid, sWorkflowKey, sWorkflowName = ftBindingScope(
+        dictCtx, sContainerId, dictWorkflow,
     )
+    dictDescribed = {
+        "sProjectUuid": sProjectUuid, "sWorkflowKey": sWorkflowKey,
+        "sWorkflowName": sWorkflowName, "listEntries": [],
+        "dictRecordState": {"bValid": True},
+    }
+    try:
+        dictRecord = remoteBindings.fdictReadBindings(sProjectUuid)
+    except remoteBindings.BindingRecordInvalidError as error:
+        dictDescribed["dictRecordState"] = {
+            "bValid": False, "sError": S_BINDING_RECORD_INVALID,
+            "sReason": error.sReason, "sMessage": str(error),
+        }
+        return dictDescribed
+    dictServices = (
+        dictRecord["dictWorkflows"].get(sWorkflowKey) or {}
+    ).get("dictServices") or {}
+    dictDescribed["listEntries"] = [
+        _fdictDescribeEntry(dictCtx, sContainerId, dictWorkflow, dictServices, tAddress)
+        for tAddress in _T_ENTRY_ADDRESSES
+    ]
+    return dictDescribed
 
 
 def _fnRegisterRead(app, dictCtx):
@@ -139,6 +192,42 @@ def _fnRegisterRead(app, dictCtx):
         return await asyncio.to_thread(
             _fdictDescribeBindings, dictCtx, sContainerId, dictWorkflow,
         )
+
+
+def _fdictDefaultTarget(dictWorkflow, sService, sRecordKind):
+    """Return what a confirmation with no target names: project.json's own."""
+    if sService == remoteBindings.S_SERVICE_OVERLEAF:
+        return fdictProjectTargets(dictWorkflow)[sService]
+    sInstance = fsDeclaredZenodoInstance(dictWorkflow)
+    return _fdictProjectTargetFor(dictWorkflow, sService, sRecordKind, sInstance) or {
+        "sInstance": sInstance,
+    }
+
+
+def _fdictRecordConfirmation(dictCtx, sContainerId, dictWorkflow, request):
+    """Fetch the evidence and write ONE entry; return the response."""
+    sProjectUuid, sWorkflowKey, sWorkflowName = ftBindingScope(
+        dictCtx, sContainerId, dictWorkflow,
+    )
+    dictTarget = request.dictTarget or _fdictDefaultTarget(
+        dictWorkflow, request.sService, request.sRecordKind,
+    )
+    dictEvidence = _DICT_EVIDENCE_FETCHERS[request.sService](
+        dictCtx, sContainerId, dictTarget,
+    )
+    remoteBindings.fnConfirmBinding(
+        sProjectUuid, sWorkflowKey, sWorkflowName, request.sService,
+        request.sRecordKind, dictTarget, "researcher", dictEvidence=dictEvidence,
+        sCarryFromWorkflowKey=request.sCarryFromWorkflowKey,
+    )
+    return {
+        "bConfirmed": True, "sWorkflowKey": sWorkflowKey,
+        "dictTarget": remoteBindings.fdictConfirmedBinding(
+            sProjectUuid, sWorkflowKey, request.sService, request.sRecordKind,
+            str(dictTarget.get("sInstance") or ""),
+        )["dictTarget"],
+        "dictFetched": dictEvidence,
+    }
 
 
 def _fnRegisterConfirm(app, dictCtx):
@@ -156,36 +245,19 @@ def _fnRegisterConfirm(app, dictCtx):
         fnRejectAgentTokenLane(requestHttp)
         dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
-        if request.sService not in remoteBindings.T_BINDING_SERVICES:
-            raise HTTPException(400, (
-                f"{request.sService!r} is not a bindable service; "
-                f"the services are {list(remoteBindings.T_BINDING_SERVICES)}"
-            ))
-        dictTarget = request.dictTarget or fdictProjectTargets(
-            dictWorkflow,
-        )[request.sService]
-        sProjectUuid, sWorkflowKey, sWorkflowName = ftBindingScope(
-            dictCtx, sContainerId, dictWorkflow,
-        )
-        dictEvidence = await asyncio.to_thread(
-            _DICT_EVIDENCE_FETCHERS[request.sService], dictCtx, sContainerId,
-            dictTarget,
-        )
         try:
-            remoteBindings.fnConfirmBinding(
-                sProjectUuid, sWorkflowKey, sWorkflowName, request.sService,
-                dictTarget, "researcher", dictEvidence=dictEvidence,
-                sCarryFromWorkflowKey=request.sCarryFromWorkflowKey,
-            )
+            remoteBindings.ftTargetFields(request.sService, request.sRecordKind)
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
-        return {
-            "bConfirmed": True, "sWorkflowKey": sWorkflowKey,
-            "dictTarget": remoteBindings.fdictConfirmedBinding(
-                sProjectUuid, sWorkflowKey, request.sService,
-            )["dictTarget"],
-            "dictFetched": dictEvidence,
-        }
+        try:
+            return await asyncio.to_thread(
+                _fdictRecordConfirmation, dictCtx, sContainerId, dictWorkflow,
+                request,
+            )
+        except remoteBindings.BindingRecordInvalidError as error:
+            fnRaiseForBindingError(error, request.sService, request.sRecordKind)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
 
 
 def fnRegisterAll(app, dictCtx):

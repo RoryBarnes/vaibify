@@ -36779,7 +36779,7 @@ LIST_FALSIFICATIONS = [
         ),
         new=(
             '    if dictBound is None:\n'
-            '        return _fdictNormalizedTarget(sService, dictProjectTarget)\n'
+            '        return _fdictNormalizedTarget(S_SERVICE_OVERLEAF, "", dictProjectTarget)\n'
             '        raise BindingRequiredError(\n'
         ),
     ),
@@ -36795,12 +36795,14 @@ LIST_FALSIFICATIONS = [
             '        fnRejectAgentTokenLane(requestHttp)\n'
             '        dictCtx["require"](sContainerId)\n'
             '        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)\n'
-            '        if request.sService not in'
+            '        try:\n'
+            '            remoteBindings.ftTargetFields('
         ),
         new=(
             '        dictCtx["require"](sContainerId)\n'
             '        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)\n'
-            '        if request.sService not in'
+            '        try:\n'
+            '            remoteBindings.ftTargetFields('
         ),
     ),
     Falsification(
@@ -39707,6 +39709,87 @@ LIST_FALSIFICATIONS = [
         new=(
             '        dictCtx["require"](sContainerId)\n'
             '        if request.sDecision not in zenodoMigrationJournal.T_ROTATION_DECISIONS:\n'
+        ),
+    ),
+    # --- 2026-11-02: two kinds of Zenodo authorization per workflow,
+    # per-instance targets, the environment-promotion guard, adoption ---
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testAPromotionPassesWithASandboxEntryAndAMintAuthorization'
+        ),
+        # Rule 3 undone: an entry on the other instance is compared with
+        # project.json's record again.
+        source='vaibify/config/remoteBindings.py',
+        old='    if not bInstanceOnly and dictProjectTarget.get("sInstance") == sInstance:\n',
+        new='    if not bInstanceOnly:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testAMintMovesOnlyTheProjectKindsMintedEntry'
+        ),
+        # The post-mint update writes the environment kind's entry.
+        source='vaibify/config/remoteBindings.py',
+        old=(
+            '            dictWorkflow.get("dictServices") or {}, S_SERVICE_ZENODO,\n'
+            '            S_RECORD_KIND_PROJECT, sInstance,\n'
+        ),
+        new=(
+            '            dictWorkflow.get("dictServices") or {}, S_SERVICE_ZENODO,\n'
+            '            S_RECORD_KIND_ENVIRONMENT, sInstance,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testTheEnvironmentPromotionRefusesBeforeReadingAnyToken'
+        ),
+        # The environment-promotion route without its binding guard.
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old=(
+            '        fdictRequireBoundZenodoTarget(\n'
+            '            dictCtx, sContainerId, dictWorkflow, S_RECORD_KIND_ENVIRONMENT,\n'
+            '            S_INSTANCE_ZENODO,\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testAnAdoptedProjectPromotionMovesTheProjectRecord'
+        ),
+        # Adoption records the DOI but leaves the binding behind.
+        source='vaibify/gui/routes/promotionRecoveryRoutes.py',
+        old=(
+            '    fnRecordZenodoOutcomeInBinding(\n'
+            '        dictCtx, sContainerId, dictWorkflow, sService,\n'
+        ),
+        new=(
+            '    (lambda *tArgs: None)(\n'
+            '        dictCtx, sContainerId, dictWorkflow, sService,\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testRemoteBindings.py::testAnInstanceThatIsNeitherSiteIsRefused',
+        # Any instance accepted as a Zenodo site.
+        source='vaibify/config/remoteBindings.py',
+        old='    if sInstance not in T_ZENODO_INSTANCES:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testRemoteBindings.py::testEveryRefusalFromTheRecordIsTheCodedConflict',
+        # A binding error escapes the context uncoded.
+        source='vaibify/gui/remoteBindingContext.py',
+        old=(
+            '    except (remoteBindings.BindingRequiredError,\n'
+            '            remoteBindings.BindingRecordInvalidError) as error:\n'
+            '        fnRaiseForBindingError(error, sService, sRecordKind, sInstance)\n'
+        ),
+        new=(
+            '    except ZeroDivisionError as error:\n'
+            '        fnRaiseForBindingError(error, sService, sRecordKind, sInstance)\n'
         ),
     ),
 ]

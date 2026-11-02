@@ -18,6 +18,7 @@ from fastapi.responses import Response
 from vaibify.config.mutationAdmission import (
     ControlPlaneRefusalError, fnReRaiseControlPlaneRefusal,
 )
+from vaibify.config.remoteBindings import S_RECORD_KIND_PROJECT
 from .. import containerGit, workflowManager
 from ..actionCatalog import ffnAgentAction
 from ..remoteBindingContext import (
@@ -1256,7 +1257,8 @@ async def _ftPerformZenodoArchive(
     # agree with. A promotion names production and the binding must
     # already say so.
     dictBoundTarget = fdictRequireBoundZenodoTarget(
-        dictCtx, sContainerId, dictWorkflow, sServiceOverride,
+        dictCtx, sContainerId, dictWorkflow, S_RECORD_KIND_PROJECT,
+        sServiceOverride, bMint=iParentOverride == 0,
     )
     sZenodoService = dictBoundTarget["sInstance"]
     dictMetadata = _fdictResolveZenodoMetadataForArchive(dictWorkflow)
@@ -1579,7 +1581,7 @@ async def _fdictPerformCompletion(
     from vaibify.reproducibility import archivePromotion
     from .. import syncDispatcher as moduleSyncDispatcher
     sService = fdictRequireBoundZenodoTarget(
-        dictCtx, sContainerId, dictWorkflow, "")["sInstance"]
+        dictCtx, sContainerId, dictWorkflow, S_RECORD_KIND_PROJECT)["sInstance"]
     baReceipt = _fbaBuildCompletionReceipt(
         dictWorkflow, dictObservation, _fdictLatestReceiptNote(dictWorkflow),
         sService)
@@ -1758,7 +1760,7 @@ def _fdictReconcileOneCompletion(dictCtx, sContainerId, dictWorkflow, dictRecord
         return {"sOutcome": archivePromotion.S_OUTCOME_GONE,
                 "sMessage": "No deposit was created."}
     sService = fdictRequireBoundZenodoTarget(
-        dictCtx, sContainerId, dictWorkflow,
+        dictCtx, sContainerId, dictWorkflow, S_RECORD_KIND_PROJECT,
         str(dictRecord.get("sTargetService") or ""),
         bInstanceOnly=True)["sInstance"]
     clientZenodo = ZenodoClient(sService, sToken=(
