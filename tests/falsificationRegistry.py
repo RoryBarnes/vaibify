@@ -39652,4 +39652,32 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
+    # --- 2026-11-02: the journal and binding stores lose no
+    # concurrent update, and a decision takes its pass lock once ---
+    Falsification(
+        nodeid='tests/testLockedJsonRecord.py::testTwoJournalWritersLoseNothing',
+        # The record lock yields without locking.
+        source='vaibify/config/lockedJsonRecord.py',
+        old='        fcntl.flock(iDescriptor, fcntl.LOCK_EX)\n        yield\n',
+        new='        yield\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLockedJsonRecord.py::'
+            'testADecisionCompletesUnderItsOwnPassLock'
+        ),
+        # The decision ends with the public pass, which takes the pass
+        # lock a second time.
+        source='vaibify/gui/zenodoTokenMigration.py',
+        old=(
+            '        _fnApplyDecision(sProjectUuid, sSlot, sDecision, sInstance, bReplaceActive)\n'
+            '        return _fdictRunMigrationPassHoldingLock(\n'
+            '            connectionDocker, sContainerId, sProjectUuid,\n'
+            '        )\n'
+        ),
+        new=(
+            '        _fnApplyDecision(sProjectUuid, sSlot, sDecision, sInstance, bReplaceActive)\n'
+            '        return fdictRunMigrationPass(connectionDocker, sContainerId)\n'
+        ),
+    ),
 ]

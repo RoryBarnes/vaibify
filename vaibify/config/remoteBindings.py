@@ -22,7 +22,10 @@ target after a deposit it performed, so the record follows the version
 chain without the agent's hand.
 
 Each record is mode 600 in a mode-700 directory, written atomically,
-and holds no secret: targets, who confirmed them and when.
+and holds no secret: targets, who confirmed them and when. Every change
+is a read-modify-write under the record's lock
+(:mod:`vaibify.config.lockedJsonRecord`), so a confirmation and the
+hub's own update of a target cannot drop each other.
 """
 
 import json
@@ -30,6 +33,9 @@ import os
 from datetime import datetime, timezone
 
 from vaibify.config.durableFile import fnWriteFileDurably
+from vaibify.config.lockedJsonRecord import (
+    fcontextHoldRecordLock, fnMutateRecordLocked,
+)
 
 __all__ = [
     "BindingMismatchError",
@@ -115,6 +121,15 @@ def _fnWriteBindings(sProjectUuid, dictRecord):
     )
 
 
+def _fnMutateBindings(sProjectUuid, fnMutate):
+    """Apply ``fnMutate`` to the project's record under its lock."""
+    fnMutateRecordLocked(
+        _fsBindingPath(sProjectUuid),
+        lambda: fdictReadBindings(sProjectUuid), fnMutate,
+        lambda dictRecord: _fnWriteBindings(sProjectUuid, dictRecord),
+    )
+
+
 def _fnValidateService(sService):
     if sService not in T_BINDING_SERVICES:
         raise ValueError(
@@ -169,18 +184,19 @@ def fnConfirmBinding(
             "a zenodo binding names the instance (sandbox or zenodo) the "
             "token is spent on"
         )
-    dictRecord = fdictReadBindings(sProjectUuid)
-    dictWorkflow = dictRecord["dictWorkflows"].setdefault(sWorkflowKey, {})
-    dictWorkflow["sWorkflowName"] = sWorkflowName or ""
-    dictWorkflow.setdefault("dictServices", {})[sService] = {
-        "dictTarget": dictTargetNormalized,
-        "sConfirmedBy": str(sConfirmedBy or ""),
-        "sConfirmedAt": datetime.now(timezone.utc).isoformat(),
-        "dictEvidence": dict(dictEvidence or {}),
-    }
-    if sCarryFromWorkflowKey and sCarryFromWorkflowKey != sWorkflowKey:
-        _fnDropService(dictRecord, sCarryFromWorkflowKey, sService)
-    _fnWriteBindings(sProjectUuid, dictRecord)
+    def fnRecordConfirmation(dictRecord):
+        dictWorkflow = dictRecord["dictWorkflows"].setdefault(sWorkflowKey, {})
+        dictWorkflow["sWorkflowName"] = sWorkflowName or ""
+        dictWorkflow.setdefault("dictServices", {})[sService] = {
+            "dictTarget": dictTargetNormalized,
+            "sConfirmedBy": str(sConfirmedBy or ""),
+            "sConfirmedAt": datetime.now(timezone.utc).isoformat(),
+            "dictEvidence": dict(dictEvidence or {}),
+        }
+        if sCarryFromWorkflowKey and sCarryFromWorkflowKey != sWorkflowKey:
+            _fnDropService(dictRecord, sCarryFromWorkflowKey, sService)
+
+    _fnMutateBindings(sProjectUuid, fnRecordConfirmation)
 
 
 def _fnDropService(dictRecord, sWorkflowKey, sService):
@@ -198,34 +214,45 @@ def fnUpdateBoundTarget(sProjectUuid, sWorkflowKey, sService, dictUpdate):
     matches. Only fields of an existing binding change; nothing here
     can create a binding, which stays the researcher's act.
     """
-    dictRecord = fdictReadBindings(sProjectUuid)
-    dictBinding = (
-        (dictRecord["dictWorkflows"].get(sWorkflowKey) or {})
-        .get("dictServices", {}).get(sService)
-    )
-    if dictBinding is None:
-        raise BindingRequiredError(
-            f"no confirmed {sService} binding to update for this workflow"
+    dictUpdateNormalized = _fdictNormalizedTarget(sService, dictUpdate)
+
+    def fnMoveTarget(dictRecord):
+        dictBinding = (
+            (dictRecord["dictWorkflows"].get(sWorkflowKey) or {})
+            .get("dictServices", {}).get(sService)
         )
-    for sField, sValue in _fdictNormalizedTarget(sService, dictUpdate).items():
-        if sValue:
-            dictBinding["dictTarget"][sField] = sValue
-    dictBinding["sUpdatedAt"] = datetime.now(timezone.utc).isoformat()
-    _fnWriteBindings(sProjectUuid, dictRecord)
+        if dictBinding is None:
+            raise BindingRequiredError(
+                f"no confirmed {sService} binding to update for this workflow"
+            )
+        for sField, sValue in dictUpdateNormalized.items():
+            if sValue:
+                dictBinding["dictTarget"][sField] = sValue
+        dictBinding["sUpdatedAt"] = datetime.now(timezone.utc).isoformat()
+
+    _fnMutateBindings(sProjectUuid, fnMoveTarget)
 
 
 def flistDeleteBindings(sProjectUuid):
-    """Delete the project's record; return the services it bound."""
-    dictRecord = fdictReadBindings(sProjectUuid)
-    listServices = sorted({
-        sService
-        for dictWorkflow in dictRecord["dictWorkflows"].values()
-        for sService in (dictWorkflow.get("dictServices") or {})
-    })
-    try:
-        os.remove(_fsBindingPath(sProjectUuid))
-    except FileNotFoundError:
-        pass
+    """Delete the project's record; return the services it bound.
+
+    A project that never had a record has nothing to delete, and no
+    lock file is created for it.
+    """
+    sPath = _fsBindingPath(sProjectUuid)
+    if not os.path.exists(sPath):
+        return []
+    with fcontextHoldRecordLock(sPath + ".lock"):
+        dictRecord = fdictReadBindings(sProjectUuid)
+        listServices = sorted({
+            sService
+            for dictWorkflow in dictRecord["dictWorkflows"].values()
+            for sService in (dictWorkflow.get("dictServices") or {})
+        })
+        try:
+            os.remove(sPath)
+        except FileNotFoundError:
+            pass
     return listServices
 
 

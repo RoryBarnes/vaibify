@@ -32,6 +32,15 @@ not the source of truth: every step re-derives its state from the slots
 themselves, so a crash anywhere is finished by the next pass. A host
 project's legacy slots live in the researcher's own keyring and are
 staged but never deleted (``sourceKept``).
+
+A pass runs at every connect, outside the drain, and a decision runs
+under it, so the two can overlap. Each holds the project's pass lock
+for its whole length, taken ONCE: :func:`fdictRunMigrationPass` and
+:func:`fdictDecideMigratedToken` take it, and everything they call
+assumes it is held. A decision ends with a pass, so it calls
+:func:`_fdictRunMigrationPassHoldingLock`, never the public pass: a
+second ``flock`` on the same file from the thread holding it blocks
+forever.
 """
 
 __all__ = [
@@ -139,6 +148,14 @@ def fdictRunMigrationPass(connectionDocker, sContainerId):
     )
     if not sProjectUuid:
         return {"bApplicable": False, "sProjectUuid": ""}
+    with journal.fcontextHoldPassLock(sProjectUuid):
+        return _fdictRunMigrationPassHoldingLock(
+            connectionDocker, sContainerId, sProjectUuid,
+        )
+
+
+def _fdictRunMigrationPassHoldingLock(connectionDocker, sContainerId, sProjectUuid):
+    """Run one pass; the caller already holds the project's pass lock."""
     tSource = ftSourceFor(connectionDocker, sContainerId)
     for sSlot in slots.LIST_CONTAINER_ZENODO_SLOTS:
         _fnMigrateOneSlot(sProjectUuid, sSlot, tSource)
@@ -431,13 +448,20 @@ def fdictDecideMigratedToken(
     )
     if not sProjectUuid:
         raise ValueError("This container is not a registered project.")
+    with journal.fcontextHoldPassLock(sProjectUuid):
+        _fnApplyDecision(sProjectUuid, sSlot, sDecision, sInstance, bReplaceActive)
+        return _fdictRunMigrationPassHoldingLock(
+            connectionDocker, sContainerId, sProjectUuid,
+        )
+
+
+def _fnApplyDecision(sProjectUuid, sSlot, sDecision, sInstance, bReplaceActive):
     if sDecision == S_DECISION_CONFIRM:
         _fnConfirmPending(sProjectUuid, sSlot, sInstance, bReplaceActive)
     elif sDecision == S_DECISION_DECLINE:
         _fnDeclinePending(sProjectUuid, sSlot)
     else:
         journal.fnRecordConflictChoice(sProjectUuid, sSlot, sDecision)
-    return fdictRunMigrationPass(connectionDocker, sContainerId)
 
 
 def _fsResolveConfirmInstance(sProjectUuid, sSlot, sInstance):

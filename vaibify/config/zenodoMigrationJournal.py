@@ -25,6 +25,12 @@ Per container slot, the states are:
 ``dictValidation`` records the host-side probe of a pending token:
 ``accepted``, ``rejected`` or ``undetermined``, with when. No outcome
 discards a token and no outcome activates one.
+
+Every change is a read-modify-write under the journal's record lock
+(:mod:`vaibify.config.lockedJsonRecord`), and a whole migration pass or
+decision holds the project's pass lock around all of its changes. The
+pass lock is outer and is taken once per pass; the functions here take
+only the record lock.
 """
 
 __all__ = [
@@ -44,13 +50,18 @@ __all__ = [
     "fnRecordValidation",
     "fnRecordConflictChoice",
     "fnRecordRotationAdvice",
+    "fcontextHoldPassLock",
 ]
 
+import contextlib
 import json
 import os
 from datetime import datetime, timezone
 
 from vaibify.config.durableFile import fnWriteFileDurably
+from vaibify.config.lockedJsonRecord import (
+    fcontextHoldRecordLock, fnMutateRecordLocked,
+)
 
 S_STATE_ABSENT = "absent"
 S_STATE_CONFLICT = "conflict"
@@ -79,6 +90,13 @@ def _fsJournalPath(sProjectUuid):
 
 def _fsNow():
     return datetime.now(timezone.utc).isoformat()
+
+
+@contextlib.contextmanager
+def fcontextHoldPassLock(sProjectUuid):
+    """Hold the project's migration pass lock: outer to every record lock."""
+    with fcontextHoldRecordLock(_fsJournalPath(sProjectUuid) + ".pass.lock"):
+        yield
 
 
 def fdictReadJournal(sProjectUuid):
@@ -113,12 +131,22 @@ def fdictSlotRecord(sProjectUuid, sContainerSlot):
     return dict(dictRecord) if isinstance(dictRecord, dict) else {}
 
 
+def _fnMutateJournal(sProjectUuid, fnMutate):
+    """Apply ``fnMutate`` to the journal under its record lock."""
+    fnMutateRecordLocked(
+        _fsJournalPath(sProjectUuid),
+        lambda: fdictReadJournal(sProjectUuid), fnMutate,
+        lambda dictJournal: _fnWriteJournal(sProjectUuid, dictJournal),
+    )
+
+
 def _fnUpdateSlot(sProjectUuid, sContainerSlot, dictFields):
-    dictJournal = fdictReadJournal(sProjectUuid)
-    dictSlot = dictJournal["dictSlots"].setdefault(sContainerSlot, {})
-    dictSlot.update(dictFields)
-    dictSlot["sUpdatedAt"] = _fsNow()
-    _fnWriteJournal(sProjectUuid, dictJournal)
+    def fnApplyFields(dictJournal):
+        dictSlot = dictJournal["dictSlots"].setdefault(sContainerSlot, {})
+        dictSlot.update(dictFields)
+        dictSlot["sUpdatedAt"] = _fsNow()
+
+    _fnMutateJournal(sProjectUuid, fnApplyFields)
 
 
 def fnRecordSlotState(sProjectUuid, sContainerSlot, sState, sReason=""):
@@ -148,9 +176,9 @@ def fnRecordConflictChoice(sProjectUuid, sContainerSlot, sChoice):
 
 def fnRecordRotationAdvice(sProjectUuid):
     """Note that a token was found in the container, so rotation is advised."""
-    dictJournal = fdictReadJournal(sProjectUuid)
-    if dictJournal.get("bRotationAdvised"):
-        return
-    dictJournal["bRotationAdvised"] = True
-    dictJournal["sRotationAdvisedAt"] = _fsNow()
-    _fnWriteJournal(sProjectUuid, dictJournal)
+    def fnAdvise(dictJournal):
+        if not dictJournal.get("bRotationAdvised"):
+            dictJournal["bRotationAdvised"] = True
+            dictJournal["sRotationAdvisedAt"] = _fsNow()
+
+    _fnMutateJournal(sProjectUuid, fnAdvise)
