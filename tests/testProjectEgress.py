@@ -203,3 +203,16 @@ def testAnIdentityThatIsNotOneNamesNoResource():
         projectEgress.fsNetworkName("../escape")
     with pytest.raises(egressProxy.EgressSetupError):
         projectEgress.fsProxyName("B" * 32)
+
+
+def testOnlyAWebModeProxyMayTunnelToAnyPublicHost():
+    def flistRunArguments(sNetworkMode):
+        config = _fconfig()
+        config.sNetworkMode = sNetworkMode
+        return projectEgress.flistProxyRunArguments(
+            config, S_UUID, S_NETWORK, "/script.py", "172.30.0.0/16", 8050)
+
+    assert "--any-public-host" in flistRunArguments("web")
+    assert "--any-public-host" not in flistRunArguments("allowlist")
+    assert "Engine 28.0.0" in projectEgress.S_ENGINE_REQUIREMENT
+    assert "networkMode: open" in projectEgress.S_ENGINE_REQUIREMENT

@@ -499,7 +499,8 @@ def _fdictDescribeNetwork(connectionDocker, sContainerId):
     sMode = getattr(configProject, "sNetworkMode", "") or "open"
     dictNetwork = {"sMode": sMode, "sName": "",
                    "sProxyState": "not-applicable", "listRefused": []}
-    if sMode != "allowlist":
+    from vaibify.config.projectConfig import fbIsSealedNetworkMode
+    if not fbIsSealedNetworkMode(sMode):
         return dictNetwork
     try:
         dictNetwork["sName"] = fsContainerNameForId(connectionDocker, sContainerId)

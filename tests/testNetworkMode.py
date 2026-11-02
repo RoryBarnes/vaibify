@@ -240,3 +240,50 @@ def testARawAddressInAllowedHostsNeverReachesTheProxy():
     config.listAllowedHosts = ["10.0.0.1"]
     with pytest.raises(ValueError, match="raw address"):
         egressAllowlist.ftComputeAllowlist(config)
+
+
+# ----- the web mode -----------------------------------------------------------
+
+
+@pytest.mark.falsification
+def testAWebLaunchIsSealed():
+    """Web mode is allowlist mode's seal: the internal network, no resolver, the proxy.
+
+    Kills: the launch still returning early for any mode but allowlist.
+    """
+    saRunArgs = containerManager.flistBuildRunArgs(
+        _fconfigForLaunch("web"), dictEgress=DICT_EGRESS)
+    assert saRunArgs[saRunArgs.index("--network") + 1] == DICT_EGRESS["sNetworkName"]
+    assert saRunArgs[saRunArgs.index("--dns") + 1] == egressProxy.S_BLACK_HOLE_NAMESERVER
+    assert "HTTPS_PROXY=http://172.30.0.2:8888" in saRunArgs
+    assert "VAIBIFY_NETWORK_MODE=web" in saRunArgs
+    assert "host.docker.internal:host-gateway" not in saRunArgs
+    with pytest.raises(RuntimeError, match="networkMode: web.*not started open"):
+        containerManager.flistBuildRunArgs(_fconfigForLaunch("web"))
+
+
+def testWebModeRefusesX11AndNeedsARegisteredProject(monkeypatch):
+    with pytest.raises(RuntimeError, match="networkMode: web"):
+        containerManager.flistBuildRunArgs(
+            _fconfigForLaunch("web", bX11Forwarding=True), dictEgress=DICT_EGRESS)
+    assert "web" in flistDescribeUnusableConfiguration(SimpleNamespace(
+        bX11Forwarding=True, bNetworkIsolation=False, sNetworkMode="web"))[0]
+    monkeypatch.setattr(containerManager, "_fsProjectUuidOrEmpty", lambda sName: "")
+    with pytest.raises(RuntimeError, match="not a registered project"):
+        containerManager.fdictPrepareEgressForLaunch(_fconfigForLaunch("web"))
+
+
+@pytest.mark.falsification
+def testAKeylessLegacyFileStillLoadsOpen(tmp_path):
+    """An existing project that never named a mode keeps the network it had.
+
+    Kills: the configuration's own default becoming web.
+    """
+    sPath = str(tmp_path / "vaibify.yml")
+    with open(sPath, "w", encoding="utf-8") as fileYaml:
+        fileYaml.write("projectName: legacyProject\n")
+    configLegacy = projectConfig.fconfigLoadFromFile(sPath)
+    assert (configLegacy.sNetworkMode, configLegacy.bNetworkIsolation) == ("open", False)
+    assert projectConfig.ProjectConfig(sProjectName="legacyProject").sNetworkMode == "open"
+    assert projectConfig.fconfigFromYamlDict(
+        {"projectName": "demo", "networkMode": "web"}).sNetworkMode == "web"

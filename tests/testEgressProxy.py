@@ -174,3 +174,75 @@ def testTheDnsBlackHoleIsNeverRoutable():
         "--dns", egressProxy.S_BLACK_HOLE_NAMESERVER]
     assert json.dumps(egressProxy.fdictBuildProxyEnvironment("10.9.8.7")).count(
         "http://10.9.8.7:8888") == 4
+
+
+# ----- web mode: any public host, and nothing else changes ------------------
+
+
+def _fnStartTheScript(dictScript, monkeypatch, listExtraArguments):
+    """Run the script's own argument parsing, with the listening loop stubbed."""
+    monkeypatch.setattr(dictScript["sys"], "argv", [
+        "vaibifyEgressProxy.py", "--listen-port", "8888",
+        "--allowlist", "api.example.org", *listExtraArguments,
+    ])
+    async def fnReturnAtOnce(iListenPort, sBindCidr, listForwards):
+        return None
+
+    monkeypatch.setitem(dictScript, "fnRunProxyForever", fnReturnAtOnce)
+    dictScript["main"]()
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sAddress", [
+    "127.0.0.1", "::1", "10.0.0.1", "172.16.0.1", "192.168.1.1", "fd00::1",
+    "169.254.169.254", "fe80::1", "100.64.0.1", "224.0.0.1", "0.0.0.0",
+    "240.0.0.1",
+    # 6to4 embedding 10.0.0.1 and 192.168.1.1: the checks above miss these.
+    "2002:a00:1::1", "2002:c0a8:101::1",
+])
+def testWebModeRefusesEveryNonPublicResolution(dictScript, monkeypatch, sAddress):
+    """With any public host allowed, the address check is the whole boundary.
+
+    Kills: skipping the resolution check when --any-public-host is set.
+    """
+    _fnStartTheScript(dictScript, monkeypatch, ["--any-public-host"])
+    assert dictScript["DICT_ANY_PUBLIC_HOST"]["bEnabled"] is True
+    with pytest.raises(dictScript["NonPublicResolution"]):
+        _fsResolve(dictScript, "unlisted.example.org", [sAddress])
+
+
+@pytest.mark.falsification
+def testWebModeTunnelsAnUnlistedPublicHost(dictScript, monkeypatch):
+    """The flag skips the host-name test, and only that test.
+
+    Kills: the proxy ignoring --any-public-host.
+    """
+    fsJudge = dictScript["fsJudgeTarget"]
+    _fnStartTheScript(dictScript, monkeypatch, [])
+    assert asyncio.run(fsJudge("unlisted.example.org", 443)) == "host not on allowlist"
+    _fnStartTheScript(dictScript, monkeypatch, ["--any-public-host"])
+    assert asyncio.run(fsJudge("unlisted.example.org", 443)) == ""
+    assert asyncio.run(fsJudge("unlisted.example.org", 8080)) == "port not on allowlist"
+    assert asyncio.run(fsJudge("203.0.113.9", 443)) == "raw-address CONNECT target refused"
+    assert _fsResolve(dictScript, "unlisted.example.org", ["93.184.216.34"]) == "93.184.216.34"
+
+
+@pytest.mark.falsification
+def testTheCouncilNeverComposesAnyPublicHost():
+    """Only a web-mode project's egress may tunnel to any public host.
+
+    Kills: the composer's default flipped so every caller allows any host.
+    """
+    listCouncil = agentCouncilEgress.flistComposeProxyCommand(
+        ["api.anthropic.com"], [443], {})
+    assert "--any-public-host" not in listCouncil
+    assert "--any-public-host" not in egressProxy.flistComposeProxyCommand(
+        ["api.example.org"], [443], {})
+    assert egressProxy.flistComposeProxyCommand(
+        ["api.example.org"], [443], {}, bAnyPublicHost=True)[-1] == "--any-public-host"
+
+
+def testAnEmptyHostListIsAcceptedOnlyForAnyPublicHost():
+    with pytest.raises(egressProxy.EgressSetupError, match="must not be empty"):
+        egressProxy.fnValidateAllowlistOrRaise([], [443], {})
+    egressProxy.fnValidateAllowlistOrRaise([], [443], {}, bAnyPublicHost=True)

@@ -29,8 +29,21 @@ I_DEFAULT_PIDS_LIMIT = 16384
 S_NETWORK_MODE_OPEN = "open"
 S_NETWORK_MODE_ALLOWLIST = "allowlist"
 S_NETWORK_MODE_ISOLATED = "isolated"
+# The public internet through the proxy, and nothing on this computer or
+# its network: allowlist mode's seal, with the host-name check skipped.
+S_NETWORK_MODE_WEB = "web"
 T_NETWORK_MODES = (S_NETWORK_MODE_OPEN, S_NETWORK_MODE_ALLOWLIST,
-                   S_NETWORK_MODE_ISOLATED)
+                   S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_WEB)
+# The modes that join the sealed network behind the proxy sidecar.
+T_SEALED_NETWORK_MODES = (S_NETWORK_MODE_ALLOWLIST, S_NETWORK_MODE_WEB)
+# What every newly created project is written with; a file that names
+# no mode still means open (the dataclass default below).
+S_NEW_PROJECT_NETWORK_MODE = S_NETWORK_MODE_WEB
+
+
+def fbIsSealedNetworkMode(sMode):
+    """Return True for a mode that reaches the network only through its proxy."""
+    return sMode in T_SEALED_NETWORK_MODES
 
 
 def fbBaseImageUsesDockerfilePin(sBaseImage):
@@ -124,6 +137,8 @@ class ProjectConfig:
     # networkMode is the setting (ruling D1); bNetworkIsolation is its
     # old spelling, kept in agreement with it by the loader so every
     # reader of either sees one truth.
+    # Open is what a keyless legacy file means; new projects are written
+    # with S_NEW_PROJECT_NETWORK_MODE instead.
     sNetworkMode: str = S_NETWORK_MODE_OPEN
     listAllowedHosts: List[str] = field(default_factory=list)
     bNetworkIsolation: bool = False

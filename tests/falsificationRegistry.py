@@ -38433,7 +38433,7 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testNetworkMode.py::testX11WithAllowlistModeIsRefusedEverywhereItIsAsked',
         source='vaibify/docker/containerManager.py',
         old=(
-            '    if fsNetworkModeOf(config) == S_NETWORK_MODE_ALLOWLIST:\n'
+            '    if fbIsSealedNetworkMode(sMode):\n'
             '        raise RuntimeError(\n'
             '            f"\'{config.sProjectName}\' sets x11Forwarding with networkMode: "\n'
         ),
@@ -39833,5 +39833,45 @@ LIST_FALSIFICATIONS = [
         source='vaibify/cli/hubSession.py',
         old='        S_AGENT_LANE_POINTER if bAgentLaneCanRunIt else S_RESEARCHER_ONLY_WAY_OUT\n',
         new='        S_AGENT_LANE_POINTER\n',
+    ),
+    # --- 2026-11-02: the web network mode, sealed like allowlist, with
+    # only the proxy's host-name check skipped ---
+    Falsification(
+        nodeid=(
+            'tests/testEgressProxy.py::'
+            'testWebModeRefusesEveryNonPublicResolution'
+        ),
+        # The resolution check skipped whenever any public host is allowed.
+        source='vaibify/docker/egressProxy.py',
+        old='    if fbIsHubGateway(sHost, iPort):\n        return listAnswers[0][4][0]\n',
+        new='    if fbIsHubGateway(sHost, iPort) or DICT_ANY_PUBLIC_HOST["bEnabled"]:\n        return listAnswers[0][4][0]\n',
+    ),
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testWebModeTunnelsAnUnlistedPublicHost',
+        # The proxy ignoring --any-public-host.
+        source='vaibify/docker/egressProxy.py',
+        old='    elif not DICT_ANY_PUBLIC_HOST["bEnabled"] and sHostLower not in SET_ALLOWED_HOSTNAMES:\n',
+        new='    elif sHostLower not in SET_ALLOWED_HOSTNAMES:\n',
+    ),
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testTheCouncilNeverComposesAnyPublicHost',
+        # The composer's default flipped, so every caller allows any host.
+        source='vaibify/docker/egressProxy.py',
+        old='                             bAnyPublicHost=False):\n',
+        new='                             bAnyPublicHost=True):\n',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAWebLaunchIsSealed',
+        # The launch still returning early for every mode but allowlist.
+        source='vaibify/docker/containerManager.py',
+        old='    if not fbIsSealedNetworkMode(sMode):\n        return\n    if not dictEgress',
+        new='    if sMode != "allowlist":\n        return\n    if not dictEgress',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAKeylessLegacyFileStillLoadsOpen',
+        # The configuration's own default becoming web.
+        source='vaibify/config/projectConfig.py',
+        old='    sNetworkMode: str = S_NETWORK_MODE_OPEN\n',
+        new='    sNetworkMode: str = S_NETWORK_MODE_WEB\n',
     ),
 ]
