@@ -1631,6 +1631,44 @@ pre.quarantine-remedy {
     margin-top: 6px;
 }
 
+/* Remote bindings: notices, and the review dialog. "Couldn't check"
+   is muted, never red: nothing about the remote was learned. */
+.remote-binding-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 6px 0;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-color);
+}
+
+.remote-binding-comparison {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    font-size: 13px;
+    margin: 12px 0;
+}
+
+.remote-binding-comparison dt {
+    color: var(--text-secondary);
+}
+
+.remote-binding-comparison dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.remote-binding-warning,
+.remote-binding-refusal {
+    color: var(--color-orange, #ff9a3c);
+}
+
+.remote-binding-evidence--unchecked {
+    color: var(--text-muted);
+}
+
 /* Docker availability banner — shown on the container hub when
    the backend cannot reach the Docker daemon. */
 .docker-status-banner {

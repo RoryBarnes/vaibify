@@ -450,6 +450,7 @@ const VaibifyApp = (function () {
             VaibifySyncManager.fnRefreshConfiguredRemotes(
                 _dictSessionState.sContainerId);
             VaibifyZenodoTokens.fnRefresh(_dictSessionState.sContainerId);
+            VaibifyRemoteBindings.fnRefresh(_dictSessionState.sContainerId);
         });
     }
 
@@ -943,6 +944,7 @@ const VaibifyApp = (function () {
                 .then(function () {
                     VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
                     VaibifyZenodoTokens.fnRefresh(sId);
+                    VaibifyRemoteBindings.fnRefresh(sId);
                 });
             return;
         }
@@ -967,6 +969,9 @@ const VaibifyApp = (function () {
             // The connect that just ran moved any Zenodo token out of
             // the container; what awaits the researcher is asked now.
             VaibifyZenodoTokens.fnRefresh(sId);
+            // Which remotes this workflow's tokens may act on, and
+            // whether the researcher has confirmed each.
+            VaibifyRemoteBindings.fnRefresh(sId);
         });
     }
 
@@ -5036,6 +5041,12 @@ const VaibifyApp = (function () {
                     dictAction, error, sContainerId, sArg, elButton);
                 return;
             }
+            if (_fbRefusalNeedsABinding(dictAction, error)) {
+                fnReleaseButton();
+                await _fnReviewBindingThenRetry(
+                    dictAction, error, sContainerId, sArg, elButton);
+                return;
+            }
             fnShowToast(
                 "Action failed: " +
                 ((error && error.message) ? error.message : error),
@@ -5183,6 +5194,27 @@ const VaibifyApp = (function () {
         delete dictOnce.dictCredentialPrompt;
         await _fnExecuteProjectAction(
             dictOnce, sContainerId, sArg, elButton);
+    }
+
+    function _fbRefusalNeedsABinding(dictAction, error) {
+        /* A coded binding refusal: nothing is confirmed for the remote
+           this action spends a token on, project.json disagrees with
+           what is, or the record cannot be read. An action already
+           retried after a review reports its second refusal as is. */
+        return !dictAction.bBindingReviewed &&
+            VaibifyRemoteBindings.fbRefusalNeedsABinding(error);
+    }
+
+    async function _fnReviewBindingThenRetry(
+        dictAction, error, sContainerId, sArg, elButton) {
+        var dictOnce = Object.assign({}, dictAction, {bBindingReviewed: true});
+        await VaibifyRemoteBindings.fnResolveRefusalThenRetry(
+            error,
+            function (sMessage) { fnShowToast(sMessage, "warning"); },
+            function () {
+                return _fnExecuteProjectAction(
+                    dictOnce, sContainerId, sArg, elButton);
+            });
     }
 
     function _fbRefusalNamesARetry(dictAction, error) {
