@@ -328,10 +328,10 @@ Keys are camelCase. Every field except `projectName` has a default.
 | `workspaceRoot` | string | `/workspace` | Absolute path where the workspace volume mounts |
 | `packageManager` | string | `pip` | `pip`, `conda`, or `mamba` (the last two install Miniforge) |
 | `pipInstallFlags` | string | `--prefer-binary` | Extra `pip install` flags for the image build; `--prefer-binary` is always kept |
-| `networkMode` | string | `open` | `open`, `allowlist` or `isolated`. `allowlist` seals the container behind vaibify's allowlisting proxy (the wizard's default for a new project; needs Docker Engine 28); `isolated` is `--network none`. Neither sealing mode can be combined with `x11Forwarding`. Takes effect when the container is created (see [Security Model](security.md)) |
+| `networkMode` | string | `open` | `web`, `allowlist`, `open` or `isolated`. `web` seals the container behind vaibify's proxy, which reaches any public host but nothing on your machine or network; it is what every new project is created with, by the wizard and by `vaibify init` (a file that names no mode means `open`). `allowlist` is the same seal with the proxy limited to the hosts the project needs. Both need Docker Engine 28. `isolated` is `--network none`. No sealing mode can be combined with `x11Forwarding`. Takes effect when the container is created (see [Security Model](security.md)) |
 | `allowedHosts` | list | `[]` | In allowlist mode, extra `host` or `host:port` entries the container may reach, beside the computed base list. Host names only, never addresses |
 | `networkIsolation` | boolean | `false` | The old spelling of `networkMode: isolated`; still read, and refused when it disagrees with `networkMode` |
-| `x11Forwarding` | boolean | `false` | Let graphical programs in the container open windows on your display. The container gets its own untrusted X authorization, revoked when it stops; on a server without the SECURITY extension (XQuartz, MacPorts X11), or on a host without libX11 or libXext, it holds a copy of the server's cookie instead, which is full display access (see [Security Model](security.md)). Refused with `networkMode: isolated` (or `networkIsolation: true`) or `allowlist`. Takes effect when the container is created |
+| `x11Forwarding` | boolean | `false` | Let graphical programs in the container open windows on your display. The container gets its own untrusted X authorization, revoked when it stops; on a server without the SECURITY extension (XQuartz, MacPorts X11), or on a host without libX11 or libXext, it holds a copy of the server's cookie instead, which is full display access (see [Security Model](security.md)). Refused with `networkMode: isolated` (or `networkIsolation: true`), `web` or `allowlist`. Takes effect when the container is created |
 | `neverSleep` | boolean | `false` | Keep the Mac awake (`caffeinate`) while the container runs. Ignored elsewhere |
 | `dashboardPort` | integer | `0` | Port for the single-project viewer started from the command line ([CLI Reference](cli.md)). `0` means unassigned: the first launch picks a free port and writes it here. Otherwise 1024–65535 |
 | `cpuLimit` | integer | `0` | CPU cores for the container. `0` means all host cores minus one; a larger value is clamped to the host's core count. See [Core allocation](environmentsAndProjects.md#core-allocation) |
@@ -387,7 +387,7 @@ Nested under `features`. All values are booleans.
 Every enabled agent receives the same vaibify context, skills, and
 persistent configuration directory. Its `vaibify-do` bridge to the
 dashboard reaches the hub through `host.docker.internal` in `open`
-mode and through the proxy in `allowlist` mode; an `isolated`
+mode and through the proxy in `web` and `allowlist` mode; an `isolated`
 container has no network, so there `vaibify-do` cannot reach the
 dashboard.
 

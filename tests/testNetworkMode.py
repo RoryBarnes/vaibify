@@ -192,7 +192,8 @@ def testTheBaseAllowlistNamesEachAgentsHostsGitHubAndTheIndexes():
     assert set(egressAllowlist.T_NPM_HOSTS) <= set(listHosts)
     assert not set(egressAllowlist.DICT_AGENT_HOSTS["bCodex"]) & set(listHosts)
     assert listPorts == [443]
-    for sPublishingHost in ("zenodo.org", "git.overleaf.com", "arxiv.org"):
+    assert set(egressAllowlist.T_ARXIV_HOSTS) <= set(listHosts)
+    for sPublishingHost in ("zenodo.org", "git.overleaf.com"):
         assert sPublishingHost not in listHosts
 
 

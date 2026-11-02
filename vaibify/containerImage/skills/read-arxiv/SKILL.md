@@ -15,7 +15,7 @@ source first.
 
 1. **Resolve the arXiv id.** If given a title or citation instead of
    an id/URL, query the arXiv API (an Atom feed, no key needed):
-   `curl -s "http://export.arxiv.org/api/query?search_query=all:<urlencoded terms>&max_results=3"`
+   `curl -s "https://export.arxiv.org/api/query?search_query=all:<urlencoded terms>&max_results=3"`
    and confirm the match by title and authors before proceeding.
 2. **Fetch the e-print source** into a temp directory:
    `mkdir -p /tmp/arxiv-<id> && curl -sL https://arxiv.org/e-print/<id> -o /tmp/arxiv-<id>/src`

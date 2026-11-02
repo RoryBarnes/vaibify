@@ -19,12 +19,15 @@ The defenses are designed to contain four things:
   Docker socket. The host paths that *are* mounted are listed under
   [Container isolation](#container-isolation).
 - **Exfiltration over the network.** The network mode decides what the
-  container can reach: `allowlist` (the default for a new project) gives
-  it no route off the host and one way out, a proxy that serves only the
-  hosts the project needs and the hosts you allow; `isolated` blocks
-  all traffic in and out; `open` is the whole network (see
-  [Network modes](#network-modes)). An allowed host is still a channel:
-  an agent allowed to reach GitHub can push to its own fork.
+  container can reach: `web` (the default for a new project) gives it no
+  route off the host and one way out, a proxy that reaches any public
+  host but nothing on your machine or your network; `allowlist` narrows
+  that proxy to the hosts the project needs and the hosts you allow;
+  `isolated` blocks all traffic in and out; `open` is the whole network
+  (see [Network modes](#network-modes)). A reachable host is still a
+  channel: in `web` mode that is any public server, and even in
+  `allowlist` mode an agent allowed to reach GitHub can push to its own
+  fork.
 - **Privilege escalation inside the container.** Your code runs as an
   unprivileged user, with no `sudo` and a minimal capability set.
 - **One container acting on another.** Each container's agent holds its
@@ -70,7 +73,7 @@ these restrictions:
 | Few host mounts | Files enter and leave through vaibify's own transfer commands, not a shared host directory. Four kinds of host path can be mounted: resolved secret files (read-only, under `/run/secrets`), the repository list a container started on a pinned image syncs from (read-only, at `/etc/vaibify/container.conf`), any `bindMounts` you declare in `vaibify.yml` (read-only unless an entry sets `readWrite: true`), and, only for a project that opts in to `x11Forwarding`, that container's own X authorization directory (read-only) and, on Linux, the X11 socket directory (read-only). |
 | Workspace volume | A Docker named volume holds `/workspace` (or your configured `workspaceRoot`). It is not part of the host directory tree. |
 | Loopback-only ports | Every forwarded container port is bound to `127.0.0.1` unless that port's entry sets `lanExpose: true`. |
-| Network modes | `networkMode: allowlist` (the wizard's default for a new project) seals the container behind an allowlisting proxy: only the enabled agents' services, GitHub, the package indexes, the project's repositories and the hosts you allow, and nothing on the host, the VM or the LAN. `isolated` (the old `networkIsolation: true`) starts the container with `--network none`. `open` is the whole network. Neither sealing mode can be combined with `x11Forwarding`. |
+| Network modes | `networkMode: web` (the default for a new project) seals the container behind a proxy that reaches any public host and nothing on the host, the VM or the LAN. `allowlist` uses the same seal with the proxy limited to the enabled agents' services, GitHub, the package indexes, arXiv, the project's repositories and the hosts you allow. `isolated` (the old `networkIsolation: true`) starts the container with `--network none`. `open` is the whole network. No sealing mode can be combined with `x11Forwarding`. |
 
 ### Declared bind mounts
 
@@ -262,21 +265,31 @@ configured provider's session was exposed."
 
 ## Network modes
 
-A project's `networkMode` in `vaibify.yml` is `open`, `allowlist` or
-`isolated`; `networkIsolation: true` is the old spelling of `isolated`
-and is still read (a file that sets the two to disagree is refused).
-The creation wizard proposes `allowlist` for a new project; an existing
+A project's `networkMode` in `vaibify.yml` is `web`, `allowlist`,
+`open` or `isolated`; `networkIsolation: true` is the old spelling of
+`isolated` and is still read (a file that sets the two to disagree is
+refused). Every new project is created with `web`, by the wizard and by
+`vaibify init`; a file that names no mode means `open`, so an existing
 project keeps `open` until you change it, because the mode applies when
 the container is created and a published project's files are not
 edited for you.
+
+**Web mode** is allowlist mode, described below, with one difference:
+its proxy serves `CONNECT` to any host name rather than to a list. The
+network, the black-holed resolver, the hub's one pinned destination and
+every other refusal are the same, so a raw address and a name that
+resolves to a non-public address are still refused, and that address
+check is the whole boundary. What it does not close: any public server
+is a channel an agent could send data to.
 
 **Allowlist mode** gives the container no route off the host at all and
 one way out: an HTTP CONNECT proxy that vaibify runs beside it.
 
 - **The network.** The container joins a Docker network created
   `--internal` with the bridge's gateway mode `isolated` (Docker Engine
-  28 or later; an older engine refuses allowlist mode by name, and there
-  is no fallback to a gatewayed network). `--internal` alone is not the
+  28 or later; an older engine refuses both sealed modes, web and
+  allowlist, by name, and there is no fallback to a gatewayed network;
+  update the engine, or set `networkMode: open`). `--internal` alone is not the
   seal: such a network's bridge has an address, and every host service
   listening on `0.0.0.0` answers on it. In `isolated` mode the bridge
   has no address and the container no route, so a direct dial to your
@@ -292,14 +305,15 @@ one way out: an HTTP CONNECT proxy that vaibify runs beside it.
   `CONNECT` to the allowlisted names on the allowed ports, and refuses:
   anything else, a raw address, an unlisted host or port, an allowed
   name that resolves to a loopback, private, link-local, carrier-grade
-  NAT or multicast address, and a tunnel past its concurrency cap.
+  NAT, multicast or 6to4 address, and a tunnel past its concurrency cap.
 - **The allowlist** is computed, with every entry's reason in
   `vaibify/docker/egressAllowlist.py`: the enabled agents' login and API
   hosts (the four secondary agents get only their login hosts), GitHub,
   PyPI, the conda channels when the package manager is conda, the npm
   registry when an agent auto-updates, every repository the project
-  clones, and `allowedHosts` (`host` or `host:port`). Zenodo, Overleaf
-  and arXiv are absent on purpose: those operations run on the host.
+  clones, arXiv (so an agent can read papers), and `allowedHosts`
+  (`host` or `host:port`). Zenodo and Overleaf are absent on purpose:
+  those operations run on the host.
 - **The hub.** `vaibify-do` reaches the hub through the proxy, which
   pins exactly `host.docker.internal:<hub port>`: no other port on that
   name, no raw address, and the port is the one the hub recorded when
@@ -318,7 +332,7 @@ one way out: an HTTP CONNECT proxy that vaibify runs beside it.
   the network; git over SSH to hosts other than GitHub is not relayed
   (use HTTPS); a data archive not on the list must be allowed first.
   A pinned image whose `vaibify-do` predates this release cannot stream
-  pipeline runs from inside an allowlist-mode container until the image
+  pipeline runs from inside a web- or allowlist-mode container until the image
   is rebuilt; its plain HTTP actions work through the proxy unchanged.
 
 ## X11 display forwarding
@@ -333,8 +347,8 @@ other windows. A program in the container that you do not trust,
 including a compromised agent, then has a channel out of the container
 that the file-system and network controls do not cover. For the same
 reason vaibify refuses to start a project that sets `x11Forwarding`
-with a sealed network mode, `isolated` (or `networkIsolation: true`)
-or `allowlist`: a display channel would defeat the seal.
+with a sealed network mode, `isolated` (or `networkIsolation: true`),
+`web` or `allowlist`: a display channel would defeat the seal.
 
 How a container is admitted to your display:
 

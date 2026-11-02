@@ -4071,7 +4071,7 @@ pure module and a host-state module, split the way the Agent Council's
 egress is split, so the part that composes arguments can be tested
 without a daemon and the part that touches the daemon is one place.
 
-- **The egress boundary** (`networkMode: allowlist`).
+- **The egress boundary** (`networkMode: web` and `allowlist`).
   `vaibify/docker/egressProxy.py` is the proxy script and its argv and
   environment composition, shared with the council;
   `vaibify/docker/egressAllowlist.py` computes the base allowlist from

@@ -96,7 +96,9 @@ vaibify init --name NAME [--minimal] [--force]
 
 With a template, `init` copies the template's files into the current
 directory, moves any `project.json` into `.vaibify/projects/`, writes a
-`vaibify.yml` from the built-in defaults, and registers the project. It
+`vaibify.yml` from the built-in defaults, and registers the project.
+Every form of `init` writes `networkMode: web`: the public internet
+through vaibify's proxy, and nothing on your machine or network. It
 refuses, before writing anything, when `.vaibify/projects/project.json`
 already exists. Because a build clones only the repositories named in
 `vaibify.yml`, `init` warns when a template's `container.conf` lists
@@ -137,7 +139,7 @@ reason; never counted as ok). Every `warn` and `fail` names a next step
 for the runtime this machine actually uses. For a running container,
 doctor also reports whether it was created consistently with
 `x11Forwarding`, which is fixed when a container is created, and
-what its network mode is (an allowlist-mode container reaches the
+what its network mode is (a web- or allowlist-mode container reaches the
 network only through its proxy; see [Security Model](security.md)). `--quiet` hides the `ok`
 lines, `--json` emits the results as JSON, and `--explain CHECK`
 prints how one check decides and nothing else.
