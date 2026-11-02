@@ -36779,7 +36779,7 @@ LIST_FALSIFICATIONS = [
         ),
         new=(
             '    if dictBound is None:\n'
-            '        return _fdictNormalizedTarget(S_SERVICE_OVERLEAF, "", dictProjectTarget)\n'
+            '        return fdictNormalizedTarget(S_SERVICE_OVERLEAF, "", dictProjectTarget)\n'
             '        raise BindingRequiredError(\n'
         ),
     ),
@@ -36795,14 +36795,12 @@ LIST_FALSIFICATIONS = [
             '        fnRejectAgentTokenLane(requestHttp)\n'
             '        dictCtx["require"](sContainerId)\n'
             '        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)\n'
-            '        try:\n'
-            '            remoteBindings.ftTargetFields('
+            '        _fnRequireReviewBody(request)\n'
         ),
         new=(
             '        dictCtx["require"](sContainerId)\n'
             '        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)\n'
-            '        try:\n'
-            '            remoteBindings.ftTargetFields('
+            '        _fnRequireReviewBody(request)\n'
         ),
     ),
     Falsification(
@@ -39791,5 +39789,27 @@ LIST_FALSIFICATIONS = [
             '    except ZeroDivisionError as error:\n'
             '        fnRaiseForBindingError(error, sService, sRecordKind, sInstance)\n'
         ),
+    ),
+    # --- 2026-11-02: a confirmation records only what was reviewed,
+    # and only on evidence that succeeded ---
+    Falsification(
+        nodeid=(
+            'tests/testBindingConfirmation.py::'
+            'testUnreachableEvidenceIsRefusedAndTheRecordIsUnchanged'
+        ),
+        # The evidence gate passes whatever came back.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    if dictEvidence.get("bSucceeded"):\n        return dictEvidence\n',
+        new='    if True:\n        return dictEvidence\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBindingConfirmation.py::'
+            'testAReviewOfAnotherWorkflowIsRefused'
+        ),
+        # The review's workflow key is no longer compared with the loaded one.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    if request.sWorkflowKey != sWorkflowKey:\n',
+        new='    if False:\n',
     ),
 ]

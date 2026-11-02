@@ -68,6 +68,7 @@ __all__ = [
     "fsBindingPath",
     "fsWorkflowBindingKey",
     "ftTargetFields",
+    "fdictNormalizedTarget",
     "fdictReadBindings",
     "fdictLookUpEntry",
     "fdictConfirmedBinding",
@@ -357,7 +358,7 @@ def _fnMutateBindings(sProjectUuid, fnMutate):
     )
 
 
-def _fdictNormalizedTarget(sService, sRecordKind, dictTarget):
+def fdictNormalizedTarget(sService, sRecordKind, dictTarget):
     """Return the target with exactly its fields, as strings."""
     tFields = ftTargetFields(sService, sRecordKind)
     dictTarget = dictTarget or {}
@@ -420,7 +421,7 @@ def fnConfirmBinding(
     once the new one is written, so one confirmation never authorizes
     two workflows.
     """
-    dictTargetNormalized = _fdictNormalizedTarget(sService, sRecordKind, dictTarget)
+    dictTargetNormalized = fdictNormalizedTarget(sService, sRecordKind, dictTarget)
     sInstance = _fsTargetInstance(sService, dictTargetNormalized)
     dictEntry = {
         "dictTarget": dictTargetNormalized,

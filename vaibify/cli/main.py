@@ -122,6 +122,7 @@ def _fnCaptureIdentityBeforeLoadingEveryCommand():
 _fnCaptureIdentityBeforeLoadingEveryCommand()
 
 from .actionCommands import fnDoCommand
+from .commandBindings import fnBindingsCommand
 from .commandBuild import fnBuildCommand
 from .commandCat import fnCatCommand
 from .commandCompletePath import fnCompletePathCommand
@@ -357,6 +358,7 @@ main.add_command(fnDoctorCommand)
 main.add_command(fnRepairCommand)
 main.add_command(fnListSessionsCommand)
 main.add_command(fnDoCommand)
+main.add_command(fnBindingsCommand)
 main.add_command(fnReconcileCommand)
 main.add_command(fnOpenContainerCommand)
 main.add_command(fnRemoteCommand)

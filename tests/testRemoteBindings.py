@@ -262,9 +262,13 @@ def tApp(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         bindingRoutes, "_DICT_EVIDENCE_FETCHERS",
-        {sService: (lambda dictCtx, sContainerId, dictTarget: {
-            "sState": "fetched", "sTitle": "stub",
+        {sService: (lambda dictCtx, sContainerId, sRecordKind, dictTarget: {
+            "bSucceeded": True, "sState": "fetched", "sTitle": "stub",
         }) for sService in remoteBindings.T_BINDING_SERVICES},
+    )
+    monkeypatch.setattr(
+        bindingRoutes, "_fsEnvironmentArchiveInstance",
+        lambda dictCtx, sContainerId, dictWorkflow: "",
     )
     dictCtx = {
         "require": lambda sContainerId: None,
@@ -274,6 +278,17 @@ def tApp(tmp_path, monkeypatch):
     app = FastAPI()
     bindingRoutes.fnRegisterAll(app, dictCtx)
     return TestClient(app), dictCtx, sUuid
+
+
+def _fresponseConfirmReviewed(client, sService, sRecordKind="", sInstance=""):
+    """Confirm one entry the way the dialog does: post the GET's review body."""
+    dictDescribed = client.get(
+        f"/api/bindings/{S_CONTAINER_ID}", params={"bFetchEvidence": "false"},
+    ).json()
+    return client.post(
+        f"/api/bindings/{S_CONTAINER_ID}/confirm",
+        json=_fdictEntry(dictDescribed, sService, sRecordKind, sInstance)["dictReview"],
+    )
 
 
 def _fdictEntry(dictDescribed, sService, sRecordKind="", sInstance=""):
@@ -291,9 +306,12 @@ def testTheAgentLaneCannotConfirmABinding(tApp):
     Kills: dropping the agent-lane refusal from the confirm handler.
     """
     client, dictCtx, sUuid = tApp
+    dictDescribed = client.get(
+        f"/api/bindings/{S_CONTAINER_ID}", params={"bFetchEvidence": "false"},
+    ).json()
     responseHttp = client.post(
         f"/api/bindings/{S_CONTAINER_ID}/confirm",
-        json={"sService": "overleaf"},
+        json=_fdictEntry(dictDescribed, "overleaf")["dictReview"],
         headers={"X-Vaibify-Session": "agent-token"},
     )
     assert responseHttp.status_code == 403
@@ -308,14 +326,12 @@ def testTheResearcherConfirmsAndTheReadShowsAgreement(tApp):
     assert dictBefore["dictRecordState"] == {"bValid": True}
     assert _fdictEntry(dictBefore, "overleaf")["dictConfirmed"] is None
     assert _fdictEntry(dictBefore, "overleaf")["sState"] == "unconfirmed"
-    responseHttp = client.post(
-        f"/api/bindings/{S_CONTAINER_ID}/confirm", json={"sService": "overleaf"},
-    )
+    responseHttp = _fresponseConfirmReviewed(client, "overleaf")
     assert responseHttp.status_code == 200, responseHttp.text
     assert responseHttp.json()["dictTarget"] == {"sProjectId": "ol-1"}
     dictAfter = client.get(f"/api/bindings/{S_CONTAINER_ID}").json()
     assert _fdictEntry(dictAfter, "overleaf")["sState"] == "agrees"
-    assert _fdictEntry(dictAfter, "overleaf")["dictFetched"]["sState"] == "fetched"
+    assert _fdictEntry(dictAfter, "overleaf")["dictEvidence"]["sState"] == "fetched"
     assert _fdictEntry(dictAfter, "zenodo", "project", "sandbox")["dictProjectTarget"] == {
         "sInstance": "sandbox", "sConceptDoi": "", "sDepositionId": "",
     }
@@ -332,7 +348,7 @@ def testTheContextRefusesAnEditedTargetNamingBothValues(tApp):
         )
     assert errorInfo.value.status_code == 409
     assert errorInfo.value.detail["sError"] == "BINDING-REQUIRED"
-    client.post(f"/api/bindings/{S_CONTAINER_ID}/confirm", json={"sService": "overleaf"})
+    _fresponseConfirmReviewed(client, "overleaf")
     assert remoteBindingContext.fsRequireBoundOverleafProjectId(
         dictCtx, S_CONTAINER_ID, dictWorkflow,
     ) == "ol-1"
@@ -359,9 +375,7 @@ def testAnUnregisteredContainerHasNoBinding(tApp):
 def testAPromotionNeedsTheProductionInstanceConfirmed(tApp):
     client, dictCtx, sUuid = tApp
     dictWorkflow = dictCtx["workflows"][S_CONTAINER_ID]
-    client.post(f"/api/bindings/{S_CONTAINER_ID}/confirm", json={
-        "sService": "zenodo", "sRecordKind": "project",
-    })
+    _fresponseConfirmReviewed(client, "zenodo", "project", "sandbox")
     assert remoteBindingContext.fdictRequireBoundZenodoTarget(
         dictCtx, S_CONTAINER_ID, dictWorkflow, "project",
     )["sInstance"] == "sandbox"
@@ -692,6 +706,7 @@ def testAnInvalidRecordIsRefusedByNameAndNeverReadAsUnbound(fsContent, tPromotio
         clientPromotion.post(S_PROMOTE_PATH),
         clientBindings.post(f"/api/bindings/{S_CONTAINER_ID}/confirm", json={
             "sService": "zenodo", "sRecordKind": "environment",
+            "sWorkflowKey": S_KEY, "dictTarget": {"sInstance": "sandbox"},
         }),
     ):
         assert responseHttp.status_code == 409, responseHttp.text

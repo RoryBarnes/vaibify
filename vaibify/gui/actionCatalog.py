@@ -1266,12 +1266,12 @@ LIST_AGENT_ACTIONS = [
     {"sName": "confirm-remote-binding", "sCategory": "sync",
      "sMethod": "POST", "sPath": "/api/bindings/{sContainerId}/confirm",
      "bAgentSafe": False,
-     "sDescription": "Confirm which Overleaf project or Zenodo record this "
-                     "workflow's token-bearing actions may act on. Args: "
-                     "{sService: overleaf|zenodo, optional dictTarget, "
-                     "optional sCarryFromWorkflowKey}. Human-only: the "
-                     "record lives on the host and decides where the "
-                     "researcher's tokens are spent."},
+     "sDescription": "Confirm ONE reviewed binding: the Overleaf project, "
+                     "or a Zenodo project record or environment archive on "
+                     "one instance. Args: the review body `vaibify bindings` "
+                     "prints {sService, sRecordKind, sWorkflowKey, "
+                     "dictTarget}. Human-only: the record decides where "
+                     "the researcher's tokens are spent."},
     # ---- Zenodo tokens moved out of the container ----
     {"sName": "decide-migrated-zenodo-token", "sCategory": "sync",
      "sMethod": "POST", "sPath": "/api/zenodo-tokens/{sContainerId}/decide",
