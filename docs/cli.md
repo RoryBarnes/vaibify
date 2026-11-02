@@ -1,8 +1,11 @@
 # CLI Reference
 
-The vaibify core is fully scriptable. Everything the dashboard does can
-also be driven from the command line, so a build, a run, a test pass,
-or a PROOF report can be part of a script or a scheduled job. The
+The vaibify core is fully scriptable. Every dashboard action, apart
+from the few that only a browser needs, can also be driven from the
+command line, so a build, a run, a test pass, or a PROOF report can be
+part of a script or a scheduled job. Commands that drive the hub, such
+as [vaibify do](#vaibify-do), need it running, and one that claims a
+container is refused while a dashboard tab holds that container. The
 other pages describe the dashboard; this page is the command-line
 counterpart.
 
@@ -468,11 +471,13 @@ it stops the session it is given, the same as closing its terminal.
 
 ## vaibify do
 
-Every dashboard action has a command-line equivalent. Most are
+Every dashboard action, apart from the few named below that only a
+browser needs, has a command-line equivalent. Most are
 `vaibify do` subcommands, generated from two lists: the agent-action
 catalog, which the dashboard and the in-container `vaibify-do` also
 use, and a researcher-only list that is never shipped into a container
-(container settings, the Agent Council, uploads, file transfers).
+(container settings, the Agent Council, repository tracking and pushes,
+containerization).
 `vaibify do` authenticates as the researcher, so actions reserved for
 the researcher (user-only actions, such as `clean-outputs`) are
 available here; `bAgentSafe` constrains an agent in a container, not
@@ -481,10 +486,11 @@ is described in [For Agents](forAgents.md).
 
 The rest have a hand-written home: credentials are `vaibify
 credential`, building and starting are `vaibify build` and `vaibify
-start`, registering a directory is `vaibify register`, and opening a
-project in another tab is `vaibify open`. A handful of dashboard
-actions have no command-line form because they only make sense in a
-browser, such as moving a live session into a fresh tab.
+start`, registering a directory is `vaibify register`, and moving a
+live session into a fresh browser tab is `vaibify open`. A handful of
+dashboard actions have no command-line form because they only make
+sense in a browser, such as renewing a tab's session or acknowledging a
+browser warning.
 `tests/testArchitecturalInvariants.py::testEveryGuiInvokedMutationHasCliEquivalent`
 fails when a new dashboard action has none of these.
 
@@ -512,8 +518,9 @@ are `key=value` pairs, or one JSON object. A hub must be running (start
 one with `vaibify` in another terminal), and the dashboard shows every
 action as it runs. The command claims the container for one action and
 then releases it, so a container open in a dashboard tab is refused
-rather than taken over: close that tab, or run the action from inside
-the container with `vaibify-do`.
+rather than taken over: close that tab (or release the container from
+the dashboard's picker), or, for an action the in-container agent may
+run, run it from inside the container with `vaibify-do`.
 
 An action that starts work the hub carries on with, such as a run or
 **Verify Level 3**, returns once that work has finished: the release
@@ -575,11 +582,11 @@ judgments available only here:
 | `vaibify secret set-provider-key --provider NAME` | Store an agent provider's API key, read from a prompt that does not echo |
 | `vaibify secret provider-key-status --provider NAME` | Report whether a provider's key is configured |
 | `vaibify secret delete-provider-key --provider NAME` | Remove a provider's key |
-| `vaibify credential set github\|overleaf\|zenodo [--project-id ID] [--instance sandbox\|production] [-p NAME]` | Store a publishing token for a project, read from a prompt that does not echo |
+| `vaibify credential set github\|overleaf\|zenodo [--project-id ID] [--instance sandbox\|production] [-p NAME]` | Store the Overleaf token (one slot for the whole host) or a project's Zenodo token, read from a prompt that does not echo. GitHub stores nothing here (see below) |
 | `vaibify credential status [-p NAME]` | Report which remotes are configured and reachable |
-| `vaibify credential delete github\|overleaf\|zenodo [--instance sandbox\|production] [-p NAME]` | The same as `vaibify revoke` |
-| `vaibify revoke github [--keyring-slot SLOT]` | Remove the stored GitHub credential, or one repository's with `--keyring-slot`, and revoke it upstream where possible |
-| `vaibify revoke overleaf` | The same, for Overleaf |
+| `vaibify credential delete github\|overleaf\|zenodo [--keyring-slot SLOT] [--instance sandbox\|production] [-p NAME]` | The same as `vaibify revoke` |
+| `vaibify revoke github [--keyring-slot SLOT]` | Run `gh auth logout` for github.com, and with `--keyring-slot` clear that one repository's stored token. Without `--keyring-slot` nothing local is cleared, so it exits 1 |
+| `vaibify revoke overleaf` | Clear the stored Overleaf token; Overleaf offers no way to revoke it from here (see below) |
 | `vaibify revoke zenodo [--instance sandbox\|production] [-p NAME]` | The same, for one project's token on one Zenodo instance (default `sandbox`; the project is the current directory's unless named) |
 
 `credential set` is the command-line form of the dashboard's credential
@@ -587,11 +594,16 @@ forms. The token is read at a hidden prompt and sent only in the body
 of one request to the hub on this machine; it never appears on the
 command line, in an environment variable, or in any message the
 command prints. `--project-id` binds an Overleaf project, and
-`--instance` chooses the Zenodo instance (default `sandbox`).
+`--instance` chooses the Zenodo instance (default `sandbox`). GitHub
+has no token to set: vaibify uses the host's `gh auth login`, so
+`credential set github` stores nothing and prints the hub's answer
+that GitHub keeps no stored credential.
 
 `revoke` prints whether the upstream token was revoked and whether the
 local copy was cleared, and exits non-zero if the local copy was not
-cleared. For GitHub it also runs `gh auth logout`. Overleaf and Zenodo
+cleared. For GitHub it runs `gh auth logout` and clears a local copy
+only when `--keyring-slot` names one, so without that option it exits
+non-zero even when the logout succeeds. Overleaf and Zenodo
 offer tools no way to revoke a token, so for them the command clears
 the local copy and names the account page where you revoke the token
 yourself; do that too, because clearing a local copy does not

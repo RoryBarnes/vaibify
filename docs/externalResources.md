@@ -64,8 +64,10 @@ project:
 ### What the in-container agent may do
 
 The agent drives the dashboard through `vaibify-do`, a curated and tightly controlled list of actions the agent may perform. Every action
-is marked as agent-safe or researcher-only. Actions that make
-something public under your name are researcher-only.
+is marked as agent-safe or researcher-only. Pushing to Overleaf, and
+every Zenodo deposit, publication or metadata edit, are
+researcher-only. Pushing selected files to GitHub is agent-safe, so in
+a public repository the agent can make files public.
 
 | Action | Agent may run it |
 |---|---|
@@ -92,8 +94,12 @@ asks for what that service needs:
   personal access token from that instance with the `deposit:write`
   and `deposit:actions` scopes. Sandbox and production are separate
   sites with separate accounts and tokens.
-- **GitHub**: nothing, if `gh auth login` has been run on the host;
-  otherwise a per-repository token.
+- **GitHub**: nothing; the dialog does not open for GitHub. Vaibify
+  uses a token stored in the host keyring slot
+  `github_token:<owner>/<repo>` if there is one, and otherwise your
+  host's `gh auth` login. When neither resolves, or the project
+  repository cannot reach GitHub, the dashboard says "GitHub uses gh
+  auth. Run 'gh auth login' on your host machine."
 
 ### Confirming where a token may be spent
 
@@ -143,15 +149,15 @@ is recorded:
   review claims none, and links to the project instead.
 
 With no token stored for the site, the review offers to store one and
-then checks again. Evidence that could not be fetched reads "couldn't
-check", in neutral gray, and Confirm stays off until **Retry** succeeds.
+then checks again. Evidence that could not be fetched reads "Couldn't
+check", in neutral gray, and **Confirm** stays off until **Retry** succeeds.
 
 **On the host**, `vaibify bindings -p <project>` prints the same review
 and the exact `vaibify do confirm-remote-binding ... sRecordKind=...
 sWorkflowKey=... dictTarget='{...}'` command that confirms what it
 showed. A confirmation carries what was reviewed: one made for another
 workflow, or for a target that has moved since, is refused as stale,
-and so is a bare `sService=...` with nothing reviewed.
+and a bare `sService=...` with nothing reviewed is refused too.
 
 **Every token-bearing action** (each Overleaf push, pull and mirror
 refresh; each Zenodo deposit, publish, promotion and recovery; Auto
@@ -199,8 +205,8 @@ behind your back:
    check is retried at the next open.
 5. **You decide.** The dashboard's banner shows each token's state, how
    the check went and the titles of the deposits Zenodo reports for it,
-   with **Confirm** (it becomes the active token) and **Decline** (it is
-   discarded). On the host, `vaibify do decide-migrated-zenodo-token
+   with **Confirm: this is my token** (it becomes the active token) and
+   **Decline: discard it**. On the host, `vaibify do decide-migrated-zenodo-token
    sSlot=zenodo_token_sandbox sDecision=confirm` does the same; the
    unnamed older slot also takes `sInstance=sandbox|production`.
    Until you confirm, every Zenodo action refuses and says so.
@@ -404,7 +410,7 @@ The **Verify Reproducibility** dialog shows one row per service:
 
 | Field | Meaning |
 |---|---|
-| Status pill | Blue: the last verification matched every file and is less than 24 hours old. Red: at least one file differs. Yellow: never verified, or stale. |
+| Status pill | Green dot: the last verification matched every file and is less than 24 hours old. Red dot: at least one file differs. Yellow half-filled dot: anything else, including never verified and stale. |
 | Summary | `<matching>/<total> files match SHA-256`, with the first drifted files named. |
 | Last verified | How long ago the last verification ran. |
 | **Re-verify** | Runs a verification of that service now. |

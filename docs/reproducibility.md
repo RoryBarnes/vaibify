@@ -24,7 +24,7 @@ what the rerun produced.
 
 ## PROOF Level 3 — Reproducible
 
-A project reaches Level 3 when four things exist:
+Level 3 rests on four things:
 
 1. **A fingerprint of every file.** A list of every input, script and
    output in the project, each with its SHA-256 hash, a 64-character
@@ -36,6 +36,12 @@ A project reaches Level 3 when four things exist:
 4. **Your confirmation** that you ran that reproduction and it passed
    its assessment: every output byte-identical, or the published
    comparisons passing over it.
+
+These four are the heart of the level, not the whole of it: Level 3
+also checks the dependency lock, the pinned Dockerfile, the
+determinism answer, the software declaration, the envelope's published
+and archived copies, and more. The [PROOF Ladder](proofLadder.md#level-3-requirements)
+lists every Level 3 requirement.
 
 Level 3 requires a containerized project, because only a container can
 be saved and rerun exactly; a project in host mode reaches at most Level
@@ -73,10 +79,14 @@ be checked on its own:
 | `Dockerfile` | How the container image was built |
 | `reproduce.sh` | The script that reruns the project and assesses the result |
 | `.vaibify/rerunAssessment.py` | The assessor `reproduce.sh` runs, and the comparison policy it grades under |
+| `requirements.txt`, `environment.yml`, `pyproject.toml` | The project's own dependency declarations, whichever of them it has |
 
-The **Artifacts** section of the Project block has a row for each file.
-You rarely write any of them by hand: **Regenerate now** rewrites the
-whole envelope, and vaibify regenerates it automatically the first time
+The **Artifacts** section of the Project block has a row for each of
+the first five files. You rarely write any of them by hand:
+**Regenerate now** rewrites the manifest, the dependency lock and the
+environment snapshot; the reproduce script row has **Generate
+reproduce.sh**, and the Dockerfile row **Copy image Dockerfile into
+repo**. Vaibify regenerates the envelope automatically the first time
 the project reaches Level 1.
 
 ### Tier 1 — the manifest

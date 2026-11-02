@@ -47,7 +47,7 @@ Although the published result is at [PROOF Level 3](proofLadder.md), meaning the
 
 ## 4. Check the archive before touching it
 
-From the **Run** menu, choose **Check Files Against Manifest**. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hashes of every file in the repository, compares them to the repository's file `MANIFEST.sha256` that contains the summary of the tracked files, and reports if they match. In this case, they will.
+From the **Run** menu, choose **Check Files Against Manifest**. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hash of every file listed in the repository's file `MANIFEST.sha256`, compares each with the hash recorded there, and reports if they match. In this case, they will.
 
 This result *must* hold for a freshly cloned Level 3 project because nothing has changed. You have
 confirmed that the files in your clone are byte-for-byte identical to the files the
@@ -115,13 +115,13 @@ Once you're ready, then from the dashboard, press the Admin pulldown menu in the
 |---|------|--------------------|
 | 1 | **Project Name** | Set the **Project Name** to "AI Greenhouse" and note that the container's name changes to include a dash. Container names cannot have spaces or uppercase letters. Click "Next". |
 | 2 | **Environment** | Leave **Use the author's pinned image** selected. The table beneath it names the image, the kind of processor it was built for (`linux/amd64`), and the archived copy on Zenodo. If your computer has a different processor ("This daemon"), such as `arm64`, check the **Allow emulation** box. (About 0.2% of emulation runs fail. If you see a "killed by signal 11" message while running with an emulator, just run again and it will very likely work.) Below that, under "How the author's image may run on this machine", choose **Run it as its author built it**, so the environment remains exactly as the author saved it. Click "Next". |
-| 3 | **Features & Authentication** | Select one of the available coding agents. LaTeX and the other base features are grayed out because the author's image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under *Resource limits*, leave *CPU cores* at **all cores -1**, which leaves 1 reserved for the host (you can still use all of them outside the container); and *Memory (GB)* at **5**, or less if Colima has less: the **Set up Docker** wizard gives Colima half of your computer's memory, but never more than your memory minus 4 GB, so on an 8 GB Mac Colima has 4 GB (`colima list` shows it). (You can adjust this later if you choose to keep the container.) Click "Next".|
+| 3 | **Features & Authentication** | Select one of the available coding agents. LaTeX and the other base features are grayed out because the author's image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under *Resource limits*, leave *CPU cores* blank, which reads **all cores − 1** and leaves 1 reserved for the host (you can still use all of them outside the container); and leave *Memory (GB)* blank, which reads **unlimited**: the container may use all the memory Docker has. On a Mac that is what Colima has: the **Set up Docker** wizard gives Colima half of your computer's memory, but never more than your memory minus 4 GB, so on an 8 GB Mac Colima has 4 GB (`colima list` shows it). (You can adjust this later if you choose to keep the container.) Click "Next".|
 | 4 | **Files to Copy** | Leave everything at their defaults. Click "Next". |
 | 5 | **Summary** | Read it and confirm it matches the above instructions. Click **Convert and obtain**. |
 
 You will then see a dialog box that shows the log of the download of the 733 MB image from Zenodo. Depending on your connection, *this download may take an hour or more.* If the connection drops, `vaibify` resumes the download. If it keeps failing, `vaibify` pauses with the partial download kept and presents a "Try again" button. Note that if you cancel a download, the partial file is deleted.
 
-When the conversion finishes, you return to the Environments Hub and the ai-greenhouse environment will look the same except the `host-mode` badges become `contained`. The steps still do the
+When the conversion finishes, you return to the Environments Hub and the ai-greenhouse environment will look the same except its `uncontained` chip becomes `contained`. The steps still do the
 same things, but now they do them in the pinned environment, and the
 PROOF tab's Level 3 row stops saying the project has no image and instead reports on whether the author answered the determinism question
 (how much speed vaibify should trade for repeatable files), and whether a rerun from that image passes its assessment. The author's answer is
@@ -130,7 +130,7 @@ recorded with the project, so every rerun of it uses the same execution settings
 This process does not create a second project. Your clone stays on your host machine — the same directory, the same git history, the same outputs you
 just produced; only the runtime settings in its `vaibify.yml` change. The difference is that there is now an exact duplicate in a new Docker container whose environment is identical to the one the author used. Furthermore, your `vaibify` interactions will now take place inside this container leaving your own computer safe.
 
-At this point, the environment is downloaded, but its container has not yet been started. You will be asked if you want to **Start container** and you should press that button. If at a later time you want to start a stopped container, you can click the kebab menu (**⋮**) and select **Start**. A dark red circle next to the environment's name means the container is stopped (not using host machine resources);  a blue check means the container is active. Once it starts, you will see a notice that confirms your files were copied into the container. Now go ahead and select the `ai-greenhouse` environment and then the `AI Greenhouse` Project to return to its dashboard.
+At this point, the environment is downloaded, but its container has not yet been started. You will be asked if you want to **Start container** and you should press that button. If at a later time you want to start a stopped container, you can click the kebab menu (**⋮**) and select **Start**. A gray circle next to the environment's name means the container is stopped (not using host machine resources);  a blue check means the container is active. Once it starts, you will see a notice that confirms your files were copied into the container. Now go ahead and select the `ai-greenhouse` environment and then the `AI Greenhouse` Project to return to its dashboard.
 
 ### Confirm the reproduction
 
@@ -202,7 +202,8 @@ destroying the evidence of what happened.
 **"Not checked" is not "ok".** A check that could not run is not labeled as working correctly. Instead, the doctor explains the reason for the issue. 
 
 **The doctor tells you the command to fix an issue.** Where vaibify can
-apply the fix itself, that command is `vaibify repair`. Where it
+apply the fix itself, the finding names the `vaibify` command that does,
+such as `vaibify repair dns` or `vaibify reconcile`. Where it
 cannot — a network that is down, a daemon that needs more memory — the
 finding says so plainly rather than sending you to a tab.
 

@@ -250,8 +250,9 @@ researcher's own token, and pinned to what was reviewed, so an agent
 that edits `project.json` cannot redirect a token
 ([External Resources](externalResources.md)).
 No credentials volume is created for a new container; an existing one
-stays mounted until the move out of it has finished, and **Delete
-environment…** on the environment's tile menu removes it.
+is still mounted at every start, because it may hold a token not yet
+moved out, until **Delete environment…** on the environment's tile
+menu removes it.
 
 **Agent logins inside the container are persistent and shared.** Each
 coding agent's login and settings live on the workspace volume. All
@@ -331,9 +332,9 @@ what is drawn on the screen and send keystrokes and mouse events to
 other windows. A program in the container that you do not trust,
 including a compromised agent, then has a channel out of the container
 that the file-system and network controls do not cover. For the same
-reason vaibify refuses to start a project that sets both
-`x11Forwarding` and `networkIsolation`: a display channel would defeat
-the seal.
+reason vaibify refuses to start a project that sets `x11Forwarding`
+with a sealed network mode, `isolated` (or `networkIsolation: true`)
+or `allowlist`: a display channel would defeat the seal.
 
 How a container is admitted to your display:
 
@@ -355,9 +356,10 @@ How a container is admitted to your display:
   cookie itself lives only in the container's own directory, mode 600,
   which no bind mount may reach.
 - **The fallback, and what it costs.** XQuartz and the MacPorts X
-  server do not implement the SECURITY extension. For such a server
-  vaibify copies the server's own cookie into the container's
-  directory instead. That is full display access, the same a program
+  server do not implement the SECURITY extension. For such a server,
+  or when this computer lacks the libX11 or libXext library vaibify
+  asks through, vaibify copies the server's own cookie into the
+  container's directory instead. That is full display access, the same a program
   on your Mac has, revocable only by restarting the X server; the
   dashboard's readiness banner and `vaibify doctor` say so for every
   container that holds one.

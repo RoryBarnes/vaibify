@@ -21,7 +21,8 @@ work inside vaibify, not how to do any particular science.
 
 Every time a container starts, vaibify regenerates `CLAUDE.md` at the
 root of `/workspace` and links `AGENTS.md` and `GEMINI.md` there to it,
-so every installed agent reads the same text. Because it is rewritten
+so an agent that reads any of those names in `/workspace` reads the
+same text. Because it is rewritten
 on every start, edits to it do not survive a restart. Its main rules:
 
 - **Name steps by label.** `A09` is the ninth *automated* step and

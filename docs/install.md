@@ -284,8 +284,12 @@ images, and vaibify's settings in place, so do these in order:
    the container, its workspace volume, and its images; your project
    directory and anything already pushed or published are untouched.
    See [Environments and Projects](environmentsAndProjects.md).
-2. **Revoke stored credentials** you no longer need, on each service's
-   own account page; see [Connecting to External
+2. **Clear and revoke stored credentials.** The tokens and keys
+   vaibify stored stay in the host keyring, under the service name
+   `vaibify`, after the package and `~/.vaibify` are gone; delete those
+   entries with your keyring's own manager (Keychain Access on macOS).
+   Then revoke each token you no longer need on its service's own
+   account page; see [Connecting to External
    Resources](externalResources.md).
 3. **Stop the hub.** Press Ctrl-C in the terminal where you started
    `vaibify`. Closing the browser tab does not stop it.
@@ -327,7 +331,7 @@ Keys are camelCase. Every field except `projectName` has a default.
 | `networkMode` | string | `open` | `open`, `allowlist` or `isolated`. `allowlist` seals the container behind vaibify's allowlisting proxy (the wizard's default for a new project; needs Docker Engine 28); `isolated` is `--network none`. Neither sealing mode can be combined with `x11Forwarding`. Takes effect when the container is created (see [Security Model](security.md)) |
 | `allowedHosts` | list | `[]` | In allowlist mode, extra `host` or `host:port` entries the container may reach, beside the computed base list. Host names only, never addresses |
 | `networkIsolation` | boolean | `false` | The old spelling of `networkMode: isolated`; still read, and refused when it disagrees with `networkMode` |
-| `x11Forwarding` | boolean | `false` | Let graphical programs in the container open windows on your display. The container gets its own untrusted X authorization, revoked when it stops; on a server without the SECURITY extension (XQuartz, MacPorts X11) it holds a copy of the server's cookie instead, which is full display access (see [Security Model](security.md)). Refused with `networkIsolation: true`. Takes effect when the container is created |
+| `x11Forwarding` | boolean | `false` | Let graphical programs in the container open windows on your display. The container gets its own untrusted X authorization, revoked when it stops; on a server without the SECURITY extension (XQuartz, MacPorts X11), or on a host without libX11 or libXext, it holds a copy of the server's cookie instead, which is full display access (see [Security Model](security.md)). Refused with `networkMode: isolated` (or `networkIsolation: true`) or `allowlist`. Takes effect when the container is created |
 | `neverSleep` | boolean | `false` | Keep the Mac awake (`caffeinate`) while the container runs. Ignored elsewhere |
 | `dashboardPort` | integer | `0` | Port for the single-project viewer started from the command line ([CLI Reference](cli.md)). `0` means unassigned: the first launch picks a free port and writes it here. Otherwise 1024–65535 |
 | `cpuLimit` | integer | `0` | CPU cores for the container. `0` means all host cores minus one; a larger value is clamped to the host's core count. See [Core allocation](environmentsAndProjects.md#core-allocation) |
@@ -348,10 +352,9 @@ List fields:
 | `secrets` | `name`, `method` (`gh_auth`, `keyring`, or `docker_secret`) | Credentials resolved on the host at start and mounted read-only at `/run/secrets/<name>`. A secret this host cannot resolve is skipped with a notice. Values never appear in `vaibify.yml` |
 
 A `bindMounts` host path must be absolute (Docker does not expand `~`),
-must exist, and must lie under your home directory or the project
-repository. Every mount is read-only inside the container unless its
-entry sets `readWrite: true`; an entry carrying the retired `readOnly`
-key, or any key other than `host`, `container` and `readWrite`, is
+must exist, and must lie under your home directory. Every mount is
+read-only inside the container unless its entry sets `readWrite: true`;
+an entry carrying the retired `readOnly` key, or any key other than `host`, `container` and `readWrite`, is
 refused. Vaibify refuses any mount that overlaps a credential or
 configuration directory (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`,
 `~/.kube`, all of `~/.config`, the agent homes `~/.claude`, `~/.codex`
@@ -381,14 +384,19 @@ Nested under `features`. All values are booleans.
 | `<agent>AutoUpdate` (for example `claudeAutoUpdate`) | `true` | Keep that agent current. Needs network access; with `networkIsolation` the update is deferred and a warning recorded |
 | `gpu` | `false` | NVIDIA GPU support. **Builds with `gpu: true` are refused**: the GPU base image is Ubuntu 22.04 and vaibify's toolchain is pinned to Ubuntu 24.04 |
 
-Every enabled agent receives the same vaibify context, skills,
-persistent configuration directory, and `vaibify-do` bridge to the
+Every enabled agent receives the same vaibify context, skills, and
+persistent configuration directory. Its `vaibify-do` bridge to the
+dashboard reaches the hub through `host.docker.internal` in `open`
+mode and through the proxy in `allowlist` mode; an `isolated`
+container has no network, so there `vaibify-do` cannot reach the
 dashboard.
 
 ### Reproducibility
 
-Nested under `reproducibility`; how these are used is described in
-[Reproducibility](reproducibility.md).
+Nested under `reproducibility`. vaibify reads and keeps these keys,
+but no current operation uses them: the Zenodo instance and the
+Overleaf project are chosen in the dashboard's **Setup Connection**
+dialog (see [Connecting to External Resources](externalResources.md)).
 
 | Key | Default | Meaning |
 |-----|---------|---------|

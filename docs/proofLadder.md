@@ -228,10 +228,10 @@ given.
 | Project repository (Project block: **Git enabled**) | Project | The project and every file it touches live in a git repository. |
 | Every step self-consistent | Project | Every step meets the step requirements below. |
 | Input data declared | Step | The step lists its raw input files, or declares it needs none. The Project block shows the same row for all steps, with a one-click declaration for steps that have no inputs. |
-| Integrity, Qualitative, and Quantitative unit tests pass | Step | One row per test category the step has. |
+| Unit tests pass; Integrity, Qualitative, and Quantitative tests pass | Step | **Unit tests pass** summarizes all of the step's tests, and beside it is one row per test category the step has. |
 | Your sign-off recorded | Step | The researcher inspected the outputs and approved the step. |
 | Nothing changed since verification | Step | No script, output, or upstream step changed after the step's tests or sign-off. |
-| Cross-step reads declared or dismissed | Step | Shown once the dependency scan has run. When the scan finds the step's script reading another step's declared output, that edge is declared (a `{step:<id>.<stem>}` token or `saDependencies`) or you dismiss the finding; a dismissal holds only while the script is unchanged. A finding made against an older script or output declaration, or a scan that failed, reads "dependency scan not current" until **Rescan dependencies** (`vaibify do rescan-dependencies`) runs again; that is unknown, never a pass. Dismiss with the button on the row or `vaibify do dismiss-dependency-finding`. |
+| Cross-step reads declared or dismissed | Step | Shown only when it fails or the dependency scan is not current, so it never appears as met. When the scan finds the step's script reading another step's declared output, that edge is declared (a `{step:<id>.<stem>}` token or `saDependencies`) or you dismiss the finding; a dismissal holds only while the script is unchanged. A finding made against an older script or output declaration, or a scan that failed, reads "dependency scan not current" until **Rescan dependencies** (`vaibify do rescan-dependencies`) runs again; that is unknown, never a pass. Dismiss with the button on the row or `vaibify do dismiss-dependency-finding`. |
 | Project context file (optional) | Project | `.vaibify/AGENTS.md` records the in-container agent's standing instructions. Never blocks a level. |
 
 ### Level 2 requirements
@@ -239,7 +239,9 @@ given.
 | Requirement | Scope | Meaning |
 |---|---|---|
 | GitHub mirror | Project | Every published file matches the GitHub repository at a recently verified commit. |
+| GitHub repository is public (Project block: part of **GitHub mirror**) | Project | A reader with no GitHub login can retrieve the repository; vaibify asks GitHub without credentials, as a reader would. The Project block has no separate row: the **GitHub mirror** row's Level 2 cell counts it, so a matching copy no reader can retrieve is only partly met, with a "Not public:" warning giving the reason. |
 | Zenodo deposit (Project block: **Zenodo archive**) | Project | Published files match a Zenodo deposit with a DOI. |
+| Zenodo archive is public (Project block: part of **Zenodo archive**) | Project | Every declared Zenodo record serves its files to a reader with no login; a restricted or embargoed record keeps its DOI but withholds its files. As with GitHub, the **Zenodo archive** row's Level 2 cell counts it and carries the "Not public:" warning. |
 | Overleaf manuscript | Project | Opt-in: checked only when an Overleaf project is bound, and then required: a recent Overleaf check found every figure matching. Unbound, it reads not applicable and never blocks. |
 | arXiv manuscript (Project block: **arXiv submission**) | Project | Opt-in: checked only when an arXiv submission is recorded. |
 | AI model declared (Project block: **AI models**) | Project | Every model used is declared with vendor, model ID, and dates of use; open-weight models also give their weights source and revision hash. Undeclared is the only failing state. |
@@ -301,7 +303,7 @@ compared".
 | Reproduce script is current | Project | `reproduce.sh` and its rerun assessor match what vaibify would generate for the workflow, under the current comparison policy. |
 | Determinism declared | Project | The researcher has answered how much speed vaibify should trade for repeatable files. The answer chooses the execution settings every rerun replays; either answer passes. |
 | Software declared | Project | Standalone binaries are declared with version and hash captured, or explicitly waived. |
-| Envelope published | Project | The envelope files (reproduce script, manifest, lock, snapshot, Dockerfile) match the copies on GitHub. |
+| Envelope published | Project | The envelope files (reproduce script, rerun assessor, manifest, lock, snapshot, Dockerfile, and whichever of `requirements.txt`, `environment.yml`, and `pyproject.toml` the project has) match the copies on GitHub. |
 | Envelope archived | Project | The same envelope files are in the Zenodo archive. |
 | Environment archived | Project | The container image is in a permanent archive under its own DOI, for the image and platform the envelope pins. |
 | Archives are permanent | Project | Neither archive is a Zenodo sandbox deposit. |
@@ -324,15 +326,23 @@ expected: Level 3 describes a published release, not the working tree.
 ### Reaching Level 3
 
 Level 3 needs the reproducibility envelope (manifest, dependency lock,
-environment snapshot, pinned Dockerfile, and `reproduce.sh`), published
+environment snapshot, pinned Dockerfile, `reproduce.sh` and its rerun
+assessor, and whichever of `requirements.txt`, `environment.yml`, and
+`pyproject.toml` the project has), published
 to GitHub and archived on Zenodo; the container image itself archived,
 because a list of the environment's contents is not enough to rebuild
 it; the answer to the determinism question and the software
 declaration; and an attestation that the researcher has rerun the
 project in a copy of the container and that the rerun passed its
 assessment. The order of the
-final steps matters: for example, `reproduce.sh` must be generated
-before the manifest records its hash. See
+final steps matters. The attestation is keyed to the manifest it was
+made against, so anything that changes the manifest afterwards makes
+it stale: regenerating `reproduce.sh` or the envelope and depositing
+the environment image all re-pin the manifest, and a determinism
+answer that changes the execution settings retires the attestation as
+well. A Zenodo version
+published before the attestation can be corrected only by publishing
+another version. See
 [Reproducibility](reproducibility.md) for the envelope, the
 environment archive, the attestation, and the order in which to do
 them.
