@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The PROOF Ladder &mdash; Vaibify 0.2.3.dev65 documentation</title>
+  <title>The PROOF Ladder &mdash; Vaibify 0.2.3.dev82 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=33ebe145"></script>
+      <script src="_static/documentation_options.js?v=e92f18f3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -371,9 +371,9 @@ given.</p>
 <td><p>Step</p></td>
 <td><p>The step lists its raw input files, or declares it needs none. The Project block shows the same row for all steps, with a one-click declaration for steps that have no inputs.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Integrity, Qualitative, and Quantitative unit tests pass</p></td>
+<tr class="row-odd"><td><p>Unit tests pass; Integrity, Qualitative, and Quantitative tests pass</p></td>
 <td><p>Step</p></td>
-<td><p>One row per test category the step has.</p></td>
+<td><p><strong>Unit tests pass</strong> summarizes all of the step’s tests, and beside it is one row per test category the step has.</p></td>
 </tr>
 <tr class="row-even"><td><p>Your sign-off recorded</p></td>
 <td><p>Step</p></td>
@@ -385,7 +385,7 @@ given.</p>
 </tr>
 <tr class="row-even"><td><p>Cross-step reads declared or dismissed</p></td>
 <td><p>Step</p></td>
-<td><p>Shown once the dependency scan has run. When the scan finds the step’s script reading another step’s declared output, that edge is declared (a <code class="docutils literal notranslate"><span class="pre">{step:&lt;id&gt;.&lt;stem&gt;}</span></code> token or <code class="docutils literal notranslate"><span class="pre">saDependencies</span></code>) or you dismiss the finding; a dismissal holds only while the script is unchanged. A finding made against an older script or output declaration, or a scan that failed, reads “dependency scan not current” until <strong>Rescan dependencies</strong> (<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">rescan-dependencies</span></code>) runs again; that is unknown, never a pass. Dismiss with the button on the row or <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">dismiss-dependency-finding</span></code>.</p></td>
+<td><p>Shown only when it fails or the dependency scan is not current, so it never appears as met. When the scan finds the step’s script reading another step’s declared output, that edge is declared (a <code class="docutils literal notranslate"><span class="pre">{step:&lt;id&gt;.&lt;stem&gt;}</span></code> token or <code class="docutils literal notranslate"><span class="pre">saDependencies</span></code>) or you dismiss the finding; a dismissal holds only while the script is unchanged. A finding made against an older script or output declaration, or a scan that failed, reads “dependency scan not current” until <strong>Rescan dependencies</strong> (<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">rescan-dependencies</span></code>) runs again; that is unknown, never a pass. Dismiss with the button on the row or <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">dismiss-dependency-finding</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Project context file (optional)</p></td>
 <td><p>Project</p></td>
@@ -408,9 +408,17 @@ given.</p>
 <td><p>Project</p></td>
 <td><p>Every published file matches the GitHub repository at a recently verified commit.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Zenodo deposit (Project block: <strong>Zenodo archive</strong>)</p></td>
+<tr class="row-odd"><td><p>GitHub repository is public (Project block: part of <strong>GitHub mirror</strong>)</p></td>
+<td><p>Project</p></td>
+<td><p>A reader with no GitHub login can retrieve the repository; vaibify asks GitHub without credentials, as a reader would. The Project block has no separate row: the <strong>GitHub mirror</strong> row’s Level 2 cell counts it, so a matching copy no reader can retrieve is only partly met, with a “Not public:” warning giving the reason.</p></td>
+</tr>
+<tr class="row-even"><td><p>Zenodo deposit (Project block: <strong>Zenodo archive</strong>)</p></td>
 <td><p>Project</p></td>
 <td><p>Published files match a Zenodo deposit with a DOI.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Zenodo archive is public (Project block: part of <strong>Zenodo archive</strong>)</p></td>
+<td><p>Project</p></td>
+<td><p>Every declared Zenodo record serves its files to a reader with no login; a restricted or embargoed record keeps its DOI but withholds its files. As with GitHub, the <strong>Zenodo archive</strong> row’s Level 2 cell counts it and carries the “Not public:” warning.</p></td>
 </tr>
 <tr class="row-even"><td><p>Overleaf manuscript</p></td>
 <td><p>Project</p></td>
@@ -543,7 +551,7 @@ compared”.</p>
 </tr>
 <tr class="row-odd"><td><p>Envelope published</p></td>
 <td><p>Project</p></td>
-<td><p>The envelope files (reproduce script, manifest, lock, snapshot, Dockerfile) match the copies on GitHub.</p></td>
+<td><p>The envelope files (reproduce script, rerun assessor, manifest, lock, snapshot, Dockerfile, and whichever of <code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">environment.yml</span></code>, and <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> the project has) match the copies on GitHub.</p></td>
 </tr>
 <tr class="row-even"><td><p>Envelope archived</p></td>
 <td><p>Project</p></td>
@@ -594,15 +602,23 @@ expected: Level 3 describes a published release, not the working tree.</p>
 <section id="reaching-level-3">
 <h3>Reaching Level 3<a class="headerlink" href="#reaching-level-3" title="Link to this heading"></a></h3>
 <p>Level 3 needs the reproducibility envelope (manifest, dependency lock,
-environment snapshot, pinned Dockerfile, and <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>), published
+environment snapshot, pinned Dockerfile, <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> and its rerun
+assessor, and whichever of <code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">environment.yml</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> the project has), published
 to GitHub and archived on Zenodo; the container image itself archived,
 because a list of the environment’s contents is not enough to rebuild
 it; the answer to the determinism question and the software
 declaration; and an attestation that the researcher has rerun the
 project in a copy of the container and that the rerun passed its
 assessment. The order of the
-final steps matters: for example, <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> must be generated
-before the manifest records its hash. See
+final steps matters. The attestation is keyed to the manifest it was
+made against, so anything that changes the manifest afterwards makes
+it stale: regenerating <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> or the envelope and depositing
+the environment image all re-pin the manifest, and a determinism
+answer that changes the execution settings retires the attestation as
+well. A Zenodo version
+published before the attestation can be corrected only by publishing
+another version. See
 <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a> for the envelope, the
 environment archive, the attestation, and the order in which to do
 them.</p>

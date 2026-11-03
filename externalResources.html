@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Connecting to External Resources &mdash; Vaibify 0.2.3.dev65 documentation</title>
+  <title>Connecting to External Resources &mdash; Vaibify 0.2.3.dev82 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=33ebe145"></script>
+      <script src="_static/documentation_options.js?v=e92f18f3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -230,8 +230,10 @@ project:</p>
 <section id="what-the-in-container-agent-may-do">
 <h3>What the in-container agent may do<a class="headerlink" href="#what-the-in-container-agent-may-do" title="Link to this heading"></a></h3>
 <p>The agent drives the dashboard through <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>, a curated and tightly controlled list of actions the agent may perform. Every action
-is marked as agent-safe or researcher-only. Actions that make
-something public under your name are researcher-only.</p>
+is marked as agent-safe or researcher-only. Pushing to Overleaf, and
+every Zenodo deposit, publication or metadata edit, are
+researcher-only. Pushing selected files to GitHub is agent-safe, so in
+a public repository the agent can make files public.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Action</p></th>
@@ -276,8 +278,12 @@ choice for practice, or <strong>Production</strong>, which mints real DOIs) and 
 personal access token from that instance with the <code class="docutils literal notranslate"><span class="pre">deposit:write</span></code>
 and <code class="docutils literal notranslate"><span class="pre">deposit:actions</span></code> scopes. Sandbox and production are separate
 sites with separate accounts and tokens.</p></li>
-<li><p><strong>GitHub</strong>: nothing, if <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">login</span></code> has been run on the host;
-otherwise a per-repository token.</p></li>
+<li><p><strong>GitHub</strong>: nothing; the dialog does not open for GitHub. Vaibify
+uses a token stored in the host keyring slot
+<code class="docutils literal notranslate"><span class="pre">github_token:&lt;owner&gt;/&lt;repo&gt;</span></code> if there is one, and otherwise your
+host’s <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span></code> login. When neither resolves, or the project
+repository cannot reach GitHub, the dashboard says “GitHub uses gh
+auth. Run ‘gh auth login’ on your host machine.”</p></li>
 </ul>
 <section id="confirming-where-a-token-may-be-spent">
 <h3>Confirming where a token may be spent<a class="headerlink" href="#confirming-where-a-token-may-be-spent" title="Link to this heading"></a></h3>
@@ -286,16 +292,68 @@ otherwise a per-repository token.</p></li>
 trusts lives on your machine, under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/bindings/</span></code>, in a record
 keyed by the project’s own identity (a random <code class="docutils literal notranslate"><span class="pre">sProjectUuid</span></code> in the
 registry, kept across renames) and by the workflow (its file path and
-name). Only you write that record: the Remotes panel’s binding view
-(<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/bindings/...</span></code>) shows what <code class="docutils literal notranslate"><span class="pre">project.json</span></code> names beside what
-your own token fetched about it, and <strong>Confirm</strong> (or, on the host,
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">confirm-remote-binding</span> <span class="pre">sService=overleaf</span></code> or
-<code class="docutils literal notranslate"><span class="pre">sService=zenodo</span></code>) records it. Every Overleaf push, pull and mirror
-refresh, and every Zenodo deposit, publish and Make Permanent, reads
-its target from that record and refuses when <code class="docutils literal notranslate"><span class="pre">project.json</span></code> disagrees,
-naming both values. A workflow you move or rename has no binding until
-you confirm again; the confirmation can carry the old one across. After
-a deposit vaibify made, the record follows the new deposition itself.</p>
+name). Only you write that record, one confirmation at a time, and it
+holds three kinds of entry for each workflow:</p>
+<ul class="simple">
+<li><p><strong>Overleaf</strong>: the project your Overleaf token may push to and pull
+from.</p></li>
+<li><p><strong>The Zenodo project record</strong>, one entry for each site. On the site
+<code class="docutils literal notranslate"><span class="pre">project.json</span></code> declares, the entry names the record (concept DOI and
+deposition) that site’s deposits continue, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code> must
+agree with it. On the other site <code class="docutils literal notranslate"><span class="pre">project.json</span></code> says nothing, and the
+entry governs alone. An entry that names no record yet authorizes a
+<strong>new</strong> record there: promoting a project from the Zenodo sandbox
+(testing) to zenodo.org (permanent) needs exactly that.</p></li>
+<li><p><strong>The Zenodo environment archive</strong>, one entry for each site: whether
+the container image may be deposited there. It names no record, is
+never compared with <code class="docutils literal notranslate"><span class="pre">project.json</span></code>, and no project deposit touches it.</p></li>
+</ul>
+<p><strong>Notices and the review.</strong> When a project opens, a notice appears for
+each entry that applies and is not confirmed, or that <code class="docutils literal notranslate"><span class="pre">project.json</span></code>
+disagrees with, and its <strong>Review and confirm…</strong> button opens the review.
+An action that needs an entry you have not confirmed opens the same
+review instead of failing. The review sets side by side what
+<code class="docutils literal notranslate"><span class="pre">project.json</span></code> names, what you confirmed and what vaibify could see with
+your own token, and says what <strong>Confirm</strong> authorizes. Confirm records
+exactly that entry, and the refused action runs again, once. If the
+project view changes while you are confirming, the review closes and
+nothing is run again. A disagreement carries the sentence “If you did
+not make this change, an agent edited project.json.”</p>
+<p><strong>The evidence</strong>, strongest first, is checked by the hub before anything
+is recorded:</p>
+<ul class="simple">
+<li><p>a deposition your token can read;</p></li>
+<li><p>a published record, whose title and owner are shown for you to
+recognize; a public record proves no ownership;</p></li>
+<li><p>for a new record or an environment archive, that the site accepts
+your token;</p></li>
+<li><p>for Overleaf, that your token can read the project, with its file
+count and latest commit. Overleaf’s Git access gives no title, so the
+review claims none, and links to the project instead.</p></li>
+</ul>
+<p>With no token stored for the site, the review offers to store one and
+then checks again. Evidence that could not be fetched reads “Couldn’t
+check”, in neutral gray, and <strong>Confirm</strong> stays off until <strong>Retry</strong> succeeds.</p>
+<p><strong>On the host</strong>, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">bindings</span> <span class="pre">-p</span> <span class="pre">&lt;project&gt;</span></code> prints the same review
+and the exact <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">confirm-remote-binding</span> <span class="pre">...</span> <span class="pre">sRecordKind=...</span> <span class="pre">sWorkflowKey=...</span> <span class="pre">dictTarget='{...}'</span></code> command that confirms what it
+showed. A confirmation carries what was reviewed: one made for another
+workflow, or for a target that has moved since, is refused as stale,
+and a bare <code class="docutils literal notranslate"><span class="pre">sService=...</span></code> with nothing reviewed is refused too.</p>
+<p><strong>Every token-bearing action</strong> (each Overleaf push, pull and mirror
+refresh; each Zenodo deposit, publish, promotion and recovery; Auto
+Archive) reads its target from that record and refuses with a coded
+reason: <code class="docutils literal notranslate"><span class="pre">BINDING-REQUIRED</span></code> (nothing confirmed), <code class="docutils literal notranslate"><span class="pre">BINDING-MISMATCH</span></code>
+(<code class="docutils literal notranslate"><span class="pre">project.json</span></code> disagrees, naming both values), <code class="docutils literal notranslate"><span class="pre">ZENODO-TOKEN-MISSING</span></code>
+or <code class="docutils literal notranslate"><span class="pre">BINDING-RECORD-INVALID</span></code>. A workflow you move or rename has no
+binding until you confirm again; the confirmation can carry the old one
+across. After a project deposit vaibify made, including one it adopted
+after an interrupted promotion, the project-record entry follows the new
+deposition itself; an environment deposit never changes the record.</p>
+<p><strong>A record vaibify cannot read</strong> is never treated as “nothing
+confirmed” and never converted. The record is written in schema version
+2, and a file in any other form, including one written before November
+2026, refuses every action, naming the file and the remedy: move it
+aside (vaibify reads only <code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">id&gt;.json</span></code>) and confirm again.</p>
 <p><strong>Connect</strong> stores the token and immediately tests it against the
 service. If the test fails, vaibify restores the token you had before
 (or removes the new one if there was none), and the message says which
@@ -325,8 +383,8 @@ rejection, or no answer at all, discards nothing; an unanswered
 check is retried at the next open.</p></li>
 <li><p><strong>You decide.</strong> The dashboard’s banner shows each token’s state, how
 the check went and the titles of the deposits Zenodo reports for it,
-with <strong>Confirm</strong> (it becomes the active token) and <strong>Decline</strong> (it is
-discarded). On the host, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">decide-migrated-zenodo-token</span> <span class="pre">sSlot=zenodo_token_sandbox</span> <span class="pre">sDecision=confirm</span></code> does the same; the
+with <strong>Confirm: this is my token</strong> (it becomes the active token) and
+<strong>Decline: discard it</strong>. On the host, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">decide-migrated-zenodo-token</span> <span class="pre">sSlot=zenodo_token_sandbox</span> <span class="pre">sDecision=confirm</span></code> does the same; the
 unnamed older slot also takes <code class="docutils literal notranslate"><span class="pre">sInstance=sandbox|production</span></code>.
 Until you confirm, every Zenodo action refuses and says so.</p></li>
 </ol>
@@ -334,8 +392,13 @@ Until you confirm, every Zenodo action refuses and says so.</p></li>
 slot names and states, never a value. Moving a token does not revoke
 copies an agent may already have read, so the banner also asks you to
 regenerate your Zenodo tokens (and your Overleaf token) on each
-service’s account page; vaibify cannot revoke them for you. No
-credentials volume is created for a new container; one that already
+service’s account page; vaibify cannot revoke them for you. Answer it
+with <strong>I’ve regenerated them</strong>, after which vaibify asks for each new
+token, or <strong>Keep the current tokens</strong>. Either answer, with its date,
+retires the notice, which returns only if a token is found in a
+container again (a token held in a conflict is found at every open). On
+the host: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">decide-token-rotation</span> <span class="pre">sDecision=regenerated|kept</span></code>.
+No credentials volume is created for a new container; one that already
 exists stays mounted until the move out of it has finished.</p>
 </section>
 </section>
@@ -540,7 +603,7 @@ remote, tinted by that remote’s state.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p>Status pill</p></td>
-<td><p>Blue: the last verification matched every file and is less than 24 hours old. Red: at least one file differs. Yellow: never verified, or stale.</p></td>
+<td><p>Green dot: the last verification matched every file and is less than 24 hours old. Red dot: at least one file differs. Yellow half-filled dot: anything else, including never verified and stale.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Summary</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&lt;matching&gt;/&lt;total&gt;</span> <span class="pre">files</span> <span class="pre">match</span> <span class="pre">SHA-256</span></code>, with the first drifted files named.</p></td>

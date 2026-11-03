@@ -17,9 +17,12 @@ A **container environment** is a Docker container built from a
 `vaibify.yml` recipe. Its files live in a workspace volume
 (`/workspace`) that is separate from your computer's disk, its user is
 unprivileged, and nothing it runs can read or change files on your
-computer. That containment is what makes it safe to let a coding agent
-work for hours without approving each command, and a pinned,
-rebuildable image is what lets a result reach PROOF Level 3.
+computer, except in host directories you mount into it with
+`bindMounts` (read-only unless an entry sets `readWrite: true`; see
+[Advanced Installation](install.md)). That containment is what makes
+it safe to let a coding agent work for hours without approving each
+command, and a pinned, rebuildable image is what lets a result reach
+PROOF Level 3.
 
 A **host environment** ("This machine") is a folder on your own
 computer. Nothing is built, so you can start immediately, but every
@@ -35,7 +38,8 @@ it when the work becomes real.
 
 Running `vaibify` with no subcommand opens the environments page in
 your browser. It lists every environment registered on this computer
-under **This machine**, with four buttons beside the heading:
+under **This machine**, with these buttons beside the heading, followed
+by **Quit vaibify** (see [Sessions](#sessions)):
 
 | Button | Action |
 |---|---|
@@ -138,7 +142,7 @@ environment. Three ship with vaibify, one for each way of working:
 
 | Template | Contains | Use it when |
 |---|---|---|
-| `sandbox` | No Project file | You want to explore freely: write code, make plots, try ideas. There are no steps or tests, so a sandbox sits below Level 1 of [the PROOF Ladder](proofLadder.md); its only property is containment. |
+| `sandbox` | No Project file | You want to explore freely: write code, make plots, try ideas. There are no steps or tests, so a sandbox sits below Level 1 of [the PROOF Ladder](proofLadder.md); in a container, its only property is containment. |
 | `toolkit` | A Project file with no steps, and a `README.md` | You are developing several code repositories that must work together. Each repository listed on the wizard's **Repositories** page is cloned and appears in the **Repos** panel with its branch, uncommitted changes, and push controls. |
 | `workflow` | A runnable two-step Project | You already know the analysis is a sequence of steps. The first step draws random samples; the second plots their histogram, receiving the samples through a `{step:generate-samples.samples}` token, so a new environment makes a figure on its first **Run**. Replace both steps with your own. |
 
@@ -434,7 +438,7 @@ Julia, MATLAB, and Go, and in JSON and YAML files). The **Dependency
 Detection** dialog lists what it found as detected, possible, and
 manual dependencies, and you confirm them. 
 
-**Declared by the researcher.** Soem dependencies are subtle and evade capture by the automatic detector. In those cases, you can declare dependencies.
+**Declared by the researcher.** Some dependencies are subtle and evade capture by the automatic detector. In those cases, you can declare dependencies: name the upstream file in the step's command as a `{step:<id>.<stem>}` token, or add the token to the step's `saDependencies` list when no command names the file (see [The step object](#the-step-object) below).
 
 **Run > Verify Dependencies** checks that every token points to a real
 output of an earlier step, and **View > Dependency Graph** draws a

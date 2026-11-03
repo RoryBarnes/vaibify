@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced Installation &mdash; Vaibify 0.2.3.dev65 documentation</title>
+  <title>Advanced Installation &mdash; Vaibify 0.2.3.dev82 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=33ebe145"></script>
+      <script src="_static/documentation_options.js?v=e92f18f3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -425,8 +425,12 @@ tile’s <strong>⋮</strong> menu and choose <strong>Delete environment…</str
 the container, its workspace volume, and its images; your project
 directory and anything already pushed or published are untouched.
 See <a class="reference internal" href="environmentsAndProjects.html"><span class="std std-doc">Environments and Projects</span></a>.</p></li>
-<li><p><strong>Revoke stored credentials</strong> you no longer need, on each service’s
-own account page; see <a class="reference internal" href="externalResources.html"><span class="std std-doc">Connecting to External
+<li><p><strong>Clear and revoke stored credentials.</strong> The tokens and keys
+vaibify stored stay in the host keyring, under the service name
+<code class="docutils literal notranslate"><span class="pre">vaibify</span></code>, after the package and <code class="docutils literal notranslate"><span class="pre">~/.vaibify</span></code> are gone; delete those
+entries with your keyring’s own manager (Keychain Access on macOS).
+Then revoke each token you no longer need on its service’s own
+account page; see <a class="reference internal" href="externalResources.html"><span class="std std-doc">Connecting to External
 Resources</span></a>.</p></li>
 <li><p><strong>Stop the hub.</strong> Press Ctrl-C in the terminal where you started
 <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>. Closing the browser tab does not stop it.</p></li>
@@ -521,7 +525,7 @@ comment <code class="docutils literal notranslate"><span class="pre">#</span> <s
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">networkMode</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">open</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">open</span></code>, <code class="docutils literal notranslate"><span class="pre">allowlist</span></code> or <code class="docutils literal notranslate"><span class="pre">isolated</span></code>. <code class="docutils literal notranslate"><span class="pre">allowlist</span></code> seals the container behind vaibify’s allowlisting proxy (the wizard’s default for a new project; needs Docker Engine 28); <code class="docutils literal notranslate"><span class="pre">isolated</span></code> is <code class="docutils literal notranslate"><span class="pre">--network</span> <span class="pre">none</span></code>. Neither sealing mode can be combined with <code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>. Takes effect when the container is created (see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">web</span></code>, <code class="docutils literal notranslate"><span class="pre">allowlist</span></code>, <code class="docutils literal notranslate"><span class="pre">open</span></code> or <code class="docutils literal notranslate"><span class="pre">isolated</span></code>. <code class="docutils literal notranslate"><span class="pre">web</span></code> seals the container behind vaibify’s proxy, which reaches any public host but nothing on your machine or network; it is what every new project is created with, by the wizard and by <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code> (a file that names no mode means <code class="docutils literal notranslate"><span class="pre">open</span></code>). <code class="docutils literal notranslate"><span class="pre">allowlist</span></code> is the same seal with the proxy limited to the hosts the project needs. Both need Docker Engine 28. <code class="docutils literal notranslate"><span class="pre">isolated</span></code> is <code class="docutils literal notranslate"><span class="pre">--network</span> <span class="pre">none</span></code>. No sealing mode can be combined with <code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>. Takes effect when the container is created (see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">allowedHosts</span></code></p></td>
 <td><p>list</p></td>
@@ -536,7 +540,7 @@ comment <code class="docutils literal notranslate"><span class="pre">#</span> <s
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
-<td><p>Let graphical programs in the container open windows on your display. The container gets its own untrusted X authorization, revoked when it stops; on a server without the SECURITY extension (XQuartz, MacPorts X11) it holds a copy of the server’s cookie instead, which is full display access (see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). Refused with <code class="docutils literal notranslate"><span class="pre">networkIsolation:</span> <span class="pre">true</span></code>. Takes effect when the container is created</p></td>
+<td><p>Let graphical programs in the container open windows on your display. The container gets its own untrusted X authorization, revoked when it stops; on a server without the SECURITY extension (XQuartz, MacPorts X11), or on a host without libX11 or libXext, it holds a copy of the server’s cookie instead, which is full display access (see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). Refused with <code class="docutils literal notranslate"><span class="pre">networkMode:</span> <span class="pre">isolated</span></code> (or <code class="docutils literal notranslate"><span class="pre">networkIsolation:</span> <span class="pre">true</span></code>), <code class="docutils literal notranslate"><span class="pre">web</span></code> or <code class="docutils literal notranslate"><span class="pre">allowlist</span></code>. Takes effect when the container is created</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">neverSleep</span></code></p></td>
 <td><p>boolean</p></td>
@@ -609,10 +613,9 @@ comment <code class="docutils literal notranslate"><span class="pre">#</span> <s
 </tbody>
 </table>
 <p>A <code class="docutils literal notranslate"><span class="pre">bindMounts</span></code> host path must be absolute (Docker does not expand <code class="docutils literal notranslate"><span class="pre">~</span></code>),
-must exist, and must lie under your home directory or the project
-repository. Every mount is read-only inside the container unless its
-entry sets <code class="docutils literal notranslate"><span class="pre">readWrite:</span> <span class="pre">true</span></code>; an entry carrying the retired <code class="docutils literal notranslate"><span class="pre">readOnly</span></code>
-key, or any key other than <code class="docutils literal notranslate"><span class="pre">host</span></code>, <code class="docutils literal notranslate"><span class="pre">container</span></code> and <code class="docutils literal notranslate"><span class="pre">readWrite</span></code>, is
+must exist, and must lie under your home directory. Every mount is
+read-only inside the container unless its entry sets <code class="docutils literal notranslate"><span class="pre">readWrite:</span> <span class="pre">true</span></code>;
+an entry carrying the retired <code class="docutils literal notranslate"><span class="pre">readOnly</span></code> key, or any key other than <code class="docutils literal notranslate"><span class="pre">host</span></code>, <code class="docutils literal notranslate"><span class="pre">container</span></code> and <code class="docutils literal notranslate"><span class="pre">readWrite</span></code>, is
 refused. Vaibify refuses any mount that overlaps a credential or
 configuration directory (<code class="docutils literal notranslate"><span class="pre">~/.ssh</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.aws</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.gnupg</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.docker</span></code>,
 <code class="docutils literal notranslate"><span class="pre">~/.kube</span></code>, all of <code class="docutils literal notranslate"><span class="pre">~/.config</span></code>, the agent homes <code class="docutils literal notranslate"><span class="pre">~/.claude</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.codex</span></code>
@@ -678,14 +681,19 @@ container’s mode until it is created again.</p>
 </tr>
 </tbody>
 </table>
-<p>Every enabled agent receives the same vaibify context, skills,
-persistent configuration directory, and <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> bridge to the
+<p>Every enabled agent receives the same vaibify context, skills, and
+persistent configuration directory. Its <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> bridge to the
+dashboard reaches the hub through <code class="docutils literal notranslate"><span class="pre">host.docker.internal</span></code> in <code class="docutils literal notranslate"><span class="pre">open</span></code>
+mode and through the proxy in <code class="docutils literal notranslate"><span class="pre">web</span></code> and <code class="docutils literal notranslate"><span class="pre">allowlist</span></code> mode; an <code class="docutils literal notranslate"><span class="pre">isolated</span></code>
+container has no network, so there <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> cannot reach the
 dashboard.</p>
 </section>
 <section id="reproducibility">
 <h3>Reproducibility<a class="headerlink" href="#reproducibility" title="Link to this heading"></a></h3>
-<p>Nested under <code class="docutils literal notranslate"><span class="pre">reproducibility</span></code>; how these are used is described in
-<a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a>.</p>
+<p>Nested under <code class="docutils literal notranslate"><span class="pre">reproducibility</span></code>. vaibify reads and keeps these keys,
+but no current operation uses them: the Zenodo instance and the
+Overleaf project are chosen in the dashboard’s <strong>Setup Connection</strong>
+dialog (see <a class="reference internal" href="externalResources.html"><span class="std std-doc">Connecting to External Resources</span></a>).</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Key</p></th>

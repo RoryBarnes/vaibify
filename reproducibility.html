@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.2.3.dev65 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.2.3.dev82 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=33ebe145"></script>
+      <script src="_static/documentation_options.js?v=e92f18f3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -138,7 +138,7 @@ environment, saves it permanently, reruns the project in it, and judges
 what the rerun produced.</p>
 <section id="proof-level-3-reproducible">
 <h2>PROOF Level 3 — Reproducible<a class="headerlink" href="#proof-level-3-reproducible" title="Link to this heading"></a></h2>
-<p>A project reaches Level 3 when four things exist:</p>
+<p>Level 3 rests on four things:</p>
 <ol class="arabic simple">
 <li><p><strong>A fingerprint of every file.</strong> A list of every input, script and
 output in the project, each with its SHA-256 hash, a 64-character
@@ -151,6 +151,11 @@ and the archived environment.</p></li>
 its assessment: every output byte-identical, or the published
 comparisons passing over it.</p></li>
 </ol>
+<p>These four are the heart of the level, not the whole of it: Level 3
+also checks the dependency lock, the pinned Dockerfile, the
+determinism answer, the software declaration, the envelope’s published
+and archived copies, and more. The <a class="reference internal" href="proofLadder.html#level-3-requirements"><span class="std std-ref">PROOF Ladder</span></a>
+lists every Level 3 requirement.</p>
 <p>Level 3 requires a containerized project, because only a container can
 be saved and rerun exactly; a project in host mode reaches at most Level
 2. It also builds on Level 1: the project lives in a git repository,
@@ -202,11 +207,17 @@ be checked on its own:</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">.vaibify/rerunAssessment.py</span></code></p></td>
 <td><p>The assessor <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> runs, and the comparison policy it grades under</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">environment.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code></p></td>
+<td><p>The project’s own dependency declarations, whichever of them it has</p></td>
+</tr>
 </tbody>
 </table>
-<p>The <strong>Artifacts</strong> section of the Project block has a row for each file.
-You rarely write any of them by hand: <strong>Regenerate now</strong> rewrites the
-whole envelope, and vaibify regenerates it automatically the first time
+<p>The <strong>Artifacts</strong> section of the Project block has a row for each of
+the first five files. You rarely write any of them by hand:
+<strong>Regenerate now</strong> rewrites the manifest, the dependency lock and the
+environment snapshot; the reproduce script row has <strong>Generate
+reproduce.sh</strong>, and the Dockerfile row <strong>Copy image Dockerfile into
+repo</strong>. Vaibify regenerates the envelope automatically the first time
 the project reaches Level 1.</p>
 <section id="tier-1-the-manifest">
 <h3>Tier 1 — the manifest<a class="headerlink" href="#tier-1-the-manifest" title="Link to this heading"></a></h3>

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.2.3.dev65 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.2.3.dev82 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=33ebe145"></script>
+      <script src="_static/documentation_options.js?v=e92f18f3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -100,7 +100,10 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#vaibify-do">vaibify do</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#recovering-a-quarantined-container">Recovering a quarantined container</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#credentials">Credentials</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#credentials">Credentials</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-bindings">vaibify bindings</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#remote-machines">Remote machines</a></li>
 </ul>
 </li>
@@ -134,9 +137,12 @@
              
   <section id="cli-reference">
 <h1>CLI Reference<a class="headerlink" href="#cli-reference" title="Link to this heading"></a></h1>
-<p>The vaibify core is fully scriptable. Everything the dashboard does can
-also be driven from the command line, so a build, a run, a test pass,
-or a PROOF report can be part of a script or a scheduled job. The
+<p>The vaibify core is fully scriptable. Every dashboard action, apart
+from the few that only a browser needs, can also be driven from the
+command line, so a build, a run, a test pass, or a PROOF report can be
+part of a script or a scheduled job. Commands that drive the hub, such
+as <a class="reference internal" href="#vaibify-do">vaibify do</a>, need it running, and one that claims a
+container is refused while a dashboard tab holds that container. The
 other pages describe the dashboard; this page is the command-line
 counterpart.</p>
 <p>The command is <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>, with the shorthand <code class="docutils literal notranslate"><span class="pre">vaib</span></code>. Every command
@@ -276,10 +282,13 @@ directory.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">revoke</span> <span class="pre">github|overleaf|zenodo</span></code></p></td>
 <td><p>Remove a stored credential and revoke it upstream where possible</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">remote</span> <span class="pre">DESTINATION</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bindings</span></code></p></td>
+<td><p>Show where this workflow’s tokens may be spent, and the command that confirms it</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remote</span> <span class="pre">DESTINATION</span></code></p></td>
 <td><p>Open a dashboard for another machine over SSH</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remote-helper</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">remote-helper</span></code></p></td>
 <td><p>The far end of <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code>; not run by hand</p></td>
 </tr>
 </tbody>
@@ -320,7 +329,9 @@ vaibify<span class="w"> </span>init<span class="w"> </span>--name<span class="w"
 </table>
 <p>With a template, <code class="docutils literal notranslate"><span class="pre">init</span></code> copies the template’s files into the current
 directory, moves any <code class="docutils literal notranslate"><span class="pre">project.json</span></code> into <code class="docutils literal notranslate"><span class="pre">.vaibify/projects/</span></code>, writes a
-<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> from the built-in defaults, and registers the project. It
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> from the built-in defaults, and registers the project.
+Every form of <code class="docutils literal notranslate"><span class="pre">init</span></code> writes <code class="docutils literal notranslate"><span class="pre">networkMode:</span> <span class="pre">web</span></code>: the public internet
+through vaibify’s proxy, and nothing on your machine or network. It
 refuses, before writing anything, when <code class="docutils literal notranslate"><span class="pre">.vaibify/projects/project.json</span></code>
 already exists. Because a build clones only the repositories named in
 <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">init</span></code> warns when a template’s <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> lists
@@ -360,7 +371,7 @@ reason; never counted as ok). Every <code class="docutils literal notranslate"><
 for the runtime this machine actually uses. For a running container,
 doctor also reports whether it was created consistently with
 <code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>, which is fixed when a container is created, and
-what its network mode is (an allowlist-mode container reaches the
+what its network mode is (a web- or allowlist-mode container reaches the
 network only through its proxy; see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). <code class="docutils literal notranslate"><span class="pre">--quiet</span></code> hides the <code class="docutils literal notranslate"><span class="pre">ok</span></code>
 lines, <code class="docutils literal notranslate"><span class="pre">--json</span></code> emits the results as JSON, and <code class="docutils literal notranslate"><span class="pre">--explain</span> <span class="pre">CHECK</span></code>
 prints how one check decides and nothing else.</p>
@@ -781,20 +792,23 @@ it stops the session it is given, the same as closing its terminal.</p>
 </section>
 <section id="vaibify-do">
 <h2>vaibify do<a class="headerlink" href="#vaibify-do" title="Link to this heading"></a></h2>
-<p>Every dashboard action has a command-line equivalent. Most are
+<p>Every dashboard action, apart from the few named below that only a
+browser needs, has a command-line equivalent. Most are
 <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> subcommands, generated from two lists: the agent-action
 catalog, which the dashboard and the in-container <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> also
 use, and a researcher-only list that is never shipped into a container
-(container settings, the Agent Council, uploads, file transfers).
+(container settings, the Agent Council, repository tracking and pushes,
+containerization).
 <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> authenticates as the researcher, so actions reserved for
 the researcher (user-only actions, such as <code class="docutils literal notranslate"><span class="pre">clean-outputs</span></code>) are
 available here; <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> constrains an agent in a container, not
 the researcher at their own terminal. The agent’s in-container usage
 is described in <a class="reference internal" href="forAgents.html"><span class="std std-doc">For Agents</span></a>.</p>
-<p>The rest have a hand-written home: credentials are <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span></code>, building and starting are <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code>, registering a directory is <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">register</span></code>, and opening a
-project in another tab is <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">open</span></code>. A handful of dashboard
-actions have no command-line form because they only make sense in a
-browser, such as moving a live session into a fresh tab.
+<p>The rest have a hand-written home: credentials are <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span></code>, building and starting are <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code>, registering a directory is <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">register</span></code>, and moving a
+live session into a fresh browser tab is <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">open</span></code>. A handful of
+dashboard actions have no command-line form because they only make
+sense in a browser, such as renewing a tab’s session or acknowledging a
+browser warning.
 <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py::testEveryGuiInvokedMutationHasCliEquivalent</span></code>
 fails when a new dashboard action has none of these.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span><span class="k">do</span><span class="w">                          </span><span class="c1"># list every action</span>
@@ -840,8 +854,9 @@ are <code class="docutils literal notranslate"><span class="pre">key=value</span
 one with <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> in another terminal), and the dashboard shows every
 action as it runs. The command claims the container for one action and
 then releases it, so a container open in a dashboard tab is refused
-rather than taken over: close that tab, or run the action from inside
-the container with <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>.</p>
+rather than taken over: close that tab (or release the container from
+the dashboard’s picker), or, for an action the in-container agent may
+run, run it from inside the container with <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>.</p>
 <p>An action that starts work the hub carries on with, such as a run or
 <strong>Verify Level 3</strong>, returns once that work has finished: the release
 waits for it, says so, and gives up after <code class="docutils literal notranslate"><span class="pre">--timeout</span></code> seconds with the
@@ -927,19 +942,19 @@ judgments available only here:</p>
 <td><p>Remove a provider’s key</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">set</span> <span class="pre">github|overleaf|zenodo</span> <span class="pre">[--project-id</span> <span class="pre">ID]</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
-<td><p>Store a publishing token for a project, read from a prompt that does not echo</p></td>
+<td><p>Store the Overleaf token (one slot for the whole host) or a project’s Zenodo token, read from a prompt that does not echo. GitHub stores nothing here (see below)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">status</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
 <td><p>Report which remotes are configured and reachable</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">delete</span> <span class="pre">github|overleaf|zenodo</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">delete</span> <span class="pre">github|overleaf|zenodo</span> <span class="pre">[--keyring-slot</span> <span class="pre">SLOT]</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
 <td><p>The same as <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">github</span> <span class="pre">[--keyring-slot</span> <span class="pre">SLOT]</span></code></p></td>
-<td><p>Remove the stored GitHub credential, or one repository’s with <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code>, and revoke it upstream where possible</p></td>
+<td><p>Run <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">logout</span></code> for github.com, and with <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code> clear that one repository’s stored token. Without <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code> nothing local is cleared, so it exits 1</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">overleaf</span></code></p></td>
-<td><p>The same, for Overleaf</p></td>
+<td><p>Clear the stored Overleaf token; Overleaf offers no way to revoke it from here (see below)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">zenodo</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
 <td><p>The same, for one project’s token on one Zenodo instance (default <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>; the project is the current directory’s unless named)</p></td>
@@ -951,18 +966,40 @@ forms. The token is read at a hidden prompt and sent only in the body
 of one request to the hub on this machine; it never appears on the
 command line, in an environment variable, or in any message the
 command prints. <code class="docutils literal notranslate"><span class="pre">--project-id</span></code> binds an Overleaf project, and
-<code class="docutils literal notranslate"><span class="pre">--instance</span></code> chooses the Zenodo instance (default <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>).</p>
+<code class="docutils literal notranslate"><span class="pre">--instance</span></code> chooses the Zenodo instance (default <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>). GitHub
+has no token to set: vaibify uses the host’s <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">login</span></code>, so
+<code class="docutils literal notranslate"><span class="pre">credential</span> <span class="pre">set</span> <span class="pre">github</span></code> stores nothing and prints the hub’s answer
+that GitHub keeps no stored credential.</p>
 <p><code class="docutils literal notranslate"><span class="pre">revoke</span></code> prints whether the upstream token was revoked and whether the
 local copy was cleared, and exits non-zero if the local copy was not
-cleared. For GitHub it also runs <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">logout</span></code>. Overleaf and Zenodo
+cleared. For GitHub it runs <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">logout</span></code> and clears a local copy
+only when <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code> names one, so without that option it exits
+non-zero even when the logout succeeds. Overleaf and Zenodo
 offer tools no way to revoke a token, so for them the command clears
 the local copy and names the account page where you revoke the token
 yourself; do that too, because clearing a local copy does not
 invalidate a token that may have been copied elsewhere. A Zenodo token
 is stored per project, so <code class="docutils literal notranslate"><span class="pre">revoke</span> <span class="pre">zenodo</span></code> clears one project’s slot
 for one instance. A token moved out of an older container awaits your
-decision in the dashboard, or with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">decide-migrated-zenodo-token</span> <span class="pre">sSlot=&lt;slot&gt;</span> <span class="pre">sDecision=confirm|decline</span></code>
+decision in the dashboard, or with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">decide-migrated-zenodo-token</span> <span class="pre">sSlot=&lt;slot&gt;</span> <span class="pre">sDecision=confirm|decline</span></code>,
+and the notice to regenerate your tokens is answered with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">decide-token-rotation</span> <span class="pre">sDecision=regenerated|kept</span></code>
 (see <a class="reference internal" href="externalResources.html"><span class="std std-doc">External Resources</span></a>).</p>
+<section id="vaibify-bindings">
+<h3>vaibify bindings<a class="headerlink" href="#vaibify-bindings" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>bindings<span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--workflow<span class="w"> </span>PATH<span class="o">]</span><span class="w"> </span><span class="o">[</span>--all<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span>
+</pre></div>
+</div>
+<p>Read-only. Prints, for the workflow’s Overleaf project and each Zenodo
+project record and environment archive that applies or is already
+confirmed (every entry with <code class="docutils literal notranslate"><span class="pre">--all</span></code>): what <code class="docutils literal notranslate"><span class="pre">project.json</span></code> names, what
+you confirmed, what the hub could see with your own token, and the exact
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">confirm-remote-binding</span></code> command that confirms what it
+showed. Run that command to confirm; the hub refuses it if the workflow
+or its target has moved since you looked. A binding record vaibify
+cannot read is named, with the remedy. Like <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code>, it claims the
+container for the moment it asks, so release the container from the
+dashboard first.</p>
+</section>
 </section>
 <section id="remote-machines">
 <h2>Remote machines<a class="headerlink" href="#remote-machines" title="Link to this heading"></a></h2>

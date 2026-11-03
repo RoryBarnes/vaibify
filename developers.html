@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.2.3.dev65 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.2.3.dev82 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=33ebe145"></script>
+      <script src="_static/documentation_options.js?v=e92f18f3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -176,9 +176,14 @@ testing matters, and how to run them all.</p>
 <h2>Portability and CI<a class="headerlink" href="#portability-and-ci" title="Link to this heading"></a></h2>
 <p>All code must work on both macOS and Linux, and with Python versions
 3.9 through 3.14. GitHub Actions runs unit tests on every pull request
-across all permutations of Ubuntu 22.04/24.04, macOS 15/26, and
-Python 3.9 through 3.14. Tests that require a running Docker daemon
-are excluded from CI and run locally. Documentation is rebuilt and
+across all permutations of Ubuntu 22.04/24.04 and Python 3.9 through
+3.14, and on macOS 15/26 with Python 3.9 and 3.14; every macOS
+permutation runs nightly (<code class="docutils literal notranslate"><span class="pre">tests-macos-nightly.yml</span></code>). Tests that
+require a running Docker daemon are excluded from those unit matrices.
+A separate <code class="docutils literal notranslate"><span class="pre">docker-smoke</span></code> job in <code class="docutils literal notranslate"><span class="pre">tests-linux.yml</span></code> runs the live-daemon
+(<code class="docutils literal notranslate"><span class="pre">docker_live</span></code>) tests on every pull request, the container lanes below
+run a real container and the agent command-line installs, and the rest
+run locally. Documentation is rebuilt and
 deployed automatically on every merge to main.</p>
 <p>A separate CI job (<code class="docutils literal notranslate"><span class="pre">agent-docs-path-check</span></code>) verifies that every path
 reference in <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> and <code class="docutils literal notranslate"><span class="pre">SKILL.md</span></code> files resolves to an existing

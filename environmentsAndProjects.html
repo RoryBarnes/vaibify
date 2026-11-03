@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Environments and Projects &mdash; Vaibify 0.2.3.dev65 documentation</title>
+  <title>Environments and Projects &mdash; Vaibify 0.2.3.dev82 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=33ebe145"></script>
+      <script src="_static/documentation_options.js?v=e92f18f3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -150,9 +150,12 @@ Projects. You manage both through the dashboard in your browser.</p>
 <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> recipe. Its files live in a workspace volume
 (<code class="docutils literal notranslate"><span class="pre">/workspace</span></code>) that is separate from your computer’s disk, its user is
 unprivileged, and nothing it runs can read or change files on your
-computer. That containment is what makes it safe to let a coding agent
-work for hours without approving each command, and a pinned,
-rebuildable image is what lets a result reach PROOF Level 3.</p>
+computer, except in host directories you mount into it with
+<code class="docutils literal notranslate"><span class="pre">bindMounts</span></code> (read-only unless an entry sets <code class="docutils literal notranslate"><span class="pre">readWrite:</span> <span class="pre">true</span></code>; see
+<a class="reference internal" href="install.html"><span class="std std-doc">Advanced Installation</span></a>). That containment is what makes
+it safe to let a coding agent work for hours without approving each
+command, and a pinned, rebuildable image is what lets a result reach
+PROOF Level 3.</p>
 <p>A <strong>host environment</strong> (“This machine”) is a folder on your own
 computer. Nothing is built, so you can start immediately, but every
 command runs with your full user authority: your files, your network,
@@ -167,7 +170,8 @@ it when the work becomes real.</p>
 <h3>The environments page<a class="headerlink" href="#the-environments-page" title="Link to this heading"></a></h3>
 <p>Running <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> with no subcommand opens the environments page in
 your browser. It lists every environment registered on this computer
-under <strong>This machine</strong>, with four buttons beside the heading:</p>
+under <strong>This machine</strong>, with these buttons beside the heading, followed
+by <strong>Quit vaibify</strong> (see <a class="reference internal" href="#sessions">Sessions</a>):</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Button</p></th>
@@ -311,7 +315,7 @@ environment. Three ship with vaibify, one for each way of working:</p>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sandbox</span></code></p></td>
 <td><p>No Project file</p></td>
-<td><p>You want to explore freely: write code, make plots, try ideas. There are no steps or tests, so a sandbox sits below Level 1 of <a class="reference internal" href="proofLadder.html"><span class="std std-doc">the PROOF Ladder</span></a>; its only property is containment.</p></td>
+<td><p>You want to explore freely: write code, make plots, try ideas. There are no steps or tests, so a sandbox sits below Level 1 of <a class="reference internal" href="proofLadder.html"><span class="std std-doc">the PROOF Ladder</span></a>; in a container, its only property is containment.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">toolkit</span></code></p></td>
 <td><p>A Project file with no steps, and a <code class="docutils literal notranslate"><span class="pre">README.md</span></code></p></td>
@@ -631,7 +635,7 @@ file reads (in Python, R, C, Fortran, Rust, JavaScript, Perl, shell,
 Julia, MATLAB, and Go, and in JSON and YAML files). The <strong>Dependency
 Detection</strong> dialog lists what it found as detected, possible, and
 manual dependencies, and you confirm them.</p>
-<p><strong>Declared by the researcher.</strong> Soem dependencies are subtle and evade capture by the automatic detector. In those cases, you can declare dependencies.</p>
+<p><strong>Declared by the researcher.</strong> Some dependencies are subtle and evade capture by the automatic detector. In those cases, you can declare dependencies: name the upstream file in the step’s command as a <code class="docutils literal notranslate"><span class="pre">{step:&lt;id&gt;.&lt;stem&gt;}</span></code> token, or add the token to the step’s <code class="docutils literal notranslate"><span class="pre">saDependencies</span></code> list when no command names the file (see <a class="reference internal" href="#the-step-object">The step object</a> below).</p>
 <p><strong>Run &gt; Verify Dependencies</strong> checks that every token points to a real
 output of an earlier step, and <strong>View &gt; Dependency Graph</strong> draws a
 graph that illustrates how all the steps depend on each other.</p>

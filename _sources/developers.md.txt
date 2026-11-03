@@ -74,9 +74,14 @@ testing matters, and how to run them all.
 
 All code must work on both macOS and Linux, and with Python versions
 3.9 through 3.14. GitHub Actions runs unit tests on every pull request
-across all permutations of Ubuntu 22.04/24.04, macOS 15/26, and
-Python 3.9 through 3.14. Tests that require a running Docker daemon
-are excluded from CI and run locally. Documentation is rebuilt and
+across all permutations of Ubuntu 22.04/24.04 and Python 3.9 through
+3.14, and on macOS 15/26 with Python 3.9 and 3.14; every macOS
+permutation runs nightly (`tests-macos-nightly.yml`). Tests that
+require a running Docker daemon are excluded from those unit matrices.
+A separate `docker-smoke` job in `tests-linux.yml` runs the live-daemon
+(`docker_live`) tests on every pull request, the container lanes below
+run a real container and the agent command-line installs, and the rest
+run locally. Documentation is rebuilt and
 deployed automatically on every merge to main.
 
 A separate CI job (`agent-docs-path-check`) verifies that every path

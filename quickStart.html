@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.2.3.dev65 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.2.3.dev82 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=33ebe145"></script>
+      <script src="_static/documentation_options.js?v=e92f18f3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -144,7 +144,7 @@ workspace (a “sandbox”) in which you can experiment in the environment. All 
 </section>
 <section id="check-the-archive-before-touching-it">
 <h2>4. Check the archive before touching it<a class="headerlink" href="#check-the-archive-before-touching-it" title="Link to this heading"></a></h2>
-<p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hashes of every file in the repository, compares them to the repository’s file <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> that contains the summary of the tracked files, and reports if they match. In this case, they will.</p>
+<p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hash of every file listed in the repository’s file <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>, compares each with the hash recorded there, and reports if they match. In this case, they will.</p>
 <p>This result <em>must</em> hold for a freshly cloned Level 3 project because nothing has changed. You have
 confirmed that the files in your clone are byte-for-byte identical to the files the
 author committed. Note that this check is <em>not</em> a statement about the
@@ -217,7 +217,7 @@ and build again (try working with an AI agent or pressing <strong>Run a diagnosi
 </tr>
 <tr class="row-even"><td><p>3</p></td>
 <td><p><strong>Features &amp; Authentication</strong></p></td>
-<td><p>Select one of the available coding agents. LaTeX and the other base features are grayed out because the author’s image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under <em>Resource limits</em>, leave <em>CPU cores</em> at <strong>all cores -1</strong>, which leaves 1 reserved for the host (you can still use all of them outside the container); and <em>Memory (GB)</em> at <strong>5</strong>, or less if Colima has less: the <strong>Set up Docker</strong> wizard gives Colima half of your computer’s memory, but never more than your memory minus 4 GB, so on an 8 GB Mac Colima has 4 GB (<code class="docutils literal notranslate"><span class="pre">colima</span> <span class="pre">list</span></code> shows it). (You can adjust this later if you choose to keep the container.) Click “Next”.</p></td>
+<td><p>Select one of the available coding agents. LaTeX and the other base features are grayed out because the author’s image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under <em>Resource limits</em>, leave <em>CPU cores</em> blank, which reads <strong>all cores − 1</strong> and leaves 1 reserved for the host (you can still use all of them outside the container); and leave <em>Memory (GB)</em> blank, which reads <strong>unlimited</strong>: the container may use all the memory Docker has. On a Mac that is what Colima has: the <strong>Set up Docker</strong> wizard gives Colima half of your computer’s memory, but never more than your memory minus 4 GB, so on an 8 GB Mac Colima has 4 GB (<code class="docutils literal notranslate"><span class="pre">colima</span> <span class="pre">list</span></code> shows it). (You can adjust this later if you choose to keep the container.) Click “Next”.</p></td>
 </tr>
 <tr class="row-odd"><td><p>4</p></td>
 <td><p><strong>Files to Copy</strong></p></td>
@@ -230,14 +230,14 @@ and build again (try working with an AI agent or pressing <strong>Run a diagnosi
 </tbody>
 </table>
 <p>You will then see a dialog box that shows the log of the download of the 733 MB image from Zenodo. Depending on your connection, <em>this download may take an hour or more.</em> If the connection drops, <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> resumes the download. If it keeps failing, <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> pauses with the partial download kept and presents a “Try again” button. Note that if you cancel a download, the partial file is deleted.</p>
-<p>When the conversion finishes, you return to the Environments Hub and the ai-greenhouse environment will look the same except the <code class="docutils literal notranslate"><span class="pre">host-mode</span></code> badges become <code class="docutils literal notranslate"><span class="pre">contained</span></code>. The steps still do the
+<p>When the conversion finishes, you return to the Environments Hub and the ai-greenhouse environment will look the same except its <code class="docutils literal notranslate"><span class="pre">uncontained</span></code> chip becomes <code class="docutils literal notranslate"><span class="pre">contained</span></code>. The steps still do the
 same things, but now they do them in the pinned environment, and the
 PROOF tab’s Level 3 row stops saying the project has no image and instead reports on whether the author answered the determinism question
 (how much speed vaibify should trade for repeatable files), and whether a rerun from that image passes its assessment. The author’s answer is
 recorded with the project, so every rerun of it uses the same execution settings.</p>
 <p>This process does not create a second project. Your clone stays on your host machine — the same directory, the same git history, the same outputs you
 just produced; only the runtime settings in its <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> change. The difference is that there is now an exact duplicate in a new Docker container whose environment is identical to the one the author used. Furthermore, your <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> interactions will now take place inside this container leaving your own computer safe.</p>
-<p>At this point, the environment is downloaded, but its container has not yet been started. You will be asked if you want to <strong>Start container</strong> and you should press that button. If at a later time you want to start a stopped container, you can click the kebab menu (<strong>⋮</strong>) and select <strong>Start</strong>. A dark red circle next to the environment’s name means the container is stopped (not using host machine resources);  a blue check means the container is active. Once it starts, you will see a notice that confirms your files were copied into the container. Now go ahead and select the <code class="docutils literal notranslate"><span class="pre">ai-greenhouse</span></code> environment and then the <code class="docutils literal notranslate"><span class="pre">AI</span> <span class="pre">Greenhouse</span></code> Project to return to its dashboard.</p>
+<p>At this point, the environment is downloaded, but its container has not yet been started. You will be asked if you want to <strong>Start container</strong> and you should press that button. If at a later time you want to start a stopped container, you can click the kebab menu (<strong>⋮</strong>) and select <strong>Start</strong>. A gray circle next to the environment’s name means the container is stopped (not using host machine resources);  a blue check means the container is active. Once it starts, you will see a notice that confirms your files were copied into the container. Now go ahead and select the <code class="docutils literal notranslate"><span class="pre">ai-greenhouse</span></code> environment and then the <code class="docutils literal notranslate"><span class="pre">AI</span> <span class="pre">Greenhouse</span></code> Project to return to its dashboard.</p>
 <section id="confirm-the-reproduction">
 <h3>Confirm the reproduction<a class="headerlink" href="#confirm-the-reproduction" title="Link to this heading"></a></h3>
 <p>The container now holds the files your own computer made in
@@ -299,7 +299,8 @@ anything. You can run it against a container that has just died without
 destroying the evidence of what happened.</p>
 <p><strong>“Not checked” is not “ok”.</strong> A check that could not run is not labeled as working correctly. Instead, the doctor explains the reason for the issue.</p>
 <p><strong>The doctor tells you the command to fix an issue.</strong> Where vaibify can
-apply the fix itself, that command is <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span></code>. Where it
+apply the fix itself, the finding names the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> command that does,
+such as <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span> <span class="pre">dns</span></code> or <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span></code>. Where it
 cannot — a network that is down, a daemon that needs more memory — the
 finding says so plainly rather than sending you to a tab.</p>
 </section>

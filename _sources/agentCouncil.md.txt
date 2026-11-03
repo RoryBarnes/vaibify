@@ -57,9 +57,10 @@ process it started. What a command does at the **provider** does not:
 a command a participant runs can use the copied login to call its own
 provider's API, and the quota it spends and anything the provider
 stores outlive the runner. A fresh container takes seconds, but a council spends far
-more tokens than one agent and needs memory for every copy at once, so
-it is best kept for planning or implementing a complex feature or a
-multi-step experiment.
+more tokens than one agent and needs the Docker daemon's memory for a
+copy in every runner that runs at once (two turns at a time by
+default), so it is best kept for planning or implementing a complex
+feature or a multi-step experiment.
 
 ## Execution backend
 
@@ -135,10 +136,12 @@ weaken the one property that makes the verdict meaningful.
 **Participants.** Each is a provider and model with an optional role.
 Claude, Codex, and Gemini through Antigravity are supported. The form
 shows the model catalog the provider's evidence recorded, or accepts an
-explicit model id. At least two participants must resolve to two
-distinct models; requested aliases do not count. The form recommends at
-least one participant from a second provider, because models of one
-family can share blind spots. A council may also be given a name.
+explicit model id. A council needs at least two participants naming
+two distinct provider-and-model pairs, and its result needs two that
+resolve to two distinct models; requested aliases do not count there.
+The form starts both participants on the same provider and does not
+require a second one, though models of one family can share blind
+spots. A council may also be given a name.
 
 **Chairbot.** The chairbot holds the pen: it writes each round's
 candidate. It defaults to the first participant — a structural default,
@@ -311,10 +314,13 @@ clicked.
 
 ## Projects too large to copy in full
 
-Each participant's copy is held in memory on the hub's computer, and a
+Each participant's copy is held in memory inside its runner, which the
+Docker daemon provides (on macOS, the memory given to Docker's virtual
+machine), and the snapshot's limits are sized so that eight runners (a
+council has at most eight participants) fit at once in half of it. A
 whole-directory copy includes files git ignores, so a project that
-keeps generated output in its repository can exceed the snapshot's
-limits. A full-sandbox council also keeps half of each runner's working
+keeps generated output in its repository can exceed those limits. A
+full-sandbox council also keeps half of each runner's working
 tree free for its participants' own edits and runs, so its largest
 snapshot is about half a read-only council's. A project between the two
 can be narrowed to the files git tracks, can exclude files when it is

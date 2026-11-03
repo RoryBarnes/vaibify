@@ -475,6 +475,7 @@ def _fnDispatchUnderLease(dictEntry, sContainerName, dictParams):
     dictSession = hubSession.fdictOpenResearcherSession(
         sContainerName, dictParams["iPort"],
         dictParams["sWorkflowPath"],
+        bAgentLaneCanRunIt=bool(dictEntry.get("bAgentSafe")),
     )
     try:
         iExitCode = _fiDispatchAction(dictEntry, dictSession, dictParams)

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>System Prompt &mdash; Vaibify 0.2.3.dev65 documentation</title>
+  <title>System Prompt &mdash; Vaibify 0.2.3.dev82 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=33ebe145"></script>
+      <script src="_static/documentation_options.js?v=e92f18f3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -111,8 +111,8 @@
              
   <section id="system-prompt">
 <h1>System Prompt<a class="headerlink" href="#system-prompt" title="Link to this heading"></a></h1>
-<p>Every coding agent working inside a vaibify container reads the same
-set of standing instructions, called a <em>system prompt</em>, before it reads
+<p>A coding agent working inside a vaibify container reads a set of
+standing instructions, called a <em>system prompt</em>, before it reads
 anything you type. The prompt explains what vaibify is, the rules of
 the container, and the PROOF Ladder, and it tells the agent when to use
 one of vaibify’s deterministic actions instead of improvising its own
@@ -120,7 +120,8 @@ solution. It describes how to work inside vaibify, not how to do any
 particular science.</p>
 <p>Vaibify writes the prompt to <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> at the root of the container’s
 workspace every time the container starts, and links <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> and
-<code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code> to it, so every installed agent reads the same text.
+<code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code> to it, so an agent that reads any of those names at the
+workspace root reads the same text.
 Because it is rewritten at every start, editing it inside the container
 has no lasting effect. Your own instructions belong in your project’s
 context file instead, which vaibify never overwrites. Wherever your
