@@ -9074,23 +9074,35 @@ def _fbIsHomeResolution(nodeCall):
     )
 
 
-def _fsetStateDirectoryConstants(treeModule):
-    """Return the module-level names whose value spells the state directory."""
-    setNames = set()
+def _flistModuleBindings(treeModule):
+    """Return ``(sName, nodeValue)`` for each module-level name bound to a value.
+
+    A bare annotation (``version: str``, as in the generated
+    ``_version.py``) binds no value and is left out.
+    """
+    listBindings = []
     for nodeStatement in treeModule.body:
         if not isinstance(nodeStatement, (ast.Assign, ast.AnnAssign)):
             continue
-        if not _fbMentionsStateDirectory(nodeStatement.value, set()):
+        if nodeStatement.value is None:
             continue
         listTargets = (
             nodeStatement.targets if isinstance(nodeStatement, ast.Assign)
             else [nodeStatement.target]
         )
-        setNames.update(
-            nodeTarget.id for nodeTarget in listTargets
-            if isinstance(nodeTarget, ast.Name)
+        listBindings.extend(
+            (nodeTarget.id, nodeStatement.value)
+            for nodeTarget in listTargets if isinstance(nodeTarget, ast.Name)
         )
-    return setNames
+    return listBindings
+
+
+def _fsetStateDirectoryConstants(treeModule):
+    """Return the module-level names whose value spells the state directory."""
+    return {
+        sName for sName, nodeValue in _flistModuleBindings(treeModule)
+        if _fbMentionsStateDirectory(nodeValue, set())
+    }
 
 
 def _fbMentionsStateDirectory(nodeScope, setConstantNames):
@@ -9107,18 +9119,9 @@ def _fbMentionsStateDirectory(nodeScope, setConstantNames):
 
 def _flistScopesOfModule(treeModule):
     """Return ``(sName, node)`` for each module-level binding and function."""
-    listScopes = []
+    listScopes = _flistModuleBindings(treeModule)
     for nodeStatement in treeModule.body:
-        if isinstance(nodeStatement, (ast.Assign, ast.AnnAssign)):
-            listTargets = (
-                nodeStatement.targets if isinstance(nodeStatement, ast.Assign)
-                else [nodeStatement.target]
-            )
-            listScopes.extend(
-                (nodeTarget.id, nodeStatement.value)
-                for nodeTarget in listTargets if isinstance(nodeTarget, ast.Name)
-            )
-        elif isinstance(nodeStatement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(nodeStatement, (ast.FunctionDef, ast.AsyncFunctionDef)):
             listScopes.append((nodeStatement.name, nodeStatement))
         elif isinstance(nodeStatement, ast.ClassDef):
             listScopes.extend(
