@@ -443,7 +443,16 @@ def _fnIsolateProjectRegistry():
         # The hub's scheduled re-verify stamps its first pass a short
         # delay after start, outside any test's own redirect.
         from vaibify.reproducibility import scheduledReverify
-        with patch.object(
+        # The hub binds its control socket at startup, before any
+        # test's own redirect. Its directory comes from the system
+        # temporary root, not sHome: an AF_UNIX path is capped at 104
+        # bytes on macOS, and sHome inside a deep checkout passes that.
+        from vaibify.gui import hostControlChannel
+        with tempfile.TemporaryDirectory(
+            prefix="vaibifyControl",
+        ) as sControlDirectory, patch.object(
+            hostControlChannel, "_S_CONTROL_DIRECTORY", sControlDirectory,
+        ), patch.object(
             scheduledReverify, "fsReverifyStatePath",
             lambda: os.path.join(sHome, "reverifyState.json"),
         ), patch.object(
