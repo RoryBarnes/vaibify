@@ -35,6 +35,23 @@ S_REFUSAL_MESSAGE = (
 _RE_READ = re.compile(r".*/api/bindings/[^/?]+(\?.*)?$")
 _RE_CONFIRM = re.compile(r".*/api/bindings/[^/?]+/confirm$")
 _RE_RECONCILE = re.compile(rf".*/promotions/{S_PROMOTION}/reconcile$")
+_LIST_HUBS_OF_THE_RUNNING_TEST = []
+
+
+@pytest.fixture(autouse=True)
+def fnReleaseEveryHeldRoute(pageDashboard):
+    """Abort every request a test held, before its page closes.
+
+    A route still held when the page closes leaves the Playwright
+    connection with a pending handler, and the next test on that worker
+    then fails at its first navigation with every later test erroring
+    behind it (seen in CI, never locally). Depending on ``pageDashboard``
+    makes this teardown run before the page's, whether or not the test
+    passed.
+    """
+    yield
+    while _LIST_HUBS_OF_THE_RUNNING_TEST:
+        _LIST_HUBS_OF_THE_RUNNING_TEST.pop().fnReleaseHeldRoutes()
 
 
 def _fdictEntry(sService, sRecordKind, sInstance, **dictFields):
@@ -78,6 +95,17 @@ class _Hub:
         pageDashboard.route(_RE_READ, self._fnRead)
         pageDashboard.route(_RE_CONFIRM, self._fnConfirm)
         pageDashboard.route(_RE_RECONCILE, self._fnReconcile)
+        _LIST_HUBS_OF_THE_RUNNING_TEST.append(self)
+
+    def fnReleaseHeldRoutes(self):
+        from playwright.sync_api import Error as PlaywrightError
+        for routeHeld in self.listHeldReads + self.listHeldConfirms:
+            try:
+                routeHeld.abort()
+            except PlaywrightError:
+                pass  # already answered, or the request is already gone
+        self.listHeldReads.clear()
+        self.listHeldConfirms.clear()
 
     def _fnRead(self, routeIntercepted):
         # Only the dialog's reads, which name one entry; the page's own
