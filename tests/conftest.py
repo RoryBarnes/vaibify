@@ -11,10 +11,15 @@ overwrite, or delete the researcher's real stored credentials).
 """
 
 import atexit
+import fnmatch
+import importlib
 import logging
 import os
+import pwd
 import shutil
 import tempfile
+import warnings
+from typing import NamedTuple
 
 import pytest
 
@@ -160,6 +165,103 @@ def fnKeepSecretFilesOutOfTheResearchersHome():
         shutil.rmtree(sPrivateHome, ignore_errors=True)
 
 
+# Paths under the researcher's real ~/.vaibify that the sentinel below
+# does not watch, as fnmatch patterns relative to it, each with its
+# reason. A pattern also covers everything beneath it.
+DICT_UNWATCHED_STATE_PATHS = {
+    "browserLaneTmp": (
+        "the suite's own home-visible scratch root, used on purpose when "
+        "the checkout is not under HOME (tests/homeVisibleTempRoot.py)"
+    ),
+    "vaibify.log*": (
+        "a running hub appends to its log every minute (observed over 30 "
+        "minutes of an idle hub, 2026-11-02); the suite's own log writer is "
+        "redirected for the session by fnRedirectVaibifyLogFileForTests"
+    ),
+}
+
+
+def _fbIsUnwatchedStatePath(sRelative):
+    return any(
+        fnmatch.fnmatch(sRelative, sPattern)
+        or sRelative.startswith(sPattern + os.sep)
+        for sPattern in DICT_UNWATCHED_STATE_PATHS
+    )
+
+
+def fdictSnapshotStateDirectory(sStateRoot):
+    """Return ``{sRelativePath: (st_size, st_mtime_ns, st_ino)}`` for watched files.
+
+    Observation only: every file is ``lstat``-ed, none is opened, and
+    symbolic links are not followed.
+    """
+    dictSnapshot = {}
+    for sDirectory, listDirectories, listNames in os.walk(sStateRoot):
+        listDirectories[:] = [
+            sName for sName in listDirectories if not _fbIsUnwatchedStatePath(
+                os.path.relpath(os.path.join(sDirectory, sName), sStateRoot))
+        ]
+        for sName in listNames:
+            sPath = os.path.join(sDirectory, sName)
+            sRelative = os.path.relpath(sPath, sStateRoot)
+            if _fbIsUnwatchedStatePath(sRelative):
+                continue
+            try:
+                statFile = os.lstat(sPath)
+            except OSError:
+                continue
+            dictSnapshot[sRelative] = (
+                statFile.st_size, statFile.st_mtime_ns, statFile.st_ino,
+            )
+    return dictSnapshot
+
+
+def flistDescribeStateChanges(dictBefore, dictAfter):
+    """Return one line per file created, deleted or modified between snapshots."""
+    setBefore, setAfter = set(dictBefore), set(dictAfter)
+    return (
+        [f"created {sPath}" for sPath in sorted(setAfter - setBefore)]
+        + [f"deleted {sPath}" for sPath in sorted(setBefore - setAfter)]
+        + [f"modified {sPath}" for sPath in sorted(setBefore & setAfter)
+           if dictBefore[sPath] != dictAfter[sPath]]
+    )
+
+
+def _fbRequireUntouchedHome():
+    return (
+        os.environ.get("CI") == "true"
+        or os.environ.get("VAIBIFY_REQUIRE_UNTOUCHED_HOME") == "1"
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def fnWatchTheResearchersRealStateDirectory():
+    """Report any file the session created, deleted or changed in the real ~/.vaibify.
+
+    The redirects above are the control; this is the alarm for one
+    they missed. The home comes from the password database, never from
+    HOME, which tests move. A live hub on the researcher's machine
+    writes there too, so locally a change is one pytest warning; under
+    ``CI=true`` or ``VAIBIFY_REQUIRE_UNTOUCHED_HOME=1`` it fails the
+    session. Under xdist each worker watches and reports on its own.
+    """
+    sStateRoot = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".vaibify")
+    dictBefore = fdictSnapshotStateDirectory(sStateRoot)
+    yield
+    listChanges = flistDescribeStateChanges(
+        dictBefore, fdictSnapshotStateDirectory(sStateRoot),
+    )
+    if not listChanges:
+        return
+    sMessage = (
+        f"the test session changed {len(listChanges)} file(s) in the real "
+        f"{sStateRoot}:\n  " + "\n  ".join(listChanges[:50])
+    )
+    if _fbRequireUntouchedHome():
+        pytest.fail(sMessage, pytrace=False)
+    warnings.warn(sMessage)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def fnSweepContainersLeftByAKilledLiveLane(request):
     """Reclaim labelled throwaway containers at both ends of a session.
@@ -235,18 +337,163 @@ def fixtureHermeticKeyring(monkeypatch):
     yield keyringFake
 
 
+class StateStoreRedirect(NamedTuple):
+    """One host store the isolation fixture moves into each test's home.
+
+    ``sAttribute`` names a module constant holding the store's path, or
+    a resolver the store calls with no arguments each time it is used.
+    ``sSubpath`` is where the store lands under the test's home ("" is
+    the home itself), components separated by "/". A resolver whose
+    real version creates its directory says so with ``bCreateOnResolve``.
+    """
+
+    sModule: str
+    sAttribute: str
+    sSubpath: str
+    bCreateOnResolve: bool = False
+
+
+# Every store under ~/.vaibify that fnIsolateVaibifyStateDirectories
+# moves into each test's private home, declared once.
+# tests/testArchitecturalInvariants.py scans vaibify/ for every path
+# resolved under ~/.vaibify and requires each to be listed here or
+# exempted there with a reason, and tests/testStateStoresStayInTheTestHome.py
+# drives these stores with HOME moved to a surrogate.
+T_REDIRECTED_STATE_STORES = (
+    StateStoreRedirect("vaibify.config.containerLock", "_S_LOCK_DIRECTORY", "locks"),
+    StateStoreRedirect(
+        "vaibify.config.containerLock", "_S_LIFECYCLE_LOCK_DIRECTORY",
+        "lifecycleLocks",
+    ),
+    StateStoreRedirect(
+        "vaibify.config.pendingRenames", "_S_PENDING_RENAMES_DIRECTORY",
+        "pendingRenames",
+    ),
+    StateStoreRedirect(
+        "vaibify.config.pendingConversions", "_S_CONVERSIONS_DIRECTORY",
+        "pendingConversions",
+    ),
+    StateStoreRedirect("vaibify.gui.stateWriteLock", "S_STATE_LOCK_DIRECTORY", "stateLocks"),
+    StateStoreRedirect("vaibify.config.hubPortRegistry", "_S_VAIBIFY_DIRECTORY", ""),
+    StateStoreRedirect("vaibify.config.sessionRegistry", "_S_SESSION_DIRECTORY", "sessions"),
+    StateStoreRedirect("vaibify.config.keepAliveManager", "_S_PID_DIRECTORY", "caffeinate"),
+    StateStoreRedirect("vaibify.config.operationJournal", "_S_JOURNAL_DIRECTORY", "journal"),
+    StateStoreRedirect("vaibify.gui.hostControlChannel", "_S_CONTROL_DIRECTORY", "control"),
+    StateStoreRedirect("vaibify.gui.cliShellContainment", "_S_CLI_SHELL_DIRECTORY", "cliShells"),
+    StateStoreRedirect("vaibify.cli.commandBuild", "_S_BUILD_STAGING_DIRECTORY", "build"),
+    StateStoreRedirect("vaibify.cli.commandBuild", "_S_BUILD_HASH_DIRECTORY", "cache"),
+    StateStoreRedirect(
+        "vaibify.reproducibility.reproductionSource",
+        "_S_REPRODUCTIONS_DIRECTORY", "reproductions",
+    ),
+    StateStoreRedirect(
+        "vaibify.reproducibility.imageAcquisition",
+        "_S_DEPOSIT_LOADS_DIRECTORY", "depositLoads",
+    ),
+    StateStoreRedirect(
+        "vaibify.reproducibility.downloadPartial", "_S_DOWNLOAD_ROOT",
+        "imageArchive",
+    ),
+    StateStoreRedirect(
+        "vaibify.config.containerConfig", "_S_REPOSITORY_LISTS_DIRECTORY",
+        "repositoryLists",
+    ),
+    StateStoreRedirect("vaibify.config.hostResidue", "S_BUILD_CONTEXT_ROOT", "build"),
+    StateStoreRedirect("vaibify.config.hostResidue", "S_BUILD_HASH_ROOT", "cache"),
+    StateStoreRedirect("vaibify.install.runtimeSetupRunner", "_S_LOCK_DIRECTORY", "locks"),
+    StateStoreRedirect(
+        "vaibify.host.hostScratch", "_S_HOST_DIAGNOSTICS_ROOT",
+        "tmp/host-diagnostics",
+    ),
+    # Resolved per call, not as constants. A live test that obtained an
+    # image once left an origin record in the real home; the council
+    # credential document and snapshot scope would be WRITTEN by an
+    # admission; a Prompt Record capture would CREATE a digest key.
+    StateStoreRedirect(
+        "vaibify.config.imageOrigins", "fsOriginsDirectory", "imageOrigins",
+        bCreateOnResolve=True,
+    ),
+    StateStoreRedirect(
+        "vaibify.gui.agentCouncilCredentialGate",
+        "fsResolveCredentialEvidencePath",
+        "agentCouncils/credentialEvidence.json",
+    ),
+    StateStoreRedirect(
+        "vaibify.gui.agentCouncilSnapshotScope",
+        "fsResolveSnapshotScopeDirectory", "agentCouncils/snapshotScope",
+    ),
+    StateStoreRedirect(
+        "vaibify.gui.promptRecordManager", "fsResolveDigestKeyPath",
+        "promptRecordDigestKey",
+    ),
+    # The token migration journals and the remote bindings. Every hub a
+    # test booted wrote a migration journal into the real home when it
+    # opened a project, until these were listed (2026-11-02).
+    StateStoreRedirect(
+        "vaibify.config.zenodoMigrationJournal", "fsMigrationsDirectory",
+        "migrations",
+    ),
+    StateStoreRedirect(
+        "vaibify.config.remoteBindings", "fsBindingsDirectory", "bindings",
+    ),
+    StateStoreRedirect("vaibify.docker.projectEgress", "_fsEgressRoot", "egress"),
+    StateStoreRedirect("vaibify.docker.x11Authorizations", "fsX11Root", "x11"),
+    # A hub's scheduled re-verify stamps its first pass a short delay
+    # after start, which a browser-lane hub lives long enough to reach.
+    StateStoreRedirect(
+        "vaibify.reproducibility.scheduledReverify", "fsReverifyStatePath",
+        "reverifyState.json",
+    ),
+    # A connect checks the supervised interval and writes its anchor.
+    StateStoreRedirect("vaibify.gui.supervisionAnchor", "_fsAnchorDirectory", "supervision"),
+)
+
+
+def fsRedirectedStorePath(sHome, tStoreRedirect):
+    """Return where one declared store lands under the test home ``sHome``."""
+    listParts = [sPart for sPart in tStoreRedirect.sSubpath.split("/") if sPart]
+    return os.path.join(sHome, *listParts)
+
+
+def _ffnResolveIntoTheTestHome(sPath, bCreateOnResolve):
+    """Return a resolver that answers ``sPath``, creating it when asked to."""
+
+    def fsResolveIntoTheTestHome():
+        if bCreateOnResolve:
+            os.makedirs(sPath, exist_ok=True)
+        return sPath
+
+    return fsResolveIntoTheTestHome
+
+
+def _fnRedirectStateStore(monkeypatch, sHome, tStoreRedirect):
+    """Point one declared store's constant or resolver into ``sHome``."""
+    moduleStore = importlib.import_module(tStoreRedirect.sModule)
+    sPath = fsRedirectedStorePath(sHome, tStoreRedirect)
+    if callable(getattr(moduleStore, tStoreRedirect.sAttribute)):
+        monkeypatch.setattr(
+            moduleStore, tStoreRedirect.sAttribute,
+            _ffnResolveIntoTheTestHome(sPath, tStoreRedirect.bCreateOnResolve),
+        )
+        return
+    monkeypatch.setattr(moduleStore, tStoreRedirect.sAttribute, sPath)
+
+
 @pytest.fixture(autouse=True)
 def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     """Keep every test out of the researcher's real ~/.vaibify state.
 
-    Each state directory is a module-level constant computed from
-    ``os.path.expanduser`` at import, so a test that boots a hub or
-    runs the CLI without its own redirect writes the operation journal,
-    locks, hub-port.json, session slots, the registry, preferences,
-    caffeinate pids, build staging, and the host-control socket into the
-    REAL ~/.vaibify. That leak once clobbered a live hub's port
-    registration — a running suite wrote hub-port.json into the
-    researcher's home and pointed the survival contract at a dead port.
+    Most state directories are module-level constants computed from
+    ``os.path.expanduser`` at import, and the rest are resolvers asked
+    at call time, so a test that boots a hub or runs the CLI without
+    its own redirect writes the operation journal, locks, hub-port.json,
+    session slots, caffeinate pids, build staging, the host-control
+    socket, token migration journals and remote bindings into the REAL
+    ~/.vaibify. That leak once clobbered a live hub's port registration
+    — a running suite wrote hub-port.json into the researcher's home and
+    pointed the survival contract at a dead port — and later left over
+    a thousand migration journals there. The stores are declared once,
+    in ``T_REDIRECTED_STATE_STORES``.
 
     Function-scoped so each test gets a FRESH home: the session-slot
     and cardinality machinery accumulates on-disk state, so a shared
@@ -261,65 +508,12 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     of the boot-time writers (registry, preferences, hub-port, sessions)
     in tests/browser/conftest.py.
     """
-    from vaibify.cli import commandBuild
-    from vaibify.config import (
-        containerLock, hubPortRegistry, imageOrigins, keepAliveManager,
-        operationJournal, sessionRegistry,
-    )
-    from vaibify.gui import cliShellContainment, hostControlChannel, stateWriteLock
-    from vaibify.reproducibility import imageAcquisition, reproductionSource
     # A dedicated dir, never a test's own ``tmp_path``: some tests rmdir
     # their whole tmp_path to model a missing directory, and a home
     # created inside it would make that rmdir fail on a non-empty tree.
     sHome = str(tmp_path_factory.mktemp("vaibifyHome"))
-
-    def fnRedirectDirectory(moduleTarget, sAttribute, sSubdirectory=""):
-        monkeypatch.setattr(
-            moduleTarget, sAttribute,
-            os.path.join(sHome, sSubdirectory) if sSubdirectory else sHome,
-        )
-
-    fnRedirectDirectory(containerLock, "_S_LOCK_DIRECTORY", "locks")
-    fnRedirectDirectory(
-        containerLock, "_S_LIFECYCLE_LOCK_DIRECTORY", "lifecycleLocks",
-    )
-    from vaibify.config import pendingRenames
-    fnRedirectDirectory(
-        pendingRenames, "_S_PENDING_RENAMES_DIRECTORY", "pendingRenames",
-    )
-    fnRedirectDirectory(
-        stateWriteLock, "S_STATE_LOCK_DIRECTORY", "stateLocks",
-    )
-    fnRedirectDirectory(hubPortRegistry, "_S_VAIBIFY_DIRECTORY")
-    fnRedirectDirectory(sessionRegistry, "_S_SESSION_DIRECTORY", "sessions")
-    fnRedirectDirectory(keepAliveManager, "_S_PID_DIRECTORY", "caffeinate")
-    fnRedirectDirectory(operationJournal, "_S_JOURNAL_DIRECTORY", "journal")
-    fnRedirectDirectory(hostControlChannel, "_S_CONTROL_DIRECTORY", "control")
-    fnRedirectDirectory(
-        cliShellContainment, "_S_CLI_SHELL_DIRECTORY", "cliShells",
-    )
-    fnRedirectDirectory(commandBuild, "_S_BUILD_STAGING_DIRECTORY", "build")
-    fnRedirectDirectory(commandBuild, "_S_BUILD_HASH_DIRECTORY", "cache")
-    fnRedirectDirectory(
-        reproductionSource, "_S_REPRODUCTIONS_DIRECTORY", "reproductions",
-    )
-    fnRedirectDirectory(
-        imageAcquisition, "_S_DEPOSIT_LOADS_DIRECTORY", "depositLoads",
-    )
-    from vaibify.reproducibility import downloadPartial
-    fnRedirectDirectory(downloadPartial, "_S_DOWNLOAD_ROOT", "imageArchive")
-    from vaibify.config import containerConfig
-    fnRedirectDirectory(
-        containerConfig, "_S_REPOSITORY_LISTS_DIRECTORY", "repositoryLists",
-    )
-    # Origin records resolve their directory per call, not as a constant;
-    # a live test that obtains an image once left one in the real home.
-    sOriginsDirectory = os.path.join(sHome, "imageOrigins")
-    monkeypatch.setattr(
-        imageOrigins, "fsOriginsDirectory",
-        lambda: os.makedirs(sOriginsDirectory, exist_ok=True)
-        or sOriginsDirectory,
-    )
+    for tStoreRedirect in T_REDIRECTED_STATE_STORES:
+        _fnRedirectStateStore(monkeypatch, sHome, tStoreRedirect)
     # registryManager and preferencesStore are deliberately NOT
     # redirected here. Each precomputes full-path constants that the
     # long-lived hub reads at REQUEST time, and the lanes that boot a hub
@@ -354,33 +548,6 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(
         preferencesStore, "fsSlidingIdlePreference", lambda: "",
     )
-    # The council credential document and the snapshot-scope store are
-    # resolved from os.path.expanduser("~") at CALL time, so a test that
-    # reaches the gate, an admission, or the capabilities probe without
-    # its own redirect would read — and an admission would WRITE — the
-    # researcher's real ~/.vaibify/agentCouncils. Redirected by patching
-    # the two resolvers, which every caller asks; a test that patches
-    # its own path still overrides these.
-    from vaibify.gui import (
-        agentCouncilCredentialGate, agentCouncilSnapshotScope,
-    )
-    monkeypatch.setattr(
-        agentCouncilCredentialGate, "fsResolveCredentialEvidencePath",
-        lambda: os.path.join(sHome, "agentCouncils",
-                             "credentialEvidence.json"),
-    )
-    monkeypatch.setattr(
-        agentCouncilSnapshotScope, "fsResolveSnapshotScopeDirectory",
-        lambda: os.path.join(sHome, "agentCouncils", "snapshotScope"),
-    )
-    # The Prompt Record's raw-prefix digest key is resolved at call time
-    # too, and a capture that reached it unredirected would CREATE a key
-    # in the researcher's real home.
-    from vaibify.gui import promptRecordManager
-    monkeypatch.setattr(
-        promptRecordManager, "fsResolveDigestKeyPath",
-        lambda: os.path.join(sHome, "promptRecordDigestKey"),
-    )
     # The ephemeral secret root is redirected once per session, by
     # fnKeepSecretFilesOutOfTheResearchersHome above, not here: the
     # browser hubs sweep it before any function fixture runs, and that
@@ -401,19 +568,14 @@ def fnKeepPendingConversionsFromObtainingForReal(
     do nothing, so the record is written and the view reads
     "interrupted"; a test OF the worker restores
     ``conversionLifecycle.fnStartConversionWorker`` on the seam. The
-    record directory lives under the isolated home, created on first
-    use, rather than in a second temporary directory per test: every
-    ``tmp_path_factory.mktemp`` lists the whole numbered basetemp to
-    pick its suffix, so one extra call per test grows the serial unit
+    record directory is one of ``T_REDIRECTED_STATE_STORES``, under the
+    isolated home, rather than a second temporary directory per test:
+    every ``tmp_path_factory.mktemp`` lists the whole numbered basetemp
+    to pick its suffix, so one extra call per test grows the serial unit
     lane by minutes and pushed it past its CI timeout.
     """
-    from vaibify.config import pendingConversions
     from vaibify.gui import conversionLifecycle
-    sHome = fnIsolateVaibifyStateDirectories
-    monkeypatch.setattr(
-        pendingConversions, "_S_CONVERSIONS_DIRECTORY",
-        os.path.join(sHome, "pendingConversions"),
-    )
+    del fnIsolateVaibifyStateDirectories
     monkeypatch.setattr(
         conversionLifecycle, "_fnStartWorker", lambda sHostName: None,
     )

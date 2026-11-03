@@ -6,8 +6,9 @@ reason stated here: the enabled agents' login and API hosts, GitHub
 (by ruling: a researcher is not kept from any repository they normally
 reach), the package indexes the image's package manager uses, the npm
 registry when an agent auto-updates, every repository the project
-clones, and the researcher's own ``allowedHosts``. Zenodo, Overleaf and
-arXiv are absent on purpose: their operations run on the host since the
+clones, arXiv (an agent reads papers there, which publishes nothing),
+and the researcher's own ``allowedHosts``. Zenodo and Overleaf are
+absent on purpose: their operations run on the host since the
 publishing tokens left the container.
 
 A host the agent needs that is not here appears in the dashboard's
@@ -21,6 +22,7 @@ __all__ = [
     "DICT_AGENT_HOSTS",
     "T_CONDA_HOSTS",
     "T_GITHUB_HOSTS",
+    "T_ARXIV_HOSTS",
     "T_NPM_HOSTS",
     "T_PYPI_HOSTS",
     "fbIsAllowedHostEntry",
@@ -70,6 +72,8 @@ T_PYPI_HOSTS = ("pypi.org", "files.pythonhosted.org")
 T_CONDA_HOSTS = ("conda.anaconda.org", "repo.anaconda.com")
 # The agents install and update themselves from npm.
 T_NPM_HOSTS = ("registry.npmjs.org",)
+# The read-arxiv skill: the API that resolves a paper and the e-prints.
+T_ARXIV_HOSTS = ("arxiv.org", "export.arxiv.org")
 I_DEFAULT_PORT = 443
 _RE_HOST_ENTRY = re.compile(
     r"^(?P<host>[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?)(:(?P<port>\d{1,5}))?$"
@@ -140,7 +144,7 @@ def ftComputeAllowlist(config):
     """Return ``(listHosts, listPorts)`` for a project, validated for the proxy."""
     # The feature flags as a mapping: a dataclass or a namespace alike.
     dictFeatures = dict(vars(getattr(config, "features", None) or object()))
-    setHosts = set(T_GITHUB_HOSTS) | set(T_PYPI_HOSTS)
+    setHosts = set(T_GITHUB_HOSTS) | set(T_PYPI_HOSTS) | set(T_ARXIV_HOSTS)
     setPorts = {I_DEFAULT_PORT}
     setHosts.update(_flistAgentHosts(dictFeatures))
     if _fbAnyAgentAutoUpdates(dictFeatures):

@@ -1207,9 +1207,14 @@ var VaibifyWorkflowManager = (function () {
         'container will still work but git push will fail.</p>' +
         '<p>The <strong>macOS sleep prevention</strong> toggle (only ' +
         'shown on macOS) is recommended for long builds. The ' +
-        '<strong>network isolation</strong> toggle blocks all outbound ' +
-        'traffic from the container &mdash; useful for running untrusted ' +
-        'code, but breaks anything that needs the internet.</p>',
+        '<strong>network mode</strong> says what the container may ' +
+        'reach: <strong>Web</strong> (the default) reaches the public ' +
+        'internet but not this computer or your network; ' +
+        '<strong>Allowlist</strong> reaches only the services it needs ' +
+        'and hosts you allow; <strong>Open</strong> reaches everything, ' +
+        'this computer included; <strong>Isolated</strong> reaches ' +
+        'nothing, which suits untrusted code but breaks anything that ' +
+        'needs the internet.</p>',
 
         '<p>Packages installed in the container image at build time. ' +
         'Vaibify directly supports three package ecosystems:</p>' +
@@ -1470,9 +1475,10 @@ var VaibifyWorkflowManager = (function () {
         dictData.bUseGithubAuth = true;
         dictData.bNeverSleep = _fbIsMacOs();
         dictData.bNetworkIsolation = false;
-        /* Ruling D2: a NEW project is sealed behind the allowlisting
-           proxy unless the researcher chooses otherwise. */
-        dictData.sNetworkMode = "allowlist";
+        /* A NEW project is sealed behind the proxy, reaching any public
+           host and nothing on this computer, unless the researcher
+           chooses otherwise (amending ruling D2). */
+        dictData.sNetworkMode = "web";
         dictData.bX11Forwarding = false;
         dictData.iCpuLimit = 0;
         dictData.fMemoryLimitGigabytes = 0;
@@ -2599,9 +2605,11 @@ var VaibifyWorkflowManager = (function () {
     }
 
     var _LIST_NETWORK_MODES = [
+        ["web", "Web: the public internet, but not this computer or " +
+            "your network"],
         ["allowlist", "Allowlist: only the agents' services, GitHub, " +
             "the package indexes and hosts you allow"],
-        ["open", "Open: the whole network"],
+        ["open", "Open: the whole network, including this computer"],
         ["isolated", "Isolated: no network at all"],
     ];
 
@@ -2609,8 +2617,9 @@ var VaibifyWorkflowManager = (function () {
         var sMode = _dictWizardData.sNetworkMode || "open";
         var bBlocked = _dictWizardData.bX11Forwarding === true;
         return '<label class="wizard-toggle-row" title="What the ' +
-            'container may reach. Allowlist and isolated seal it; a ' +
-            'sealed container cannot forward a display.">' +
+            'container may reach. Web, allowlist and isolated seal it ' +
+            'off from this computer and your network; a sealed ' +
+            'container cannot forward a display.">' +
             '<span>Network mode</span> ' +
             '<select id="wizardNetworkMode"' +
             (bBlocked ? " disabled" : "") + '>' +

@@ -5795,9 +5795,12 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid='tests/testStartReservationFalsification.py::testTheJournalDirectoryIsIsolatedForTheseTests',
+        # The journal dropped from the declared stores, so it keeps the
+        # real ~/.vaibify/journal it resolved at import. The test only
+        # reads the constant; nothing is written.
         source='tests/conftest.py',
-        old='    fnRedirectDirectory(operationJournal, "_S_JOURNAL_DIRECTORY", "journal")',
-        new='    monkeypatch.setattr(operationJournal, "_S_JOURNAL_DIRECTORY", os.path.expanduser("~/.vaibify/journal"))',
+        old='    StateStoreRedirect("vaibify.config.operationJournal", "_S_JOURNAL_DIRECTORY", "journal"),\n',
+        new='',
     ),
     Falsification(
         nodeid='tests/testHostTransfer.py::testBarrierTransferAdoptsAStillRunningStart',
@@ -36776,7 +36779,7 @@ LIST_FALSIFICATIONS = [
         ),
         new=(
             '    if dictBound is None:\n'
-            '        return _fdictNormalizedTarget(sService, dictProjectTarget)\n'
+            '        return fdictNormalizedTarget(S_SERVICE_OVERLEAF, "", dictProjectTarget)\n'
             '        raise BindingRequiredError(\n'
         ),
     ),
@@ -36792,12 +36795,12 @@ LIST_FALSIFICATIONS = [
             '        fnRejectAgentTokenLane(requestHttp)\n'
             '        dictCtx["require"](sContainerId)\n'
             '        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)\n'
-            '        if request.sService not in'
+            '        _fnRequireReviewBody(request)\n'
         ),
         new=(
             '        dictCtx["require"](sContainerId)\n'
             '        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)\n'
-            '        if request.sService not in'
+            '        _fnRequireReviewBody(request)\n'
         ),
     ),
     Falsification(
@@ -38430,7 +38433,7 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testNetworkMode.py::testX11WithAllowlistModeIsRefusedEverywhereItIsAsked',
         source='vaibify/docker/containerManager.py',
         old=(
-            '    if fsNetworkModeOf(config) == S_NETWORK_MODE_ALLOWLIST:\n'
+            '    if fbIsSealedNetworkMode(sMode):\n'
             '        raise RuntimeError(\n'
             '            f"\'{config.sProjectName}\' sets x11Forwarding with networkMode: "\n'
         ),
@@ -38513,9 +38516,9 @@ LIST_FALSIFICATIONS = [
         new='        pass\n',
     ),
     Falsification(
-        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndAllowlistAndExcludesThePair',
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndWebAndExcludesThePair',
         source='vaibify/gui/static/scriptWorkflowManager.js',
-        old='        dictData.sNetworkMode = "allowlist";\n',
+        old='        dictData.sNetworkMode = "web";\n',
         new='        dictData.sNetworkMode = "open";\n',
     ),
     Falsification(
@@ -39615,5 +39618,267 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/routes/syncRoutes.py',
         old='            return {"errorRefused": errorRefused, "objResult": None}\n\n    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictCapture, "proof-observation", requestHttp)\n',
         new='            raise\n\n    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictCapture, "proof-observation", requestHttp)\n',
+    ),
+    # --- 2026-11-02: every store under ~/.vaibify is redirected into
+    # the test home, or exempted with a reason ---
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testEveryHomeStateStoreIsRedirectedForTestsOrExempted'
+        ),
+        # The migrations store dropped from the declared tuple.
+        source='tests/conftest.py',
+        old=(
+            '    StateStoreRedirect(\n'
+            '        "vaibify.config.zenodoMigrationJournal", "fsMigrationsDirectory",\n'
+            '        "migrations",\n'
+            '    ),\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStateStoresStayInTheTestHome.py::'
+            'testAStoreWriteLandsInTheTestHome'
+        ),
+        # The same drop: the journal resolves through expanduser again,
+        # so its write lands in the surrogate HOME.
+        source='tests/conftest.py',
+        old=(
+            '    StateStoreRedirect(\n'
+            '        "vaibify.config.zenodoMigrationJournal", "fsMigrationsDirectory",\n'
+            '        "migrations",\n'
+            '    ),\n'
+        ),
+        new='',
+    ),
+    # --- 2026-11-02: the journal and binding stores lose no
+    # concurrent update, and a decision takes its pass lock once ---
+    Falsification(
+        nodeid='tests/testLockedJsonRecord.py::testTwoJournalWritersLoseNothing',
+        # The record lock yields without locking.
+        source='vaibify/config/lockedJsonRecord.py',
+        old='        fcntl.flock(iDescriptor, fcntl.LOCK_EX)\n        yield\n',
+        new='        yield\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLockedJsonRecord.py::'
+            'testADecisionCompletesUnderItsOwnPassLock'
+        ),
+        # The decision ends with the public pass, which takes the pass
+        # lock a second time.
+        source='vaibify/gui/zenodoTokenMigration.py',
+        old=(
+            '        _fnApplyDecision(sProjectUuid, sSlot, sDecision, sInstance, bReplaceActive)\n'
+            '        return _fdictRunMigrationPassHoldingLock(\n'
+            '            connectionDocker, sContainerId, sProjectUuid,\n'
+            '        )\n'
+        ),
+        new=(
+            '        _fnApplyDecision(sProjectUuid, sSlot, sDecision, sInstance, bReplaceActive)\n'
+            '        return fdictRunMigrationPass(connectionDocker, sContainerId)\n'
+        ),
+    ),
+    # --- 2026-11-02: the token rotation notice is answered once, and
+    # only the researcher answers it ---
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenMigration.py::'
+            'testARotationAnswerRetiresTheNoticeUntilATokenIsFoundAgain'
+        ),
+        # The describe step reporting the advice without the decision.
+        source='vaibify/gui/zenodoTokenMigration.py',
+        old='        "bRotationAdvised": journal.fbRotationStillAdvised(dictJournal),\n',
+        new='        "bRotationAdvised": bool(dictJournal.get("bRotationAdvised")),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoTokenRoutes.py::'
+            'testTheAgentLaneCannotAnswerTheRotationNotice'
+        ),
+        # The rotation-decision handler without its agent-lane refusal.
+        source='vaibify/gui/routes/zenodoTokenRoutes.py',
+        old=(
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"](sContainerId)\n'
+            '        if request.sDecision not in zenodoMigrationJournal.T_ROTATION_DECISIONS:\n'
+        ),
+        new=(
+            '        dictCtx["require"](sContainerId)\n'
+            '        if request.sDecision not in zenodoMigrationJournal.T_ROTATION_DECISIONS:\n'
+        ),
+    ),
+    # --- 2026-11-02: two kinds of Zenodo authorization per workflow,
+    # per-instance targets, the environment-promotion guard, adoption ---
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testAPromotionPassesWithASandboxEntryAndAMintAuthorization'
+        ),
+        # Rule 3 undone: an entry on the other instance is compared with
+        # project.json's record again.
+        source='vaibify/config/remoteBindings.py',
+        old='    if not bInstanceOnly and dictProjectTarget.get("sInstance") == sInstance:\n',
+        new='    if not bInstanceOnly:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testAMintMovesOnlyTheProjectKindsMintedEntry'
+        ),
+        # The post-mint update writes the environment kind's entry.
+        source='vaibify/config/remoteBindings.py',
+        old=(
+            '            dictWorkflow.get("dictServices") or {}, S_SERVICE_ZENODO,\n'
+            '            S_RECORD_KIND_PROJECT, sInstance,\n'
+        ),
+        new=(
+            '            dictWorkflow.get("dictServices") or {}, S_SERVICE_ZENODO,\n'
+            '            S_RECORD_KIND_ENVIRONMENT, sInstance,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testTheEnvironmentPromotionRefusesBeforeReadingAnyToken'
+        ),
+        # The environment-promotion route without its binding guard.
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old=(
+            '        fdictRequireBoundZenodoTarget(\n'
+            '            dictCtx, sContainerId, dictWorkflow, S_RECORD_KIND_ENVIRONMENT,\n'
+            '            S_INSTANCE_ZENODO,\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBindings.py::'
+            'testAnAdoptedProjectPromotionMovesTheProjectRecord'
+        ),
+        # Adoption records the DOI but leaves the binding behind.
+        source='vaibify/gui/routes/promotionRecoveryRoutes.py',
+        old=(
+            '    fnRecordZenodoOutcomeInBinding(\n'
+            '        dictCtx, sContainerId, dictWorkflow, sService,\n'
+        ),
+        new=(
+            '    (lambda *tArgs: None)(\n'
+            '        dictCtx, sContainerId, dictWorkflow, sService,\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testRemoteBindings.py::testAnInstanceThatIsNeitherSiteIsRefused',
+        # Any instance accepted as a Zenodo site.
+        source='vaibify/config/remoteBindings.py',
+        old='    if sInstance not in T_ZENODO_INSTANCES:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testRemoteBindings.py::testEveryRefusalFromTheRecordIsTheCodedConflict',
+        # A binding error escapes the context uncoded.
+        source='vaibify/gui/remoteBindingContext.py',
+        old=(
+            '    except (remoteBindings.BindingRequiredError,\n'
+            '            remoteBindings.BindingRecordInvalidError) as error:\n'
+            '        fnRaiseForBindingError(error, sService, sRecordKind, sInstance)\n'
+        ),
+        new=(
+            '    except ZeroDivisionError as error:\n'
+            '        fnRaiseForBindingError(error, sService, sRecordKind, sInstance)\n'
+        ),
+    ),
+    # --- 2026-11-02: a confirmation records only what was reviewed,
+    # and only on evidence that succeeded ---
+    Falsification(
+        nodeid=(
+            'tests/testBindingConfirmation.py::'
+            'testUnreachableEvidenceIsRefusedAndTheRecordIsUnchanged'
+        ),
+        # The evidence gate passes whatever came back.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    if dictEvidence.get("bSucceeded"):\n        return dictEvidence\n',
+        new='    if True:\n        return dictEvidence\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBindingConfirmation.py::'
+            'testAReviewOfAnotherWorkflowIsRefused'
+        ),
+        # The review's workflow key is no longer compared with the loaded one.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    if request.sWorkflowKey != sWorkflowKey:\n',
+        new='    if False:\n',
+    ),
+    # --- 2026-11-02: CLI refusals name their cause, and only a way out
+    # that exists ---
+    Falsification(
+        nodeid=(
+            'tests/testCliMessagesPointTheRightWay.py::'
+            'testAShadowedPackageStopsNamingTheFolderAndTheFix'
+        ),
+        # The shadow check returns before it looks at the package.
+        source='vaibify/cli/packageShadowGuard.py',
+        old='    if modulePackage is None or getattr(modulePackage, "__file__", None):\n        return\n',
+        new='    if True:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCliMessagesPointTheRightWay.py::'
+            'testAResearcherOnlyActionNeverNamesTheAgentLane'
+        ),
+        # The agent-lane pointer appended whatever the action.
+        source='vaibify/cli/hubSession.py',
+        old='        S_AGENT_LANE_POINTER if bAgentLaneCanRunIt else S_RESEARCHER_ONLY_WAY_OUT\n',
+        new='        S_AGENT_LANE_POINTER\n',
+    ),
+    # --- 2026-11-02: the web network mode, sealed like allowlist, with
+    # only the proxy's host-name check skipped ---
+    Falsification(
+        nodeid=(
+            'tests/testEgressProxy.py::'
+            'testWebModeRefusesEveryNonPublicResolution'
+        ),
+        # The resolution check skipped whenever any public host is allowed.
+        source='vaibify/docker/egressProxy.py',
+        old='    if fbIsHubGateway(sHost, iPort):\n        return listAnswers[0][4][0]\n',
+        new='    if fbIsHubGateway(sHost, iPort) or DICT_ANY_PUBLIC_HOST["bEnabled"]:\n        return listAnswers[0][4][0]\n',
+    ),
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testWebModeTunnelsAnUnlistedPublicHost',
+        # The proxy ignoring --any-public-host.
+        source='vaibify/docker/egressProxy.py',
+        old='    elif not DICT_ANY_PUBLIC_HOST["bEnabled"] and sHostLower not in SET_ALLOWED_HOSTNAMES:\n',
+        new='    elif sHostLower not in SET_ALLOWED_HOSTNAMES:\n',
+    ),
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testTheCouncilNeverComposesAnyPublicHost',
+        # The composer's default flipped, so every caller allows any host.
+        source='vaibify/docker/egressProxy.py',
+        old='                             bAnyPublicHost=False):\n',
+        new='                             bAnyPublicHost=True):\n',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAWebLaunchIsSealed',
+        # The launch still returning early for every mode but allowlist.
+        source='vaibify/docker/containerManager.py',
+        old='    if not fbIsSealedNetworkMode(sMode):\n        return\n    if not dictEgress',
+        new='    if sMode != "allowlist":\n        return\n    if not dictEgress',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAKeylessLegacyFileStillLoadsOpen',
+        # The configuration's own default becoming web.
+        source='vaibify/config/projectConfig.py',
+        old='    sNetworkMode: str = S_NETWORK_MODE_OPEN\n',
+        new='    sNetworkMode: str = S_NETWORK_MODE_WEB\n',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testEveryNewProjectPathWritesWeb',
+        # init leaving the mode to the configuration's own default (open).
+        source='vaibify/cli/commandInit.py',
+        old='    config.sNetworkMode = S_NEW_PROJECT_NETWORK_MODE\n',
+        new='',
     ),
 ]

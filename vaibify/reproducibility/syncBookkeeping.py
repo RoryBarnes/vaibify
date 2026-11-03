@@ -42,6 +42,7 @@ from .scheduledReverify import fsSyncStatusRelativePath
 __all__ = [
     "DICT_REMOTE_PRODUCED_FIELDS",
     "fdictDescribeCrossInstanceParent",
+    "fsDescribeZenodoService",
     "fiResolveZenodoParentDepositId",
     "fsDescribeCrossInstanceParent",
     "fsResolveRecordedZenodoService",
@@ -283,6 +284,11 @@ _DICT_SERVICE_PHRASES = {
     "zenodo": "zenodo.org (permanent)",
     "sandbox": "the Zenodo sandbox (testing only)",
 }
+
+
+def fsDescribeZenodoService(sService):
+    """Return how the dashboard names a Zenodo service to a researcher."""
+    return _DICT_SERVICE_PHRASES.get(sService, "a Zenodo vaibify cannot identify")
 
 
 def fdictDescribeCrossInstanceParent(dictWorkflow, sTargetService):

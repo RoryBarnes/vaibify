@@ -232,7 +232,7 @@ def testTheWorkflowAndItsTokenBannerReadLegibly(pageDashboard, serverHub):
     listBannerLinks = [
         dictReading for dictReading in dictSweep["listMeasured"]
         if dictReading["sElement"] == "a"
-        and dictReading["sText"] in ("sandbox", "production")
+        and dictReading["sText"] in ("the Zenodo sandbox", "zenodo.org")
     ]
     assert len(listBannerLinks) == 2, (
         f"the sweep did not measure both banner links: {listBannerLinks}"

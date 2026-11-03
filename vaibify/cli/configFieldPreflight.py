@@ -98,9 +98,10 @@ def _fsDescribeX11WithNetworkIsolation(config):
             "a sealed container would defeat the seal. Set one of them "
             "to false"
         )
-    if sMode == "allowlist":
+    from vaibify.config.projectConfig import fbIsSealedNetworkMode
+    if fbIsSealedNetworkMode(sMode):
         return (
-            "x11Forwarding is true while networkMode is allowlist; a "
+            f"x11Forwarding is true while networkMode is {sMode}; a "
             "display channel into a sealed container would defeat the "
             "seal. Set networkMode to open or x11Forwarding to false"
         )

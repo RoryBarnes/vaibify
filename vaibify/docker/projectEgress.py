@@ -1,6 +1,7 @@
-"""A project container's egress boundary in allowlist mode: its network and its proxy.
+"""A project container's egress boundary in a sealed mode: its network and its proxy.
 
-Each allowlist-mode project gets an INTERNAL network with the bridge's
+Each project in a sealed mode (web or allowlist) gets an INTERNAL
+network with the bridge's
 gateway mode ``isolated`` (Engine 28 and later) and a proxy sidecar on
 that network and on the default bridge. ``--internal`` alone is not the
 seal: Docker gives an internal network's bridge an address, and a
@@ -10,8 +11,13 @@ bridge gets no address and the container no route, so a direct dial to
 the host, the VM, the LAN or another container fails before a packet
 leaves the machine (measured on Engine 28.4.0: ``ENETUNREACH``). An
 engine that does not honor the option, or that still assigns a gateway,
-refuses allowlist mode by name; there is no fallback to a gatewayed
-network.
+refuses both sealed modes by name; there is no fallback to a
+gatewayed network.
+
+The two modes differ only in the proxy's host-name check: allowlist
+mode tunnels to the computed allowlist, web mode (``--any-public-host``)
+to any host whose name resolves to a public address. Raw-address
+targets and non-public resolutions are refused in both.
 
 The sidecar runs the shared proxy of :mod:`egressProxy` from a
 read-only bind mount of the script, as an unprivileged user with every
@@ -54,6 +60,8 @@ import time
 
 from vaibify.config.durableFile import fnWriteFileDurably
 
+from vaibify.config.projectConfig import S_NETWORK_MODE_WEB
+
 from . import egressProxy
 from .egressAllowlist import ftComputeAllowlist
 from .egressProxy import EgressSetupError
@@ -66,10 +74,10 @@ S_PROXY_PREFIX = "vaibifyProjectProxy"
 S_HUB_HOST = "host.docker.internal"
 S_ISOLATED_GATEWAY_OPTION = "com.docker.network.bridge.gateway_mode_ipv4=isolated"
 S_ENGINE_REQUIREMENT = (
-    "allowlist network mode needs a Docker Engine that honors the bridge "
-    "option gateway_mode_ipv4=isolated (Engine 28.0.0 or later); this "
-    "daemon did not. Update the engine, or set networkMode to open or "
-    "isolated."
+    "the web and allowlist network modes need a Docker Engine that honors "
+    "the bridge option gateway_mode_ipv4=isolated (Engine 28.0.0 or "
+    "later); this daemon did not. Update the engine, or set networkMode: "
+    "open in vaibify.yml."
 )
 S_PROXY_STATE_RUNNING = "running"
 S_PROXY_STATE_DOWN = "down"
@@ -228,6 +236,7 @@ def flistProxyRunArguments(
     listArguments.extend(egressProxy.flistComposeProxyCommand(
         listHosts, listPorts, {}, sSubnet,
         f"{S_HUB_HOST}:{iHubPort}" if iHubPort else "", listForwards,
+        bAnyPublicHost=getattr(config, "sNetworkMode", "") == S_NETWORK_MODE_WEB,
     ))
     return listArguments
 

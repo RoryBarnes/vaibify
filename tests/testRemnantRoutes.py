@@ -280,6 +280,14 @@ def test_removing_a_project_gives_up_its_pending_containerization(tHub, monkeypa
     from vaibify.config import registryManager
     from vaibify.gui import conversionLifecycle
     app, clientBrowser, _connection = tHub
+    sRegistryDirectory = os.path.join(str(tmp_path), "registry")
+    monkeypatch.setattr(registryManager, "_S_REGISTRY_DIRECTORY", sRegistryDirectory)
+    monkeypatch.setattr(
+        registryManager, "_S_REGISTRY_PATH",
+        os.path.join(sRegistryDirectory, "registry.json"))
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH",
+        os.path.join(sRegistryDirectory, "registry.lock"))
     sProject = os.path.join(str(tmp_path), "hostProject")
     os.makedirs(sProject)
     with open(os.path.join(sProject, "vaibify.yml"), "w", encoding="utf-8") as fileConfig:

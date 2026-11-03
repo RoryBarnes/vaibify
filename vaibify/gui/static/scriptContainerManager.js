@@ -1527,9 +1527,11 @@ var VaibifyContainerManager = (function () {
         var sMode = _fsNetworkModeOf(dictSettings);
         var bX11 = dictSettings.bX11Forwarding === true;
         var listModes = [
+            ["web", "Web (the public internet, but not this computer or " +
+                "your network)"],
             ["allowlist", "Allowlist (agents' services, GitHub, package " +
                 "indexes, hosts you allow)"],
-            ["open", "Open (the whole network)"],
+            ["open", "Open (the whole network, including this computer)"],
             ["isolated", "Isolated (no network)"],
         ];
         var listAllowed = dictSettings.listAllowedHosts || [];
@@ -3005,11 +3007,12 @@ var VaibifyContainerManager = (function () {
     function _fnRenderNetworkBanner(dictNetwork) {
         /* The server's facts about the sealed network: the mode, whether
            the proxy sidecar is up, and what it refused (ruling D8). A
-           project not in allowlist mode has no row. A proxy that is
-           down is said in so many words; nothing here is re-derived. */
+           project not in a sealed mode (web or allowlist) has no row. A
+           proxy that is down is said in so many words; nothing here is
+           re-derived. */
         var elBanner = document.getElementById("networkBanner");
         if (!elBanner) return;
-        if (!dictNetwork || dictNetwork.sMode !== "allowlist") {
+        if (!dictNetwork || dictNetwork.bSealed !== true) {
             elBanner.style.display = "none";
             elBanner.innerHTML = "";
             return;
@@ -3023,7 +3026,8 @@ var VaibifyContainerManager = (function () {
                   "the network until the container is started again");
         elBanner.innerHTML =
             '<div class="build-warnings-banner-header">' +
-            '<span>Network mode: allowlist (' +
+            '<span>Network mode: ' +
+            VaibifyUtilities.fnEscapeHtml(dictNetwork.sMode) + ' (' +
             VaibifyUtilities.fnEscapeHtml(sStateText) + ')</span></div>' +
             (listRefused.length
                 ? '<ul class="build-warnings-banner-list">' +

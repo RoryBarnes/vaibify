@@ -105,8 +105,8 @@ class CreateProjectRequest(BaseModel):
     bNeverSleep: bool = False
     bNetworkIsolation: bool = False
     # The network mode (ruling D1); empty means "as bNetworkIsolation says",
-    # for a client that predates the mode. New projects default to allowlist
-    # in the wizard (ruling D2), which sends the value explicitly.
+    # for a client that predates the mode, and otherwise the new-project
+    # mode (web). The wizard sends the value explicitly.
     sNetworkMode: str = ""
     bX11Forwarding: bool = False
     bClaudeAutoUpdate: bool = True
@@ -2698,9 +2698,14 @@ def _fdictBuildYamlFromRequest(request):
 
 
 def fsNetworkModeOfRequest(request):
-    """Return the mode a wizard request asks for, reading the old boolean too."""
+    """Return the mode a wizard request asks for, reading the old boolean too.
+
+    A request that names no mode creates a new project, so it gets the
+    new-project mode; an old ``bNetworkIsolation: true`` still means
+    isolated.
+    """
     from vaibify.config.projectConfig import (
-        S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN, T_NETWORK_MODES,
+        S_NETWORK_MODE_ISOLATED, S_NEW_PROJECT_NETWORK_MODE, T_NETWORK_MODES,
     )
     sMode = getattr(request, "sNetworkMode", "") or ""
     if sMode:
@@ -2709,7 +2714,7 @@ def fsNetworkModeOfRequest(request):
                 400, f"networkMode must be one of {', '.join(T_NETWORK_MODES)}")
         return sMode
     return (S_NETWORK_MODE_ISOLATED if getattr(request, "bNetworkIsolation", False)
-            else S_NETWORK_MODE_OPEN)
+            else S_NEW_PROJECT_NETWORK_MODE)
 
 
 def _fnAttachResourceLimits(dictYaml, request):

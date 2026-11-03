@@ -57,6 +57,10 @@ def fixtureIsolateRegistry(tmp_path, monkeypatch):
         registryManager, "_S_REGISTRY_PATH",
         os.path.join(sRegistryDirectory, "registry.json"),
     )
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH",
+        os.path.join(sRegistryDirectory, "registry.lock"),
+    )
 
 
 @pytest.fixture(autouse=True)

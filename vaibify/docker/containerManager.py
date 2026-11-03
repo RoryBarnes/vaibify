@@ -35,7 +35,7 @@ from .volumeManager import (
     fbVolumeExists, fsGetCredentialsVolumeName, fsGetVolumeName,
 )
 from vaibify.config.projectConfig import (
-    S_NETWORK_MODE_ALLOWLIST, S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN,
+    S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN, fbIsSealedNetworkMode,
 )
 
 from . import egressProxy, projectEgress
@@ -1215,13 +1215,14 @@ def _fnAddAgentUpdateEnvs(config, saRunArgs):
 def _fnAddNetworkIsolation(config, saRunArgs, dictEgress=None):
     """Add the network-mode arguments: none, the sealed network, or nothing.
 
-    ``isolated`` is ``--network none``. ``allowlist`` joins the project's
-    internal network with its resolver black-holed and every HTTP client
-    pointed at the proxy sidecar, whose address ``dictEgress`` carries
-    from :func:`projectEgress.fdictPrepareProjectEgress`; a launch in
-    allowlist mode with no prepared egress is refused, never started
-    open. ``NO_PROXY`` names only the container itself: the hub is
-    reached THROUGH the proxy, which pins it.
+    ``isolated`` is ``--network none``. The sealed modes, ``web`` and
+    ``allowlist``, join the project's internal network with its resolver
+    black-holed and every HTTP client pointed at the proxy sidecar, whose
+    address ``dictEgress`` carries from
+    :func:`projectEgress.fdictPrepareProjectEgress`; a launch in a sealed
+    mode with no prepared egress is refused, never started open.
+    ``NO_PROXY`` names only the container itself: the hub is reached
+    THROUGH the proxy, which pins it.
     """
     sMode = fsNetworkModeOf(config)
     if sMode == S_NETWORK_MODE_ISOLATED:
@@ -1230,11 +1231,11 @@ def _fnAddNetworkIsolation(config, saRunArgs, dictEgress=None):
             "-e", "VAIBIFY_NETWORK_ISOLATED=true",
         ])
         return
-    if sMode != S_NETWORK_MODE_ALLOWLIST:
+    if not fbIsSealedNetworkMode(sMode):
         return
     if not dictEgress or not dictEgress.get("sProxyAddress"):
         raise RuntimeError(
-            f"'{config.sProjectName}' sets networkMode: allowlist, but no "
+            f"'{config.sProjectName}' sets networkMode: {sMode}, but no "
             "network proxy was prepared for this launch; the container is "
             "not started open.")
     saRunArgs.extend(egressProxy.flistBuildSealedNetworkArguments(
@@ -1244,7 +1245,7 @@ def _fnAddNetworkIsolation(config, saRunArgs, dictEgress=None):
         saRunArgs.extend(["-e", f"{sKey}={sValue}"])
     saRunArgs.extend([
         "-e", "NO_PROXY=localhost,127.0.0.1", "-e", "no_proxy=localhost,127.0.0.1",
-        "-e", "VAIBIFY_NETWORK_MODE=allowlist",
+        "-e", f"VAIBIFY_NETWORK_MODE={sMode}",
         "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
     ])
 
@@ -1259,20 +1260,21 @@ def fsNetworkModeOf(config):
 
 
 def fdictPrepareEgressForLaunch(config):
-    """Make the sealed network and proxy for an allowlist-mode launch; else None.
+    """Make the sealed network and proxy for a sealed-mode launch; else None.
 
     The hub's port is the one destination on the host the container may
     reach; it is read from the hub's own record, which a hub persists
     at launch. A project the registry does not know has no identity to
-    key the egress by, and allowlist mode is refused for it.
+    key the egress by, and a sealed mode is refused for it.
     """
-    if fsNetworkModeOf(config) != S_NETWORK_MODE_ALLOWLIST:
+    sMode = fsNetworkModeOf(config)
+    if not fbIsSealedNetworkMode(sMode):
         return None
     from vaibify.config.hubPortRegistry import fiReadPersistedHubPort
     sProjectUuid = _fsProjectUuidOrEmpty(config.sProjectName)
     if not sProjectUuid:
         raise RuntimeError(
-            f"'{config.sProjectName}' sets networkMode: allowlist, but it is "
+            f"'{config.sProjectName}' sets networkMode: {sMode}, but it is "
             "not a registered project, so its network cannot be named; "
             "register it or set networkMode to open.")
     return projectEgress.fdictPrepareProjectEgress(
@@ -1296,10 +1298,11 @@ def _fnAddX11Forwarding(config, saRunArgs):
             "networkIsolation. A sealed container cannot use a display "
             "channel; set one of them to false in vaibify.yml."
         )
-    if fsNetworkModeOf(config) == S_NETWORK_MODE_ALLOWLIST:
+    sMode = fsNetworkModeOf(config)
+    if fbIsSealedNetworkMode(sMode):
         raise RuntimeError(
             f"'{config.sProjectName}' sets x11Forwarding with networkMode: "
-            "allowlist. A sealed container cannot use a display channel; "
+            f"{sMode}. A sealed container cannot use a display channel; "
             "set networkMode to open or x11Forwarding to false in vaibify.yml."
         )
     saRunArgs.extend(flistConfigureX11Args(

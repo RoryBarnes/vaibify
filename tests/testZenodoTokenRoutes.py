@@ -155,3 +155,52 @@ def testAnUnreadableHostKeyringIsA409NotAnEmptyAnswer(tClient, fixtureHermeticKe
     responseHttp = client.get(_fsPath())
     assert responseHttp.status_code == 409
     assert "could not be read" in responseHttp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# The rotation notice
+# ---------------------------------------------------------------------------
+
+
+def _fresponseDecideRotation(client, sDecision, dictHeaders=None):
+    return client.post(
+        _fsPath("/rotation-decision"), json={"sDecision": sDecision},
+        headers=dictHeaders or {},
+    )
+
+
+def testEitherAnswerRetiresTheRotationNoticeWithItsDate(tClient):
+    client, _ = tClient
+    client.post(_fsPath("/migrate"))
+    assert client.get(_fsPath()).json()["bRotationAdvised"] is True
+    responseHttp = _fresponseDecideRotation(client, "kept")
+    assert responseHttp.status_code == 200, responseHttp.text
+    dictDescribed = responseHttp.json()
+    assert dictDescribed["bRotationAdvised"] is False
+    assert dictDescribed["sRotationDecision"] == "kept"
+    assert dictDescribed["sRotationDecidedAt"]
+    assert client.get(_fsPath()).json()["bRotationAdvised"] is False
+
+
+@pytest.mark.falsification
+def testTheAgentLaneCannotAnswerTheRotationNotice(tClient):
+    """Whether the tokens were regenerated is the researcher's to say.
+
+    Kills: dropping the agent-lane refusal from the rotation-decision
+    handler.
+    """
+    client, _ = tClient
+    client.post(_fsPath("/migrate"))
+    responseHttp = _fresponseDecideRotation(
+        client, "regenerated", {"X-Vaibify-Session": "agent-token"},
+    )
+    assert responseHttp.status_code == 403
+    assert journal.fdictReadJournal(S_UUID).get("sRotationDecision", "") == ""
+
+
+def testABadRotationAnswerIsA400AndOneWithNoNoticeA409(tClient):
+    client, _ = tClient
+    assert _fresponseDecideRotation(client, "shrug").status_code == 400
+    responseHttp = _fresponseDecideRotation(client, "kept")
+    assert responseHttp.status_code == 409
+    assert "no rotation to decide" in responseHttp.json()["detail"]

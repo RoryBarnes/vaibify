@@ -166,6 +166,9 @@ def testTheStartRouteRecordsTheEvidenceItsWorkerFound(tmp_path, monkeypatch):
     monkeypatch.setattr(
         registryManager, "_S_REGISTRY_PATH",
         os.path.join(sRegistryDirectory, "registry.json"))
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH",
+        os.path.join(sRegistryDirectory, "registry.lock"))
 
     def fsExecute(sName, reservation, configProject):
         reservation.recordStartTask.dictExitedOomEvidence = {

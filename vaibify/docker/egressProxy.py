@@ -19,9 +19,12 @@ What the script refuses, and why each refusal exists:
   general web proxy;
 - a RAW ADDRESS target: a name is what the allowlist judges, and an
   address would bypass it;
-- a host off the allowlist;
+- a host off the allowlist, unless the server started the proxy with
+  ``--any-public-host`` (a web-mode project), which skips this one test
+  and nothing else;
 - an allowed name that RESOLVES to a non-public address (loopback,
-  private, link-local, carrier-grade NAT, multicast, reserved), unless
+  private, link-local, carrier-grade NAT, multicast, reserved, 6to4),
+  unless
   the server pinned that name to an address: a name an attacker
   controls could otherwise point at the host, the VM, the LAN or the
   cloud metadata service, and the proxy would dial it from its bridge
@@ -139,6 +142,12 @@ DICT_STATE = {"iOpenTunnels": 0}
 # hub speaks http:// and a client given HTTP_PROXY sends it that way.
 DICT_HUB_GATEWAY = {"sHost": "", "iPort": 0}
 NETWORK_CARRIER_GRADE_NAT = ipaddress.ip_network("100.64.0.0/10")
+# 6to4 addresses embed an IPv4 address that the checks above never see,
+# private ones included; with any public host allowed, this check is the
+# whole boundary, so the prefix is refused outright.
+NETWORK_SIX_TO_FOUR = ipaddress.ip_network("2002::/16")
+# Set by --any-public-host: the host-name test is skipped, nothing else.
+DICT_ANY_PUBLIC_HOST = {"bEnabled": False}
 
 
 class NonPublicResolution(Exception):
@@ -162,6 +171,7 @@ def fbIsNonPublicAddress(sAddress):
         or addressTarget.is_reserved or addressTarget.is_unspecified
         or (addressTarget.version == 4
             and addressTarget in NETWORK_CARRIER_GRADE_NAT)
+        or (addressTarget.version == 6 and addressTarget in NETWORK_SIX_TO_FOUR)
     )
 
 
@@ -249,7 +259,7 @@ async def fsJudgeTarget(sHostLower, iPort):
     if DICT_HUB_GATEWAY["sHost"] and sHostLower == DICT_HUB_GATEWAY["sHost"]:
         if iPort != DICT_HUB_GATEWAY["iPort"]:
             return "only the hub's port is served on the host"
-    elif sHostLower not in SET_ALLOWED_HOSTNAMES:
+    elif not DICT_ANY_PUBLIC_HOST["bEnabled"] and sHostLower not in SET_ALLOWED_HOSTNAMES:
         return "host not on allowlist"
     elif iPort not in SET_ALLOWED_PORTS:
         return "port not on allowlist"
@@ -452,7 +462,9 @@ def main():
     parserArguments.add_argument("--bind-cidr", default="")
     parserArguments.add_argument("--hub-gateway", default="")
     parserArguments.add_argument("--forward", default="")
+    parserArguments.add_argument("--any-public-host", action="store_true")
     namespaceArguments = parserArguments.parse_args()
+    DICT_ANY_PUBLIC_HOST["bEnabled"] = namespaceArguments.any_public_host
     if namespaceArguments.hub_gateway:
         sHubHost, _sColon, sHubPort = namespaceArguments.hub_gateway.rpartition(":")
         DICT_HUB_GATEWAY["sHost"] = sHubHost.strip().lower()
@@ -481,9 +493,13 @@ if __name__ == "__main__":
 
 
 def fnValidateAllowlistOrRaise(saAllowedHostnames, iaAllowedPorts,
-                               dictHostnameAddressMap):
-    """Refuse allowlist material that is not plainly server-shaped."""
-    if not saAllowedHostnames:
+                               dictHostnameAddressMap, bAnyPublicHost=False):
+    """Refuse allowlist material that is not plainly server-shaped.
+
+    An empty host list is accepted only with ``bAnyPublicHost``, where
+    the proxy judges no host name at all.
+    """
+    if not saAllowedHostnames and not bAnyPublicHost:
         raise EgressSetupError("the egress allowlist must not be empty")
     for sHostname in saAllowedHostnames:
         if not _RE_HOSTNAME.match(sHostname):
@@ -517,7 +533,8 @@ def fnValidateAllowlistOrRaise(saAllowedHostnames, iaAllowedPorts,
 
 def flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
                              dictHostnameAddressMap, sBindCidr="",
-                             sHubGateway="", listForwards=()):
+                             sHubGateway="", listForwards=(),
+                             bAnyPublicHost=False):
     """Compose the argv the proxy container runs, from server-owned values.
 
     ``sBindCidr`` is the internal network's subnet; given, the proxy
@@ -527,6 +544,8 @@ def flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
     container may reach (its hub); ``listForwards`` are
     ``(iListen, sTargetHost, iTargetPort)`` triples the proxy relays
     from its bridge side, for the container's published ports.
+    ``bAnyPublicHost`` lets the proxy tunnel to any public host (a
+    web-mode project); only a project's own egress ever passes it.
     """
     saCommand = [
         "python", S_PROXY_SCRIPT_CONTAINER_PATH,
@@ -558,6 +577,8 @@ def flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
         saCommand.extend(["--forward", ",".join(
             f"{int(iListen)}={sTargetHost}:{int(iTargetPort)}"
             for iListen, sTargetHost, iTargetPort in listForwards)])
+    if bAnyPublicHost:
+        saCommand.append("--any-public-host")
     return saCommand
 
 

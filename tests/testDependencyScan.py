@@ -147,6 +147,10 @@ def tclientScan(tmp_path, monkeypatch):
         registryManager, "_S_REGISTRY_PATH",
         os.path.join(sRegistryDirectory, "registry.json"),
     )
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH",
+        os.path.join(sRegistryDirectory, "registry.lock"),
+    )
     sProjectDirectory = str(tmp_path / S_PROJECT_NAME)
     os.makedirs(os.path.join(sProjectDirectory, "sub"))
     with open(

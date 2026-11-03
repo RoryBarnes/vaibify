@@ -695,6 +695,12 @@
         <div id="zenodoTokenBanner"
              class="build-warnings-banner configuration-drift-banner"
              style="display: none;"></div>
+        <!-- Remote bindings that apply and are not confirmed, or that
+             project.json disagrees with: a token-bearing action refuses
+             until the researcher reviews and confirms each one. -->
+        <div id="remoteBindingBanner"
+             class="build-warnings-banner configuration-drift-banner"
+             style="display: none;"></div>
         <!-- Running CPU or memory limits that differ from vaibify.yml.
              Its own banner: a limit applies at the next start, so it is
              neither a start warning nor an image older than its file. -->
@@ -1050,6 +1056,18 @@
 </div>
 
 <!-- Connection Setup Modal -->
+<!-- The review of one remote binding: what project.json names, what is
+     confirmed, and what the host could see with the researcher's own
+     token. Filled by scriptRemoteBindings.js from the server's answer. -->
+<div class="modal-overlay" id="modalRemoteBinding" style="display: none;"
+     role="dialog" aria-modal="true" aria-labelledby="remoteBindingTitle">
+    <div class="modal modal-medium">
+        <h2 id="remoteBindingTitle">Review a remote binding</h2>
+        <div id="remoteBindingBody"></div>
+        <div class="modal-actions" id="remoteBindingActions"></div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="modalConnectionSetup" style="display: none;"
      role="dialog" aria-modal="true"
      aria-labelledby="modalConnectionTitle">
@@ -1472,6 +1490,7 @@
 <script src="/static/scriptZenodoDepositCard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptSyncManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptZenodoTokens.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptRemoteBindings.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptArxivConfig.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptAiModelConfig.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptProjectContext.js?v=__CACHE_VERSION__"></script>

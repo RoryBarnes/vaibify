@@ -6,7 +6,11 @@
    (GET /api/zenodo-tokens/{id}) -- slot states, the host-side
    validation outcome and what Zenodo reports about the token -- and
    sends the decision back. It derives nothing about the slots itself,
-   and it never shows a token value, because the server never sends one. */
+   and it never shows a token value, because the server never sends one.
+   The rotation notice is answered here too, "I've regenerated them" or
+   "Keep the current tokens"; the server records the answer with its
+   date and stops advising until a token is found in the container
+   again, so the notice comes and goes only on the server's word. */
 
 var VaibifyZenodoTokens = (function () {
     "use strict";
@@ -14,6 +18,16 @@ var VaibifyZenodoTokens = (function () {
     var _S_BANNER_ID = "zenodoTokenBanner";
     var _S_DISMISS_ID = "btnDismissZenodoTokens";
     var _sContainerId = "";
+    var _S_ROTATION_REGENERATED = "regenerated";
+    var _LIST_ROTATION_CHOICES = [
+        ["I've regenerated them", _S_ROTATION_REGENERATED],
+        ["Keep the current tokens", "kept"],
+    ];
+    // The token slots name their instance "production" and "sandbox";
+    // the dashboard's site phrases are keyed by service.
+    var _DICT_SERVICE_FOR_SLOT_INSTANCE = {
+        production: "zenodo", sandbox: "sandbox",
+    };
 
     function _fsUrl(sContainerId, sSuffix) {
         return "/api/zenodo-tokens/" + encodeURIComponent(sContainerId) +
@@ -170,6 +184,13 @@ var VaibifyZenodoTokens = (function () {
            hold; vaibify cannot revoke a token itself. */
         var elAdvice = document.createElement("div");
         elAdvice.className = "zenodo-token-rotation";
+        elAdvice.appendChild(_felementRotationSentence(dictTokenPages));
+        elAdvice.appendChild(_felementRotationButtons());
+        return elAdvice;
+    }
+
+    function _felementRotationSentence(dictTokenPages) {
+        var elAdvice = document.createElement("div");
         elAdvice.appendChild(document.createTextNode(
             "A token that lived in the container may have been read " +
             "there. Regenerate your Zenodo tokens (and your Overleaf " +
@@ -180,11 +201,72 @@ var VaibifyZenodoTokens = (function () {
             elLink.href = dictTokenPages[sInstance];
             elLink.target = "_blank";
             elLink.rel = "noopener";
-            elLink.textContent = sInstance;
+            elLink.textContent = VaibifyWorkflowRequirements.fsZenodoSitePhrase(
+                _DICT_SERVICE_FOR_SLOT_INSTANCE[sInstance] || sInstance);
             elAdvice.appendChild(elLink);
         });
         elAdvice.appendChild(document.createTextNode("."));
         return elAdvice;
+    }
+
+    function _felementRotationButtons() {
+        var elButtons = document.createElement("div");
+        elButtons.className = "zenodo-token-actions";
+        _LIST_ROTATION_CHOICES.forEach(function (tChoice) {
+            var elButton = document.createElement("button");
+            elButton.type = "button";
+            elButton.className = "btn-small";
+            elButton.dataset.rotation = tChoice[1];
+            elButton.textContent = tChoice[0];
+            elButton.addEventListener("click", function () {
+                _fnDecideRotation(tChoice[1], elButtons);
+            });
+            elButtons.appendChild(elButton);
+        });
+        return elButtons;
+    }
+
+    function _fnSetButtonsDisabled(elButtons, bDisabled) {
+        elButtons.querySelectorAll("button").forEach(function (elButton) {
+            elButton.disabled = bDisabled;
+        });
+    }
+
+    async function _fnDecideRotation(sDecision, elButtons) {
+        /* The banner changes only when the server answers; a refusal
+           leaves it up and says why. */
+        var sContainerAtClick = _sContainerId;
+        _fnSetButtonsDisabled(elButtons, true);
+        var dictReply;
+        try {
+            dictReply = await VaibifyApi.fdictPost(
+                _fsUrl(sContainerAtClick, "/rotation-decision"),
+                {sDecision: sDecision});
+        } catch (error) {
+            _fnSetButtonsDisabled(elButtons, false);
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            return;
+        }
+        if (_sContainerId !== sContainerAtClick) return;
+        fnRender(dictReply);
+        if (sDecision === _S_ROTATION_REGENERATED) {
+            await _fnAskForEachRegeneratedToken(
+                dictReply.dictActive || {}, sContainerAtClick);
+        }
+    }
+
+    async function _fnAskForEachRegeneratedToken(dictActive, sContainerAtClick) {
+        /* A regenerated token replaces the one stored on this computer,
+           which the regeneration revoked; one prompt per instance that
+           holds one, and none once the researcher has left the project. */
+        var listInstances = Object.keys(dictActive).filter(function (sInstance) {
+            return dictActive[sInstance];
+        }).sort();
+        for (var iInstance = 0; iInstance < listInstances.length; iInstance += 1) {
+            if (_sContainerId !== sContainerAtClick) return;
+            await VaibifySyncManager.fpromiseConnectZenodoCredentialOnly(
+                listInstances[iInstance]);
+        }
     }
 
     return {

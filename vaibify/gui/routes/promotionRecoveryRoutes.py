@@ -34,8 +34,14 @@ import asyncio
 
 from fastapi import HTTPException, Request
 
+from vaibify.config.remoteBindings import (
+    S_RECORD_KIND_ENVIRONMENT, S_RECORD_KIND_PROJECT,
+)
+
 from ..actionCatalog import ffnAgentAction
-from ..remoteBindingContext import fdictRequireBoundZenodoTarget
+from ..remoteBindingContext import (
+    fdictRequireBoundZenodoTarget, fnRecordZenodoOutcomeInBinding,
+)
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
     fdictCommitWorkflowSave,
@@ -84,9 +90,16 @@ def _fclientForPromotion(dictCtx, sContainerId, dictRecord, dictWorkflow):
     from .. import zenodoTokenAccess
     sService = str(dictRecord.get("sTargetService") or "zenodo")
     # Resuming spends the researcher's token on this instance, so the
-    # instance must still be the one the researcher confirmed.
+    # instance must still be one the researcher confirmed, for the kind
+    # of record this lane publishes.
+    sRecordKind = (
+        S_RECORD_KIND_ENVIRONMENT
+        if dictRecord.get("sLane") == archivePromotion.S_LANE_IMAGE
+        else S_RECORD_KIND_PROJECT
+    )
     fdictRequireBoundZenodoTarget(
-        dictCtx, sContainerId, dictWorkflow, sService, bInstanceOnly=True,
+        dictCtx, sContainerId, dictWorkflow, sRecordKind, sService,
+        bInstanceOnly=True,
     )
     sToken = zenodoTokenAccess.fsActiveZenodoToken(
         dictCtx["docker"], sContainerId, sService,
@@ -344,13 +357,24 @@ def _fnAdoptProjectDeposit(
     dictCtx, sContainerId, dictWorkflow, dictRecord, dictOutcome,
     requestHttp,
 ):
-    """Write an adopted project DOI through the sidecar seam."""
+    """Write an adopted project DOI through the sidecar seam, and move the binding.
+
+    The adopted deposit is one the hub started, so the confirmed
+    project-record entry follows it exactly as after a publish the hub
+    finished itself; otherwise the next deposit would refuse.
+    """
+    sService = str(dictRecord.get("sTargetService") or "zenodo")
     syncBookkeeping.fnRecordZenodoPublish(
         dictWorkflow,
         {"iDepositId": dictRecord.get("iDepositId"),
          "sDoi": dictOutcome["sDoi"],
          "sConceptDoi": dictOutcome["sConceptDoi"]},
-        str(dictRecord.get("sTargetService") or "zenodo"),
+        sService,
+    )
+    fnRecordZenodoOutcomeInBinding(
+        dictCtx, sContainerId, dictWorkflow, sService,
+        str(dictWorkflow.get("sZenodoConceptDoi") or ""),
+        str(dictWorkflow.get("sZenodoDepositionId") or ""),
     )
     fdictCommitWorkflowSave(
         dictCtx, sContainerId, dictWorkflow, requestHttp,

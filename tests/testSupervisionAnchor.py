@@ -14,6 +14,7 @@ party is confined to, which is the whole reason it works.
 """
 
 import json
+import pathlib
 
 import pytest
 
@@ -214,5 +215,5 @@ def test_supervision_disabled_writes_no_host_anchor(
 
     fdictSummarizeSupervisionEvidence(filesRepo, dictUnsupervised)
 
-    pathAnchors = fixtureIsolatedHome / ".vaibify" / "supervision"
+    pathAnchors = pathlib.Path(supervisionAnchor._fsAnchorDirectory())
     assert not pathAnchors.exists() or not list(pathAnchors.iterdir())

@@ -9,6 +9,7 @@ with a cadence of milliseconds rather than hours.
 
 import asyncio
 import logging
+import os
 import types
 
 import pytest
@@ -282,17 +283,22 @@ def testOnlyContainerEntriesBumpTheSyncEpoch(monkeypatch):
 
 def testAStateFileThatIsNotAnObjectReadsAsNeverRan(pathHome):
     """A JSON list in the state file is not a stamp."""
-    (pathHome / ".vaibify").mkdir()
-    (pathHome / ".vaibify" / "reverifyState.json").write_text("[1, 2]")
+    sStatePath = scheduledReverify.fsReverifyStatePath()
+    os.makedirs(os.path.dirname(sStatePath), exist_ok=True)
+    with open(sStatePath, "w", encoding="utf-8") as fileState:
+        fileState.write("[1, 2]")
     assert scheduledReverify.fsReadLastReverifyIso() == ""
     assert scheduledReverify.fdictDescribeReverifySchedule()["bEverRan"] is (
         False
     )
 
 
-def testAStampThatCannotBePersistedIsLoggedNotRaised(pathHome, caplog):
+def testAStampThatCannotBePersistedIsLoggedNotRaised(pathHome, monkeypatch, caplog):
     """An unwritable state directory warns and leaves 'never ran'."""
     (pathHome / ".vaibify").write_text("a file where a directory belongs")
+    monkeypatch.setattr(
+        scheduledReverify, "fsReverifyStatePath",
+        lambda: str(pathHome / ".vaibify" / "reverifyState.json"))
     with caplog.at_level(logging.WARNING, logger=scheduledReverify.__name__):
         scheduledReverify.fnRecordLastReverifyIso("2026-01-01T00:00:00Z")
     assert "Could not persist the scheduled-reverify stamp" in caplog.text

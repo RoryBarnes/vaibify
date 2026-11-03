@@ -25,6 +25,19 @@ Per container slot, the states are:
 ``dictValidation`` records the host-side probe of a pending token:
 ``accepted``, ``rejected`` or ``undetermined``, with when. No outcome
 discards a token and no outcome activates one.
+
+A token found in the container may have been read there, so rotation is
+advised (``bRotationAdvised``, ``sRotationAdvisedAt``), and every pass
+that finds one again stamps ``sLastTokenFoundAt``. The researcher
+answers once, ``regenerated`` or ``kept`` (``sRotationDecision``,
+``sRotationDecidedAt``), and the answer covers every token found up to
+then: a token found after it advises rotation again.
+
+Every change is a read-modify-write under the journal's record lock
+(:mod:`vaibify.config.lockedJsonRecord`), and a whole migration pass or
+decision holds the project's pass lock around all of its changes. The
+pass lock is outer and is taken once per pass; the functions here take
+only the record lock.
 """
 
 __all__ = [
@@ -44,13 +57,24 @@ __all__ = [
     "fnRecordValidation",
     "fnRecordConflictChoice",
     "fnRecordRotationAdvice",
+    "RotationNotAdvisedError",
+    "S_ROTATION_KEPT",
+    "S_ROTATION_REGENERATED",
+    "T_ROTATION_DECISIONS",
+    "fnRecordRotationDecision",
+    "fbRotationStillAdvised",
+    "fcontextHoldPassLock",
 ]
 
+import contextlib
 import json
 import os
 from datetime import datetime, timezone
 
 from vaibify.config.durableFile import fnWriteFileDurably
+from vaibify.config.lockedJsonRecord import (
+    fcontextHoldRecordLock, fnMutateRecordLocked,
+)
 
 S_STATE_ABSENT = "absent"
 S_STATE_CONFLICT = "conflict"
@@ -64,6 +88,14 @@ S_STATE_DECLINED = "declined"
 SET_FINISHED_STATES = frozenset({
     S_STATE_ABSENT, S_STATE_ACTIVATED, S_STATE_DECLINED,
 })
+
+S_ROTATION_REGENERATED = "regenerated"
+S_ROTATION_KEPT = "kept"
+T_ROTATION_DECISIONS = (S_ROTATION_REGENERATED, S_ROTATION_KEPT)
+
+
+class RotationNotAdvisedError(ValueError):
+    """The researcher answered a rotation notice this project never had."""
 
 
 def fsMigrationsDirectory():
@@ -79,6 +111,13 @@ def _fsJournalPath(sProjectUuid):
 
 def _fsNow():
     return datetime.now(timezone.utc).isoformat()
+
+
+@contextlib.contextmanager
+def fcontextHoldPassLock(sProjectUuid):
+    """Hold the project's migration pass lock: outer to every record lock."""
+    with fcontextHoldRecordLock(_fsJournalPath(sProjectUuid) + ".pass.lock"):
+        yield
 
 
 def fdictReadJournal(sProjectUuid):
@@ -113,12 +152,22 @@ def fdictSlotRecord(sProjectUuid, sContainerSlot):
     return dict(dictRecord) if isinstance(dictRecord, dict) else {}
 
 
+def _fnMutateJournal(sProjectUuid, fnMutate):
+    """Apply ``fnMutate`` to the journal under its record lock."""
+    fnMutateRecordLocked(
+        _fsJournalPath(sProjectUuid),
+        lambda: fdictReadJournal(sProjectUuid), fnMutate,
+        lambda dictJournal: _fnWriteJournal(sProjectUuid, dictJournal),
+    )
+
+
 def _fnUpdateSlot(sProjectUuid, sContainerSlot, dictFields):
-    dictJournal = fdictReadJournal(sProjectUuid)
-    dictSlot = dictJournal["dictSlots"].setdefault(sContainerSlot, {})
-    dictSlot.update(dictFields)
-    dictSlot["sUpdatedAt"] = _fsNow()
-    _fnWriteJournal(sProjectUuid, dictJournal)
+    def fnApplyFields(dictJournal):
+        dictSlot = dictJournal["dictSlots"].setdefault(sContainerSlot, {})
+        dictSlot.update(dictFields)
+        dictSlot["sUpdatedAt"] = _fsNow()
+
+    _fnMutateJournal(sProjectUuid, fnApplyFields)
 
 
 def fnRecordSlotState(sProjectUuid, sContainerSlot, sState, sReason=""):
@@ -147,10 +196,51 @@ def fnRecordConflictChoice(sProjectUuid, sContainerSlot, sChoice):
 
 
 def fnRecordRotationAdvice(sProjectUuid):
-    """Note that a token was found in the container, so rotation is advised."""
-    dictJournal = fdictReadJournal(sProjectUuid)
-    if dictJournal.get("bRotationAdvised"):
-        return
-    dictJournal["bRotationAdvised"] = True
-    dictJournal["sRotationAdvisedAt"] = _fsNow()
-    _fnWriteJournal(sProjectUuid, dictJournal)
+    """Note that a token was found in the container, so rotation is advised.
+
+    ``sLastTokenFoundAt`` moves on every call, so a token found after the
+    researcher's decision advises rotation again.
+    """
+    def fnAdvise(dictJournal):
+        sNow = _fsNow()
+        if not dictJournal.get("bRotationAdvised"):
+            dictJournal["bRotationAdvised"] = True
+            dictJournal["sRotationAdvisedAt"] = sNow
+        dictJournal["sLastTokenFoundAt"] = sNow
+
+    _fnMutateJournal(sProjectUuid, fnAdvise)
+
+
+def fnRecordRotationDecision(sProjectUuid, sDecision):
+    """Record that the researcher regenerated the advised tokens, or kept them.
+
+    Raises ``ValueError`` for a decision that is not one of
+    ``T_ROTATION_DECISIONS``, and :class:`RotationNotAdvisedError` when
+    this project was never advised to rotate.
+    """
+    if sDecision not in T_ROTATION_DECISIONS:
+        raise ValueError(
+            f"{sDecision!r} is not a rotation decision; the decisions are "
+            f"{list(T_ROTATION_DECISIONS)}"
+        )
+
+    def fnDecide(dictJournal):
+        if not dictJournal.get("bRotationAdvised"):
+            raise RotationNotAdvisedError(
+                "No token was found in this project's container, so there "
+                "is no rotation to decide."
+            )
+        dictJournal["sRotationDecision"] = sDecision
+        dictJournal["sRotationDecidedAt"] = _fsNow()
+
+    _fnMutateJournal(sProjectUuid, fnDecide)
+
+
+def fbRotationStillAdvised(dictJournal):
+    """Return True while rotation is advised and no decision covers it."""
+    if not dictJournal.get("bRotationAdvised"):
+        return False
+    sDecidedAt = dictJournal.get("sRotationDecidedAt", "")
+    if not sDecidedAt:
+        return True
+    return dictJournal.get("sLastTokenFoundAt", "") > sDecidedAt

@@ -107,6 +107,15 @@ def _fnServeCompletionRequestBeforeLoadingEveryCommand():
 _fnServeCompletionRequestBeforeLoadingEveryCommand()
 
 
+# Stop, naming the cause, when ``vaibify`` resolved to a folder. It runs
+# before anything reads ``vaibify.__file__``: the identity capture below
+# is where a shadowed import otherwise fails, with a ``TypeError`` that
+# names neither the folder nor the fix.
+from .packageShadowGuard import fnRefuseNamespaceShadowedPackage  # noqa: E402
+
+fnRefuseNamespaceShadowedPackage()
+
+
 def _fnCaptureIdentityBeforeLoadingEveryCommand():
     """Record the running vaibify's identity before the commands are imported.
 
@@ -122,6 +131,7 @@ def _fnCaptureIdentityBeforeLoadingEveryCommand():
 _fnCaptureIdentityBeforeLoadingEveryCommand()
 
 from .actionCommands import fnDoCommand
+from .commandBindings import fnBindingsCommand
 from .commandBuild import fnBuildCommand
 from .commandCat import fnCatCommand
 from .commandCompletePath import fnCompletePathCommand
@@ -357,6 +367,7 @@ main.add_command(fnDoctorCommand)
 main.add_command(fnRepairCommand)
 main.add_command(fnListSessionsCommand)
 main.add_command(fnDoCommand)
+main.add_command(fnBindingsCommand)
 main.add_command(fnReconcileCommand)
 main.add_command(fnOpenContainerCommand)
 main.add_command(fnRemoteCommand)

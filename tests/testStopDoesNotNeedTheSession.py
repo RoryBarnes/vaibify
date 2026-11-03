@@ -55,6 +55,10 @@ def fixtureIsolate(tmp_path, monkeypatch):
         registryManager, "_S_REGISTRY_PATH",
         os.path.join(sRegistryDirectory, "registry.json"),
     )
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH",
+        os.path.join(sRegistryDirectory, "registry.lock"),
+    )
     sProjectDirectory = str(tmp_path / S_HOST_PROJECT)
     os.makedirs(sProjectDirectory, exist_ok=True)
     with open(

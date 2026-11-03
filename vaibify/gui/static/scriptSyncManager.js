@@ -97,7 +97,7 @@ var VaibifySyncManager = (function () {
     var _dictTimerByService = {};
     var _sCacheWorkflowId = "";
 
-    async function fnOpenPushModal(sService) {
+    async function fnOpenPushModal(sService, bBindingReviewed) {
         var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         if (await _fbContainerIsIsolated(sContainerId)) {
@@ -127,6 +127,13 @@ var VaibifySyncManager = (function () {
             _sPushService = sService;
             await fnPopulatePushModal(sService);
         } catch (error) {
+            if (!bBindingReviewed &&
+                    VaibifyRemoteBindings.fbRefusalNeedsABinding(error)) {
+                await _fnReviewBindingThenRetry(error, function () {
+                    return fnOpenPushModal(sService, true);
+                });
+                return;
+            }
             VaibifyApp.fnShowToast(
                 "The " + _fsCanonicalServiceLabel(sService) +
                 " push could not be opened: " +
@@ -820,7 +827,17 @@ var VaibifySyncManager = (function () {
         );
     }
 
-    async function _fnDispatchPush(listPaths) {
+    async function _fnReviewBindingThenRetry(error, fpromiseRetry) {
+        /* The binding module opens the review; a confirmation made in
+           the same view retries the push once, and a second refusal is
+           reported as it is. */
+        await VaibifyRemoteBindings.fnResolveRefusalThenRetry(
+            error,
+            function (sMessage) { VaibifyApp.fnShowToast(sMessage, "warning"); },
+            fpromiseRetry);
+    }
+
+    async function _fnDispatchPush(listPaths, bBindingReviewed) {
         document.getElementById("modalPush").style.display = "none";
         var sServiceLabel = _fsServiceLabel(_sPushService);
         var elProgress = _fnShowPushProgressToast(
@@ -852,6 +869,15 @@ var VaibifySyncManager = (function () {
             VaibifyApp.fnRenderStepList();
         } catch (error) {
             _fnRemoveToast(elProgress);
+            if (!bBindingReviewed &&
+                    VaibifyRemoteBindings.fbRefusalNeedsABinding(error)) {
+                var sService = _sPushService;
+                await _fnReviewBindingThenRetry(error, function () {
+                    _sPushService = sService;
+                    return _fnDispatchPush(listPaths, true);
+                });
+                return;
+            }
             VaibifyApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }

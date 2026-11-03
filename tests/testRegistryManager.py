@@ -19,6 +19,9 @@ def fixtureIsolateRegistry(tmp_path, monkeypatch):
     monkeypatch.setattr(
         registryManager, "_S_REGISTRY_PATH", sRegistryPath,
     )
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH", os.path.join(sRegistryDir, "registry.lock"),
+    )
 
 
 def _fnWriteMinimalConfig(tmp_path, sProjectName="test-project"):
@@ -381,6 +384,9 @@ def testWriteRegistryAtomicCleansUpOnReplaceError(
     monkeypatch.setattr(rm, "_S_REGISTRY_DIRECTORY", str(tmp_path))
     monkeypatch.setattr(
         rm, "_S_REGISTRY_PATH", str(tmp_path / "registry.json"),
+    )
+    monkeypatch.setattr(
+        rm, "_S_LOCK_PATH", str(tmp_path / "registry.lock"),
     )
 
     def fRaisOnReplace(sSrc, sDst):

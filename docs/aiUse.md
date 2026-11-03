@@ -238,8 +238,10 @@ instructions in `.vaibify/AGENTS.md`), **Prompt Record**, and
 **Supervised mode**. An optional row is never red: it shows as attained
 when it is on and in good order, a neutral dash otherwise, and a ⚠
 beside its title when it needs you. The AI Declaration's sign-off
-appears only on its own step. The PROOF tab's Level 2 section lists the
-same requirements, each with a link to its row.
+appears only on its own step. The PROOF tab lists the same
+requirements, each with a link to its row: four in its Level 2
+section, and **Project instructions**, as "Project context file
+(optional)", in its Level 1 section.
 
 Together these rows place the project on the Replay axis described on
 the [PROOF Ladder](proofLadder.md) page: *declared* once the models and

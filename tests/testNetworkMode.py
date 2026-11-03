@@ -192,7 +192,8 @@ def testTheBaseAllowlistNamesEachAgentsHostsGitHubAndTheIndexes():
     assert set(egressAllowlist.T_NPM_HOSTS) <= set(listHosts)
     assert not set(egressAllowlist.DICT_AGENT_HOSTS["bCodex"]) & set(listHosts)
     assert listPorts == [443]
-    for sPublishingHost in ("zenodo.org", "git.overleaf.com", "arxiv.org"):
+    assert set(egressAllowlist.T_ARXIV_HOSTS) <= set(listHosts)
+    for sPublishingHost in ("zenodo.org", "git.overleaf.com"):
         assert sPublishingHost not in listHosts
 
 
@@ -240,3 +241,120 @@ def testARawAddressInAllowedHostsNeverReachesTheProxy():
     config.listAllowedHosts = ["10.0.0.1"]
     with pytest.raises(ValueError, match="raw address"):
         egressAllowlist.ftComputeAllowlist(config)
+
+
+# ----- the web mode -----------------------------------------------------------
+
+
+@pytest.mark.falsification
+def testAWebLaunchIsSealed():
+    """Web mode is allowlist mode's seal: the internal network, no resolver, the proxy.
+
+    Kills: the launch still returning early for any mode but allowlist.
+    """
+    saRunArgs = containerManager.flistBuildRunArgs(
+        _fconfigForLaunch("web"), dictEgress=DICT_EGRESS)
+    assert saRunArgs[saRunArgs.index("--network") + 1] == DICT_EGRESS["sNetworkName"]
+    assert saRunArgs[saRunArgs.index("--dns") + 1] == egressProxy.S_BLACK_HOLE_NAMESERVER
+    assert "HTTPS_PROXY=http://172.30.0.2:8888" in saRunArgs
+    assert "VAIBIFY_NETWORK_MODE=web" in saRunArgs
+    assert "host.docker.internal:host-gateway" not in saRunArgs
+    with pytest.raises(RuntimeError, match="networkMode: web.*not started open"):
+        containerManager.flistBuildRunArgs(_fconfigForLaunch("web"))
+
+
+def testWebModeRefusesX11AndNeedsARegisteredProject(monkeypatch):
+    with pytest.raises(RuntimeError, match="networkMode: web"):
+        containerManager.flistBuildRunArgs(
+            _fconfigForLaunch("web", bX11Forwarding=True), dictEgress=DICT_EGRESS)
+    assert "web" in flistDescribeUnusableConfiguration(SimpleNamespace(
+        bX11Forwarding=True, bNetworkIsolation=False, sNetworkMode="web"))[0]
+    monkeypatch.setattr(containerManager, "_fsProjectUuidOrEmpty", lambda sName: "")
+    with pytest.raises(RuntimeError, match="not a registered project"):
+        containerManager.fdictPrepareEgressForLaunch(_fconfigForLaunch("web"))
+
+
+@pytest.mark.falsification
+def testAKeylessLegacyFileStillLoadsOpen(tmp_path):
+    """An existing project that never named a mode keeps the network it had.
+
+    Kills: the configuration's own default becoming web.
+    """
+    sPath = str(tmp_path / "vaibify.yml")
+    with open(sPath, "w", encoding="utf-8") as fileYaml:
+        fileYaml.write("projectName: legacyProject\n")
+    configLegacy = projectConfig.fconfigLoadFromFile(sPath)
+    assert (configLegacy.sNetworkMode, configLegacy.bNetworkIsolation) == ("open", False)
+    assert projectConfig.ProjectConfig(sProjectName="legacyProject").sNetworkMode == "open"
+    assert projectConfig.fconfigFromYamlDict(
+        {"projectName": "demo", "networkMode": "web"}).sNetworkMode == "web"
+
+
+def _fnIsolateTheRegistry(tmp_path, monkeypatch):
+    from vaibify.config import registryManager
+    sDirectory = str(tmp_path / "registryHome")
+    monkeypatch.setattr(registryManager, "_S_REGISTRY_DIRECTORY", sDirectory)
+    monkeypatch.setattr(registryManager, "_S_REGISTRY_PATH", sDirectory + "/registry.json")
+    monkeypatch.setattr(registryManager, "_S_LOCK_PATH", sDirectory + "/registry.lock")
+
+
+def _fsModeWrittenByInit(tmp_path, monkeypatch, sFolder, listArguments):
+    from click.testing import CliRunner
+    from vaibify.cli import commandInit
+    pathProject = tmp_path / sFolder
+    pathProject.mkdir()
+    monkeypatch.chdir(pathProject)
+    resultInit = CliRunner().invoke(commandInit.fnInitCommand, listArguments)
+    assert resultInit.exit_code == 0, resultInit.output
+    return projectConfig.fconfigLoadFromFile(str(pathProject / "vaibify.yml")).sNetworkMode
+
+
+@pytest.mark.falsification
+def testEveryNewProjectPathWritesWeb(tmp_path, monkeypatch):
+    """Plain, minimal and template init, and the creation route, all start at web.
+
+    Kills: init leaving the mode to the configuration's own default,
+    which is what a file that names no mode means: open.
+    """
+    from vaibify.cli import commandInit
+    from vaibify.config import templateManager
+    from vaibify.gui import registryRoutes
+    _fnIsolateTheRegistry(tmp_path, monkeypatch)
+    pathTemplates = tmp_path / "templates"
+    (pathTemplates / "custom").mkdir(parents=True)
+    (pathTemplates / "custom" / "container.conf").write_text("")
+    monkeypatch.setattr(commandInit, "fsTemplatePath", lambda sName: str(pathTemplates / sName))
+    monkeypatch.setattr(templateManager, "_PATH_TEMPLATES", pathTemplates)
+    assert _fsModeWrittenByInit(tmp_path, monkeypatch, "plain", ["--name", "plainProject"]) == "web"
+    assert _fsModeWrittenByInit(
+        tmp_path, monkeypatch, "minimal", ["--name", "minimalProject", "--minimal"]) == "web"
+    assert _fsModeWrittenByInit(
+        tmp_path, monkeypatch, "template",
+        ["--template", "custom", "--name", "templateProject"]) == "web"
+    requestBare = registryRoutes.CreateProjectRequest(
+        sDirectory=str(tmp_path), sProjectName="routeProject", sTemplateName="")
+    assert registryRoutes.fsNetworkModeOfRequest(requestBare) == "web"
+    requestOld = registryRoutes.CreateProjectRequest(
+        sDirectory=str(tmp_path), sProjectName="routeProject", sTemplateName="",
+        bNetworkIsolation=True)
+    assert registryRoutes.fsNetworkModeOfRequest(requestOld) == "isolated"
+
+
+def testTheNetworkRowSaysWhetherTheModeIsSealed(monkeypatch):
+    from vaibify.config import registryManager
+    from vaibify.gui import pipelineServer
+    from vaibify.gui.routes import systemRoutes
+    from vaibify.docker import projectEgress
+    monkeypatch.setattr(
+        projectEgress, "fdictDescribeProjectEgress",
+        lambda sProjectUuid: {"sProxyState": "running", "listRefused": []})
+    monkeypatch.setattr(pipelineServer, "fsContainerNameForId", lambda *tArgs: "sealedProject")
+    monkeypatch.setattr(registryManager, "fdictGetProject", lambda sName: {"sProjectUuid": "a" * 32})
+    for sMode, bSealed in (("web", True), ("allowlist", True), ("open", False),
+                           ("isolated", False)):
+        monkeypatch.setattr(
+            systemRoutes, "_fconfigForContainerOrNone",
+            lambda *tArgs, sMode=sMode: SimpleNamespace(sNetworkMode=sMode))
+        dictNetwork = systemRoutes._fdictDescribeNetwork(None, "cid")
+        assert (dictNetwork["sMode"], dictNetwork["bSealed"]) == (sMode, bSealed)
+        assert (dictNetwork["sProxyState"] == "running") is bSealed

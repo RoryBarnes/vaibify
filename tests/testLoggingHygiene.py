@@ -8,6 +8,7 @@ freshness poll.
 
 import logging
 import logging.handlers
+import os
 import subprocess
 import sys
 
@@ -35,7 +36,8 @@ def _flistVaibifyFileHandlers():
     ]
 
 
-def test_importing_cli_main_attaches_no_file_handler():
+def test_importing_cli_main_attaches_no_file_handler(tmp_path):
+    """The child gets its own HOME: importing the CLI runs first-time setup."""
     sProgram = (
         "import logging\n"
         "import vaibify.cli.main\n"
@@ -50,6 +52,7 @@ def test_importing_cli_main_attaches_no_file_handler():
     resultRun = subprocess.run(
         [sys.executable, "-c", sProgram],
         capture_output=True, text=True, timeout=120,
+        env=dict(os.environ, HOME=str(tmp_path)),
     )
     assert resultRun.returncode == 0, resultRun.stderr
     assert resultRun.stdout.strip() == "0"

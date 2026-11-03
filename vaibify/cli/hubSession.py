@@ -294,13 +294,15 @@ def fsResolveContainerId(sBaseUrl, sCredential, sContainerName):
     )
 
 
-def fsClaimContainer(sBaseUrl, sCredential, sContainerName):
+def fsClaimContainer(sBaseUrl, sCredential, sContainerName, bAgentLaneCanRunIt=False):
     """Claim the container and return the lease the hub minted.
 
     A container someone else holds is refused by the hub with 409, and
     that refusal is surfaced with the way out rather than worked
     around: this client claims like any browser and must never transfer
     or revoke a dashboard owner to authenticate itself.
+    ``bAgentLaneCanRunIt`` says whether the action is one the
+    in-container agent lane offers, and so whether naming it helps.
     """
     iStatusCode, jsonBody = ftSendHttpRequest(
         sBaseUrl, sCredential, "POST",
@@ -309,7 +311,7 @@ def fsClaimContainer(sBaseUrl, sCredential, sContainerName):
     )
     if iStatusCode == 409:
         raise HubSessionError(
-            fsExplainClaimConflict(sContainerName, jsonBody),
+            fsExplainClaimConflict(sContainerName, jsonBody, bAgentLaneCanRunIt),
         )
     jsonBody = _fjsonRequireOkResponse(
         (iStatusCode, jsonBody), "Container claim",
@@ -336,16 +338,26 @@ S_AGENT_LANE_POINTER = (
     "the session that is already open."
 )
 
+# The way through for an action the agent lane does not offer: a
+# researcher-only action is refused to 'vaibify-do' too, so naming it
+# sent the researcher to a door that does not open.
+S_RESEARCHER_ONLY_WAY_OUT = (
+    "This action only you can run, so the in-container lane cannot run "
+    "it either. Release the container from the dashboard's picker (or "
+    "close the tab holding it), run this again, then reopen the "
+    "dashboard."
+)
 
-def fsExplainClaimConflict(sContainerName, objDetail):
+
+def fsExplainClaimConflict(sContainerName, objDetail, bAgentLaneCanRunIt=False):
     """Return the message for a 409 claim, with the way out named.
 
     The hub's own reason is always surfaced first — it is the honest
-    fact. The agent-lane pointer is appended only for the in-use
-    family of refusals: a poisoned record names ``vaibify reconcile``
-    as its recovery and a cardinality refusal names the container this
-    session already holds, and for those the agent lane is not the
-    answer.
+    fact. A way out is appended only for the in-use family of
+    refusals: a poisoned record names ``vaibify reconcile`` as its
+    recovery and a cardinality refusal names the container this
+    session already holds, and for those neither is the answer. The
+    agent-lane pointer is named only for an action that lane offers.
     """
     jsonBody = objDetail.get("detail", objDetail) if isinstance(
         objDetail, dict,
@@ -360,7 +372,9 @@ def fsExplainClaimConflict(sContainerName, objDetail):
     )
     if dictBody.get("bPoisoned") or dictBody.get("sHeldContainerName"):
         return sExplanation
-    return "%s %s" % (sExplanation, S_AGENT_LANE_POINTER)
+    return "%s %s" % (sExplanation, (
+        S_AGENT_LANE_POINTER if bAgentLaneCanRunIt else S_RESEARCHER_ONLY_WAY_OUT
+    ))
 
 
 def fnReleaseContainer(dictSession, fWaitSeconds=0.0):
@@ -505,13 +519,13 @@ def fdictOpenHubControlSession(sContainerName, iPort=None):
 
 
 def fdictOpenResearcherSession(
-    sContainerName, iPort=None, sWorkflowPath=None,
+    sContainerName, iPort=None, sWorkflowPath=None, bAgentLaneCanRunIt=False,
 ):
     """Discover a hub, authenticate, claim the container, and connect."""
     dictSession = fdictInspectHubSession(sContainerName, iPort)
     dictSession["sLeaseId"] = fsClaimContainer(
         dictSession["sBaseUrl"], dictSession["sCredential"],
-        sContainerName,
+        sContainerName, bAgentLaneCanRunIt,
     )
     try:
         fnConnectWorkflow(dictSession, sWorkflowPath)

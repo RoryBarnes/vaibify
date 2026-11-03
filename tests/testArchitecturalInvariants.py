@@ -55,6 +55,7 @@ __all__ = [
     "testLockPayloadCarriesStartedIso",
     "testSetAllowedContainersRemoved",
     "testKeepAliveDirectoryChmod700",
+    "testEveryHomeStateStoreIsRedirectedForTestsOrExempted",
 ]
 
 
@@ -5452,7 +5453,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # own X11 authorization sentences (a copied cookie, a failed setup).
     # 826 -> 857 (2026-10-29): the readiness payload carries the Network row (mode, proxy state, refused destinations).
     # 857 -> 858 (2026-10-29): the Network row reads the mode defensively.
-    "routes/systemRoutes.py": 858,
+    # 858 -> 859 (2026-11-02): the Network row covers both sealed modes, web and allowlist (web network mode plan, A5).
+    "routes/systemRoutes.py": 859,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5491,7 +5493,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1019 -> 1041 (2026-10-27): a settled deposit or promotion is
     # logged by its version DOI, as its failure already was.
     # 1041 -> 1048 (2026-10-29): the deposit requires the confirmed Zenodo instance.
-    "routes/environmentArchiveRoutes.py": 1048,
+    # 1048 -> 1056 (2026-11-02): the promotion requires the environment-archive authorization on zenodo.org before it reads the token (binding-and-rotation plan, A12, A5).
+    "routes/environmentArchiveRoutes.py": 1056,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5721,7 +5724,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3774 -> 3860 (2026-10-31): every project deposit carries a checkpoint PROOF receipt built from the staged bytes and written into the repository only after publication (proof-receipt plan, A13).
     # 3860 -> 4157 (2026-10-31): the journaled completion version -- automatic after a checkpoint, the user-only retry route, and the archive's refusal while one is in flight (proof-receipt plan, A13).
     # 4157 -> 4187 (2026-10-31): the automatic completion returns a control-plane refusal as its reason, and its capture worker carries one back rather than quarantining the container (proof-receipt plan, A13).
-    "routes/syncRoutes.py": 4187,
+    # 4187 -> 4189 (2026-11-02): project deposits name the project-record kind, and a promotion asks for the mint authorization (binding-and-rotation plan, A12, A5).
+    "routes/syncRoutes.py": 4189,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5798,7 +5802,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # workflow-epoch origins join the container-keyed sweep list.
     # 2658 -> 2692 (2026-10-29): the unattended auto-archive takes its
     # Overleaf and Zenodo targets from the host-side binding record.
-    "fileStatusManager.py": 2692,
+    # 2692 -> 2694 (2026-11-02): it names the project-record kind and logs a coded refusal's sentence (binding-and-rotation plan, A3, A5).
+    "fileStatusManager.py": 2694,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -7386,7 +7391,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2646 -> 2653 (2026-10-29): turning x11Forwarding off revokes the
     # running container's X authorization at once.
     # 2653 -> 2793 (2026-10-29): the network mode in the wizard and settings, the allow-host route and the YAML list append.
-    "registryRoutes.py": 2793,
+    # 2793 -> 2798 (2026-11-02): a creation request that names no mode gets the new-project mode, web (web network mode plan, A5).
+    "registryRoutes.py": 2798,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7614,7 +7620,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # lines of work above, merged.
     # 1599 -> 1603 (2026-10-29): allow-network-host is excluded from the agent lane, with why.
     # 1603 -> 1608 (2026-10-31): archive-zenodo-completion, the user-only retry for a PROOF completion version (proof-receipt plan, A11).
-    "actionCatalog.py": 1608,
+    # 1608 -> 1619 (2026-11-02): decide-token-rotation, the user-only answer to the token rotation notice (binding-and-rotation plan, A2, A5).
+    "actionCatalog.py": 1619,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8973,3 +8980,214 @@ def testProviderClientConstructionOnlyInProviderApiTransport():
         "transport authority instead of constructing a second "
         "client:\n  " + "\n  ".join(listOffenders)
     )
+
+
+# ---------------------------------------------------------------------------
+# Every store under ~/.vaibify is redirected for tests, or says why not
+# ---------------------------------------------------------------------------
+
+_S_HOME_STATE_FRAGMENT = ".vaibify"
+
+_S_REASON_PER_LANE = (
+    "the hub reads it at request time, so each lane that boots a hub "
+    "redirects it at its own scope (see fnIsolateVaibifyStateDirectories)"
+)
+_S_REASON_FOLLOWS_HOME = (
+    "resolved from HOME at call time and predates the declared tuple; "
+    "the tests that reach it set HOME themselves, and the session "
+    "sentinel in tests/conftest.py reports any write that reaches the "
+    "real home"
+)
+
+# Sites the scan below finds that tests/conftest.py's
+# T_REDIRECTED_STATE_STORES deliberately does not list, keyed by
+# (dotted module, function or module-level name), each with its reason.
+DICT_HOME_STATE_EXEMPTIONS = {
+    ("vaibify.config.registryManager", "_S_REGISTRY_DIRECTORY"):
+        _S_REASON_PER_LANE,
+    ("vaibify.config.preferencesStore", "_S_PREFERENCES_DIRECTORY"):
+        _S_REASON_PER_LANE,
+    ("vaibify.install.shellSetup", "_MARKER_DIR"): (
+        "redirected when tests/conftest.py is imported, before collection, "
+        "by _fnKeepFirstTimeSetupOffTheResearchersShellConfiguration"
+    ),
+    ("vaibify.cli.main", "_fnConfigureErrorLogging"): (
+        "redirected for the session by fnRedirectVaibifyLogFileForTests"
+    ),
+    ("vaibify.gui.agentCouncilStore", "fsResolveDurableStoreRoot"): (
+        "redirected per test by fnKeepEveryTestOutOfTheRealCouncilStore, "
+        "which a test opts out of only with the realCouncilStoreRoot marker"
+    ),
+    ("vaibify.gui.agentCouncilContext", "_fsCreateSnapshotDirectory"): (
+        "a default for a caller that passes no store root; the one "
+        "production caller (councilRoutes) passes the durable store root, "
+        "which fnKeepEveryTestOutOfTheRealCouncilStore redirects"
+    ),
+    ("vaibify.reproducibility.overleafSync", "_fsEphemeralRoot"): (
+        "its expanduser branch runs only when vaibify.config cannot be "
+        "imported (script mode); otherwise it asks ephemeralStore, which "
+        "fnKeepSecretFilesOutOfTheResearchersHome redirects for the session"
+    ),
+    ("vaibify.config.bindMountValidator", "_fnRejectDeniedPrefix"): (
+        "reads only: it refuses a bind mount under the state directory"
+    ),
+    ("vaibify.cli.commandInit", "_fnApplyInstallerAgentDefaults"): (
+        "reads only: the installer's agent-defaults file"
+    ),
+    ("vaibify.cli.doctorHostChecks", "flistCheckDepositScratchSpace"): (
+        "reads only: the free space where deposits stage their tarball"
+    ),
+    ("vaibify.gui.routes.pipelineRoutes", "_fsResolveHostLogPath"): (
+        "reads only: the log file, whose writer the session fixture redirects"
+    ),
+    ("vaibify.reproducibility.imageDeposit",
+     "fsResolveDepositScratchDirectory"): _S_REASON_FOLLOWS_HOME,
+    ("vaibify.reproducibility.overleafMirror", "fsGetMirrorRoot"):
+        _S_REASON_FOLLOWS_HOME,
+    ("vaibify.reproducibility.scheduledReverify", "fsArxivCacheDir"):
+        _S_REASON_FOLLOWS_HOME,
+}
+
+
+def _fbIsHomeResolution(nodeCall):
+    """Return True for ``os.path.expanduser("~…")`` or ``Path.home()``."""
+    if not isinstance(nodeCall, ast.Call):
+        return False
+    nodeFunction = nodeCall.func
+    sCalled = (
+        nodeFunction.attr if isinstance(nodeFunction, ast.Attribute)
+        else getattr(nodeFunction, "id", "")
+    )
+    if sCalled == "home" and isinstance(nodeFunction, ast.Attribute):
+        nodeOwner = nodeFunction.value
+        return "Path" in (
+            nodeOwner.attr if isinstance(nodeOwner, ast.Attribute)
+            else getattr(nodeOwner, "id", "")
+        )
+    if sCalled != "expanduser" or not nodeCall.args:
+        return False
+    return any(
+        isinstance(nodeInner, ast.Constant)
+        and isinstance(nodeInner.value, str)
+        and nodeInner.value.startswith("~")
+        for nodeInner in ast.walk(nodeCall.args[0])
+    )
+
+
+def _flistModuleBindings(treeModule):
+    """Return ``(sName, nodeValue)`` for each module-level name bound to a value.
+
+    A bare annotation (``version: str``, as in the generated
+    ``_version.py``) binds no value and is left out.
+    """
+    listBindings = []
+    for nodeStatement in treeModule.body:
+        if not isinstance(nodeStatement, (ast.Assign, ast.AnnAssign)):
+            continue
+        if nodeStatement.value is None:
+            continue
+        listTargets = (
+            nodeStatement.targets if isinstance(nodeStatement, ast.Assign)
+            else [nodeStatement.target]
+        )
+        listBindings.extend(
+            (nodeTarget.id, nodeStatement.value)
+            for nodeTarget in listTargets if isinstance(nodeTarget, ast.Name)
+        )
+    return listBindings
+
+
+def _fsetStateDirectoryConstants(treeModule):
+    """Return the module-level names whose value spells the state directory."""
+    return {
+        sName for sName, nodeValue in _flistModuleBindings(treeModule)
+        if _fbMentionsStateDirectory(nodeValue, set())
+    }
+
+
+def _fbMentionsStateDirectory(nodeScope, setConstantNames):
+    """Return True when the scope spells ``.vaibify`` or names a constant that does."""
+    for nodeInner in ast.walk(nodeScope):
+        if isinstance(nodeInner, ast.Constant) and isinstance(
+            nodeInner.value, str,
+        ) and _S_HOME_STATE_FRAGMENT in nodeInner.value:
+            return True
+        if isinstance(nodeInner, ast.Name) and nodeInner.id in setConstantNames:
+            return True
+    return False
+
+
+def _flistScopesOfModule(treeModule):
+    """Return ``(sName, node)`` for each module-level binding and function."""
+    listScopes = _flistModuleBindings(treeModule)
+    for nodeStatement in treeModule.body:
+        if isinstance(nodeStatement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            listScopes.append((nodeStatement.name, nodeStatement))
+        elif isinstance(nodeStatement, ast.ClassDef):
+            listScopes.extend(
+                (f"{nodeStatement.name}.{nodeMethod.name}", nodeMethod)
+                for nodeMethod in nodeStatement.body
+                if isinstance(nodeMethod, (ast.FunctionDef, ast.AsyncFunctionDef))
+            )
+    return listScopes
+
+
+def fsetHomeStateResolvers():
+    """Return ``(sModule, sName)`` for every scope resolving a path under ~/.vaibify.
+
+    A scope resolves one when it both reaches the home directory
+    (``os.path.expanduser`` of a ``~`` string, or ``Path.home()``) and
+    spells ``.vaibify``, directly or through a module-level constant.
+    """
+    setFound = set()
+    for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):
+        if _fbIsExcludedScanPath(pathFile):
+            continue
+        treeModule = ast.parse(fsReadSource(pathFile))
+        setConstantNames = _fsetStateDirectoryConstants(treeModule)
+        sModule = ".".join(pathFile.relative_to(REPO_ROOT).with_suffix("").parts)
+        for sName, nodeScope in _flistScopesOfModule(treeModule):
+            if any(
+                _fbIsHomeResolution(nodeInner) for nodeInner in ast.walk(nodeScope)
+            ) and _fbMentionsStateDirectory(nodeScope, setConstantNames):
+                setFound.add((sModule, sName))
+    return setFound
+
+
+@pytest.mark.falsification
+def testEveryHomeStateStoreIsRedirectedForTestsOrExempted():
+    """A store under ~/.vaibify is declared for the test home, or says why not.
+
+    The suite once wrote over a thousand Zenodo migration journals into
+    the researcher's real ~/.vaibify, because a store added after the
+    isolation fixture was written was never added to it. Every scope in
+    vaibify/ that resolves a path under ~/.vaibify must now be listed in
+    tests/conftest.py's T_REDIRECTED_STATE_STORES or in
+    DICT_HOME_STATE_EXEMPTIONS above with its reason, and neither list
+    may name a site that no longer exists.
+
+    Kills: deleting the migrations entry from T_REDIRECTED_STATE_STORES.
+    """
+    from tests.conftest import T_REDIRECTED_STATE_STORES
+    setFound = fsetHomeStateResolvers()
+    setDeclared = {
+        (tStore.sModule, tStore.sAttribute)
+        for tStore in T_REDIRECTED_STATE_STORES
+    }
+    setUndeclared = setFound - setDeclared - set(DICT_HOME_STATE_EXEMPTIONS)
+    assert not setUndeclared, (
+        "These resolve a path under ~/.vaibify, so a test that reaches "
+        "them writes into the researcher's real home. Add each to "
+        "T_REDIRECTED_STATE_STORES in tests/conftest.py, or to "
+        "DICT_HOME_STATE_EXEMPTIONS with the reason it is safe:\n  "
+        + "\n  ".join(f"{sModule}.{sName}" for sModule, sName in sorted(setUndeclared))
+    )
+    setStaleExemptions = set(DICT_HOME_STATE_EXEMPTIONS) - setFound
+    assert not setStaleExemptions, (
+        f"exemptions that no longer match a resolver: {sorted(setStaleExemptions)}"
+    )
+    for tStore in T_REDIRECTED_STATE_STORES:
+        assert hasattr(importlib.import_module(tStore.sModule), tStore.sAttribute), (
+            f"T_REDIRECTED_STATE_STORES names {tStore.sModule}.{tStore.sAttribute}, "
+            f"which does not exist"
+        )

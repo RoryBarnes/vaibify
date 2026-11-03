@@ -1266,12 +1266,12 @@ LIST_AGENT_ACTIONS = [
     {"sName": "confirm-remote-binding", "sCategory": "sync",
      "sMethod": "POST", "sPath": "/api/bindings/{sContainerId}/confirm",
      "bAgentSafe": False,
-     "sDescription": "Confirm which Overleaf project or Zenodo record this "
-                     "workflow's token-bearing actions may act on. Args: "
-                     "{sService: overleaf|zenodo, optional dictTarget, "
-                     "optional sCarryFromWorkflowKey}. Human-only: the "
-                     "record lives on the host and decides where the "
-                     "researcher's tokens are spent."},
+     "sDescription": "Confirm ONE reviewed binding: the Overleaf project, "
+                     "or a Zenodo project record or environment archive on "
+                     "one instance. Args: the review body `vaibify bindings` "
+                     "prints {sService, sRecordKind, sWorkflowKey, "
+                     "dictTarget}. Human-only: the record decides where "
+                     "the researcher's tokens are spent."},
     # ---- Zenodo tokens moved out of the container ----
     {"sName": "decide-migrated-zenodo-token", "sCategory": "sync",
      "sMethod": "POST", "sPath": "/api/zenodo-tokens/{sContainerId}/decide",
@@ -1290,6 +1290,17 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Run the Zenodo token migration pass again now, "
                      "retrying a validation the host could not complete. "
                      "Human-only."},
+    {"sName": "decide-token-rotation", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/zenodo-tokens/{sContainerId}/rotation-decision",
+     "bAgentSafe": False,
+     "sDescription": "Answer the notice that a token found in this "
+                     "project's container may have been read there. Args: "
+                     "{sDecision: regenerated|kept}. Either answer, with "
+                     "its date, retires the notice until a token is found "
+                     "in the container again. Human-only: only the "
+                     "researcher knows whether they regenerated their "
+                     "tokens."},
 ]
 
 

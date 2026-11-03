@@ -72,6 +72,9 @@ def testContextPruneNeverMasksTheBuildFailure(
     monkeypatch.setattr(
         registryManager, "_S_REGISTRY_PATH", str(pathRegistry),
     )
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH", str(tmp_path / "registry.lock"),
+    )
     commandBuild.fnPruneOlderBuildContexts(fconfigForBuild())
     assert capsys.readouterr().out == ""
     assert "Could not prune older build contexts" in caplog.text

@@ -75,6 +75,9 @@ def liveImage(tmp_path, monkeypatch):
     monkeypatch.setattr(
         registryManager, "_S_REGISTRY_PATH",
         os.path.join(sRegistryDirectory, "registry.json"))
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH",
+        os.path.join(sRegistryDirectory, "registry.lock"))
     registryManager.fnSaveRegistry({"listProjects": [{
         "sName": S_PROJECT, "sContainerName": S_PROJECT,
         "sDirectory": str(tmp_path), "sConfigPath": str(tmp_path / "v.yml"),
