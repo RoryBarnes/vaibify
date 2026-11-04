@@ -39949,4 +39949,35 @@ LIST_FALSIFICATIONS = [
         ),
         new='        VaibifyZenodoTokens.fnRender(null);\n',
     ),
+    # --- 2026-11-03: an unreadable binding record is moved aside, and a
+    # readable one never is ---
+    Falsification(
+        nodeid='tests/testBindingRecordSetAside.py::testAReadableRecordIsNeverMovedAside',
+        # The readable-record refusal dropped, so a valid record is renamed.
+        source='vaibify/config/remoteBindings.py',
+        old=(
+            '        except BindingRecordInvalidError:\n'
+            '            pass\n'
+            '        else:\n'
+            '            raise BindingRecordReadableError(\n'
+        ),
+        new=(
+            '        except BindingRecordInvalidError:\n'
+            '            pass\n'
+            '        if False:\n'
+            '            raise BindingRecordReadableError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testBindingRecordSetAside.py::testTheAgentLaneCannotSetARecordAside',
+        # The set-aside handler no longer refusing the agent lane itself.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old=(
+            '    async def fdictSetAsideBindingRecord(sContainerId: str, requestHttp: Request):\n'
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+        ),
+        new=(
+            '    async def fdictSetAsideBindingRecord(sContainerId: str, requestHttp: Request):\n'
+        ),
+    ),
 ]
