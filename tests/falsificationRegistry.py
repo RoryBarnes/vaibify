@@ -40161,4 +40161,33 @@ LIST_FALSIFICATIONS = [
         old='    return bool(dictWorkflow.get("bAutoArchive")) and (\n',
         new='    return False and (\n',
     ),
+    # --- 2026-11-04: a test file the step runs is never announced as
+    # new, and an unfinished listing is no answer ---
+    Falsification(
+        nodeid='tests/testATestFileTheStepRunsIsNeverNew.py::testATestFileTheStepRunsIsNeverNew',
+        # The test commands read under a key no step carries.
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='    for sCmd in flistResolveTestCommands(dictStep):\n',
+        new=(
+            '    for sCmd in dictStep.get("dictTests", {}).get(\n'
+            '            "integrity", {}).get("saCommands", []):\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testATestFileTheStepRunsIsNeverNew.py::testAnUnfinishedListingIsNoAnswer',
+        # An unfinished listing answered with an empty map.
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        ) if dictTestInfo.get("bTestFilesListed") else None,\n',
+        new='        ),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnUnfinishedListingIsNotTheBaseline.py::'
+            'testAnUnfinishedListingIsNotTheBaseline'
+        ),
+        # The page handing an unfinished answer to its test-file check.
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        if (dictStatus.dictTestFileChanges) {\n',
+        new='        if (true) {\n',
+    ),
 ]

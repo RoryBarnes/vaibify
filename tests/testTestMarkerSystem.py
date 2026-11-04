@@ -398,10 +398,10 @@ def test_fnApplyMarkerCategory_zero_passed_zero_failed():
 def test_fsetExtractRegisteredTestFiles_basic():
     dictStep = {
         "dictTests": {
-            "integrity": {
+            "dictIntegrity": {
                 "saCommands": ["pytest test_integrity.py -v"],
             },
-            "qualitative": {
+            "dictQualitative": {
                 "saCommands": ["pytest test_qualitative.py"],
             },
         }
@@ -414,7 +414,7 @@ def test_fsetExtractRegisteredTestFiles_basic():
 def test_fsetExtractRegisteredTestFiles_with_tests_prefix():
     dictStep = {
         "dictTests": {
-            "integrity": {
+            "dictIntegrity": {
                 "saCommands": ["pytest tests/test_integrity.py"],
             },
         }
@@ -436,7 +436,7 @@ def test_fdictBuildTestFileChanges_detects_new_file():
             {
                 "sDirectory": "step1",
                 "dictTests": {
-                    "integrity": {
+                    "dictIntegrity": {
                         "saCommands": ["pytest test_integrity.py"],
                     },
                 },
@@ -461,7 +461,7 @@ def test_fdictBuildTestFileChanges_detects_missing_file():
             {
                 "sDirectory": "step1",
                 "dictTests": {
-                    "integrity": {
+                    "dictIntegrity": {
                         "saCommands": ["pytest test_integrity.py"],
                     },
                 },
@@ -484,7 +484,7 @@ def test_fdictBuildTestFileChanges_no_changes():
             {
                 "sDirectory": "step1",
                 "dictTests": {
-                    "integrity": {
+                    "dictIntegrity": {
                         "saCommands": ["pytest test_integrity.py"],
                     },
                 },
