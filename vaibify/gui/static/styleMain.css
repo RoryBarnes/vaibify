@@ -4238,6 +4238,12 @@ pre.quarantine-remedy {
     color: var(--text-primary);
 }
 
+/* A toast's one named action, beside its text (fnShowToast's
+   sActionLabel); the text itself stays selectable and inert. */
+.toast-action {
+    margin-left: 8px;
+}
+
 .toast.success {
     border-color: var(--highlight-color);
 }

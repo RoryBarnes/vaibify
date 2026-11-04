@@ -4292,7 +4292,7 @@ def _fdictBuildManifestVerifyResult(
         # Context differences (design F5) and every file's own record.
         "dictContextExplanation": (
             outputProvenance.fdictExplainManifestMismatches(
-                filesRepo, listMismatches)),
+                filesRepo, listMismatches, iTotal)),
         "dictMismatchReport": outputProvenance.fdictReportManifestMismatches(
             filesRepo, listMismatches, dictWorkflow),
     }

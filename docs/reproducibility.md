@@ -443,12 +443,20 @@ rests on the published comparisons alone. A verification puts each
 differing output's production context beside the rerun's. A step whose
 outputs were made under different settings or hardware says "Produced
 under different execution settings or hardware" and names what
-differs, as information, not as a failure. When every manifest
-mismatch was made under different recorded settings or hardware,
-**Check Files Against Manifest** offers to make this computer's results
-the published ones, by rerunning every step here and regenerating the
-manifest. Nothing requires it, and doing it replaces the published
-hashes, losing the comparison with them.
+differs, as information, not as a failure.
+
+**Check Files Against Manifest** counts the differing files and, under
+**Learn more**, lists each file's own facts in two kinds. A fact both
+computers measured and found different is a recorded difference. A fact
+only one of them measured is named as not measured, with the reason the
+record gives ("not measured in host mode", because a host-mode run skips
+the NumPy probe; "this machine does not report it", because a Mac reports
+no processor vendor or `x86-64` level), and is never counted as a
+difference. Only when every differing file has a recorded difference
+does the check offer to make this computer's results the published
+ones, by rerunning every step here and regenerating the manifest.
+Nothing requires it, and doing it replaces the published hashes, losing
+the comparison with them.
 
 ## Reproducing a published project
 

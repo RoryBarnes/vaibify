@@ -32268,10 +32268,10 @@ LIST_FALSIFICATIONS = [
             'testTheToastCountsAndTheReportListsEveryFile'
         ),
         source='vaibify/gui/static/scriptApplication.js',
-        old='                    " files differ from the manifest." +\n',
+        old='                return {sMessage: dictExplain.sHeadline,\n',
         new=(
-            '                    " files differ from the manifest. Re-run '
-            'the project or regenerate the envelope." +\n'
+            '                return {sMessage: dictExplain.sHeadline + " Re-run '
+            'the project or regenerate the envelope.",\n'
         ),
     ),
     # --- 2026-10-19: the graceful-exits checker never passes over a
@@ -36084,7 +36084,7 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/outputProvenance.py',
         # the option is offered when only some mismatches are explained
-        old='    bOnly = bool(listMismatches) and len(listExplained) == len(listMismatches)\n',
+        old='    bOnly = bool(listMismatches) and iObserved == len(listMismatches)\n',
         new='    bOnly = bool(listExplained)\n',
     ),
     # --- 2026-10-23: vaibify-do loses a workflowBound frame that
@@ -39991,5 +39991,34 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptRemoteBindings.js',
         old='        if (dictEntry.bHasTarget === false) {\n',
         new='        if (false) {\n',
+    ),
+    # --- 2026-11-03: a manifest difference is named by what was
+    # measured, never by what was not ---
+    Falsification(
+        nodeid='tests/testManifestDifferencesNameWhatWasMeasured.py::testIdenticalHardwareWithTheProbeUnmeasuredIsNotCountedAsADifference',
+        # A fact one side never measured counted as an observed difference.
+        source='vaibify/gui/outputProvenance.py',
+        old='        if bThere and bHere and jsonThere != jsonHere:\n',
+        new='        if jsonThere != jsonHere:\n',
+    ),
+    Falsification(
+        nodeid='tests/testManifestDifferencesNameWhatWasMeasured.py::testOneObservedDifferenceIsCountedAndTheOptionOffered',
+        # A measured difference never classified as observed.
+        source='vaibify/gui/outputProvenance.py',
+        old='        if bThere and bHere and jsonThere != jsonHere:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testManifestDifferencesNameWhatWasMeasured.py::testEachFileIsDescribedByItsOwnFacts',
+        # Every file described by the first file's facts.
+        source='vaibify/gui/outputProvenance.py',
+        old=(
+            '        sDescription, bObserved = _ftDescribeMismatchContext(\n'
+            '            dictEnvelope, dictRecord, dictMismatch)\n'
+        ),
+        new=(
+            '        sDescription, bObserved = _ftDescribeMismatchContext(\n'
+            '            dictEnvelope, dictRecord, listMismatches[0])\n'
+        ),
     ),
 ]

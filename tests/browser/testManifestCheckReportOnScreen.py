@@ -27,6 +27,7 @@ from tests.testManifestCheckReport import (
 pytestmark = pytest.mark.browser
 
 S_TOAST = "#toastContainer .toast.warning"
+S_LEARN_MORE = S_TOAST + " .toast-action"
 
 
 @pytest.fixture(autouse=True)
@@ -69,12 +70,15 @@ def testTheToastCountsAndTheReportListsEveryFile(
         "() => VaibifyApp.fnRunProjectAction('verify-manifest', '', null)")
     pageDashboard.wait_for_selector(S_TOAST, state="visible", timeout=5000)
     sToast = pageDashboard.text_content(S_TOAST)
-    assert "2 of " in sToast and "files differ from the manifest" in sToast
+    sHeadline = dictResult["dictContextExplanation"]["sHeadline"]
+    assert sHeadline.startswith("2 of ") and sHeadline in sToast, sToast
     assert "Re-run" not in sToast and "regenerate" not in sToast, sToast
-    pageDashboard.click(S_TOAST)
+    assert pageDashboard.inner_text(S_LEARN_MORE) == "Learn more"
+    pageDashboard.click(S_LEARN_MORE)
     pageDashboard.wait_for_selector("#modalInfo", state="visible",
                                     timeout=5000)
     sReport = pageDashboard.inner_text("#modalInfo")
+    assert sReport.index(sHeadline) < sReport.index(S_JSON), sReport
     for sPath in (S_JSON, S_DERIVED):
         assert sPath + ": production context unknown" in sReport, sReport
     dictReport = dictResult["dictMismatchReport"]
@@ -104,3 +108,27 @@ def testAToastThatOffersAnActionStaysUntilTaken(pageDashboard, serverHub):
     pageDashboard.wait_for_timeout(4600)
     assert pageDashboard.locator(
         "#toastContainer .toast.toast-clickable").count() == 1
+
+
+def testANamedActionLeavesTheToastToReadAndCloseStillCloses(
+        pageDashboard, serverHub):
+    """Only the named button acts; the text is inert and the close closes."""
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate("""() => {
+        window.__iActed = 0;
+        VaibifyApp.fnShowToast('read me', 'info',
+            function () { window.__iActed += 1; }, 'Learn more');
+    }""")
+    sToast = "#toastContainer .toast.info"
+    pageDashboard.wait_for_selector(sToast, state="visible", timeout=5000)
+    assert pageDashboard.locator(sToast + ".toast-clickable").count() == 0
+    pageDashboard.click(sToast, position={"x": 4, "y": 4})
+    assert pageDashboard.evaluate("() => window.__iActed") == 0
+    pageDashboard.click(sToast + " .toast-close")
+    assert pageDashboard.locator(sToast).count() == 0
+    assert pageDashboard.evaluate("() => window.__iActed") == 0
+    pageDashboard.evaluate("""() => VaibifyApp.fnShowToast('read me', 'info',
+        function () { window.__iActed += 1; }, 'Learn more')""")
+    pageDashboard.click(sToast + " .toast-action")
+    assert pageDashboard.evaluate("() => window.__iActed") == 1
+    assert pageDashboard.locator(sToast).count() == 0

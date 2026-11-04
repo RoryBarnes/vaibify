@@ -368,16 +368,20 @@ def testAManifestMismatchExplainedByContextOffersAnOption(tmp_path, monkeypatch)
                       if d["sPath"].startswith("StepOne/")]
     assert [d["sPath"] for d in listMismatches] == [f"StepOne/{S_DATA}"]
     dictExplained = outputProvenance.fdictExplainManifestMismatches(
-        sRoot, listMismatches)
+        sRoot, listMismatches, 4)
     assert dictExplained["bOnlyContextDifferences"] is True
     assert "rerun every step here and regenerate the manifest" in (
         dictExplained["sOption"])
-    assert "x86-64 level: was x86-64-v3, now x86-64-v2" in (
-        dictExplained["sSummary"])
+    assert {"sFact": "x86-64 level", "sThere": "x86-64-v3",
+            "sHere": "x86-64-v2"} in (
+        dictExplained["listExplained"][0]["listObserved"])
+    assert dictExplained["sHeadline"] == (
+        "1 of 4 files differs from the manifest. It was made with "
+        "different recorded hardware or settings.")
     dictReport = outputProvenance.fdictReportManifestMismatches(
         sRoot, listMismatches, dictWorkflow)
     assert dictReport["listFiles"][0]["sDescription"].startswith(
-        "produced under different settings or hardware: ")
+        "recorded hardware or settings differ: ")
     assert "x86-64 level: pinned copy x86-64-v3, this copy x86-64-v2" in (
         dictReport["listFiles"][0]["sDescription"])
     assert dictReport["sRegenerateChoice"] == dictExplained["sOption"]
@@ -385,7 +389,7 @@ def testAManifestMismatchExplainedByContextOffersAnOption(tmp_path, monkeypatch)
     listMixed = listMismatches + [{"sPath": "Other/unrecorded.txt",
                                    "sExpected": "0" * 64, "sActual": None}]
     dictMixed = outputProvenance.fdictExplainManifestMismatches(
-        sRoot, listMixed)
+        sRoot, listMixed, 5)
     assert dictMixed["bOnlyContextDifferences"] is False
     assert dictMixed["sOption"] == ""
     assert outputProvenance.fdictReportManifestMismatches(

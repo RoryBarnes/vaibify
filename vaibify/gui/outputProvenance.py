@@ -59,8 +59,8 @@ S_CONTEXT_UNKNOWN = "production context unknown"
 S_DIFFERENT_CONTEXT = (
     "Produced under different execution settings or hardware")
 S_RERUN_HERE_OPTION = (
-    "These files were produced under different execution settings or "
-    "hardware from the copies the manifest pins. If you want this "
+    "For each of these files, the recorded hardware or settings differ "
+    "from those recorded for the copy the manifest pins. If you want this "
     "computer's results to be the published ones, you can rerun every "
     "step here and regenerate the manifest. Nothing requires it, and "
     "doing it replaces the published hashes, so the comparison with "
@@ -78,6 +78,12 @@ S_MANIFEST_CHECK_SCOPE = (
 S_MISSING_ON_DISK = "missing on disk"
 S_SAME_RECORDED_CONTEXT = (
     "recorded under the same settings and hardware as the pinned copy")
+S_DIFFERENCE_CAUTION = (
+    "A difference in hardware or settings can change a file's last "
+    "digits; it doesn't prove that's why these differ.")
+S_NOT_MEASURED = "not measured"
+S_NOT_MEASURED_IN_HOST_MODE = "not measured in host mode"
+S_NOT_REPORTED_BY_MACHINE = "this machine does not report it"
 I_OUTPUT_PROVENANCE_SCHEMA = 1
 S_RUN_CONTEXT_KEY = "__dictRunContext"
 S_TEMPLATE_VALUES_KEY = "__dictOutputTemplateValues"
@@ -298,6 +304,54 @@ def flistDescribeContextDifferences(dictRecorded, dictCurrent):
     return listDifferences
 
 
+def _fbFactIsMeasured(jsonValue):
+    return jsonValue is not None and jsonValue != ""
+
+
+def _fsWhyNotMeasured(dictContext, tPath):
+    """Return why a context lacks one fact, from what its record says."""
+    from .determinismEnvironment import S_PROBE_NOT_RUN_IN_HOST_MODE
+    if tPath[0] == "dictProbe" and _fjsonReadFact(
+            dictContext, ("dictProbe", "sProbeState")) == (
+            S_PROBE_NOT_RUN_IN_HOST_MODE):
+        return S_NOT_MEASURED_IN_HOST_MODE
+    if tPath[:2] == ("dictSettings", "dictCapabilities") and _fjsonReadFact(
+            dictContext, ("dictSettings", "dictCapabilities", "bReadable")) is False:
+        return S_NOT_REPORTED_BY_MACHINE
+    return S_NOT_MEASURED
+
+
+def _fsWordSide(dictContext, tPath, jsonValue):
+    if _fbFactIsMeasured(jsonValue):
+        return _fsDescribeFactValue(jsonValue)
+    return _fsWhyNotMeasured(dictContext, tPath)
+
+
+def _ftSplitContextDifferences(dictThere, dictHere):
+    """Return ``(listObserved, listUnmeasured)``, each ``[{sFact, sThere, sHere}]``.
+
+    Observed: both contexts measured the fact, and the values differ.
+    Unmeasured: one context lacks it, worded with the reason its record
+    gives. A missing value is never a difference in hardware or
+    settings, because nothing was measured to differ.
+    """
+    listObserved, listUnmeasured = [], []
+    for sFact, tPath in _T_COMPARED_FACTS:
+        jsonThere = _fjsonReadFact(dictThere, tPath)
+        jsonHere = _fjsonReadFact(dictHere, tPath)
+        bThere, bHere = _fbFactIsMeasured(jsonThere), _fbFactIsMeasured(jsonHere)
+        if bThere and bHere and jsonThere != jsonHere:
+            listTarget = listObserved
+        elif bThere != bHere:
+            listTarget = listUnmeasured
+        else:
+            continue
+        listTarget.append({
+            "sFact": sFact, "sThere": _fsWordSide(dictThere, tPath, jsonThere),
+            "sHere": _fsWordSide(dictHere, tPath, jsonHere)})
+    return listObserved, listUnmeasured
+
+
 def fdictProductionContextFor(dictRecord, sPath, sSha256):
     """Return the recorded context that produced these bytes, or the unknown marker.
 
@@ -454,53 +508,74 @@ def _ftPinnedAndOnDiskContexts(dictEnvelope, dictRecord, dictMismatch):
             if dictOnDisk["sState"] == "recorded" else None)
 
 
-def fdictExplainManifestMismatches(filesRepo, listMismatches):
-    """Return which manifest mismatches were made under a different recorded context.
+def _fdictExplainOneMismatch(dictEnvelope, dictRecord, dictMismatch):
+    """Return one file's observed and unmeasured facts, or None if either side is unrecorded."""
+    dictPinned, dictOnDisk = _ftPinnedAndOnDiskContexts(
+        dictEnvelope, dictRecord, dictMismatch)
+    if dictPinned is None or dictOnDisk is None:
+        return None
+    listObserved, listUnmeasured = _ftSplitContextDifferences(
+        dictPinned, dictOnDisk)
+    return {"sPath": dictMismatch.get("sPath", ""),
+            "listObserved": listObserved, "listUnmeasured": listUnmeasured}
+
+
+def fdictExplainManifestMismatches(filesRepo, listMismatches, iTotal):
+    """Return what the records say about the manifest mismatches, and the headline.
 
     The envelope records the context that made the PINNED bytes, and the
-    output record the one that made the bytes on disk; where both are
-    recorded and differ, the mismatch was produced under different
-    hardware or settings -- which makes those possible causes
-    inspectable and proves none of them. When every mismatch is of that
-    kind, the option to make this computer's results the published ones
-    is offered -- as an option, never as the only way forward.
+    output record the one that made the bytes on disk. A fact both
+    measured and found different is an observed difference, which makes
+    a possible cause inspectable and proves none; a fact one side never
+    measured is named as unmeasured, never as a difference. Only when
+    every mismatch has an observed difference is the option to make this
+    computer's results the published ones offered -- as an option,
+    never as the only way forward.
     """
     dictEnvelope, dictRecord = _ftReadPinnedAndOnDiskRecords(filesRepo)
     listExplained = []
     for dictMismatch in listMismatches or []:
-        dictPinned, dictOnDisk = _ftPinnedAndOnDiskContexts(
+        dictExplained = _fdictExplainOneMismatch(
             dictEnvelope, dictRecord, dictMismatch)
-        if dictPinned is None or dictOnDisk is None:
-            continue
-        listDifferences = flistDescribeContextDifferences(
-            dictPinned, dictOnDisk)
-        if listDifferences:
-            listExplained.append({
-                "sPath": dictMismatch.get("sPath", ""),
-                "listDifferences": _flistWordDifferences(listDifferences)})
-    bOnly = bool(listMismatches) and len(listExplained) == len(listMismatches)
+        if dictExplained and (dictExplained["listObserved"]
+                              or dictExplained["listUnmeasured"]):
+            listExplained.append(dictExplained)
+    iObserved = sum(1 for dictFile in listExplained if dictFile["listObserved"])
+    bOnly = bool(listMismatches) and iObserved == len(listMismatches)
     return {"listExplained": listExplained,
             "bOnlyContextDifferences": bOnly,
-            "sSummary": _fsSummarizeExplained(listExplained, listMismatches),
+            "sHeadline": _fsComposeHeadline(
+                listExplained, len(listMismatches or []), iTotal),
             "sOption": S_RERUN_HERE_OPTION if bOnly else ""}
 
 
+def _fsJoinFacts(listFacts):
+    return "; ".join(
+        f"{dictFact['sFact']}: pinned copy {dictFact['sThere']}, "
+        f"this copy {dictFact['sHere']}" for dictFact in listFacts)
+
+
 def _ftDescribeMismatchContext(dictEnvelope, dictRecord, dictMismatch):
-    """Return (what is recorded about one differing file, contexts differ?)."""
+    """Return (what is recorded about one differing file, an observed difference?)."""
     if dictMismatch.get("sActual") is None:
         return S_MISSING_ON_DISK, False
-    dictPinned, dictOnDisk = _ftPinnedAndOnDiskContexts(
+    dictExplained = _fdictExplainOneMismatch(
         dictEnvelope, dictRecord, dictMismatch)
-    if dictPinned is None or dictOnDisk is None:
+    if dictExplained is None:
         return S_CONTEXT_UNKNOWN, False
-    listDifferences = _flistWordDifferences(
-        flistDescribeContextDifferences(dictPinned, dictOnDisk))
-    if not listDifferences:
+    listObserved = dictExplained["listObserved"]
+    listUnmeasured = dictExplained["listUnmeasured"]
+    if not listObserved and not listUnmeasured:
         return S_SAME_RECORDED_CONTEXT, False
-    return "produced under different settings or hardware: " + "; ".join(
-        f"{dictDifference['sFact']}: pinned copy {dictDifference['sThere']}, "
-        f"this copy {dictDifference['sHere']}"
-        for dictDifference in listDifferences), True
+    listParts = []
+    if listObserved:
+        listParts.append(
+            "recorded hardware or settings differ: " + _fsJoinFacts(listObserved))
+    if listUnmeasured:
+        listParts.append(
+            "not compared, because only one computer measured them: "
+            + _fsJoinFacts(listUnmeasured))
+    return ". ".join(listParts), bool(listObserved)
 
 
 def _fsDescribeSpeedAnswer(dictWorkflow):
@@ -524,37 +599,58 @@ def fdictReportManifestMismatches(filesRepo, listMismatches, dictWorkflow):
     """Return every differing file with what is recorded about it, and what follows.
 
     The manifest check compares bytes and nothing else, so its report
-    names every differing file with both recorded production contexts
-    (or "production context unknown"), says what the check cannot
-    judge and which verification can, names a "speed" determinism
-    answer, and offers regenerating the envelope only as a choice with
-    its cost stated. Empty when nothing differs.
+    names every differing file with its own observed and unmeasured
+    facts (or "production context unknown"), says that a recorded
+    difference proves no cause, says what the check cannot judge and
+    which verification can, names a "speed" determinism answer, and
+    offers regenerating the envelope only as a choice with its cost
+    stated. Empty when nothing differs.
     """
     if not listMismatches:
         return {}
     dictEnvelope, dictRecord = _ftReadPinnedAndOnDiskRecords(filesRepo)
-    listFiles, bOnlyContext = [], True
+    listFiles, listObserved = [], []
     for dictMismatch in listMismatches:
-        sDescription, bContextsDiffer = _ftDescribeMismatchContext(
+        sDescription, bObserved = _ftDescribeMismatchContext(
             dictEnvelope, dictRecord, dictMismatch)
         listFiles.append({"sPath": dictMismatch.get("sPath", ""),
                           "sDescription": sDescription})
-        bOnlyContext = bOnlyContext and bContextsDiffer
+        listObserved.append(bObserved)
     return {"listFiles": listFiles,
+            "sCaution": S_DIFFERENCE_CAUTION if any(listObserved) else "",
             "sScope": S_MANIFEST_CHECK_SCOPE,
             "sDeterminismNote": _fsDescribeSpeedAnswer(dictWorkflow),
-            "sRegenerateChoice": (S_RERUN_HERE_OPTION if bOnlyContext
+            "sRegenerateChoice": (S_RERUN_HERE_OPTION if all(listObserved)
                                   else S_REGENERATE_CHOICE)}
 
 
-def _fsSummarizeExplained(listExplained, listMismatches):
-    """Return one sentence counting differences made under other contexts."""
-    if not listExplained:
+def _fsComposeHeadline(listExplained, iDiffering, iTotal):
+    """Return the check's one sentence: a count, and what the records show, claiming no cause."""
+    if not iDiffering:
         return ""
-    sFacts = "; ".join(
-        f"{dictDifference['sFact']}: was {dictDifference['sThere']}, "
-        f"now {dictDifference['sHere']}"
-        for dictDifference in listExplained[0]["listDifferences"])
-    return (f"{len(listExplained)} of the {len(listMismatches)} differing "
-            "files were produced under different execution settings or "
-            f"hardware ({sFacts}).")
+    if iDiffering == 1:
+        return _fsComposeOneFileHeadline(listExplained, iTotal)
+    sHeadline = f"{iDiffering} of {iTotal} files differ from the manifest."
+    iObserved = sum(1 for dictFile in listExplained if dictFile["listObserved"])
+    iUnmeasured = sum(1 for dictFile in listExplained if dictFile["listUnmeasured"])
+    if iObserved == iDiffering:
+        sHeadline += (f" All {iDiffering} were made with different recorded "
+                      "hardware or settings.")
+    elif iObserved:
+        sHeadline += (f" {iObserved} of them {'was' if iObserved == 1 else 'were'}"
+                      " made with different recorded hardware or settings.")
+    if iUnmeasured:
+        sHeadline += (f" For {iUnmeasured} of them, some hardware or settings "
+                      "weren't measured, so they can't be compared.")
+    return sHeadline
+
+
+def _fsComposeOneFileHeadline(listExplained, iTotal):
+    sHeadline = f"1 of {iTotal} files differs from the manifest."
+    dictFile = listExplained[0] if listExplained else {}
+    if dictFile.get("listObserved"):
+        sHeadline += " It was made with different recorded hardware or settings."
+    if dictFile.get("listUnmeasured"):
+        sHeadline += (" Some of its hardware or settings weren't measured, so "
+                      "they can't be compared.")
+    return sHeadline
