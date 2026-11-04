@@ -11,7 +11,9 @@ The GET reports the record's state, whether the environment archive
 applies (read from the envelope), and every entry a workflow can hold --
 Overleaf, and Zenodo's two kinds on each instance -- with what
 ``project.json`` names for it, what is confirmed, the notice sentence,
-and the exact confirm body a review sends (``dictReview``). With
+whether the kind names a target at all (``bHasTarget``; the environment
+archive authorizes an instance only, and ``sAuthorizes`` says what), and
+the exact confirm body a review sends (``dictReview``). With
 ``bFetchEvidence`` (the default) it also fetches, with the researcher's
 own token, what the host can see: for the entries that apply, or for the
 one entry ``sService``/``sRecordKind``/``sInstance`` name.
@@ -279,6 +281,23 @@ def _fbEntryApplies(dictWorkflow, tAddress, sEnvironmentInstance):
     )
 
 
+def _fbEntryHasTarget(sService, sRecordKind):
+    """Return False for a kind that authorizes an instance and names no record."""
+    return bool(set(remoteBindings.ftTargetFields(sService, sRecordKind)) - {"sInstance"})
+
+
+def _fsAuthorizesFor(tAddress):
+    """Return what confirming a kind with no target authorizes, or '' for one with a target."""
+    sService, sRecordKind, sInstance = tAddress
+    if _fbEntryHasTarget(sService, sRecordKind):
+        return ""
+    return (
+        f"This lets vaibify deposit this workflow's container images on "
+        f"{fsDescribeZenodoService(sInstance)} with your token. Each deposit "
+        f"records its own DOI in .vaibify/environment.json."
+    )
+
+
 def _fdictDescribeEntry(dictWorkflow, sWorkflowKey, dictServices, tAddress, bApplies):
     sService, sRecordKind, sInstance = tAddress
     dictProjectTarget = _fdictProjectTargetFor(dictWorkflow, *tAddress)
@@ -290,6 +309,8 @@ def _fdictDescribeEntry(dictWorkflow, sWorkflowKey, dictServices, tAddress, bApp
         "bApplies": bApplies, "dictProjectTarget": dictProjectTarget,
         "dictConfirmed": dictConfirmed, "sState": sState,
         "sNotice": _fsNoticeFor(tAddress, sState, dictProjectTarget, dictConfirmed),
+        "bHasTarget": _fbEntryHasTarget(sService, sRecordKind),
+        "sAuthorizes": _fsAuthorizesFor(tAddress),
         "dictReview": {
             "sService": sService, "sRecordKind": sRecordKind,
             "sWorkflowKey": sWorkflowKey,

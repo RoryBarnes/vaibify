@@ -301,9 +301,16 @@ var VaibifyRemoteBindings = (function () {
             return;
         }
         dictDialog.dictEntry = dictEntry;
-        _fnAppendParagraph(elBody, _fsAuthorizationSentence(dictEntry),
-            "remote-binding-authorization");
-        elBody.appendChild(_felementComparison(dictEntry));
+        if (dictEntry.bHasTarget === false) {
+            /* An environment archive authorizes an instance and names no
+               record, so a comparison of records would read as broken. */
+            _fnAppendParagraph(elBody, dictEntry.sAuthorizes,
+                "remote-binding-authorization");
+        } else {
+            _fnAppendParagraph(elBody, _fsAuthorizationSentence(dictEntry),
+                "remote-binding-authorization");
+            elBody.appendChild(_felementComparison(dictEntry));
+        }
         if (dictEntry.sState === "differs") {
             _fnAppendParagraph(elBody, _S_IF_NOT_YOURS, "remote-binding-warning");
         }
@@ -323,10 +330,6 @@ var VaibifyRemoteBindings = (function () {
             return "Allow this workflow's Overleaf pushes and pulls to use this project.";
         }
         var sSite = VaibifyWorkflowRequirements.fsDescribeZenodoService(dictEntry.sInstance);
-        if (dictEntry.sRecordKind === "environment") {
-            return "Allow this workflow's environment archive to be deposited on " +
-                sSite + ".";
-        }
         if (!dictTarget.sConceptDoi && !dictTarget.sDepositionId) {
             return "Allow a NEW " + (dictEntry.sInstance === "zenodo" ? "permanent " : "") +
                 "record on " + VaibifyWorkflowRequirements.fsZenodoSitePhrase(

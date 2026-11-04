@@ -242,6 +242,29 @@ def testTheReadNamesWhatAppliesInTheDashboardsWords(tApp, monkeypatch):
     assert "production" not in json.dumps(dictDescribed)
 
 
+def testOnlyTheEnvironmentArchiveNamesNoTargetAndSaysWhatItAuthorizes(tApp):
+    """The environment kind authorizes an instance; every other kind names a record."""
+    client, _, _ = tApp
+    dictDescribed = client.get(S_READ_PATH, params={"bFetchEvidence": "false"}).json()
+    dictByAddress = {
+        (dictEntry["sService"], dictEntry["sRecordKind"], dictEntry["sInstance"]): dictEntry
+        for dictEntry in dictDescribed["listEntries"]
+    }
+    assert {tAddress for tAddress, dictEntry in dictByAddress.items()
+            if not dictEntry["bHasTarget"]} == {
+        ("zenodo", "environment", "sandbox"), ("zenodo", "environment", "zenodo")}
+    assert all(dictEntry["sAuthorizes"] == "" for dictEntry in dictByAddress.values()
+               if dictEntry["bHasTarget"])
+    assert dictByAddress[("zenodo", "environment", "zenodo")]["sAuthorizes"] == (
+        "This lets vaibify deposit this workflow's container images on "
+        "zenodo.org (permanent) with your token. Each deposit records its own "
+        "DOI in .vaibify/environment.json.")
+    assert dictByAddress[("zenodo", "environment", "sandbox")]["sAuthorizes"] == (
+        "This lets vaibify deposit this workflow's container images on "
+        "the Zenodo sandbox (testing only) with your token. Each deposit "
+        "records its own DOI in .vaibify/environment.json.")
+
+
 def testADifferingEntryNamesBothValues(tApp):
     client, dictCtx, _ = tApp
     _fresponseConfirmReviewed(client, "overleaf")

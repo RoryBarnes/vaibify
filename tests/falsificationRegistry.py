@@ -39980,4 +39980,16 @@ LIST_FALSIFICATIONS = [
             '    async def fdictSetAsideBindingRecord(sContainerId: str, requestHttp: Request):\n'
         ),
     ),
+    # --- 2026-11-03: the environment-archive dialog says what it
+    # authorizes instead of comparing records it never names ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteBindingDialogIsTheServers.py::'
+            'testAnEnvironmentArchiveDialogSaysWhatItAuthorizesAndComparesNoRecord'
+        ),
+        # The dialog rendering the record comparison for every kind.
+        source='vaibify/gui/static/scriptRemoteBindings.js',
+        old='        if (dictEntry.bHasTarget === false) {\n',
+        new='        if (false) {\n',
+    ),
 ]
