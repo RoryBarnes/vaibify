@@ -23702,11 +23702,11 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '            _dictWorkflowState.sWorkflowPath !== data.sWorkflowPath) {\n'
+            '            sSocketWorkflowPath !== data.sWorkflowPath) {\n'
             '            VaibifyWebSocket.fnDisconnect();\n'
         ),
         new=(
-            '            _dictWorkflowState.sWorkflowPath !== data.sWorkflowPath) {\n'
+            '            sSocketWorkflowPath !== data.sWorkflowPath) {\n'
         ),
     ),
     Falsification(
@@ -35616,11 +35616,11 @@ LIST_FALSIFICATIONS = [
         # leaving for the Environments Hub empties the viewers
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '        _fnCancelAllTimers();\n'
+            '        VaibifyWebSocket.fnDisconnect();\n'
             '        VaibifyTerminal.fnCloseAll();\n'
         ),
         new=(
-            '        _fnCancelAllTimers();\n'
+            '        VaibifyWebSocket.fnDisconnect();\n'
             '        VaibifyFigureViewer.fnBindViewersToProject(null, "");\n'
             '        VaibifyTerminal.fnCloseAll();\n'
         ),
@@ -39880,5 +39880,73 @@ LIST_FALSIFICATIONS = [
         source='vaibify/cli/commandInit.py',
         old='    config.sNetworkMode = S_NEW_PROJECT_NETWORK_MODE\n',
         new='',
+    ),
+    # --- 2026-11-03: leaving a project for its Project Hub closes it ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testLeavingAProjectClosesIt.py::'
+            'test_the_project_hub_after_a_level_three_project_wears_pale_blue'
+        ),
+        # Admin > Projects showing the hub with the project still open.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        if (!sContainerId) return;\n'
+            '        _fnCloseOpenProject();\n'
+            '        VaibifyContainerManager.fnConnectToContainer(sContainerId);\n'
+        ),
+        new=(
+            '        if (!sContainerId) return;\n'
+            '        VaibifyContainerManager.fnConnectToContainer(sContainerId);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLeavingAProjectClosesIt.py::'
+            'test_a_binding_answer_that_lands_in_the_project_hub_renders_nothing'
+        ),
+        # The bindings refresh rendering an answer for a view that left.
+        source='vaibify/gui/static/scriptRemoteBindings.js',
+        old='            if (_fbContextIsCurrent(dictContext)) fnRenderNotices(dictDescribed);\n',
+        new='            fnRenderNotices(dictDescribed);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLeavingAProjectClosesIt.py::'
+            'test_a_token_answer_that_lands_in_the_project_hub_renders_nothing'
+        ),
+        # The token refresh rendering an answer for a view that left.
+        source='vaibify/gui/static/scriptZenodoTokens.js',
+        old=(
+            '            if (VaibifyApp.fiGetViewGeneration() === iViewGeneration) {\n'
+            '                fnRender(dictDescribed);\n'
+            '            }\n'
+        ),
+        new='            fnRender(dictDescribed);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLeavingAProjectClosesIt.py::'
+            'test_a_run_event_that_arrives_in_the_project_hub_repaints_nothing'
+        ),
+        # The pipeline-event dispatch handling events with no project open.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            "               to the hub's tiles. */\n"
+            '            if (!fbIsWorkflowMode()) return;\n'
+        ),
+        new="               to the hub's tiles. */\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLeavingAProjectClosesIt.py::'
+            'test_a_reopened_project_shows_its_own_binding_answer'
+        ),
+        # The close leaving the binding banner as it was.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        VaibifyZenodoTokens.fnRender(null);\n'
+            '        VaibifyRemoteBindings.fnRenderNotices(null);\n'
+        ),
+        new='        VaibifyZenodoTokens.fnRender(null);\n',
     ),
 ]

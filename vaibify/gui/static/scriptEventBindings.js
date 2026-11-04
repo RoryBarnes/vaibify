@@ -1116,7 +1116,7 @@ var VaibifyEventBindings = (function () {
                     "Switch Project",
                     "This will leave the current dashboard " +
                     "and end any running sessions. Continue?",
-                    VaibifyApp.fnReconnectToCurrentContainer);
+                    VaibifyApp.fnLeaveToProjectHub);
             },
             btnAdminNewWindow: function () {
                 VaibifyUtilities.fnSpawnNewSession();

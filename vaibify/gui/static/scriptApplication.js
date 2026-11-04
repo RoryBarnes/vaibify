@@ -22,6 +22,10 @@ const VaibifyApp = (function () {
            records it when it is issued, so an answer that arrives after
            the researcher moved on is recognised as theirs no longer. */
         iViewGeneration: 0,
+        /* The project whose run events the pipeline socket carries. It
+           outlives a return to the Project Hub, because the socket does:
+           opening a different project from there must still close it. */
+        sPipelineSocketWorkflowPath: "",
         fSessionExpiryWarnedFraction: 0,
         /* The server's answer, stored so panels that must speak
            differently about a host project ask one place rather than
@@ -417,8 +421,15 @@ const VaibifyApp = (function () {
     /* --- WebSocket and Polling Registration --- */
 
     function fnRegisterWebSocketHandlers() {
-        VaibifyWebSocket.fnOnEvent("*",
-            VaibifyPipelineRunner.fnHandlePipelineEvent);
+        VaibifyWebSocket.fnOnEvent("*", function (dictEvent) {
+            /* The socket stays open in the Project Hub, because the
+               claim is released by its closing. What it carries there
+               belongs to a project nobody has open: painting it would
+               restart that project's poll and re-add its level color
+               to the hub's tiles. */
+            if (!fbIsWorkflowMode()) return;
+            VaibifyPipelineRunner.fnHandlePipelineEvent(dictEvent);
+        });
         VaibifyWebSocket.fnOnEvent("_wsClose", function (dictEvent) {
             fnClearRunningStatuses();
             fnRenderStepList();
@@ -447,11 +458,17 @@ const VaibifyApp = (function () {
             // badges are re-asked for the same reason they are on
             // project open: the alternative is presenting evidence
             // gathered before the gap as if it survived it.
+            if (!fbIsWorkflowMode()) return;
             VaibifySyncManager.fnRefreshConfiguredRemotes(
                 _dictSessionState.sContainerId);
             VaibifyZenodoTokens.fnRefresh(_dictSessionState.sContainerId);
             VaibifyRemoteBindings.fnRefresh(_dictSessionState.sContainerId);
         });
+    }
+
+    function fbIsWorkflowMode() {
+        return Boolean(_dictSessionState.dictDashboardMode) &&
+            _dictSessionState.dictDashboardMode.sMode === "workflow";
     }
 
     function _fnReportConnectionLossToMonitor(dictEvent) {
@@ -817,10 +834,13 @@ const VaibifyApp = (function () {
            numbers that index ANOTHER step list -- onto the new
            project's lights and saves. The run itself continues on
            the server; reopening its project reconnects to it. */
-        if (_dictWorkflowState.sWorkflowPath &&
-            _dictWorkflowState.sWorkflowPath !== data.sWorkflowPath) {
+        var sSocketWorkflowPath =
+            _dictSessionState.sPipelineSocketWorkflowPath;
+        if (sSocketWorkflowPath &&
+            sSocketWorkflowPath !== data.sWorkflowPath) {
             VaibifyWebSocket.fnDisconnect();
         }
+        _dictSessionState.sPipelineSocketWorkflowPath = data.sWorkflowPath;
         _fnResetWorkflowState();
         VaibifyPolling.fnStopDiscoveryPolling();
         _fnRecordViewerLeaseFromConnect(sId, data);
@@ -867,6 +887,13 @@ const VaibifyApp = (function () {
         document.title = (VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify") +
             (sWorkflowName ? ": " + sWorkflowName : "");
         fnShowMainLayout();
+        // Asked once the view is this project's, so neither answer can
+        // be dropped as another view's. Both are host-side reads that
+        // reach no container, so they cannot race the open-time chain's
+        // carrier; the connect that just ran has already moved any
+        // Zenodo token out of the container.
+        VaibifyZenodoTokens.fnRefresh(sId);
+        VaibifyRemoteBindings.fnRefresh(sId);
         fnRenderStepList();
         fnUpdateHighlightState();
         fnPollAllStepFiles();
@@ -943,8 +970,6 @@ const VaibifyApp = (function () {
                 })
                 .then(function () {
                     VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
-                    VaibifyZenodoTokens.fnRefresh(sId);
-                    VaibifyRemoteBindings.fnRefresh(sId);
                 });
             return;
         }
@@ -966,12 +991,6 @@ const VaibifyApp = (function () {
                 sId, false);
         }).then(function () {
             VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
-            // The connect that just ran moved any Zenodo token out of
-            // the container; what awaits the researcher is asked now.
-            VaibifyZenodoTokens.fnRefresh(sId);
-            // Which remotes this workflow's tokens may act on, and
-            // whether the researcher has confirmed each.
-            VaibifyRemoteBindings.fnRefresh(sId);
         });
     }
 
@@ -1153,6 +1172,10 @@ const VaibifyApp = (function () {
             VaibifyWebSocket.fnSetReconnectWindowSeconds(
                 dictConnect.fReconnectWindowSeconds);
             _fnRenderToolkitBanner(0);
+            // Not refreshed: with no workflow open, the server's
+            // cached workflow is still the previous project's, so a
+            // notice read here would describe that project.
+            _fnEmptyProjectNotices();
             document.title = VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
         } catch (error) {
@@ -1438,17 +1461,9 @@ const VaibifyApp = (function () {
         }
     }
 
-    function _fnCancelAllTimers() {
-        VaibifyWebSocket.fnDisconnect();
-        if (typeof VaibifyMemoryWatch !== "undefined") {
-            VaibifyMemoryWatch.fnStop();
-        }
-        VaibifyPolling.fnStopPipelinePolling();
-        VaibifyPolling.fnStopFilePolling();
-        VaibifyPolling.fnStopFileTreePolling();
-        VaibifyPolling.fnStopDiscoveryPolling();
-        VaibifyPolling.fnStopPromptRecordPolling();
-        VaibifyReposPanel.fnTeardown();
+    function _fnCancelProjectTimers() {
+        /* Before the state reset, which forgets these handles without
+           cancelling them. The pollers are stopped by the reset. */
         if (_dictWorkflowState.iFileCheckTimer) {
             clearTimeout(_dictWorkflowState.iFileCheckTimer);
             _dictWorkflowState.iFileCheckTimer = null;
@@ -1573,25 +1588,40 @@ const VaibifyApp = (function () {
         return true;
     }
 
-    function fnDisconnect() {
-        _dictSessionState.sContainerId = null;
-        _dictWorkflowState.dictWorkflow = null;
-        _dictWorkflowState.sWorkflowPath = null;
-        _dictUiState.iSelectedStepIndex = -1;
-        _dictUiState.setExpandedSteps.clear();
-        _dictUiState.setExpandedDeps.clear();
-        _dictUiState.setExpandedStepLevels.clear();
-        _dictUiState.setLevelSeededSteps.clear();
-        _dictUiState.setExpandedStepDescriptions.clear();
-        _dictUiState.setDescriptionSeededSteps.clear();
-        VaibifyTestManager.fnResetState();
-        _dictWorkflowState.dictPlotStandardExists = {};
-        _dictWorkflowState.dictStepStatus = {};
-        _dictWorkflowState.dictStepTaint = {};
+    function _fnCloseOpenProject() {
+        /* Everything that belongs to the open project, and nothing that
+           belongs to the container: the claim, the terminals and the
+           pipeline socket stay with the container, whose Project Hub
+           the researcher may only be going back to. */
+        _fnCancelProjectTimers();
+        _fnResetWorkflowState();
+        _dictSessionState.dictDashboardMode = null;
         document.body.classList.remove(
             "proof-level-1", "proof-level-2", "proof-level-3",
         );
-        _fnCancelAllTimers();
+        _fnEmptyProjectNotices();
+        fnAdvanceViewGeneration();
+    }
+
+    function _fnEmptyProjectNotices() {
+        /* Both banners describe the project that was open. Left alone,
+           a reopen showed the last answer until the new one arrived. */
+        VaibifyZenodoTokens.fnRender(null);
+        VaibifyRemoteBindings.fnRenderNotices(null);
+    }
+
+    function fnLeaveToProjectHub() {
+        var sContainerId = _dictSessionState.sContainerId;
+        if (!sContainerId) return;
+        _fnCloseOpenProject();
+        VaibifyContainerManager.fnConnectToContainer(sContainerId);
+    }
+
+    function fnDisconnect() {
+        _fnCloseOpenProject();
+        _dictSessionState.sContainerId = null;
+        _dictSessionState.sPipelineSocketWorkflowPath = "";
+        VaibifyWebSocket.fnDisconnect();
         VaibifyTerminal.fnCloseAll();
         fnShowContainerLanding();
         VaibifyContainerManager.fnLoadContainers();
@@ -8199,21 +8229,12 @@ const VaibifyApp = (function () {
         fnStopAllHubPolling: fnStopAllHubPolling,
         fnResumeHubPollingForCurrentView:
             fnResumeHubPollingForCurrentView,
-        fbIsWorkflowMode: function () {
-            return _dictSessionState.dictDashboardMode &&
-                _dictSessionState.dictDashboardMode.sMode ===
-                "workflow";
-        },
+        fbIsWorkflowMode: fbIsWorkflowMode,
         fnLoadLogs: fnLoadLogs,
         fnShowDag: fnShowDag,
         fnOpenVsCode: fnOpenVsCode,
         fnResetLayout: fnResetLayout,
-        fnReconnectToCurrentContainer: function () {
-            if (_dictSessionState.sContainerId) {
-                VaibifyContainerManager.fnConnectToContainer(
-                    _dictSessionState.sContainerId);
-            }
-        },
+        fnLeaveToProjectHub: fnLeaveToProjectHub,
         fnRenderGlobalSettings: fnRenderGlobalSettings,
         fnRenderHostSettings: fnRenderHostSettings,
         fnCommitNewItem: fnCommitNewItem,

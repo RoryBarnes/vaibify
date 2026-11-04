@@ -467,6 +467,63 @@ def _flistRunPipelineAction(client, sContainerId, sLeaseId, sAction):
     return listEvents
 
 
+def _fbContainerIsBusy(appHub):
+    """Return True while a carrier or a journaled operation holds the container."""
+    from vaibify.config import operationJournal
+    from vaibify.gui import commitCarrier
+    sResolution = operationJournal.fdictResolveContainerJournal(
+        S_PROJECT_NAME, None, bPersistResolution=False)["sResolution"]
+    return sResolution == operationJournal.S_RESOLUTION_BUSY or (
+        commitCarrier.fbContainerHasLiveMutationWork(
+            appHub.state, S_PROJECT_NAME))
+
+
+def _fdictNextAnswerTo(websocket, sType):
+    """Return the next event of one type, past heartbeats and progress."""
+    while True:
+        dictEvent = json.loads(websocket.recv(timeout=60))
+        if dictEvent.get("sType") == sType:
+            return dictEvent
+
+
+def _fnAssertTheProjectHubRoundTripKeepsTheClaim(
+    client, appHub, sContainerId, sLeaseId, sWorkflowPath,
+):
+    """Admin > Projects and back, with the pipeline socket open throughout.
+
+    The dashboard keeps the socket in the Project Hub, because the claim
+    is released by its closing. The hub must treat the round trip (list
+    the projects, connect the same one again) as nothing: the lease
+    stays, the socket stays authorized, and no work is left live.
+    """
+    import time
+    from websockets.sync.client import connect
+    dictHeaders = {"X-Vaibify-Lease": sLeaseId}
+    sUrl = (f"ws://127.0.0.1:{client.iPort}/ws/pipeline/{sContainerId}"
+            f"?sToken={client.sCredential}&sLeaseId={sLeaseId}")
+    with connect(
+        sUrl, origin=f"http://127.0.0.1:{client.iPort}", open_timeout=30,
+    ) as websocket:
+        _fdictNextAnswerTo(websocket, "workflowBound")
+        responseList = client.get(
+            f"/api/workflows/{sContainerId}", headers=dictHeaders)
+        assert responseList.status_code == 200, responseList.text
+        responseReopen = client.post(
+            f"/api/connect/{sContainerId}", headers=dictHeaders,
+            params={"sWorkflowPath": sWorkflowPath})
+        assert responseReopen.status_code == 200, responseReopen.text
+        assert appHub.state.dictContainerOwners[S_PROJECT_NAME].sLeaseId == (
+            sLeaseId)
+        # Answered only after the per-frame credential check passes.
+        websocket.send("not a JSON object")
+        assert _fdictNextAnswerTo(websocket, "runRefused")["sMessage"] == (
+            "Refused: the request was not a JSON object.")
+    fDeadline = time.monotonic() + 30
+    while _fbContainerIsBusy(appHub) and time.monotonic() < fDeadline:
+        time.sleep(0.5)
+    assert not _fbContainerIsBusy(appHub), "the round trip left work live"
+
+
 def _fnAwaitTheConversion(client, sHostName):
     """Poll the conversion until the hub has switched the entry (404) or stopped."""
     import time
@@ -560,6 +617,8 @@ def test_the_readers_journey_through_the_real_hub(
         f"/api/connect/{sContainerId}", headers=dictHeaders,
         params={"sWorkflowPath": sWorkflowPath})
     print("CONNECT", responseConnect.status_code, responseConnect.text[:300])
+    _fnAssertTheProjectHubRoundTripKeepsTheClaim(
+        client, appHub, sContainerId, sLeaseId, sWorkflowPath)
     responseVerify = client.post(
         f"/api/workflow/{sContainerId}/manifest/verify", headers=dictHeaders)
     assert responseVerify.status_code == 200, responseVerify.text
