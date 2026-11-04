@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Connecting to External Resources &mdash; Vaibify 0.2.4.dev14 documentation</title>
+  <title>Connecting to External Resources &mdash; Vaibify 0.2.4.dev18 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=0356f8ab"></script>
+      <script src="_static/documentation_options.js?v=dcb4d103"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -309,12 +309,18 @@ the container image may be deposited there. It names no record, is
 never compared with <code class="docutils literal notranslate"><span class="pre">project.json</span></code>, and no project deposit touches it.</p></li>
 </ul>
 <p><strong>Notices and the review.</strong> When a project opens, a notice appears for
-each entry that applies and is not confirmed, or that <code class="docutils literal notranslate"><span class="pre">project.json</span></code>
-disagrees with, and its <strong>Review and confirm…</strong> button opens the review.
-An action that needs an entry you have not confirmed opens the same
-review instead of failing. The review sets side by side what
-<code class="docutils literal notranslate"><span class="pre">project.json</span></code> names, what you confirmed and what vaibify could see with
-your own token, and says what <strong>Confirm</strong> authorizes. Confirm records
+each entry that applies and that <code class="docutils literal notranslate"><span class="pre">project.json</span></code> disagrees with, and its
+<strong>Review and confirm…</strong> button opens the review. An entry you have not
+confirmed on this computer has no notice, so a project opened on a
+second computer is quiet: an action that needs such an entry opens the
+same review instead of failing. The exception is <strong>Auto Archive</strong>,
+which asks nobody: while it is on, an unconfirmed Overleaf project or
+project record it would send to carries a notice. The review sets
+side by side what <code class="docutils literal notranslate"><span class="pre">project.json</span></code> names, what you confirmed and what
+vaibify could see with your own token, and says what <strong>Confirm</strong>
+authorizes. Where nothing names a record (a new record, or the
+environment archive below), it says what confirming allows instead of
+comparing. Confirm records
 exactly that entry, and the refused action runs again, once. If the
 project view changes while you are confirming, the review closes and
 nothing is run again. A disagreement carries the sentence “If you did
@@ -358,7 +364,7 @@ notice’s <strong>Move it aside</strong> button does that for you, as does
 <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">bindings</span> <span class="pre">--set-aside</span> <span class="pre">-p</span> <span class="pre">&lt;project&gt;</span></code> on the host. Either one
 renames the file beside itself to
 <code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">id&gt;.json.unreadable-&lt;UTC</span> <span class="pre">time&gt;</span></code>, so nothing is deleted, and
-the notices then show what is left to confirm. Both refuse with
+each entry is confirmed again the first time an action needs it. Both refuse with
 <code class="docutils literal notranslate"><span class="pre">BINDING-RECORD-VALID</span></code> while the record can be read, so a valid
 confirmation is never moved, and neither is reachable from inside the
 container.</p>
@@ -637,7 +643,9 @@ above the step list) pushes a step’s files that you have marked for
 Overleaf and Zenodo automatically when that step’s verification first
 brings the project to Level 1. It is off by default. A failed
 automatic push is logged and never blocks the step that triggered it;
-the Sync menu remains the way to retry.</p>
+the Sync menu remains the way to retry. Auto Archive sends only to
+remotes you have confirmed on this computer, so while it is on, a
+notice names each one still to confirm.</p>
 </section>
 <section id="revoking-credentials">
 <h2>Revoking credentials<a class="headerlink" href="#revoking-credentials" title="Link to this heading"></a></h2>
