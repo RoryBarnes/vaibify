@@ -7392,7 +7392,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # running container's X authorization at once.
     # 2653 -> 2793 (2026-10-29): the network mode in the wizard and settings, the allow-host route and the YAML list append.
     # 2793 -> 2798 (2026-11-02): a creation request that names no mode gets the new-project mode, web (web network mode plan, A5).
-    "registryRoutes.py": 2798,
+    # 2798 -> 2800 (2026-11-03): every writer composes both network keys through projectConfig.fdictNetworkKeysForMode (follow-up-after-210 plan, A6, A8).
+    "registryRoutes.py": 2800,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

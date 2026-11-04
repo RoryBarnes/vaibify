@@ -364,6 +364,17 @@ def fdictReconcileNetworkKeys(dictRaw):
     return dictResult
 
 
+def fdictNetworkKeysForMode(sMode):
+    """Return ``{networkMode, networkIsolation}`` written for one mode.
+
+    The one place a writer composes the two spellings, so a written
+    file can never contradict itself: isolated is the only mode
+    ``networkIsolation: true`` names (ruling D1).
+    """
+    return {"networkMode": sMode,
+            "networkIsolation": sMode == S_NETWORK_MODE_ISOLATED}
+
+
 def fbNetworkKeysAgree(dictConfig):
     """False only when both network keys are present and contradict each other."""
     if "networkMode" not in dictConfig or "networkIsolation" not in dictConfig:

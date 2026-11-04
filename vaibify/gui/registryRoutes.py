@@ -150,8 +150,8 @@ class ConvertToContainerRequest(BaseModel):
     bNeverSleep: bool = False
     bNetworkIsolation: bool = False
     # The network mode (ruling D1); empty means "as bNetworkIsolation says",
-    # for a client that predates the mode. New projects default to allowlist
-    # in the wizard (ruling D2), which sends the value explicitly.
+    # for a client that predates the mode, and otherwise the new-project
+    # mode (S_NEW_PROJECT_NETWORK_MODE, web). The wizard sends it explicitly.
     sNetworkMode: str = ""
     bX11Forwarding: bool = False
     bClaudeAutoUpdate: bool = True
@@ -1223,8 +1223,8 @@ def _fbApplyNetworkMode(sConfigPath, sNewMode):
     way round. The change applies when the container is created again.
     """
     from vaibify.config.projectConfig import (
-        S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN, T_NETWORK_MODES,
-        fconfigLoadFromFile,
+        S_NETWORK_MODE_OPEN, T_NETWORK_MODES, fconfigLoadFromFile,
+        fdictNetworkKeysForMode,
     )
     if sNewMode not in T_NETWORK_MODES:
         raise HTTPException(
@@ -1238,9 +1238,10 @@ def _fbApplyNetworkMode(sConfigPath, sNewMode):
             f"networkMode {sNewMode} cannot be combined with X11 forwarding. "
             "Turn x11Forwarding off first.",
         )
-    _fnUpdateYamlScalarField(sConfigPath, "networkMode", sNewMode)
+    dictKeys = fdictNetworkKeysForMode(sNewMode)
+    _fnUpdateYamlScalarField(sConfigPath, "networkMode", dictKeys["networkMode"])
     _fnUpdateYamlBoolField(
-        sConfigPath, "networkIsolation", sNewMode == S_NETWORK_MODE_ISOLATED)
+        sConfigPath, "networkIsolation", dictKeys["networkIsolation"])
     return True
 
 
@@ -2670,6 +2671,7 @@ def _fnWriteProjectConfig(request):
 
 def _fdictBuildYamlFromRequest(request):
     """Translate a CreateProjectRequest into a camelCase YAML dict."""
+    from vaibify.config.projectConfig import fdictNetworkKeysForMode
     dictFeatures = _fdictFeaturesFromList(request.listFeatures)
     for sAgent, _, sAutoUpdateField, _ in _T_AGENT_SETTINGS:
         dictFeatures[f"{sAgent}AutoUpdate"] = getattr(
@@ -2688,7 +2690,7 @@ def _fdictBuildYamlFromRequest(request):
         "features": dictFeatures,
         "secrets": _flistSecretsFromAuthFlag(request.bUseGithubAuth),
         "neverSleep": request.bNeverSleep,
-        "networkMode": fsNetworkModeOfRequest(request),
+        **fdictNetworkKeysForMode(fsNetworkModeOfRequest(request)),
         "allowedHosts": [],
         "x11Forwarding": request.bX11Forwarding,
     }

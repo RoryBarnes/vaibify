@@ -38482,7 +38482,7 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/registryRoutes.py',
         old=(
             '    _fnUpdateYamlBoolField(\n'
-            '        sConfigPath, "networkIsolation", sNewMode == S_NETWORK_MODE_ISOLATED)\n'
+            '        sConfigPath, "networkIsolation", dictKeys["networkIsolation"])\n'
         ),
         new='',
     ),
@@ -40020,5 +40020,21 @@ LIST_FALSIFICATIONS = [
             '        sDescription, bObserved = _ftDescribeMismatchContext(\n'
             '            dictEnvelope, dictRecord, listMismatches[0])\n'
         ),
+    ),
+    # --- 2026-11-03: a conversion writes both network spellings from
+    # one helper, so "isolated" stops failing validation ---
+    Falsification(
+        nodeid='tests/testConversionWritesAgreeingNetworkKeys.py::testTheBuildConversionWritesAgreeingNetworkKeys',
+        # The request translation writing networkMode alone, as before.
+        source='vaibify/gui/registryRoutes.py',
+        old='        **fdictNetworkKeysForMode(fsNetworkModeOfRequest(request)),\n',
+        new='        "networkMode": fsNetworkModeOfRequest(request),\n',
+    ),
+    Falsification(
+        nodeid='tests/testConversionWritesAgreeingNetworkKeys.py::testThePinnedImageConversionWritesAgreeingNetworkKeys',
+        # The same translation, as the pinned-image overlay reads it.
+        source='vaibify/gui/registryRoutes.py',
+        old='        **fdictNetworkKeysForMode(fsNetworkModeOfRequest(request)),\n',
+        new='        "networkMode": fsNetworkModeOfRequest(request),\n',
     ),
 ]
