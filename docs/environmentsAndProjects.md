@@ -39,7 +39,7 @@ it when the work becomes real.
 Running `vaibify` with no subcommand opens the environments page in
 your browser. It lists every environment registered on this computer
 under **This machine**, with these buttons beside the heading, followed
-by **Quit vaibify** (see [Sessions](#sessions)):
+by **Quit** (see [Sessions](#sessions)):
 
 | Button | Action |
 |---|---|
@@ -286,7 +286,7 @@ time, and one browser session holds at most **one environment**.
   and a dashboard opened later shows it.
 - To work on two environments at once, use **⧉ New vaibify window**
   (on the environments page, the Project Hub, and the **Admin** menu).
-- **Quit vaibify** (on the environments page and the Project Hub) and
+- **Quit** (on the environments page and the Project Hub) and
   **Admin → Quit** stop vaibify, together with every window opened
   with **New vaibify window**. Listing and stopping one live session
   at a time is done from the command line; see

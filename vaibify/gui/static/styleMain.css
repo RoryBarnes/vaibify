@@ -4238,6 +4238,23 @@ pre.quarantine-remedy {
     color: var(--text-primary);
 }
 
+/* "About vaibify" at the top of each hub's help (scriptAboutVaibify.js). */
+.hub-help-about-facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 12px;
+    margin: 0 0 12px 0;
+}
+
+.hub-help-about-facts dt {
+    color: var(--text-secondary);
+}
+
+.hub-help-about-facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
 /* A toast's one named action, beside its text (fnShowToast's
    sActionLabel); the text itself stays selectable and inert. */
 .toast-action {

@@ -466,7 +466,7 @@ vaibify sessions stop --all   # stop every session except this one
 container locks, and it refuses any PID that is not a live vaibify
 session.
 
-The dashboard's equivalent is **Quit vaibify** (or **Admin → Quit**),
+The dashboard's equivalent is **Quit** (or **Admin → Quit**),
 which stops a hub and the windows it opened, and is refused while any
 of them has work in progress. `sessions stop` makes no such check:
 it stops the session it is given, the same as closing its terminal.

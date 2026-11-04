@@ -5454,7 +5454,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 826 -> 857 (2026-10-29): the readiness payload carries the Network row (mode, proxy state, refused destinations).
     # 857 -> 858 (2026-10-29): the Network row reads the mode defensively.
     # 858 -> 859 (2026-11-02): the Network row covers both sealed modes, web and allowlist (web network mode plan, A5).
-    "routes/systemRoutes.py": 859,
+    # 859 -> 874 (2026-11-03): GET /api/system/about, the version both hubs' help shows (follow-up-after-210 plan, A2, A8).
+    "routes/systemRoutes.py": 874,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record

@@ -266,7 +266,7 @@ var VaibifyWorkflowManager = (function () {
         "No environment is open. Go Back and open one from the list.";
 
     function fnShowProjectHubHelp() {
-        VaibifyModals.fnShowInfoModal(
+        VaibifyAbout.fnShowHubHelp(
             "Project hub \u2014 Help", _S_PROJECT_HUB_HELP);
     }
 

@@ -3382,7 +3382,7 @@ var VaibifyContainerManager = (function () {
         );
         document.getElementById("btnHubHelp").addEventListener(
             "click", function () {
-                VaibifyModals.fnShowInfoModal(
+                VaibifyAbout.fnShowHubHelp(
                     "Environment hub \u2014 Help", _S_HUB_HELP);
             }
         );
