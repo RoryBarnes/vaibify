@@ -152,10 +152,15 @@ def _flockFromFreeze(sFreeze):
     return "\n".join(listLines) + "\n"
 
 
-def fdictAuthorOutputs(dockerClient):
-    """The author's bytes: run the step in the image, dated by the record."""
+def fdictAuthorOutputs(dockerClient, sImageId):
+    """The author's bytes: run the step in the image, dated by the record.
+
+    By the image's id, not its tag: every journey removes the tag so the
+    conversion has to take the archive link, and a later journey in the
+    module still needs the image.
+    """
     container = dockerClient.containers.run(
-        S_FIXTURE_TAG, ["sleep", "600"], detach=True, labels=fdictLabels())
+        sImageId, ["sleep", "600"], detach=True, labels=fdictLabels())
     try:
         container.exec_run(["mkdir", "-p", "/workspace/author"])
         _fnPutFile(container, "/workspace/author/generate.py",
@@ -264,7 +269,7 @@ def fsPublishAuthorsProject(sRepo, dictOutputs, sTarballSha, iTarballBytes,
 @pytest.fixture
 def dictPublished(liveImage, tmp_path_factory, monkeypatch):
     dockerClient, imageFixture = liveImage
-    dictOutputs = fdictAuthorOutputs(dockerClient)
+    dictOutputs = fdictAuthorOutputs(dockerClient, imageFixture.id)
     baTarball = b"".join(imageFixture.save(named=False))
     sTarballSha = "sha256:" + hashlib.sha256(baTarball).hexdigest()
     sArchitecture = str(imageFixture.attrs.get("Architecture") or "")
