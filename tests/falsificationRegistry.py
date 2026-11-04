@@ -40125,4 +40125,69 @@ LIST_FALSIFICATIONS = [
         old='        elChild.style.margin = "0 auto";\n',
         new='        elContent.style.justifyContent = "center";\n',
     ),
+    # --- 2026-11-04: a project record nobody has created yet carries no
+    # notice, and its review says what confirming allows ---
+    Falsification(
+        nodeid='tests/testBindingConfirmation.py::testANewRecordsReviewSaysWhatItAllowsAndComparesNothing',
+        # The comparison decided by the kind of binding again.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    bHasTarget = _fbEntryHasTarget(dictProjectTarget, dictConfirmed, dictReviewTarget)\n',
+        new='    bHasTarget = sRecordKind != remoteBindings.S_RECORD_KIND_ENVIRONMENT\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteBindingDialogIsTheServers.py::'
+            'testANewRecordsDialogSaysWhatItAllowsAndComparesNoRecord'
+        ),
+        # The same kind-based decision, as the dialog renders it.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    bHasTarget = _fbEntryHasTarget(dictProjectTarget, dictConfirmed, dictReviewTarget)\n',
+        new='    bHasTarget = sRecordKind != remoteBindings.S_RECORD_KIND_ENVIRONMENT\n',
+    ),
+    Falsification(
+        nodeid='tests/testBindingConfirmation.py::testNothingConfirmedOnThisComputerCarriesNoNotice',
+        # Noticing an entry only because nobody confirmed it here.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old=(
+            '        if not bAutoArchived:\n'
+            '            return ""\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testBindingConfirmation.py::testAutoArchiveStillNoticesWhatItWouldSendTo',
+        # Silencing every unconfirmed entry, Auto Archive's included.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    return bool(dictWorkflow.get("bAutoArchive")) and (\n',
+        new='    return False and (\n',
+    ),
+    # --- 2026-11-04: a test file the step runs is never announced as
+    # new, and an unfinished listing is no answer ---
+    Falsification(
+        nodeid='tests/testATestFileTheStepRunsIsNeverNew.py::testATestFileTheStepRunsIsNeverNew',
+        # The test commands read under a key no step carries.
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='    for sCmd in flistResolveTestCommands(dictStep):\n',
+        new=(
+            '    for sCmd in dictStep.get("dictTests", {}).get(\n'
+            '            "integrity", {}).get("saCommands", []):\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testATestFileTheStepRunsIsNeverNew.py::testAnUnfinishedListingIsNoAnswer',
+        # An unfinished listing answered with an empty map.
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        ) if dictTestInfo.get("bTestFilesListed") else None,\n',
+        new='        ),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnUnfinishedListingIsNotTheBaseline.py::'
+            'testAnUnfinishedListingIsNotTheBaseline'
+        ),
+        # The page handing an unfinished answer to its test-file check.
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        if (dictStatus.dictTestFileChanges) {\n',
+        new='        if (true) {\n',
+    ),
 ]
