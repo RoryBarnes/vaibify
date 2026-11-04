@@ -266,7 +266,7 @@ var VaibifyWorkflowManager = (function () {
         "No environment is open. Go Back and open one from the list.";
 
     function fnShowProjectHubHelp() {
-        VaibifyModals.fnShowInfoModal(
+        VaibifyAbout.fnShowHubHelp(
             "Project hub \u2014 Help", _S_PROJECT_HUB_HELP);
     }
 
@@ -2334,7 +2334,8 @@ var VaibifyWorkflowManager = (function () {
         }
         try {
             var dictResult = await VaibifyApi.fdictGet(
-                "/api/host-directories?bIncludeFiles=true&sPath=" +
+                "/api/host-directories?bIncludeFiles=true" +
+                "&bDescribeLinks=true&sPath=" +
                 encodeURIComponent(sDirectory));
             _fnRenderSeedCandidates(dictResult.listEntries || []);
         } catch (error) {
@@ -2420,6 +2421,16 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _fsRenderSeedRow(dictEntry) {
+        /* A link the seed will not carry is listed with the server's
+           reason and offers no checkbox, so the container's git status
+           showing it absent is explained before it happens. */
+        if (dictEntry.sNotCopied) {
+            return '<div class="wizard-feature-row wizard-seed-skipped">' +
+                '<span>' + VaibifyUtilities.fnEscapeHtml(dictEntry.sName) +
+                ' (link) &mdash; not copied: ' +
+                VaibifyUtilities.fnEscapeHtml(dictEntry.sNotCopied) +
+                '</span></div>';
+        }
         var bChecked = !_dictWizardData.saSeedPaths ||
             _dictWizardData.saSeedPaths.indexOf(dictEntry.sName) !== -1;
         return '<label class="wizard-feature-row">' +
@@ -2429,7 +2440,8 @@ var VaibifyWorkflowManager = (function () {
             (bChecked ? " checked" : "") + '>' +
             '<span>' +
             VaibifyUtilities.fnEscapeHtml(dictEntry.sName) +
-            (dictEntry.bIsDirectory ? "/" : "") + '</span></label>';
+            (dictEntry.bIsLink ? " (link)" : dictEntry.bIsDirectory ? "/" : "") +
+            '</span></label>';
     }
 
     function _fnBindSeedSelectAll() {

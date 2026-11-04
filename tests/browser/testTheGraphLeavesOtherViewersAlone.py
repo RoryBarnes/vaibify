@@ -109,7 +109,7 @@ def _fbAnyViewerShowsTheGraph(page):
 
 
 def _fnLeaveForTheProjectHub(page):
-    page.evaluate("() => VaibifyApp.fnReconnectToCurrentContainer()")
+    page.evaluate("() => VaibifyApp.fnLeaveToProjectHub()")
     page.wait_for_selector(f"text={S_HOST_WORKFLOW_NAME}", timeout=20000)
 
 

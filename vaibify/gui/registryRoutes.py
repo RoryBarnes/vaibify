@@ -33,6 +33,7 @@ from vaibify.config.containerLock import (
 from vaibify.gui import buildRoutes
 from vaibify.gui import environmentDeletionRoutes
 from vaibify.gui import pinnedEnvironmentConversion
+from vaibify.gui import seedLinks
 from vaibify.gui.actionCatalog import ffnAgentAction
 from vaibify.gui.routeContext import (
     fcontextHoldLifecycleLocksOrConflict,
@@ -150,8 +151,8 @@ class ConvertToContainerRequest(BaseModel):
     bNeverSleep: bool = False
     bNetworkIsolation: bool = False
     # The network mode (ruling D1); empty means "as bNetworkIsolation says",
-    # for a client that predates the mode. New projects default to allowlist
-    # in the wizard (ruling D2), which sends the value explicitly.
+    # for a client that predates the mode, and otherwise the new-project
+    # mode (S_NEW_PROJECT_NETWORK_MODE, web). The wizard sends it explicitly.
     sNetworkMode: str = ""
     bX11Forwarding: bool = False
     bClaudeAutoUpdate: bool = True
@@ -1223,8 +1224,8 @@ def _fbApplyNetworkMode(sConfigPath, sNewMode):
     way round. The change applies when the container is created again.
     """
     from vaibify.config.projectConfig import (
-        S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN, T_NETWORK_MODES,
-        fconfigLoadFromFile,
+        S_NETWORK_MODE_OPEN, T_NETWORK_MODES, fconfigLoadFromFile,
+        fdictNetworkKeysForMode,
     )
     if sNewMode not in T_NETWORK_MODES:
         raise HTTPException(
@@ -1238,9 +1239,10 @@ def _fbApplyNetworkMode(sConfigPath, sNewMode):
             f"networkMode {sNewMode} cannot be combined with X11 forwarding. "
             "Turn x11Forwarding off first.",
         )
-    _fnUpdateYamlScalarField(sConfigPath, "networkMode", sNewMode)
+    dictKeys = fdictNetworkKeysForMode(sNewMode)
+    _fnUpdateYamlScalarField(sConfigPath, "networkMode", dictKeys["networkMode"])
     _fnUpdateYamlBoolField(
-        sConfigPath, "networkIsolation", sNewMode == S_NETWORK_MODE_ISOLATED)
+        sConfigPath, "networkIsolation", dictKeys["networkIsolation"])
     return True
 
 
@@ -1632,11 +1634,13 @@ def _fnRegisterHostDirectories(app, dictCtx):
     async def fdictGetHostDirectories(
         sPath: Optional[str] = None,
         bIncludeFiles: bool = False,
+        bDescribeLinks: bool = False,
     ):
         sAbsPath = sPath or os.path.expanduser("~")
         _fnValidateHostPath(sAbsPath)
         listEntries = flistQueryHostDirectory(
             sAbsPath, bIncludeFiles=bIncludeFiles,
+            bDescribeLinks=bDescribeLinks,
         )
         return {
             "sCurrentPath": sAbsPath,
@@ -1870,7 +1874,7 @@ def _fnValidateHostPath(sPath):
         raise HTTPException(404, "Directory not found")
 
 
-def flistQueryHostDirectory(sAbsPath, bIncludeFiles=False):
+def flistQueryHostDirectory(sAbsPath, bIncludeFiles=False, bDescribeLinks=False):
     """List subdirectories (and optionally files) on the host.
 
     Returns the same entry shape as the container directory
@@ -1878,7 +1882,9 @@ def flistQueryHostDirectory(sAbsPath, bIncludeFiles=False):
     ``bHasConfig`` indicating a vaibify project. File entries are
     included only when ``bIncludeFiles`` is set (import pickers);
     symlinked files are skipped the same way symlinked directories
-    are.
+    are, unless ``bDescribeLinks`` (the conversion's Files to Copy page)
+    asks for each link with what the seed's link contract will do with
+    it (``seedLinks.fdictDescribeTopLevelLink``).
 
     Parameters
     ----------
@@ -1899,6 +1905,8 @@ def flistQueryHostDirectory(sAbsPath, bIncludeFiles=False):
                 listEntries.append(_fdictBuildHostEntry(entry))
             elif bIncludeFiles and entry.is_file(follow_symlinks=False):
                 listEntries.append(_fdictBuildHostFileEntry(entry))
+            elif bDescribeLinks and entry.is_symlink():
+                listEntries.append(seedLinks.fdictDescribeTopLevelLink(entry.path))
     except PermissionError:
         raise HTTPException(403, "Permission denied")
     return _flistSortDirectoryEntries(listEntries)
@@ -2670,6 +2678,7 @@ def _fnWriteProjectConfig(request):
 
 def _fdictBuildYamlFromRequest(request):
     """Translate a CreateProjectRequest into a camelCase YAML dict."""
+    from vaibify.config.projectConfig import fdictNetworkKeysForMode
     dictFeatures = _fdictFeaturesFromList(request.listFeatures)
     for sAgent, _, sAutoUpdateField, _ in _T_AGENT_SETTINGS:
         dictFeatures[f"{sAgent}AutoUpdate"] = getattr(
@@ -2688,7 +2697,7 @@ def _fdictBuildYamlFromRequest(request):
         "features": dictFeatures,
         "secrets": _flistSecretsFromAuthFlag(request.bUseGithubAuth),
         "neverSleep": request.bNeverSleep,
-        "networkMode": fsNetworkModeOfRequest(request),
+        **fdictNetworkKeysForMode(fsNetworkModeOfRequest(request)),
         "allowedHosts": [],
         "x11Forwarding": request.bX11Forwarding,
     }

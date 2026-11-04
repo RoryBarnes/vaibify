@@ -14670,21 +14670,24 @@ LIST_FALSIFICATIONS = [
             'tests/testWorkspaceSeedPaths.py::'
             'testASymlinkPointingOutOfTheProjectIsRefused'
         ),
+        # Since 2026-11-03 the selected link is archived as itself and
+        # the seed's link contract leaves it behind; dropping that
+        # filter carries the link, pointing at a host path, across.
+        source='vaibify/gui/seedLinks.py',
+        old='        if not sReason:\n            return infoMember\n',
+        new='        if True:\n            return infoMember\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceSeedPaths.py::'
+            'testALinkedDirectoryOnTheWayOutOfTheProjectIsRefused'
+        ),
         source='vaibify/gui/routes/fileRoutes.py',
-        # Judge the path's TEXT instead of where it resolves to: a
-        # symlink out of the project contains no ".." and is not
-        # absolute, so a textual guard admits it and the link's target
-        # is archived.
-        old=(
-            '        sCandidate = os.path.realpath(\n'
-            '            os.path.join(sHostDirectory, sRelativePath),\n'
-            '        )\n'
-        ),
-        new=(
-            '        sCandidate = os.path.join(\n'
-            '            sHostDirectory, sRelativePath,\n'
-            '        )\n'
-        ),
+        # Judge the parent's TEXT instead of where it resolves to: a
+        # directory link out of the project contains no ".." and is not
+        # absolute, so a textual guard admits a file beneath it.
+        old='            os.path.realpath(os.path.dirname(sJoined)),\n',
+        new='            os.path.dirname(sJoined),\n',
     ),
     Falsification(
         nodeid=(
@@ -23702,11 +23705,11 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '            _dictWorkflowState.sWorkflowPath !== data.sWorkflowPath) {\n'
+            '            sSocketWorkflowPath !== data.sWorkflowPath) {\n'
             '            VaibifyWebSocket.fnDisconnect();\n'
         ),
         new=(
-            '            _dictWorkflowState.sWorkflowPath !== data.sWorkflowPath) {\n'
+            '            sSocketWorkflowPath !== data.sWorkflowPath) {\n'
         ),
     ),
     Falsification(
@@ -32268,10 +32271,10 @@ LIST_FALSIFICATIONS = [
             'testTheToastCountsAndTheReportListsEveryFile'
         ),
         source='vaibify/gui/static/scriptApplication.js',
-        old='                    " files differ from the manifest." +\n',
+        old='                return {sMessage: dictExplain.sHeadline,\n',
         new=(
-            '                    " files differ from the manifest. Re-run '
-            'the project or regenerate the envelope." +\n'
+            '                return {sMessage: dictExplain.sHeadline + " Re-run '
+            'the project or regenerate the envelope.",\n'
         ),
     ),
     # --- 2026-10-19: the graceful-exits checker never passes over a
@@ -35616,11 +35619,11 @@ LIST_FALSIFICATIONS = [
         # leaving for the Environments Hub empties the viewers
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '        _fnCancelAllTimers();\n'
+            '        VaibifyWebSocket.fnDisconnect();\n'
             '        VaibifyTerminal.fnCloseAll();\n'
         ),
         new=(
-            '        _fnCancelAllTimers();\n'
+            '        VaibifyWebSocket.fnDisconnect();\n'
             '        VaibifyFigureViewer.fnBindViewersToProject(null, "");\n'
             '        VaibifyTerminal.fnCloseAll();\n'
         ),
@@ -36084,7 +36087,7 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/outputProvenance.py',
         # the option is offered when only some mismatches are explained
-        old='    bOnly = bool(listMismatches) and len(listExplained) == len(listMismatches)\n',
+        old='    bOnly = bool(listMismatches) and iObserved == len(listMismatches)\n',
         new='    bOnly = bool(listExplained)\n',
     ),
     # --- 2026-10-23: vaibify-do loses a workflowBound frame that
@@ -38482,7 +38485,7 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/registryRoutes.py',
         old=(
             '    _fnUpdateYamlBoolField(\n'
-            '        sConfigPath, "networkIsolation", sNewMode == S_NETWORK_MODE_ISOLATED)\n'
+            '        sConfigPath, "networkIsolation", dictKeys["networkIsolation"])\n'
         ),
         new='',
     ),
@@ -39880,5 +39883,246 @@ LIST_FALSIFICATIONS = [
         source='vaibify/cli/commandInit.py',
         old='    config.sNetworkMode = S_NEW_PROJECT_NETWORK_MODE\n',
         new='',
+    ),
+    # --- 2026-11-03: leaving a project for its Project Hub closes it ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testLeavingAProjectClosesIt.py::'
+            'test_the_project_hub_after_a_level_three_project_wears_pale_blue'
+        ),
+        # Admin > Projects showing the hub with the project still open.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        if (!sContainerId) return;\n'
+            '        _fnCloseOpenProject();\n'
+            '        VaibifyContainerManager.fnConnectToContainer(sContainerId);\n'
+        ),
+        new=(
+            '        if (!sContainerId) return;\n'
+            '        VaibifyContainerManager.fnConnectToContainer(sContainerId);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLeavingAProjectClosesIt.py::'
+            'test_a_binding_answer_that_lands_in_the_project_hub_renders_nothing'
+        ),
+        # The bindings refresh rendering an answer for a view that left.
+        source='vaibify/gui/static/scriptRemoteBindings.js',
+        old='            if (_fbContextIsCurrent(dictContext)) fnRenderNotices(dictDescribed);\n',
+        new='            fnRenderNotices(dictDescribed);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLeavingAProjectClosesIt.py::'
+            'test_a_token_answer_that_lands_in_the_project_hub_renders_nothing'
+        ),
+        # The token refresh rendering an answer for a view that left.
+        source='vaibify/gui/static/scriptZenodoTokens.js',
+        old=(
+            '            if (VaibifyApp.fiGetViewGeneration() === iViewGeneration) {\n'
+            '                fnRender(dictDescribed);\n'
+            '            }\n'
+        ),
+        new='            fnRender(dictDescribed);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLeavingAProjectClosesIt.py::'
+            'test_a_run_event_that_arrives_in_the_project_hub_repaints_nothing'
+        ),
+        # The pipeline-event dispatch handling events with no project open.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            "               to the hub's tiles. */\n"
+            '            if (!fbIsWorkflowMode()) return;\n'
+        ),
+        new="               to the hub's tiles. */\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLeavingAProjectClosesIt.py::'
+            'test_a_reopened_project_shows_its_own_binding_answer'
+        ),
+        # The close leaving the binding banner as it was.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        VaibifyZenodoTokens.fnRender(null);\n'
+            '        VaibifyRemoteBindings.fnRenderNotices(null);\n'
+        ),
+        new='        VaibifyZenodoTokens.fnRender(null);\n',
+    ),
+    # --- 2026-11-03: an unreadable binding record is moved aside, and a
+    # readable one never is ---
+    Falsification(
+        nodeid='tests/testBindingRecordSetAside.py::testAReadableRecordIsNeverMovedAside',
+        # The readable-record refusal dropped, so a valid record is renamed.
+        source='vaibify/config/remoteBindings.py',
+        old=(
+            '        except BindingRecordInvalidError:\n'
+            '            pass\n'
+            '        else:\n'
+            '            raise BindingRecordReadableError(\n'
+        ),
+        new=(
+            '        except BindingRecordInvalidError:\n'
+            '            pass\n'
+            '        if False:\n'
+            '            raise BindingRecordReadableError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testBindingRecordSetAside.py::testTheAgentLaneCannotSetARecordAside',
+        # The set-aside handler no longer refusing the agent lane itself.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old=(
+            '    async def fdictSetAsideBindingRecord(sContainerId: str, requestHttp: Request):\n'
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+        ),
+        new=(
+            '    async def fdictSetAsideBindingRecord(sContainerId: str, requestHttp: Request):\n'
+        ),
+    ),
+    # --- 2026-11-03: the environment-archive dialog says what it
+    # authorizes instead of comparing records it never names ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteBindingDialogIsTheServers.py::'
+            'testAnEnvironmentArchiveDialogSaysWhatItAuthorizesAndComparesNoRecord'
+        ),
+        # The dialog rendering the record comparison for every kind.
+        source='vaibify/gui/static/scriptRemoteBindings.js',
+        old='        if (dictEntry.bHasTarget === false) {\n',
+        new='        if (false) {\n',
+    ),
+    # --- 2026-11-03: a manifest difference is named by what was
+    # measured, never by what was not ---
+    Falsification(
+        nodeid='tests/testManifestDifferencesNameWhatWasMeasured.py::testIdenticalHardwareWithTheProbeUnmeasuredIsNotCountedAsADifference',
+        # A fact one side never measured counted as an observed difference.
+        source='vaibify/gui/outputProvenance.py',
+        old='        if bThere and bHere and jsonThere != jsonHere:\n',
+        new='        if jsonThere != jsonHere:\n',
+    ),
+    Falsification(
+        nodeid='tests/testManifestDifferencesNameWhatWasMeasured.py::testOneObservedDifferenceIsCountedAndTheOptionOffered',
+        # A measured difference never classified as observed.
+        source='vaibify/gui/outputProvenance.py',
+        old='        if bThere and bHere and jsonThere != jsonHere:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testManifestDifferencesNameWhatWasMeasured.py::testEachFileIsDescribedByItsOwnFacts',
+        # Every file described by the first file's facts.
+        source='vaibify/gui/outputProvenance.py',
+        old=(
+            '        sDescription, bObserved = _ftDescribeMismatchContext(\n'
+            '            dictEnvelope, dictRecord, dictMismatch)\n'
+        ),
+        new=(
+            '        sDescription, bObserved = _ftDescribeMismatchContext(\n'
+            '            dictEnvelope, dictRecord, listMismatches[0])\n'
+        ),
+    ),
+    # --- 2026-11-03: a conversion writes both network spellings from
+    # one helper, so "isolated" stops failing validation ---
+    Falsification(
+        nodeid='tests/testConversionWritesAgreeingNetworkKeys.py::testTheBuildConversionWritesAgreeingNetworkKeys',
+        # The request translation writing networkMode alone, as before.
+        source='vaibify/gui/registryRoutes.py',
+        old='        **fdictNetworkKeysForMode(fsNetworkModeOfRequest(request)),\n',
+        new='        "networkMode": fsNetworkModeOfRequest(request),\n',
+    ),
+    Falsification(
+        nodeid='tests/testConversionWritesAgreeingNetworkKeys.py::testThePinnedImageConversionWritesAgreeingNetworkKeys',
+        # The same translation, as the pinned-image overlay reads it.
+        source='vaibify/gui/registryRoutes.py',
+        old='        **fdictNetworkKeysForMode(fsNetworkModeOfRequest(request)),\n',
+        new='        "networkMode": fsNetworkModeOfRequest(request),\n',
+    ),
+    # --- 2026-11-03: the seed copy carries a project's links faithfully,
+    # and makes the agent-doc links a new container would ---
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testARelativeInProjectLinkCrossesAtTheTopAndNested',
+        # Every link refused as if its target were absolute.
+        source='vaibify/gui/seedLinks.py',
+        old='    if posixpath.isabs(sLinkTarget):\n        return S_LINK_ABSOLUTE_TARGET\n',
+        new='    if True:\n        return S_LINK_ABSOLUTE_TARGET\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testAbsoluteAndEscapingLinksStayBehindAndAreNamed',
+        # The seed filter keeping every link.
+        source='vaibify/gui/seedLinks.py',
+        old='        if not sReason:\n            return infoMember\n',
+        new='        if True:\n            return infoMember\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testATopLevelLinkIsArchivedAsItselfNotAsItsTarget',
+        # The selected path resolved, so a link is archived as its target.
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '        sCandidate = os.path.join(\n'
+            '            os.path.realpath(os.path.dirname(sJoined)),\n'
+            '            os.path.basename(sJoined),\n'
+            '        )\n'
+        ),
+        new='        sCandidate = os.path.realpath(sJoined)\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testAResearchersOwnInstructionFileIsLeftByteIdentical',
+        # Removing what is at the name before linking (the rm -f of the
+        # adoption helper).
+        source='vaibify/gui/seedLinks.py',
+        old='            os.lstat(sName, dir_fd=iRoot)\n            continue\n',
+        new='            os.unlink(sName, dir_fd=iRoot)\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testAResearchersOwnLinkIsLeftPointingWhereItPointed',
+        # The same removal, which repoints the researcher's own link.
+        source='vaibify/gui/seedLinks.py',
+        old='            os.lstat(sName, dir_fd=iRoot)\n            continue\n',
+        new='            os.unlink(sName, dir_fd=iRoot)\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testAnAbsentNameGetsTheLinkANewContainerWouldHave',
+        # The program never creating the link.
+        source='vaibify/gui/seedLinks.py',
+        old='            os.symlink(sys.argv[2], sName, dir_fd=iRoot)\n',
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testNothingIsLinkedWithoutTheSharedContext',
+        # Linking whether or not .vaibify/AGENTS.md exists.
+        source='vaibify/gui/seedLinks.py',
+        old='        bSource = stat.S_ISREG(os.stat(sys.argv[2], dir_fd=iRoot).st_mode)\n',
+        new='        bSource = True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesAFileRoutes.py::'
+            'testASeedReportsTheLinksItLeftBehindAndCarriesTheRestAsLinks'
+        ),
+        # The seed writing its tree without the link contract.
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '                ffnMemberFilter=seedLinks.ffnBuildSeedLinkFilter(\n'
+            '                    listSkippedLinks),\n'
+        ),
+        new='',
+    ),
+    # --- 2026-11-03: a zoomed figure keeps its left edge in reach ---
+    Falsification(
+        nodeid='tests/browser/testAZoomedFigureKeepsItsLeftEdge.py::testAZoomedImageKeepsItsLeftEdgeInReach',
+        # The scrolling box centred with justify-content again.
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='        elChild.style.margin = "0 auto";\n',
+        new='        elContent.style.justifyContent = "center";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAZoomedFigureKeepsItsLeftEdge.py::testAZoomedPdfPageKeepsItsLeftEdgeInReach',
+        # The same centring, which the PDF page's box shares.
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='        elChild.style.margin = "0 auto";\n',
+        new='        elContent.style.justifyContent = "center";\n',
     ),
 ]

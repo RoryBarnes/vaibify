@@ -35,6 +35,17 @@ S_CONTAINER_NAME = "test-container"
 S_REPO = "/workspace"
 
 
+def _flistArchivedMembers(listHostPaths, sArchiveName, ffnMemberFilter):
+    """Return ``(name, is link, link target)`` for what the REAL tar builder archives."""
+    import tarfile
+    from vaibify.docker.dockerConnection import DockerConnection
+    fileTar = DockerConnection._ffileBuildTreeTar(
+        listHostPaths, sArchiveName, ffnMemberFilter)
+    with tarfile.open(fileobj=fileTar) as fileArchive:
+        return [(infoMember.name, infoMember.issym(), infoMember.linkname)
+                for infoMember in fileArchive.getmembers()]
+
+
 class _GatedDockerWithFileSystem(DockerDoubleThatCallsTheRealGates):
     """The gated double, answering file probes from its content store."""
 
@@ -46,6 +57,9 @@ class _GatedDockerWithFileSystem(DockerDoubleThatCallsTheRealGates):
         self.sWriteFailure = ""
         self.listTreeWrites = []
         self.listTreeWriteKeywords = []
+        self.listTreeWriteFilters = []
+        self.listTreeMembers = []
+        self.listLinkPrograms = []
         self.errorTreeWrite = None
 
     def fbContainerPathIsFile(self, sContainerId, sPath):
@@ -109,7 +123,7 @@ class _GatedDockerWithFileSystem(DockerDoubleThatCallsTheRealGates):
         self, sContainerId, sDestinationDirectory, listHostPaths,
         iUid=None, iGid=None, sArchiveName=None,
         sAuthorizedRoot=None, tForbiddenNames=(),
-        bCreateDestination=False,
+        bCreateDestination=False, ffnMemberFilter=None,
     ):
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, "fnWriteTreeViaTar",
@@ -125,6 +139,18 @@ class _GatedDockerWithFileSystem(DockerDoubleThatCallsTheRealGates):
             "sAuthorizedRoot": sAuthorizedRoot,
             "bCreateDestination": bCreateDestination,
         })
+        self.listTreeWriteFilters.append(ffnMemberFilter)
+        self.listTreeMembers.append(_flistArchivedMembers(
+            listHostPaths, sArchiveName, ffnMemberFilter))
+
+    def ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
+        """The post-seed agent-doc link program: gated, recorded, creates none."""
+        from vaibify.docker.dockerConnection import ExecResult
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, "ftRunProgramWithStdin",
+        )
+        self.listLinkPrograms.append(list(listCommand))
+        return ExecResult(iExitCode=0, sStdout="[]\n", sStderr="")
 
 
 @pytest.fixture(autouse=True)
@@ -645,6 +671,9 @@ def testASeedCopiesTheSelectionPlusTheGitDirectory(
         "iCopiedCount": 2,
         "listRestoredPaths": [],
         "sRestoreRefusal": "",
+        "listSkippedLinks": [],
+        "listCreatedAgentLinks": [],
+        "sAgentLinkRefusal": "",
     }
     assert connectionDocker.listTreeWrites == [(
         "/workspace/hostProjectBravo",
@@ -774,6 +803,67 @@ def testASeedAsksTheReceiverToCreateItsDestinationBelowTheWorkspaceRoot(
         dictAdmitted for dictAdmitted in connectionDocker.listAdmittedPrimitives
         if "mkdir" in dictAdmitted["sCommand"]
     ]
+
+
+def _fsBuildHostProjectWithLinks(tmp_path):
+    """A project whose root and docs carry links of every kind."""
+    sDirectory = _fsBuildHostProject(tmp_path)
+    os.makedirs(os.path.join(sDirectory, ".vaibify"))
+    with open(os.path.join(sDirectory, ".vaibify", "AGENTS.md"), "w") as fileOut:
+        fileOut.write("shared context\n")
+    os.symlink(".vaibify/AGENTS.md", os.path.join(sDirectory, "CLAUDE.md"))
+    os.symlink(os.path.join(os.path.realpath(sDirectory), ".vaibify", "AGENTS.md"),
+               os.path.join(sDirectory, "absolute.md"))
+    os.symlink("../outside.md", os.path.join(sDirectory, "escape.md"))
+    os.symlink("stepAlpha.py", os.path.join(sDirectory, "scripts", "current.py"))
+    os.symlink("../../outside.md", os.path.join(sDirectory, "scripts", "up.md"))
+    return sDirectory
+
+
+@pytest.mark.falsification
+def testASeedReportsTheLinksItLeftBehindAndCarriesTheRestAsLinks(
+    tclientFiles, tmp_path,
+):
+    """Absolute and escaping links stay behind, named; the rest cross as links.
+
+    Kills: the seed writing its tree without the link contract, which
+    carried an absolute link verbatim into a container where its target
+    does not exist.
+    """
+    client, connectionDocker = tclientFiles
+    _fnRegisterProject(_fsBuildHostProjectWithLinks(tmp_path))
+    responseHttp = client.post(
+        f"/api/files/{S_CONTAINER_ID}/seed-workspace",
+        json={"saRelativePaths": ["scripts", "CLAUDE.md", "absolute.md",
+                                  "escape.md"]},
+    )
+    assert responseHttp.status_code == 200, responseHttp.text
+    assert sorted(responseHttp.json()["listSkippedLinks"], key=str) == sorted([
+        {"sPath": "absolute.md", "sReason": "absolute target"},
+        {"sPath": "escape.md", "sReason": "points outside the project"},
+        {"sPath": "scripts/up.md", "sReason": "points outside the project"},
+    ], key=str)
+    dictMembers = {sName: (bLink, sTarget) for sName, bLink, sTarget
+                   in connectionDocker.listTreeMembers[0]}
+    assert dictMembers["CLAUDE.md"] == (True, ".vaibify/AGENTS.md")
+    assert dictMembers["scripts/current.py"] == (True, "stepAlpha.py")
+    assert not {"absolute.md", "escape.md", "scripts/up.md"} & set(dictMembers)
+
+
+def testASeedMakesTheAgentDocLinksInTheProjectItCopied(tclientFiles, tmp_path):
+    """The link program runs after the copy, at the destination, under the carrier."""
+    client, connectionDocker = tclientFiles
+    _fnRegisterProject(_fsBuildHostProject(tmp_path))
+    responseHttp = client.post(
+        f"/api/files/{S_CONTAINER_ID}/seed-workspace",
+        json={"saRelativePaths": ["scripts"]},
+    )
+    assert responseHttp.status_code == 200, responseHttp.text
+    [listCommand] = connectionDocker.listLinkPrograms
+    assert listCommand[:3] == ["python3", "-I", "-c"]
+    assert listCommand[4:] == [
+        "/workspace/hostProjectBravo", ".vaibify/AGENTS.md",
+        "CLAUDE.md", "AGENTS.md", "GEMINI.md"]
 
 
 def _fnPlantTreeWriteError(connectionDocker, iMembersLanded):

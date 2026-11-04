@@ -125,7 +125,9 @@ def _fdictCatalogEntry(sName):
     return next(dictEntry for dictEntry in LIST_AGENT_ACTIONS if dictEntry["sName"] == sName)
 
 
-@pytest.mark.parametrize("sAction", ["confirm-remote-binding", "decide-token-rotation"])
+@pytest.mark.parametrize("sAction", [
+    "confirm-remote-binding", "decide-token-rotation", "set-aside-binding-record",
+])
 def testAGeneratedResearcherOnlyCommandClaimsAsResearcherOnly(monkeypatch, sAction):
     dictEntry = _fdictCatalogEntry(sAction)
     assert dictEntry["bAgentSafe"] is False

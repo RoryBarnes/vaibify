@@ -152,10 +152,15 @@ def _flockFromFreeze(sFreeze):
     return "\n".join(listLines) + "\n"
 
 
-def fdictAuthorOutputs(dockerClient):
-    """The author's bytes: run the step in the image, dated by the record."""
+def fdictAuthorOutputs(dockerClient, sImageId):
+    """The author's bytes: run the step in the image, dated by the record.
+
+    By the image's id, not its tag: every journey removes the tag so the
+    conversion has to take the archive link, and a later journey in the
+    module still needs the image.
+    """
     container = dockerClient.containers.run(
-        S_FIXTURE_TAG, ["sleep", "600"], detach=True, labels=fdictLabels())
+        sImageId, ["sleep", "600"], detach=True, labels=fdictLabels())
     try:
         container.exec_run(["mkdir", "-p", "/workspace/author"])
         _fnPutFile(container, "/workspace/author/generate.py",
@@ -264,7 +269,7 @@ def fsPublishAuthorsProject(sRepo, dictOutputs, sTarballSha, iTarballBytes,
 @pytest.fixture
 def dictPublished(liveImage, tmp_path_factory, monkeypatch):
     dockerClient, imageFixture = liveImage
-    dictOutputs = fdictAuthorOutputs(dockerClient)
+    dictOutputs = fdictAuthorOutputs(dockerClient, imageFixture.id)
     baTarball = b"".join(imageFixture.save(named=False))
     sTarballSha = "sha256:" + hashlib.sha256(baTarball).hexdigest()
     sArchitecture = str(imageFixture.attrs.get("Architecture") or "")
@@ -467,6 +472,63 @@ def _flistRunPipelineAction(client, sContainerId, sLeaseId, sAction):
     return listEvents
 
 
+def _fbContainerIsBusy(appHub):
+    """Return True while a carrier or a journaled operation holds the container."""
+    from vaibify.config import operationJournal
+    from vaibify.gui import commitCarrier
+    sResolution = operationJournal.fdictResolveContainerJournal(
+        S_PROJECT_NAME, None, bPersistResolution=False)["sResolution"]
+    return sResolution == operationJournal.S_RESOLUTION_BUSY or (
+        commitCarrier.fbContainerHasLiveMutationWork(
+            appHub.state, S_PROJECT_NAME))
+
+
+def _fdictNextAnswerTo(websocket, sType):
+    """Return the next event of one type, past heartbeats and progress."""
+    while True:
+        dictEvent = json.loads(websocket.recv(timeout=60))
+        if dictEvent.get("sType") == sType:
+            return dictEvent
+
+
+def _fnAssertTheProjectHubRoundTripKeepsTheClaim(
+    client, appHub, sContainerId, sLeaseId, sWorkflowPath,
+):
+    """Admin > Projects and back, with the pipeline socket open throughout.
+
+    The dashboard keeps the socket in the Project Hub, because the claim
+    is released by its closing. The hub must treat the round trip (list
+    the projects, connect the same one again) as nothing: the lease
+    stays, the socket stays authorized, and no work is left live.
+    """
+    import time
+    from websockets.sync.client import connect
+    dictHeaders = {"X-Vaibify-Lease": sLeaseId}
+    sUrl = (f"ws://127.0.0.1:{client.iPort}/ws/pipeline/{sContainerId}"
+            f"?sToken={client.sCredential}&sLeaseId={sLeaseId}")
+    with connect(
+        sUrl, origin=f"http://127.0.0.1:{client.iPort}", open_timeout=30,
+    ) as websocket:
+        _fdictNextAnswerTo(websocket, "workflowBound")
+        responseList = client.get(
+            f"/api/workflows/{sContainerId}", headers=dictHeaders)
+        assert responseList.status_code == 200, responseList.text
+        responseReopen = client.post(
+            f"/api/connect/{sContainerId}", headers=dictHeaders,
+            params={"sWorkflowPath": sWorkflowPath})
+        assert responseReopen.status_code == 200, responseReopen.text
+        assert appHub.state.dictContainerOwners[S_PROJECT_NAME].sLeaseId == (
+            sLeaseId)
+        # Answered only after the per-frame credential check passes.
+        websocket.send("not a JSON object")
+        assert _fdictNextAnswerTo(websocket, "runRefused")["sMessage"] == (
+            "Refused: the request was not a JSON object.")
+    fDeadline = time.monotonic() + 30
+    while _fbContainerIsBusy(appHub) and time.monotonic() < fDeadline:
+        time.sleep(0.5)
+    assert not _fbContainerIsBusy(appHub), "the round trip left work live"
+
+
 def _fnAwaitTheConversion(client, sHostName):
     """Poll the conversion until the hub has switched the entry (404) or stopped."""
     import time
@@ -485,25 +547,15 @@ def _fnAwaitTheConversion(client, sHostName):
     raise AssertionError("the conversion did not finish within ten minutes")
 
 
-@pytest.mark.falsification
-def test_the_readers_journey_through_the_real_hub(
-    dictPublished, hubClient, monkeypatch,
-):
-    """Clone, convert, obtain, start, copy in, check, run, verify, label.
+def _ftConvertStartAndSeed(client, dictPublished, monkeypatch):
+    """Register the clone, convert it from the archive, start it and seed it.
 
-    Kills: comparing the record's prefixed manifest digest with the
-    snapshot's bare hash as strings, which never matched, so a real
-    reproduction never earned its label. Only driving the whole journey
-    found it: every unit fixture had hand-written both sides alike.
-
-    The reader's own host sign-offs (Level 1) are not simulated; the
-    assertion is that the level never rises above 1, because Level 2
-    and Level 3 record the author's publication.
+    Return ``(sContainerId, sLeaseId, dictSeed)``, the seed being the
+    route's own answer. Everything the Files page offers is ticked.
     """
-    from vaibify.config import registryManager
-    client, appHub, sHome = hubClient
+    from vaibify.config import imageOrigins, registryManager
+    from vaibify.gui import conversionLifecycle
     sRepo = dictPublished["sRepo"]
-    _fnCorruptEveryOutput(sRepo)
     registryManager.fnAddProject(sRepo, sMode="host")
     sHostName = os.path.basename(sRepo)
     dictPinned = client.get(
@@ -513,10 +565,8 @@ def test_the_readers_journey_through_the_real_hub(
     # "Convert and obtain" converts nothing until the image is in hand:
     # the hub's own worker downloads the deposit, stages the image and
     # switches the entry. The suite stubs that worker so route tests
-    # never reach Docker; this journey restores it, because the worker
+    # never reach Docker; these journeys restore it, because the worker
     # is the thing under test here.
-    from vaibify.config import imageOrigins
-    from vaibify.gui import conversionLifecycle
     monkeypatch.setattr(
         conversionLifecycle, "_fnStartWorker",
         conversionLifecycle.fnStartConversionWorker,
@@ -546,11 +596,34 @@ def test_the_readers_journey_through_the_real_hub(
     dictStarted = _fnStartTheContainer(client)
     assert dictStarted["sState"] == "SUCCEEDED", dictStarted
     sContainerId, sLeaseId = dictStarted["sContainerId"], dictStarted["sLeaseId"]
-    dictHeaders = {"X-Vaibify-Lease": sLeaseId}
     responseSeed = client.post(
         f"/api/files/{sContainerId}/seed-workspace",
-        json={"bApplyPending": True}, headers=dictHeaders)
+        json={"bApplyPending": True}, headers={"X-Vaibify-Lease": sLeaseId})
     assert responseSeed.status_code == 200, responseSeed.text
+    return sContainerId, sLeaseId, responseSeed.json()
+
+
+@pytest.mark.falsification
+def test_the_readers_journey_through_the_real_hub(
+    dictPublished, hubClient, monkeypatch,
+):
+    """Clone, convert, obtain, start, copy in, check, run, verify, label.
+
+    Kills: comparing the record's prefixed manifest digest with the
+    snapshot's bare hash as strings, which never matched, so a real
+    reproduction never earned its label. Only driving the whole journey
+    found it: every unit fixture had hand-written both sides alike.
+
+    The reader's own host sign-offs (Level 1) are not simulated; the
+    assertion is that the level never rises above 1, because Level 2
+    and Level 3 record the author's publication.
+    """
+    client, appHub, sHome = hubClient
+    sRepo = dictPublished["sRepo"]
+    _fnCorruptEveryOutput(sRepo)
+    sContainerId, sLeaseId, _dictSeed = _ftConvertStartAndSeed(
+        client, dictPublished, monkeypatch)
+    dictHeaders = {"X-Vaibify-Lease": sLeaseId}
     listWorkflows = client.get(
         f"/api/workflows/{sContainerId}", headers=dictHeaders).json()
     print("WORKFLOWS", listWorkflows)
@@ -560,6 +633,8 @@ def test_the_readers_journey_through_the_real_hub(
         f"/api/connect/{sContainerId}", headers=dictHeaders,
         params={"sWorkflowPath": sWorkflowPath})
     print("CONNECT", responseConnect.status_code, responseConnect.text[:300])
+    _fnAssertTheProjectHubRoundTripKeepsTheClaim(
+        client, appHub, sContainerId, sLeaseId, sWorkflowPath)
     responseVerify = client.post(
         f"/api/workflow/{sContainerId}/manifest/verify", headers=dictHeaders)
     assert responseVerify.status_code == 200, responseVerify.text
@@ -633,3 +708,60 @@ def test_the_readers_journey_through_the_real_hub(
             capture_output=True, check=True).stdout
         assert baInContainer == baAuthors, sRelative
     assert dictSettled["dictCurrentAttestation"]["fDurationSeconds"] == 1.0
+
+
+T_AGENT_DOC_NAMES = ("AGENTS.md", "CLAUDE.md", "GEMINI.md")
+
+
+def _fnTrackLinksAsTheAuthor(sRepo):
+    """Track the three agent-doc links, an absolute link and an escaping one."""
+    fnWriteText(sRepo, ".vaibify/AGENTS.md", "shared agent context\n")
+    for sName in T_AGENT_DOC_NAMES:
+        os.symlink(".vaibify/AGENTS.md", os.path.join(sRepo, sName))
+    os.symlink(os.path.join(sRepo, ".vaibify", "AGENTS.md"),
+               os.path.join(sRepo, "absolute.md"))
+    os.symlink("../outside.md", os.path.join(sRepo, "escape.md"))
+    _fnAuthorGit(sRepo, "add", "-A")
+    _fnAuthorGit(sRepo, "commit", "--quiet", "-m", "track the agent links")
+
+
+def _fsRunInTheProject(containerProject, listCommand):
+    """Run one command in the project's container as its user; return stdout."""
+    iExit, baOutput = containerProject.exec_run(
+        listCommand, user="1000", workdir="/workspace/" + S_PROJECT_NAME)
+    return iExit, baOutput.decode("utf-8", errors="replace")
+
+
+def test_the_seed_carries_the_projects_links_faithfully(
+    dictPublished, hubClient, monkeypatch,
+):
+    """In-project links cross as links; an absolute or escaping one stays, named.
+
+    After a real conversion and seed, git in the container sees the
+    three agent-doc links exactly as the author tracked them, which is
+    what keeps a Push from the Repos panel (it stages tracked deletions)
+    from deleting them from the author's repository.
+    """
+    client, _appHub, _sHome = hubClient
+    _fnTrackLinksAsTheAuthor(dictPublished["sRepo"])
+    _sContainerId, _sLeaseId, dictSeed = _ftConvertStartAndSeed(
+        client, dictPublished, monkeypatch)
+    assert sorted(dictSeed["listSkippedLinks"], key=str) == sorted([
+        {"sPath": "absolute.md", "sReason": "absolute target"},
+        {"sPath": "escape.md", "sReason": "points outside the project"},
+    ], key=str)
+    # The copy carried all three, so the program had nothing to make,
+    # and it ran: a failure would be named here.
+    assert dictSeed["listCreatedAgentLinks"] == []
+    assert dictSeed["sAgentLinkRefusal"] == ""
+    containerProject = dictPublished["dockerClient"].containers.get(
+        S_PROJECT_NAME)
+    for sName in T_AGENT_DOC_NAMES:
+        assert _fsRunInTheProject(containerProject, ["readlink", sName]) == (
+            0, ".vaibify/AGENTS.md\n"), sName
+    for sName in ("absolute.md", "escape.md"):
+        iExit, _sOutput = _fsRunInTheProject(
+            containerProject, ["test", "-L", sName])
+        assert iExit != 0, f"{sName} crossed into the container"
+    assert _fsRunInTheProject(containerProject, [
+        "git", "status", "--porcelain", "--", *T_AGENT_DOC_NAMES]) == (0, "")

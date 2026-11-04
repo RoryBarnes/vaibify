@@ -44,6 +44,7 @@ __all__ = [
     "S_EXECUTION_SETTINGS_KEY",
     "S_EXECUTION_PROBE_KEY",
     "S_EXECUTION_PROFILE_ERROR_KEY",
+    "S_PROBE_NOT_RUN_IN_HOST_MODE",
     "S_MATPLOTLIB_CONFIG_ROOT",
     "S_MATPLOTLIB_DIRECTORY_PREFIX",
     "fsBuildMatplotlibSaltShell",
@@ -57,6 +58,7 @@ S_DETERMINISM_EPOCH_SOURCE_KEY = "__sDeterminismEpochSource"
 S_EXECUTION_SETTINGS_KEY = "__dictExecutionSettings"
 S_EXECUTION_PROBE_KEY = "__dictExecutionProbe"
 S_EXECUTION_PROFILE_ERROR_KEY = "__sExecutionProfileError"
+S_PROBE_NOT_RUN_IN_HOST_MODE = "probe not run in host mode"
 _F_EXECUTION_STAGE_TIMEOUT_SECONDS = 120
 
 # matplotlib reads ``matplotlibrc`` from ``MPLCONFIGDIR`` only after a
@@ -451,7 +453,7 @@ def fdictProbeUnderPrefix(
     from vaibify.reproducibility.rerunAssessment import fsBuildProcedureProgram
     from vaibify.reproducibility.rerunProcedure import S_PROBE_RESULT_PREFIX
     if fbIsHostProject(sContainerId):
-        return {"sProbeState": "probe not run in host mode"}
+        return {"sProbeState": S_PROBE_NOT_RUN_IN_HOST_MODE}
     dictProbe = _fdictRunProcedureStage(
         connectionDocker, sContainerId, sProjectRepoPath,
         ["bash", "-c", sEnvPrefix + 'exec python3 -c "$1" probe --machine',

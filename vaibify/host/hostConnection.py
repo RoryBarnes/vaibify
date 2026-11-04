@@ -698,7 +698,7 @@ class HostConnection:
         self, sResourceId, sDestinationDirectory, listHostPaths,
         iUid=None, iGid=None, sArchiveName=None,
         sAuthorizedRoot=None, tForbiddenNames=(),
-        bCreateDestination=False,
+        bCreateDestination=False, ffnMemberFilter=None,
     ):
         """Refuse: a host project's files are already where they run.
 
@@ -713,6 +713,7 @@ class HostConnection:
         """
         del sDestinationDirectory, listHostPaths, iUid, iGid, sArchiveName
         del sAuthorizedRoot, tForbiddenNames, bCreateDestination
+        del ffnMemberFilter
         raise HostPathOutsideProjectError(
             f"'{sResourceId}' is a host project: its files already live "
             "where the project runs, so there is no container workspace "

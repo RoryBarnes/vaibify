@@ -3,14 +3,17 @@
 A token-bearing action (an Overleaf push or pull, a Zenodo deposit,
 publish or Make Permanent) reads its target from the host-side binding
 record (:mod:`vaibify.config.remoteBindings`), never from the
-``project.json`` the in-container agent can edit. These two routes are
-how the record is read and written.
+``project.json`` the in-container agent can edit. These three routes
+are how the record is read, written and, when it cannot be read, moved
+aside.
 
 The GET reports the record's state, whether the environment archive
 applies (read from the envelope), and every entry a workflow can hold --
 Overleaf, and Zenodo's two kinds on each instance -- with what
 ``project.json`` names for it, what is confirmed, the notice sentence,
-and the exact confirm body a review sends (``dictReview``). With
+whether the kind names a target at all (``bHasTarget``; the environment
+archive authorizes an instance only, and ``sAuthorizes`` says what), and
+the exact confirm body a review sends (``dictReview``). With
 ``bFetchEvidence`` (the default) it also fetches, with the researcher's
 own token, what the host can see: for the entries that apply, or for the
 one entry ``sService``/``sRecordKind``/``sInstance`` name.
@@ -29,6 +32,13 @@ which is all a mint authorization or an environment archive can show;
 and an Overleaf project the token can read (its file count and latest
 commit, never a title). The POST is researcher-only twice over, in the
 catalog and in the handler.
+
+The set-aside POST renames an unreadable record beside itself, under
+the record's lock, so the workflow's remotes can be confirmed again. Its
+path comes from the project's identity, never from the request, and it
+is refused ``BINDING-RECORD-VALID`` while the record can be read, so a
+valid confirmation is never moved. It is researcher-only the same two
+ways.
 """
 
 __all__ = ["fnRegisterAll"]
@@ -46,7 +56,7 @@ from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import fdictRequireWorkflow
 from ..remoteBindingContext import (
     S_BINDING_EVIDENCE_UNAVAILABLE, S_BINDING_RECORD_INVALID,
-    S_BINDING_REVIEW_STALE, fdictProjectTargets, fnRaiseBindingRefusal,
+    S_BINDING_RECORD_VALID, S_BINDING_REVIEW_STALE, fdictProjectTargets, fnRaiseBindingRefusal,
     fnRaiseForBindingError, fsDeclaredZenodoInstance, fsDescribeBoundEntry,
     ftBindingScope,
 )
@@ -271,6 +281,23 @@ def _fbEntryApplies(dictWorkflow, tAddress, sEnvironmentInstance):
     )
 
 
+def _fbEntryHasTarget(sService, sRecordKind):
+    """Return False for a kind that authorizes an instance and names no record."""
+    return bool(set(remoteBindings.ftTargetFields(sService, sRecordKind)) - {"sInstance"})
+
+
+def _fsDescribeWhatConfirmingAllows(tAddress):
+    """Return what confirming a kind with no target authorizes, or '' for one with a target."""
+    sService, sRecordKind, sInstance = tAddress
+    if _fbEntryHasTarget(sService, sRecordKind):
+        return ""
+    return (
+        f"This lets vaibify deposit this workflow's container images on "
+        f"{fsDescribeZenodoService(sInstance)} with your token. Each deposit "
+        f"records its own DOI in .vaibify/environment.json."
+    )
+
+
 def _fdictDescribeEntry(dictWorkflow, sWorkflowKey, dictServices, tAddress, bApplies):
     sService, sRecordKind, sInstance = tAddress
     dictProjectTarget = _fdictProjectTargetFor(dictWorkflow, *tAddress)
@@ -282,6 +309,8 @@ def _fdictDescribeEntry(dictWorkflow, sWorkflowKey, dictServices, tAddress, bApp
         "bApplies": bApplies, "dictProjectTarget": dictProjectTarget,
         "dictConfirmed": dictConfirmed, "sState": sState,
         "sNotice": _fsNoticeFor(tAddress, sState, dictProjectTarget, dictConfirmed),
+        "bHasTarget": _fbEntryHasTarget(sService, sRecordKind),
+        "sAuthorizes": _fsDescribeWhatConfirmingAllows(tAddress),
         "dictReview": {
             "sService": sService, "sRecordKind": sRecordKind,
             "sWorkflowKey": sWorkflowKey,
@@ -309,6 +338,13 @@ def _fnAttachEvidence(dictCtx, sContainerId, listEntries, dictQuery):
             )
 
 
+def _fdictInvalidRecordState(error):
+    return {
+        "bValid": False, "sError": S_BINDING_RECORD_INVALID,
+        "sReason": error.sReason, "sMessage": str(error),
+    }
+
+
 def _fdictDescribeBindings(dictCtx, sContainerId, dictWorkflow, dictQuery):
     """Return the record's state and every entry, with what project.json names."""
     sProjectUuid, sWorkflowKey, sWorkflowName = ftBindingScope(
@@ -324,10 +360,7 @@ def _fdictDescribeBindings(dictCtx, sContainerId, dictWorkflow, dictQuery):
     try:
         dictRecord = remoteBindings.fdictReadBindings(sProjectUuid)
     except remoteBindings.BindingRecordInvalidError as error:
-        dictDescribed["dictRecordState"] = {
-            "bValid": False, "sError": S_BINDING_RECORD_INVALID,
-            "sReason": error.sReason, "sMessage": str(error),
-        }
+        dictDescribed["dictRecordState"] = _fdictInvalidRecordState(error)
         return dictDescribed
     dictServices = (dictRecord["dictWorkflows"].get(sWorkflowKey) or {}).get("dictServices") or {}
     dictDescribed["listEntries"] = [
@@ -482,7 +515,56 @@ def _fnRegisterConfirm(app, dictCtx):
             raise HTTPException(400, str(error)) from error
 
 
+# ---------------------------------------------------------------------------
+# Moving an unreadable record aside
+# ---------------------------------------------------------------------------
+
+
+def _fdictRecordStateNow(sProjectUuid):
+    try:
+        remoteBindings.fdictReadBindings(sProjectUuid)
+    except remoteBindings.BindingRecordInvalidError as error:
+        return _fdictInvalidRecordState(error)
+    return {"bValid": True}
+
+
+def _fdictSetAsideRecord(dictCtx, sContainerId, dictWorkflow):
+    """Rename the project's unreadable record aside; answer with its state now."""
+    sProjectUuid = ftBindingScope(dictCtx, sContainerId, dictWorkflow)[0]
+    try:
+        sSetAsideName = remoteBindings.fsSetAsideUnreadableRecord(sProjectUuid)
+    except remoteBindings.BindingRecordReadableError as error:
+        fnRaiseBindingRefusal(S_BINDING_RECORD_VALID, "", "", "", str(error))
+    except OSError as error:
+        raise HTTPException(409, (
+            f"The binding record was not moved aside: {error}. Nothing "
+            f"changed."
+        )) from error
+    return {
+        "bSetAside": True, "sSetAsideName": sSetAsideName,
+        "dictRecordState": _fdictRecordStateNow(sProjectUuid),
+    }
+
+
+def _fnRegisterSetAside(app, dictCtx):
+    """Register POST /api/bindings/{sContainerId}/set-aside."""
+
+    @ffnAgentAction("set-aside-binding-record")
+    @app.post("/api/bindings/{sContainerId}/set-aside")
+    # separate-authority: one rename of a host file under ~/.vaibify,
+    # and the container is neither read nor written.
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictSetAsideBindingRecord(sContainerId: str, requestHttp: Request):
+        fnRejectAgentTokenLane(requestHttp)
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
+        return await asyncio.to_thread(
+            _fdictSetAsideRecord, dictCtx, sContainerId, dictWorkflow,
+        )
+
+
 def fnRegisterAll(app, dictCtx):
     """Register the remote-binding routes."""
     _fnRegisterRead(app, dictCtx)
     _fnRegisterConfirm(app, dictCtx)
+    _fnRegisterSetAside(app, dictCtx)

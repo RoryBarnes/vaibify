@@ -5454,7 +5454,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 826 -> 857 (2026-10-29): the readiness payload carries the Network row (mode, proxy state, refused destinations).
     # 857 -> 858 (2026-10-29): the Network row reads the mode defensively.
     # 858 -> 859 (2026-11-02): the Network row covers both sealed modes, web and allowlist (web network mode plan, A5).
-    "routes/systemRoutes.py": 859,
+    # 859 -> 874 (2026-11-03): GET /api/system/about, the version both hubs' help shows (follow-up-after-210 plan, A2, A8).
+    "routes/systemRoutes.py": 874,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -7392,7 +7393,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # running container's X authorization at once.
     # 2653 -> 2793 (2026-10-29): the network mode in the wizard and settings, the allow-host route and the YAML list append.
     # 2793 -> 2798 (2026-11-02): a creation request that names no mode gets the new-project mode, web (web network mode plan, A5).
-    "registryRoutes.py": 2798,
+    # 2798 -> 2800 (2026-11-03): every writer composes both network keys through projectConfig.fdictNetworkKeysForMode (follow-up-after-210 plan, A6, A8).
+    # 2800 -> 2807 (2026-11-03): the Files to Copy listing describes each top-level link with what the seed's link contract will do (follow-up-after-210 plan, A7, A8).
+    "registryRoutes.py": 2807,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7621,7 +7624,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1599 -> 1603 (2026-10-29): allow-network-host is excluded from the agent lane, with why.
     # 1603 -> 1608 (2026-10-31): archive-zenodo-completion, the user-only retry for a PROOF completion version (proof-receipt plan, A11).
     # 1608 -> 1619 (2026-11-02): decide-token-rotation, the user-only answer to the token rotation notice (binding-and-rotation plan, A2, A5).
-    "actionCatalog.py": 1619,
+    # 1619 -> 1627 (2026-11-03): set-aside-binding-record, the user-only way out of an unreadable binding record (follow-up-after-210 plan, A3, A8).
+    "actionCatalog.py": 1627,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

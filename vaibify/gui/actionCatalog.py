@@ -1272,6 +1272,14 @@ LIST_AGENT_ACTIONS = [
                      "prints {sService, sRecordKind, sWorkflowKey, "
                      "dictTarget}. Human-only: the record decides where "
                      "the researcher's tokens are spent."},
+    {"sName": "set-aside-binding-record", "sCategory": "sync",
+     "sMethod": "POST", "sPath": "/api/bindings/{sContainerId}/set-aside",
+     "bAgentSafe": False,
+     "sDescription": "Move this project's unreadable binding record aside "
+                     "(renamed beside itself, never deleted) so its remotes "
+                     "can be confirmed again. No args. Refused while the "
+                     "record can be read. Human-only: the record decides "
+                     "where the researcher's tokens are spent."},
     # ---- Zenodo tokens moved out of the container ----
     {"sName": "decide-migrated-zenodo-token", "sCategory": "sync",
      "sMethod": "POST", "sPath": "/api/zenodo-tokens/{sContainerId}/decide",
