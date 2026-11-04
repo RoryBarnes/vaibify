@@ -174,7 +174,15 @@ deposition itself; an environment deposit never changes the record.
 confirmed" and never converted. The record is written in schema version
 2, and a file in any other form, including one written before November
 2026, refuses every action, naming the file and the remedy: move it
-aside (vaibify reads only `<project id>.json`) and confirm again.
+aside (vaibify reads only `<project id>.json`) and confirm again. The
+notice's **Move it aside** button does that for you, as does
+`vaibify bindings --set-aside -p <project>` on the host. Either one
+renames the file beside itself to
+`<project id>.json.unreadable-<UTC time>`, so nothing is deleted, and
+the notices then show what is left to confirm. Both refuse with
+`BINDING-RECORD-VALID` while the record can be read, so a valid
+confirmation is never moved, and neither is reachable from inside the
+container.
 
 **Connect** stores the token and immediately tests it against the
 service. If the test fails, vaibify restores the token you had before

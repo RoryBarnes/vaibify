@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Connecting to External Resources &mdash; Vaibify 0.2.3.dev82 documentation</title>
+  <title>Connecting to External Resources &mdash; Vaibify 0.2.4.dev14 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e92f18f3"></script>
+      <script src="_static/documentation_options.js?v=0356f8ab"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -353,7 +353,15 @@ deposition itself; an environment deposit never changes the record.</p>
 confirmed” and never converted. The record is written in schema version
 2, and a file in any other form, including one written before November
 2026, refuses every action, naming the file and the remedy: move it
-aside (vaibify reads only <code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">id&gt;.json</span></code>) and confirm again.</p>
+aside (vaibify reads only <code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">id&gt;.json</span></code>) and confirm again. The
+notice’s <strong>Move it aside</strong> button does that for you, as does
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">bindings</span> <span class="pre">--set-aside</span> <span class="pre">-p</span> <span class="pre">&lt;project&gt;</span></code> on the host. Either one
+renames the file beside itself to
+<code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">id&gt;.json.unreadable-&lt;UTC</span> <span class="pre">time&gt;</span></code>, so nothing is deleted, and
+the notices then show what is left to confirm. Both refuse with
+<code class="docutils literal notranslate"><span class="pre">BINDING-RECORD-VALID</span></code> while the record can be read, so a valid
+confirmation is never moved, and neither is reachable from inside the
+container.</p>
 <p><strong>Connect</strong> stores the token and immediately tests it against the
 service. If the test fails, vaibify restores the token you had before
 (or removes the new one if there was none), and the message says which

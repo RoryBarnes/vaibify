@@ -39,7 +39,7 @@ it when the work becomes real.
 Running `vaibify` with no subcommand opens the environments page in
 your browser. It lists every environment registered on this computer
 under **This machine**, with these buttons beside the heading, followed
-by **Quit vaibify** (see [Sessions](#sessions)):
+by **Quit** (see [Sessions](#sessions)):
 
 | Button | Action |
 |---|---|
@@ -164,6 +164,17 @@ along, so the container's copy is a real repository. If the directory
 has no Project file yet, one is created, because a container is always
 a Project.
 
+Symbolic links cross as links, never as copies of what they point to,
+and only when a relative target keeps them inside the project. The
+Files to Copy page lists any other link as "not copied", with the
+reason: an absolute target names a path on this computer, which does
+not exist in the container, and a relative one that climbs out of the
+project points outside it. The notice when the copy lands names each
+link left behind. If `.vaibify/AGENTS.md` came across, `CLAUDE.md`,
+`AGENTS.md` and `GEMINI.md` are then linked to it wherever nothing of
+that name exists, as a new container's would be; a file or link of
+your own under one of those names is never replaced.
+
 ### Tile actions
 
 A container tile's **⋮** menu offers **Start**, **Stop**,
@@ -275,7 +286,7 @@ time, and one browser session holds at most **one environment**.
   and a dashboard opened later shows it.
 - To work on two environments at once, use **⧉ New vaibify window**
   (on the environments page, the Project Hub, and the **Admin** menu).
-- **Quit vaibify** (on the environments page and the Project Hub) and
+- **Quit** (on the environments page and the Project Hub) and
   **Admin → Quit** stop vaibify, together with every window opened
   with **New vaibify window**. Listing and stopping one live session
   at a time is done from the command line; see

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.2.3.dev82 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.2.4.dev14 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e92f18f3"></script>
+      <script src="_static/documentation_options.js?v=0356f8ab"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -784,7 +784,7 @@ vaibify<span class="w"> </span>sessions<span class="w"> </span>stop<span class="
 <p><code class="docutils literal notranslate"><span class="pre">stop</span></code> sends <code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code>, so the server releases its session and
 container locks, and it refuses any PID that is not a live vaibify
 session.</p>
-<p>The dashboard’s equivalent is <strong>Quit vaibify</strong> (or <strong>Admin → Quit</strong>),
+<p>The dashboard’s equivalent is <strong>Quit</strong> (or <strong>Admin → Quit</strong>),
 which stops a hub and the windows it opened, and is refused while any
 of them has work in progress. <code class="docutils literal notranslate"><span class="pre">sessions</span> <span class="pre">stop</span></code> makes no such check:
 it stops the session it is given, the same as closing its terminal.</p>
@@ -986,19 +986,22 @@ and the notice to regenerate your tokens is answered with <code class="docutils 
 (see <a class="reference internal" href="externalResources.html"><span class="std std-doc">External Resources</span></a>).</p>
 <section id="vaibify-bindings">
 <h3>vaibify bindings<a class="headerlink" href="#vaibify-bindings" title="Link to this heading"></a></h3>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>bindings<span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--workflow<span class="w"> </span>PATH<span class="o">]</span><span class="w"> </span><span class="o">[</span>--all<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>bindings<span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--workflow<span class="w"> </span>PATH<span class="o">]</span><span class="w"> </span><span class="o">[</span>--all<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span><span class="w"> </span><span class="o">[</span>--set-aside<span class="o">]</span>
 </pre></div>
 </div>
-<p>Read-only. Prints, for the workflow’s Overleaf project and each Zenodo
-project record and environment archive that applies or is already
-confirmed (every entry with <code class="docutils literal notranslate"><span class="pre">--all</span></code>): what <code class="docutils literal notranslate"><span class="pre">project.json</span></code> names, what
-you confirmed, what the hub could see with your own token, and the exact
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">confirm-remote-binding</span></code> command that confirms what it
-showed. Run that command to confirm; the hub refuses it if the workflow
+<p>Without <code class="docutils literal notranslate"><span class="pre">--set-aside</span></code> it only reads. It prints, for the workflow’s
+Overleaf project and each Zenodo project record and environment archive
+that applies or is already confirmed (every entry with <code class="docutils literal notranslate"><span class="pre">--all</span></code>): what
+<code class="docutils literal notranslate"><span class="pre">project.json</span></code> names, what you confirmed, what the hub could see with
+your own token, and the exact <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">confirm-remote-binding</span></code>
+command that confirms what it showed. Run that command to confirm; the hub refuses it if the workflow
 or its target has moved since you looked. A binding record vaibify
-cannot read is named, with the remedy. Like <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code>, it claims the
-container for the moment it asks, so release the container from the
-dashboard first.</p>
+cannot read is named, with the command that moves it aside:
+<code class="docutils literal notranslate"><span class="pre">--set-aside</span></code> renames it beside itself
+(<code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">id&gt;.json.unreadable-&lt;UTC</span> <span class="pre">time&gt;</span></code>), so the workflow’s remotes
+can be confirmed again, and is refused while the record can be read.
+Like <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code>, it claims the container for the moment it asks, so
+release the container from the dashboard first.</p>
 </section>
 </section>
 <section id="remote-machines">

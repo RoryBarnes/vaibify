@@ -466,7 +466,7 @@ vaibify sessions stop --all   # stop every session except this one
 container locks, and it refuses any PID that is not a live vaibify
 session.
 
-The dashboard's equivalent is **Quit vaibify** (or **Admin → Quit**),
+The dashboard's equivalent is **Quit** (or **Admin → Quit**),
 which stops a hub and the windows it opened, and is refused while any
 of them has work in progress. `sessions stop` makes no such check:
 it stops the session it is given, the same as closing its terminal.
@@ -621,19 +621,22 @@ decide-token-rotation sDecision=regenerated|kept`
 ### vaibify bindings
 
 ```bash
-vaibify bindings [-p NAME] [--workflow PATH] [--all] [--json]
+vaibify bindings [-p NAME] [--workflow PATH] [--all] [--json] [--set-aside]
 ```
 
-Read-only. Prints, for the workflow's Overleaf project and each Zenodo
-project record and environment archive that applies or is already
-confirmed (every entry with `--all`): what `project.json` names, what
-you confirmed, what the hub could see with your own token, and the exact
-`vaibify do confirm-remote-binding` command that confirms what it
-showed. Run that command to confirm; the hub refuses it if the workflow
+Without `--set-aside` it only reads. It prints, for the workflow's
+Overleaf project and each Zenodo project record and environment archive
+that applies or is already confirmed (every entry with `--all`): what
+`project.json` names, what you confirmed, what the hub could see with
+your own token, and the exact `vaibify do confirm-remote-binding`
+command that confirms what it showed. Run that command to confirm; the hub refuses it if the workflow
 or its target has moved since you looked. A binding record vaibify
-cannot read is named, with the remedy. Like `vaibify do`, it claims the
-container for the moment it asks, so release the container from the
-dashboard first.
+cannot read is named, with the command that moves it aside:
+`--set-aside` renames it beside itself
+(`<project id>.json.unreadable-<UTC time>`), so the workflow's remotes
+can be confirmed again, and is refused while the record can be read.
+Like `vaibify do`, it claims the container for the moment it asks, so
+release the container from the dashboard first.
 
 ## Remote machines
 

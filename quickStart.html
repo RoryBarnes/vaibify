@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.2.3.dev82 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.2.4.dev14 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e92f18f3"></script>
+      <script src="_static/documentation_options.js?v=0356f8ab"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -105,7 +105,7 @@
              
   <section id="quickstart">
 <h1>QuickStart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
-<p>In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author’s. Thus, you will then recreate the author’s computing environment inside your computer and verify that you reproduce the results exactly (usually). This latter step requires that you have <a class="reference internal" href="install.html"><span class="std std-doc">Docker installed</span></a> on your computer.</p>
+<p>In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author’s. Thus, you will then recreate the author’s computing environment inside your computer and verify the reproduction in the author’s environment, where the files usually come out byte-identical. This latter step requires that you have <a class="reference internal" href="install.html"><span class="std std-doc">Docker installed</span></a> on your computer.</p>
 <section id="install">
 <h2>1. Install<a class="headerlink" href="#install" title="Link to this heading"></a></h2>
 <p>You need Python 3.9 or later to run <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>.</p>
@@ -140,7 +140,7 @@ Existing</strong>. Navigate the directory tree to your aigreenhouse clone (it wi
 this hub offers you one or more Projects to work on. You will see two options: A <strong>Blank Project</strong> is an empty
 workspace (a “sandbox”) in which you can experiment in the environment. All <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> environments include a “Blank Project”. The second option is <strong>AI Greenhouse</strong>, the project you are reproducing in this guide. Select it.</p>
 <p>After a few seconds, you will land in the dashboard for this project. Take a look around. Along the top are some fundamental facts about the Project as well as menus for interacting with the Project. The left side shows the steps of the project and information about the project as a whole. <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> divides the work of climbing the <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF Ladder</span></a> into <strong>Steps</strong>, the components of your pipeline,  and the <strong>Project</strong>, which are features that apply to all Steps. These sections give you up-to-date information on the status of the Project. The top right consists of two “viewing windows” that display images and ASCII text files for you to examine and compare. The bottom right is one large reproduction of a terminal. You can create multiple tabs (+) and multiple terminals (+pane in the very bottom right). This dashboard is where you will use coding agents to modify files, examine their efforts, lock down verified results, and connect to external resources like Overleaf and Zenodo.</p>
-<p>Although the published result is at <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF Level 3</span></a>, meaning the author verified they reproduced the results at the bit level, your copy is not at that level. In fact, you’re at “Level 0”, meaning your results aren’t even being labeled as “self-consistent”! This status is because you have not run any of the steps locally or verified the results pass the unit tests (which check that the output files match the author’s results to some tolerance that they deemed acceptable for scientific reproduction). Before we start driving your copy up the PROOF Ladder, we’re going to explore the repository a bit more.</p>
+<p>The published result is at <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF Level 3</span></a>, meaning the author reran the project in its preserved environment and the rerun passed its assessment: every output byte-identical, or the author’s published comparisons (the tests that ship with the project) passed. When the bytes are identical, the verdict says so. Your copy, however, is not at that level. In fact, you’re at “Level 0”, meaning your results aren’t even being labeled as “self-consistent”! This status is because you have not run any of the steps locally or verified the results pass the unit tests (which check that the output files match the author’s results to some tolerance that they deemed acceptable for scientific reproduction). Before we start driving your copy up the PROOF Ladder, we’re going to explore the repository a bit more.</p>
 </section>
 <section id="check-the-archive-before-touching-it">
 <h2>4. Check the archive before touching it<a class="headerlink" href="#check-the-archive-before-touching-it" title="Link to this heading"></a></h2>
@@ -168,7 +168,7 @@ pulses orange as it runs and turns to solid orange once it finishes. Orange mean
 <section id="check-the-bytes-again">
 <h2>6. Check the bytes again<a class="headerlink" href="#check-the-bytes-again" title="Link to this heading"></a></h2>
 <p>So are the new files identical to the author’s manifest? From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong> again.</p>
-<p>You will see an alert in the top right that tells you that some files did not match. Here’s what happened:</p>
+<p>You will see an alert in the top right that counts the files that do not match. Its <strong>Learn more</strong> button opens a window that lists each file with what was recorded about how it was made, on the author’s computer and on yours. A fact only one of the two computers measured is never counted as a difference: a host-mode run does not probe NumPy and its BLAS library, so those facts read “not measured in host mode”, and a Mac reports no processor vendor or x86-64 level, so those read “this machine does not report it”. A difference in hardware or settings can change a file’s last digits, but it doesn’t prove that’s why the bytes differ. Here’s what happened:</p>
 <ul class="simple">
 <li><p><strong>The fitted values differ in their last digits.</strong> A least-squares fit
 is a sequence of floating-point operations, and different environments’
@@ -180,7 +180,7 @@ different bytes before the figure is ever generated, which also
 differs by platform.</p></li>
 </ul>
 <p>Your run passed every <em>scientific test</em> (the unit tests) the project defines, but did
-not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the rules that govern computing standards (defined by the IEEE) allow changes in the last digits of some functions, like transcendentals. Thus, progress from here requires rerunning the work in the <em>exact same environment</em> that the author used.</p>
+not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the rules that govern computing standards (defined by the IEEE) allow changes in the last digits of some functions, like transcendentals. Getting byte-identical files generally needs the author’s environment, which the next section provides. Level 3 itself is decided by the published comparisons, and byte identity is reported when it holds.</p>
 <p>This next section, which describes how to rerun the work in the author’s own environment and have the result assessed, is technically optional, but encouraged. While <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>’s behavior is the same in both “host mode” and “container mode”, the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!</p>
 </section>
 <section id="containerize-the-same-project">
@@ -217,7 +217,7 @@ and build again (try working with an AI agent or pressing <strong>Run a diagnosi
 </tr>
 <tr class="row-even"><td><p>3</p></td>
 <td><p><strong>Features &amp; Authentication</strong></p></td>
-<td><p>Select one of the available coding agents. LaTeX and the other base features are grayed out because the author’s image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under <em>Resource limits</em>, leave <em>CPU cores</em> blank, which reads <strong>all cores − 1</strong> and leaves 1 reserved for the host (you can still use all of them outside the container); and leave <em>Memory (GB)</em> blank, which reads <strong>unlimited</strong>: the container may use all the memory Docker has. On a Mac that is what Colima has: the <strong>Set up Docker</strong> wizard gives Colima half of your computer’s memory, but never more than your memory minus 4 GB, so on an 8 GB Mac Colima has 4 GB (<code class="docutils literal notranslate"><span class="pre">colima</span> <span class="pre">list</span></code> shows it). (You can adjust this later if you choose to keep the container.) Click “Next”.</p></td>
+<td><p>Select one of the available coding agents. LaTeX and the other base features are grayed out because the author’s image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Leave <strong>Network mode</strong> at <strong>Web</strong>, the default: the container reaches the public internet, which the agents and package installs need, but not this computer or your network. Under <em>Resource limits</em>, leave <em>CPU cores</em> blank, which reads <strong>all cores − 1</strong> and leaves 1 reserved for the host (you can still use all of them outside the container); and leave <em>Memory (GB)</em> blank, which reads <strong>unlimited</strong>: the container may use all the memory Docker has. On a Mac that is what Colima has: the <strong>Set up Docker</strong> wizard gives Colima half of your computer’s memory, but never more than your memory minus 4 GB, so on an 8 GB Mac Colima has 4 GB (<code class="docutils literal notranslate"><span class="pre">colima</span> <span class="pre">list</span></code> shows it). (You can adjust this later if you choose to keep the container.) Click “Next”.</p></td>
 </tr>
 <tr class="row-odd"><td><p>4</p></td>
 <td><p><strong>Files to Copy</strong></p></td>
@@ -247,11 +247,11 @@ environment.</p>
 <li><p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>. The
 data files and figures still differ, because they are still the
 bytes your own computer produced.</p></li>
-<li><p>From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong>. This time every step runs inside the author’s environment,
+<li><p>From the <strong>Run</strong> menu, choose <strong>Clean Outputs</strong> and then <strong>Run All Steps</strong>. This time every step runs inside the author’s environment,
 and the run log notes that it used the date the author recorded, so
-any figure with a date inside it comes out the same. Each step’s Researcher marker now reads stale because the plot’s bytes changed. Click it once and the badge reads “Passed”.</p></li>
+any figure with a date inside it comes out the same. Once again, skip the AI Declaration step. (Note that if you run under emulation, the rerun takes noticeably longer than when you ran it directly on your computer.) Each step’s Researcher marker now reads stale because the plot’s bytes changed. Click it once and the badge reads “Passed”.</p></li>
 <li><p>Choose <strong>Check Files Against Manifest</strong> again. The files
-will very likely match because the author choose to prioritize reproducibility over speed. In some cases, however, you may find that all of your regenerated files are not an exact match. In that case, you can use an AI agent to explore what could be the difference.</p></li>
+will very likely match because the author chose to prioritize reproducibility over speed. In some cases, however, some of the regenerated files are not an exact match. If that happens, click <strong>Learn more</strong> in the alert to read what was recorded about how each file was made, and/or use an AI agent to explore what could be the difference.</p></li>
 </ol>
 <p>Finally, from the <strong>Run</strong> menu choose <strong>Verify Level 3
 Reproducibility</strong>. It makes a throwaway copy of the container from
@@ -267,6 +267,7 @@ comes after step 3. While running, you will see an orange <strong>Reproducing</s
 publication (their GitHub push, their Zenodo deposit, their AI
 declaration), so they are the author’s to earn. Bringing a project to
 Level 3 is the author’s job; confirming it is yours, and the Reproduced badge is that confirmation.</p>
+<p><strong>If you are the author, testing your own project on a second machine:</strong> vaibify counts a verification as the author’s when the repository’s <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">config</span> <span class="pre">user.email</span></code> matches (ignoring case) the email that last committed <code class="docutils literal notranslate"><span class="pre">.vaibify/l3_attestation.json</span></code>, and as a reader’s otherwise. To test as a reader would, first set a different email in the container’s copy of the repository, for example <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">config</span> <span class="pre">user.email</span> <span class="pre">reader&#64;example.com</span></code> in its terminal.</p>
 <p>Anyone can run the same check starting from nothing but the project’s
 URL: in the hub, press <strong>+</strong> and choose <strong>Reproduce a published
 project</strong>. A reader without <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> can run <code class="docutils literal notranslate"><span class="pre">./reproduce.sh</span></code> inside

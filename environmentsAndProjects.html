@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Environments and Projects &mdash; Vaibify 0.2.3.dev82 documentation</title>
+  <title>Environments and Projects &mdash; Vaibify 0.2.4.dev14 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e92f18f3"></script>
+      <script src="_static/documentation_options.js?v=0356f8ab"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -171,7 +171,7 @@ it when the work becomes real.</p>
 <p>Running <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> with no subcommand opens the environments page in
 your browser. It lists every environment registered on this computer
 under <strong>This machine</strong>, with these buttons beside the heading, followed
-by <strong>Quit vaibify</strong> (see <a class="reference internal" href="#sessions">Sessions</a>):</p>
+by <strong>Quit</strong> (see <a class="reference internal" href="#sessions">Sessions</a>):</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Button</p></th>
@@ -344,6 +344,16 @@ originals are never moved or deleted. The directory’s <code class="docutils li
 along, so the container’s copy is a real repository. If the directory
 has no Project file yet, one is created, because a container is always
 a Project.</p>
+<p>Symbolic links cross as links, never as copies of what they point to,
+and only when a relative target keeps them inside the project. The
+Files to Copy page lists any other link as “not copied”, with the
+reason: an absolute target names a path on this computer, which does
+not exist in the container, and a relative one that climbs out of the
+project points outside it. The notice when the copy lands names each
+link left behind. If <code class="docutils literal notranslate"><span class="pre">.vaibify/AGENTS.md</span></code> came across, <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>,
+<code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> and <code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code> are then linked to it wherever nothing of
+that name exists, as a new container’s would be; a file or link of
+your own under one of those names is never replaced.</p>
 </section>
 <section id="tile-actions">
 <h3>Tile actions<a class="headerlink" href="#tile-actions" title="Link to this heading"></a></h3>
@@ -457,7 +467,7 @@ active in it.</p></li>
 and a dashboard opened later shows it.</p></li>
 <li><p>To work on two environments at once, use <strong>⧉ New vaibify window</strong>
 (on the environments page, the Project Hub, and the <strong>Admin</strong> menu).</p></li>
-<li><p><strong>Quit vaibify</strong> (on the environments page and the Project Hub) and
+<li><p><strong>Quit</strong> (on the environments page and the Project Hub) and
 <strong>Admin → Quit</strong> stop vaibify, together with every window opened
 with <strong>New vaibify window</strong>. Listing and stopping one live session
 at a time is done from the command line; see

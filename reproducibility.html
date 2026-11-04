@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.2.3.dev82 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.2.4.dev14 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e92f18f3"></script>
+      <script src="_static/documentation_options.js?v=0356f8ab"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -565,12 +565,19 @@ rests on the published comparisons alone. A verification puts each
 differing output’s production context beside the rerun’s. A step whose
 outputs were made under different settings or hardware says “Produced
 under different execution settings or hardware” and names what
-differs, as information, not as a failure. When every manifest
-mismatch was made under different recorded settings or hardware,
-<strong>Check Files Against Manifest</strong> offers to make this computer’s results
-the published ones, by rerunning every step here and regenerating the
-manifest. Nothing requires it, and doing it replaces the published
-hashes, losing the comparison with them.</p>
+differs, as information, not as a failure.</p>
+<p><strong>Check Files Against Manifest</strong> counts the differing files and, under
+<strong>Learn more</strong>, lists each file’s own facts in two kinds. A fact both
+computers measured and found different is a recorded difference. A fact
+only one of them measured is named as not measured, with the reason the
+record gives (“not measured in host mode”, because a host-mode run skips
+the NumPy probe; “this machine does not report it”, because a Mac reports
+no processor vendor or <code class="docutils literal notranslate"><span class="pre">x86-64</span></code> level), and is never counted as a
+difference. Only when every differing file has a recorded difference
+does the check offer to make this computer’s results the published
+ones, by rerunning every step here and regenerating the manifest.
+Nothing requires it, and doing it replaces the published hashes, losing
+the comparison with them.</p>
 </section>
 </section>
 <section id="reproducing-a-published-project">
