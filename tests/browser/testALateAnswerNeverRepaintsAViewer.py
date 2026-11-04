@@ -97,13 +97,14 @@ def test_a_late_missing_file_never_replaces_a_newer_file(
     assert pageDashboard.listPageErrors == []
 
 
-def _fbaBuildOneSquarePdf():
+def _fbaBuildOneSquarePdf(iPageWidth=100):
     """Return a minimal one-page PDF that PDF.js renders for real."""
     baStream = b"0 0 1 rg 10 10 80 80 re f\n"
     listObjects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] "
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
+        + str(iPageWidth).encode() + b" 100] "
         b"/Resources << >> /Contents 4 0 R >>",
         b"<< /Length " + str(len(baStream)).encode() + b" >>\nstream\n"
         + baStream + b"endstream",

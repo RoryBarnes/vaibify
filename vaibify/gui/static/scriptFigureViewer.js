@@ -752,12 +752,17 @@ const VaibifyFigureViewer = (function () {
     }
 
     function fnCreateScrollableContent(elChild) {
+        /* Centred by auto margins, never justify-content: a centred
+           flex row whose child overflows cuts it off on the LEFT, out
+           of scroll reach. Auto margins centre while there is room and
+           collapse to zero when there is not (styleMain.css says the
+           same of the hub lists). */
         var elContent = document.createElement("div");
         elContent.style.overflow = "auto";
         elContent.style.flex = "1";
         elContent.style.display = "flex";
-        elContent.style.justifyContent = "center";
         elContent.style.padding = "16px";
+        elChild.style.margin = "0 auto";
         elContent.appendChild(elChild);
         return elContent;
     }

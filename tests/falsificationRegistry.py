@@ -40110,4 +40110,19 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
+    # --- 2026-11-03: a zoomed figure keeps its left edge in reach ---
+    Falsification(
+        nodeid='tests/browser/testAZoomedFigureKeepsItsLeftEdge.py::testAZoomedImageKeepsItsLeftEdgeInReach',
+        # The scrolling box centred with justify-content again.
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='        elChild.style.margin = "0 auto";\n',
+        new='        elContent.style.justifyContent = "center";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAZoomedFigureKeepsItsLeftEdge.py::testAZoomedPdfPageKeepsItsLeftEdgeInReach',
+        # The same centring, which the PDF page's box shares.
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='        elChild.style.margin = "0 auto";\n',
+        new='        elContent.style.justifyContent = "center";\n',
+    ),
 ]
