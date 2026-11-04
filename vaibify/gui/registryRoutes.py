@@ -33,6 +33,7 @@ from vaibify.config.containerLock import (
 from vaibify.gui import buildRoutes
 from vaibify.gui import environmentDeletionRoutes
 from vaibify.gui import pinnedEnvironmentConversion
+from vaibify.gui import seedLinks
 from vaibify.gui.actionCatalog import ffnAgentAction
 from vaibify.gui.routeContext import (
     fcontextHoldLifecycleLocksOrConflict,
@@ -1633,11 +1634,13 @@ def _fnRegisterHostDirectories(app, dictCtx):
     async def fdictGetHostDirectories(
         sPath: Optional[str] = None,
         bIncludeFiles: bool = False,
+        bDescribeLinks: bool = False,
     ):
         sAbsPath = sPath or os.path.expanduser("~")
         _fnValidateHostPath(sAbsPath)
         listEntries = flistQueryHostDirectory(
             sAbsPath, bIncludeFiles=bIncludeFiles,
+            bDescribeLinks=bDescribeLinks,
         )
         return {
             "sCurrentPath": sAbsPath,
@@ -1871,7 +1874,7 @@ def _fnValidateHostPath(sPath):
         raise HTTPException(404, "Directory not found")
 
 
-def flistQueryHostDirectory(sAbsPath, bIncludeFiles=False):
+def flistQueryHostDirectory(sAbsPath, bIncludeFiles=False, bDescribeLinks=False):
     """List subdirectories (and optionally files) on the host.
 
     Returns the same entry shape as the container directory
@@ -1879,7 +1882,9 @@ def flistQueryHostDirectory(sAbsPath, bIncludeFiles=False):
     ``bHasConfig`` indicating a vaibify project. File entries are
     included only when ``bIncludeFiles`` is set (import pickers);
     symlinked files are skipped the same way symlinked directories
-    are.
+    are, unless ``bDescribeLinks`` (the conversion's Files to Copy page)
+    asks for each link with what the seed's link contract will do with
+    it (``seedLinks.fdictDescribeTopLevelLink``).
 
     Parameters
     ----------
@@ -1900,6 +1905,8 @@ def flistQueryHostDirectory(sAbsPath, bIncludeFiles=False):
                 listEntries.append(_fdictBuildHostEntry(entry))
             elif bIncludeFiles and entry.is_file(follow_symlinks=False):
                 listEntries.append(_fdictBuildHostFileEntry(entry))
+            elif bDescribeLinks and entry.is_symlink():
+                listEntries.append(seedLinks.fdictDescribeTopLevelLink(entry.path))
     except PermissionError:
         raise HTTPException(403, "Permission denied")
     return _flistSortDirectoryEntries(listEntries)

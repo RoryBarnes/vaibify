@@ -946,7 +946,7 @@ class FailClosedDockerAdapter:
         self, sContainerId, sDestinationDirectory, listHostPaths,
         iUid=None, iGid=None, sArchiveName=None,
         sAuthorizedRoot=None, tForbiddenNames=(),
-        bCreateDestination=False,
+        bCreateDestination=False, ffnMemberFilter=None,
     ):
         """Record the tree copy as one entry per archived top-level path.
 

@@ -14670,21 +14670,24 @@ LIST_FALSIFICATIONS = [
             'tests/testWorkspaceSeedPaths.py::'
             'testASymlinkPointingOutOfTheProjectIsRefused'
         ),
+        # Since 2026-11-03 the selected link is archived as itself and
+        # the seed's link contract leaves it behind; dropping that
+        # filter carries the link, pointing at a host path, across.
+        source='vaibify/gui/seedLinks.py',
+        old='        if not sReason:\n            return infoMember\n',
+        new='        if True:\n            return infoMember\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceSeedPaths.py::'
+            'testALinkedDirectoryOnTheWayOutOfTheProjectIsRefused'
+        ),
         source='vaibify/gui/routes/fileRoutes.py',
-        # Judge the path's TEXT instead of where it resolves to: a
-        # symlink out of the project contains no ".." and is not
-        # absolute, so a textual guard admits it and the link's target
-        # is archived.
-        old=(
-            '        sCandidate = os.path.realpath(\n'
-            '            os.path.join(sHostDirectory, sRelativePath),\n'
-            '        )\n'
-        ),
-        new=(
-            '        sCandidate = os.path.join(\n'
-            '            sHostDirectory, sRelativePath,\n'
-            '        )\n'
-        ),
+        # Judge the parent's TEXT instead of where it resolves to: a
+        # directory link out of the project contains no ".." and is not
+        # absolute, so a textual guard admits a file beneath it.
+        old='            os.path.realpath(os.path.dirname(sJoined)),\n',
+        new='            os.path.dirname(sJoined),\n',
     ),
     Falsification(
         nodeid=(
@@ -40036,5 +40039,75 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/registryRoutes.py',
         old='        **fdictNetworkKeysForMode(fsNetworkModeOfRequest(request)),\n',
         new='        "networkMode": fsNetworkModeOfRequest(request),\n',
+    ),
+    # --- 2026-11-03: the seed copy carries a project's links faithfully,
+    # and makes the agent-doc links a new container would ---
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testARelativeInProjectLinkCrossesAtTheTopAndNested',
+        # Every link refused as if its target were absolute.
+        source='vaibify/gui/seedLinks.py',
+        old='    if posixpath.isabs(sLinkTarget):\n        return S_LINK_ABSOLUTE_TARGET\n',
+        new='    if True:\n        return S_LINK_ABSOLUTE_TARGET\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testAbsoluteAndEscapingLinksStayBehindAndAreNamed',
+        # The seed filter keeping every link.
+        source='vaibify/gui/seedLinks.py',
+        old='        if not sReason:\n            return infoMember\n',
+        new='        if True:\n            return infoMember\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testATopLevelLinkIsArchivedAsItselfNotAsItsTarget',
+        # The selected path resolved, so a link is archived as its target.
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '        sCandidate = os.path.join(\n'
+            '            os.path.realpath(os.path.dirname(sJoined)),\n'
+            '            os.path.basename(sJoined),\n'
+            '        )\n'
+        ),
+        new='        sCandidate = os.path.realpath(sJoined)\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testAResearchersOwnInstructionFileIsLeftByteIdentical',
+        # Removing what is at the name before linking (the rm -f of the
+        # adoption helper).
+        source='vaibify/gui/seedLinks.py',
+        old='            os.lstat(sName, dir_fd=iRoot)\n            continue\n',
+        new='            os.unlink(sName, dir_fd=iRoot)\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testAResearchersOwnLinkIsLeftPointingWhereItPointed',
+        # The same removal, which repoints the researcher's own link.
+        source='vaibify/gui/seedLinks.py',
+        old='            os.lstat(sName, dir_fd=iRoot)\n            continue\n',
+        new='            os.unlink(sName, dir_fd=iRoot)\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testAnAbsentNameGetsTheLinkANewContainerWouldHave',
+        # The program never creating the link.
+        source='vaibify/gui/seedLinks.py',
+        old='            os.symlink(sys.argv[2], sName, dir_fd=iRoot)\n',
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testSeedLinks.py::testNothingIsLinkedWithoutTheSharedContext',
+        # Linking whether or not .vaibify/AGENTS.md exists.
+        source='vaibify/gui/seedLinks.py',
+        old='        bSource = stat.S_ISREG(os.stat(sys.argv[2], dir_fd=iRoot).st_mode)\n',
+        new='        bSource = True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesAFileRoutes.py::'
+            'testASeedReportsTheLinksItLeftBehindAndCarriesTheRestAsLinks'
+        ),
+        # The seed writing its tree without the link contract.
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '                ffnMemberFilter=seedLinks.ffnBuildSeedLinkFilter(\n'
+            '                    listSkippedLinks),\n'
+        ),
+        new='',
     ),
 ]

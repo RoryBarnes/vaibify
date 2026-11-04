@@ -33,6 +33,7 @@ from ..routeScope import (
 )
 from .. import standardsFiles
 from .. import projectRoots
+from .. import seedLinks
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     FileUploadRequest,
@@ -571,21 +572,26 @@ def _flistResolveSeedPaths(sHostDirectory, saRelativePaths):
     separator is not "/". Each entry is resolved and required to sit
     under the project directory, so neither ``..`` nor an absolute
     path nor a symlink pointing out of the tree can nominate a file
-    the researcher never offered.
+    the researcher never offered. The last component is NOT resolved:
+    a link is archived as itself, under its own name, and the seed's
+    link contract (``seedLinks``) decides whether it crosses.
+    Resolving it landed a copy of its target under the target's name.
     """
     if not saRelativePaths:
         raise HTTPException(400, "No files were selected to copy.")
     listResolved = []
     for sRelativePath in saRelativePaths:
-        sCandidate = os.path.realpath(
-            os.path.join(sHostDirectory, sRelativePath),
+        sJoined = os.path.normpath(os.path.join(sHostDirectory, sRelativePath))
+        sCandidate = os.path.join(
+            os.path.realpath(os.path.dirname(sJoined)),
+            os.path.basename(sJoined),
         )
         if sCandidate != sHostDirectory and not sCandidate.startswith(
             sHostDirectory + os.sep,
         ):
             raise HTTPException(
                 403, f"'{sRelativePath}' is outside the project.")
-        if not os.path.exists(sCandidate):
+        if not os.path.lexists(sCandidate):
             raise HTTPException(
                 404, f"'{sRelativePath}' no longer exists.")
         listResolved.append(sCandidate)
@@ -605,10 +611,13 @@ def _fdictCommitWorkspaceSeed(
     from .. import commitCarrier
 
     def fdictSeedTheWorkspace():
+        listSkippedLinks = []
         try:
             dictCtx["docker"].fnWriteTreeViaTar(
                 sContainerId, sDestination, listHostPaths,
                 sAuthorizedRoot=sWorkspaceRoot, bCreateDestination=True,
+                ffnMemberFilter=seedLinks.ffnBuildSeedLinkFilter(
+                    listSkippedLinks),
             )
         except ControlPlaneRefusalError:
             raise
@@ -617,12 +626,17 @@ def _fdictCommitWorkspaceSeed(
                 403 if error.iMembersLanded == 0 else 500, str(error))
         except Exception as error:
             raise HTTPException(500, str(error))
+        dictLinks = dict(
+            listSkippedLinks=listSkippedLinks,
+            **_fdictCreateAgentDocLinksAfterSeed(
+                dictCtx["docker"], sContainerId, sDestination),
+        )
         if listRestoreWithinEntries is None:
-            return {"listRestoredPaths": [], "sRestoreRefusal": ""}
-        return _fdictRestoreCommittedFilesAfterSeed(
+            return dict(dictLinks, listRestoredPaths=[], sRestoreRefusal="")
+        return dict(dictLinks, **_fdictRestoreCommittedFilesAfterSeed(
             dictCtx["docker"], sContainerId, sDestination,
             listRestoreWithinEntries,
-        )
+        ))
 
     # Journalled as a file-write, the kind it actually is: the journal's
     # allowlist is the set of kinds `vaibify reconcile` can settle. A
@@ -638,6 +652,23 @@ def _fdictCommitWorkspaceSeed(
     if dictCarried["errorRefused"] is not None:
         raise dictCarried["errorRefused"]
     return dictCarried["objResult"]
+
+
+def _fdictCreateAgentDocLinksAfterSeed(connectionDocker, sContainerId, sDestination):
+    """Create the agent-doc links the entrypoint would have; report, never raise.
+
+    The copy has already landed, so a link program that fails is said
+    beside the success: a raise here would quarantine a container whose
+    files are all in place.
+    """
+    try:
+        listCreated = seedLinks.flistCreateMissingAgentDocLinks(
+            connectionDocker, sContainerId, sDestination)
+    except ControlPlaneRefusalError:
+        raise
+    except Exception as error:  # noqa: BLE001 -- reported beside the copy
+        return {"listCreatedAgentLinks": [], "sAgentLinkRefusal": str(error)}
+    return {"listCreatedAgentLinks": listCreated, "sAgentLinkRefusal": ""}
 
 
 def _fdictRestoreCommittedFilesAfterSeed(

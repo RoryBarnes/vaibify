@@ -3649,7 +3649,7 @@ class DockerConnection:
         self, sContainerId, sDestinationDirectory, listHostPaths,
         iUid=None, iGid=None, sArchiveName=None,
         sAuthorizedRoot=None, tForbiddenNames=(),
-        bCreateDestination=False,
+        bCreateDestination=False, ffnMemberFilter=None,
     ):
         """Copy host files and directories into a container directory.
 
@@ -3684,9 +3684,11 @@ class DockerConnection:
         ``sArchiveName``, for a call that copies exactly one path, is
         the name that path lands under instead: how a directory is
         copied to a destination that does not exist yet and is to be
-        created with a different name. A refusal or failure raises with
-        ``iMembersLanded`` set, so a caller can tell a clean refusal
-        (zero) from a partial copy.
+        created with a different name. ``ffnMemberFilter``, a ``tarfile``
+        filter, may drop or change a member before it is archived; the
+        seed copy passes its link contract (``vaibify.gui.seedLinks``).
+        A refusal or failure raises with ``iMembersLanded`` set, so a
+        caller can tell a clean refusal (zero) from a partial copy.
         """
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, "fnWriteTreeViaTar",
@@ -3697,7 +3699,9 @@ class DockerConnection:
             tForbiddenNames=tForbiddenNames,
             bCreateDestination=bCreateDestination,
         )
-        fileTar = self._ffileBuildTreeTar(listHostPaths, sArchiveName)
+        fileTar = self._ffileBuildTreeTar(
+            listHostPaths, sArchiveName, ffnMemberFilter,
+        )
         try:
             tExecResult = self._ftRunProgramWithStdin(
                 sContainerId, LIST_HUB_PYTHON_ARGV + ["-c", sProgram],
@@ -3777,7 +3781,8 @@ class DockerConnection:
             )
 
     @staticmethod
-    def _ffileBuildTreeTar(listHostPaths, sArchiveName=None):
+    def _ffileBuildTreeTar(listHostPaths, sArchiveName=None,
+                           ffnMemberFilter=None):
         """Return a rewound tar of the host paths, claiming no ownership.
 
         ``sArchiveName`` renames the one path being archived; naming it
@@ -3802,12 +3807,13 @@ class DockerConnection:
         fileTar = tempfile.SpooledTemporaryFile(
             max_size=_I_TREE_TAR_SPOOL_BYTES,
         )
+        ffnFilter = _ffnComposeTreeFilter(ffnMemberFilter)
         with tarfile.open(fileobj=fileTar, mode="w") as fileArchive:
             for sHostPath in listHostPaths:
                 fileArchive.add(
                     sHostPath,
                     arcname=sArchiveName or os.path.basename(sHostPath),
-                    filter=_finfoClearOwnership,
+                    filter=ffnFilter,
                 )
         fileTar.seek(0)
         return fileTar
@@ -4200,6 +4206,17 @@ def _finfoClearOwnership(infoTar):
     infoTar.uname = ""
     infoTar.gname = ""
     return infoTar
+
+
+def _ffnComposeTreeFilter(ffnMemberFilter):
+    """Return the tree tar's filter: a caller's, then the ownership clear."""
+    if ffnMemberFilter is None:
+        return _finfoClearOwnership
+
+    def _finfoFiltered(infoTar):
+        infoKept = ffnMemberFilter(infoTar)
+        return None if infoKept is None else _finfoClearOwnership(infoKept)
+    return _finfoFiltered
 
 
 def _fiterChunksFromTarStream(iterTarStream, iChunkSizeBytes):
