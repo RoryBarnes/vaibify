@@ -420,6 +420,37 @@ def testAnEnvironmentArchiveDialogSaysWhatItAuthorizesAndComparesNoRecord(
         "#modalRemoteBinding .remote-binding-comparison").count() == 0
 
 
+@pytest.mark.falsification
+def testANewRecordsDialogSaysWhatItAllowsAndComparesNoRecord(
+    pageDashboard, serverHub,
+):
+    """A project record nobody has created yet is reviewed by a sentence.
+
+    The entry is the real hub's, with only the evidence added: the
+    seeded project names no record on zenodo.org, so the review must say
+    what confirming allows rather than compare three empty values.
+
+    Kills: deciding the comparison by the kind of binding, which drew
+    "no record yet" for a record that does not exist.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    dictServed = pageDashboard.evaluate(S_READ_THE_SERVED_BINDINGS)
+    dictNewRecord = next(
+        dictEntry for dictEntry in dictServed["listEntries"]
+        if (dictEntry["sRecordKind"], dictEntry["sInstance"]) == (
+            "project", "zenodo"))
+    dictNewRecord["dictEvidence"] = _DICT_ACCEPTED
+    _Hub(pageDashboard, [dict(dictServed, listEntries=[dictNewRecord])])
+    _fnOpenTheDialogFor(pageDashboard, ["zenodo", "project", "zenodo"])
+    _fnWaitForConfirmEnabled(pageDashboard)
+    sText = _fsDialogText(pageDashboard)
+    assert ("This lets vaibify create a new record on zenodo.org (permanent) "
+            "for this workflow's project deposits, with your token.") in sText
+    assert "no record yet" not in sText and "nothing yet" not in sText
+    assert pageDashboard.locator(
+        "#modalRemoteBinding .remote-binding-comparison").count() == 0
+
+
 def testEachKindNamesWhatItAuthorizesInTheDashboardsWords(pageDashboard, serverHub):
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     dictEnvironment = _fdictEntry(

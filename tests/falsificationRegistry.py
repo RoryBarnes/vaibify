@@ -40125,4 +40125,44 @@ LIST_FALSIFICATIONS = [
         old='        elChild.style.margin = "0 auto";\n',
         new='        elContent.style.justifyContent = "center";\n',
     ),
+    # --- 2026-11-04: a project record nobody has created yet carries no
+    # notice, and its review says what confirming allows ---
+    Falsification(
+        nodeid='tests/testBindingConfirmation.py::testANewRecordsReviewSaysWhatItAllowsAndComparesNothing',
+        # The comparison decided by the kind of binding again.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    bHasTarget = _fbEntryHasTarget(dictProjectTarget, dictConfirmed, dictReviewTarget)\n',
+        new='    bHasTarget = sRecordKind != remoteBindings.S_RECORD_KIND_ENVIRONMENT\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteBindingDialogIsTheServers.py::'
+            'testANewRecordsDialogSaysWhatItAllowsAndComparesNoRecord'
+        ),
+        # The same kind-based decision, as the dialog renders it.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    bHasTarget = _fbEntryHasTarget(dictProjectTarget, dictConfirmed, dictReviewTarget)\n',
+        new='    bHasTarget = sRecordKind != remoteBindings.S_RECORD_KIND_ENVIRONMENT\n',
+    ),
+    Falsification(
+        nodeid='tests/testBindingConfirmation.py::testANewRecordCarriesNoNotice',
+        # Noticing an unconfirmed project record that does not exist.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old=(
+            '        if tAddress[1] == remoteBindings.S_RECORD_KIND_PROJECT and (\n'
+            '                not _fbNamesARecord(dictProjectTarget)):\n'
+            '            return ""\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testBindingConfirmation.py::testANamedRecordStillCarriesItsNotice',
+        # Silencing every unconfirmed project record, named or not.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old=(
+            '        if tAddress[1] == remoteBindings.S_RECORD_KIND_PROJECT and (\n'
+            '                not _fbNamesARecord(dictProjectTarget)):\n'
+        ),
+        new='        if tAddress[1] == remoteBindings.S_RECORD_KIND_PROJECT:\n',
+    ),
 ]

@@ -11,9 +11,12 @@ The GET reports the record's state, whether the environment archive
 applies (read from the envelope), and every entry a workflow can hold --
 Overleaf, and Zenodo's two kinds on each instance -- with what
 ``project.json`` names for it, what is confirmed, the notice sentence,
-whether the kind names a target at all (``bHasTarget``; the environment
-archive authorizes an instance only, and ``sAuthorizes`` says what), and
-the exact confirm body a review sends (``dictReview``). With
+whether anything to compare names a record (``bHasTarget``: never for
+the environment archive, which authorizes an instance only, and not for
+a project record nobody has created yet; ``sAuthorizes`` then says what
+confirming allows), and the exact confirm body a review sends
+(``dictReview``). An unconfirmed project record that ``project.json``
+names no record for carries no notice: the first deposit asks. With
 ``bFetchEvidence`` (the default) it also fetches, with the researcher's
 own token, what the host can see: for the entries that apply, or for the
 one entry ``sService``/``sRecordKind``/``sInstance`` name.
@@ -230,10 +233,24 @@ def _fsAgreementState(dictProjectTarget, dictConfirmed):
     return "agrees" if bAgrees else "differs"
 
 
+def _fbNamesARecord(dictTarget):
+    """True when a target names a record or a project, not only an instance."""
+    return any(sValue for sField, sValue in (dictTarget or {}).items()
+               if sField != "sInstance")
+
+
 def _fsNoticeFor(tAddress, sState, dictProjectTarget, dictConfirmed):
-    """Return the sentence a notice shows for one entry, or '' when nothing is wrong."""
+    """Return the sentence a notice shows for one entry, or '' when nothing is wrong.
+
+    A project record that ``project.json`` does not name yet is silent:
+    the first deposit would create it, nothing named could have been
+    redirected, and that deposit's own refusal opens the review.
+    """
     sWhat = fsDescribeBoundEntry(*tAddress)
     if sState == "unconfirmed":
+        if tAddress[1] == remoteBindings.S_RECORD_KIND_PROJECT and (
+                not _fbNamesARecord(dictProjectTarget)):
+            return ""
         return f"Not confirmed: {sWhat}."
     if sState != "differs":
         return ""
@@ -281,20 +298,32 @@ def _fbEntryApplies(dictWorkflow, tAddress, sEnvironmentInstance):
     )
 
 
-def _fbEntryHasTarget(sService, sRecordKind):
-    """Return False for a kind that authorizes an instance and names no record."""
-    return bool(set(remoteBindings.ftTargetFields(sService, sRecordKind)) - {"sInstance"})
+def _fbEntryHasTarget(dictProjectTarget, dictConfirmed, dictReviewTarget):
+    """Return False when nothing a review would compare names a record.
+
+    Decided by what is there, not by the kind: the environment archive
+    never names one, and a project record nobody has created yet names
+    none either. Comparing three empty values reads as broken.
+    """
+    return any(_fbNamesARecord(dictTarget) for dictTarget in (
+        dictProjectTarget, (dictConfirmed or {}).get("dictTarget"),
+        dictReviewTarget))
 
 
 def _fsDescribeWhatConfirmingAllows(tAddress):
-    """Return what confirming a kind with no target authorizes, or '' for one with a target."""
+    """Return what confirming an entry that names no record would allow."""
     sService, sRecordKind, sInstance = tAddress
-    if _fbEntryHasTarget(sService, sRecordKind):
-        return ""
+    if sService == remoteBindings.S_SERVICE_OVERLEAF:
+        return ("project.json names no Overleaf project for this workflow, so "
+                "there is nothing to confirm yet.")
+    sSite = fsDescribeZenodoService(sInstance)
+    if sRecordKind == remoteBindings.S_RECORD_KIND_PROJECT:
+        return (f"This lets vaibify create a new record on {sSite} for this "
+                f"workflow's project deposits, with your token.")
     return (
         f"This lets vaibify deposit this workflow's container images on "
-        f"{fsDescribeZenodoService(sInstance)} with your token. Each deposit "
-        f"records its own DOI in .vaibify/environment.json."
+        f"{sSite} with your token. Each deposit records its own DOI in "
+        f".vaibify/environment.json."
     )
 
 
@@ -303,18 +332,19 @@ def _fdictDescribeEntry(dictWorkflow, sWorkflowKey, dictServices, tAddress, bApp
     dictProjectTarget = _fdictProjectTargetFor(dictWorkflow, *tAddress)
     dictConfirmed = remoteBindings.fdictLookUpEntry(dictServices, *tAddress)
     sState = _fsAgreementState(dictProjectTarget, dictConfirmed)
+    dictReviewTarget = _fdictReviewTarget(dictWorkflow, *tAddress)
+    bHasTarget = _fbEntryHasTarget(dictProjectTarget, dictConfirmed, dictReviewTarget)
     return {
         "sService": sService, "sRecordKind": sRecordKind, "sInstance": sInstance,
         "sLabel": fsDescribeBoundEntry(*tAddress),
         "bApplies": bApplies, "dictProjectTarget": dictProjectTarget,
         "dictConfirmed": dictConfirmed, "sState": sState,
         "sNotice": _fsNoticeFor(tAddress, sState, dictProjectTarget, dictConfirmed),
-        "bHasTarget": _fbEntryHasTarget(sService, sRecordKind),
-        "sAuthorizes": _fsDescribeWhatConfirmingAllows(tAddress),
+        "bHasTarget": bHasTarget,
+        "sAuthorizes": "" if bHasTarget else _fsDescribeWhatConfirmingAllows(tAddress),
         "dictReview": {
             "sService": sService, "sRecordKind": sRecordKind,
-            "sWorkflowKey": sWorkflowKey,
-            "dictTarget": _fdictReviewTarget(dictWorkflow, *tAddress),
+            "sWorkflowKey": sWorkflowKey, "dictTarget": dictReviewTarget,
         },
     }
 

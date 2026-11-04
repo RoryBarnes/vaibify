@@ -127,10 +127,15 @@ holds three kinds of entry for each workflow:
 **Notices and the review.** When a project opens, a notice appears for
 each entry that applies and is not confirmed, or that `project.json`
 disagrees with, and its **Review and confirm…** button opens the review.
-An action that needs an entry you have not confirmed opens the same
-review instead of failing. The review sets side by side what
-`project.json` names, what you confirmed and what vaibify could see with
-your own token, and says what **Confirm** authorizes. Confirm records
+A project record that `project.json` names no record for yet (one your
+first deposit will create) has no notice: there is nothing to review
+until that deposit, which asks. An action that needs an entry you have
+not confirmed opens the same review instead of failing. The review sets
+side by side what `project.json` names, what you confirmed and what
+vaibify could see with your own token, and says what **Confirm**
+authorizes. Where nothing names a record (a new record, or the
+environment archive below), it says what confirming allows instead of
+comparing. Confirm records
 exactly that entry, and the refused action runs again, once. If the
 project view changes while you are confirming, the review closes and
 nothing is run again. A disagreement carries the sentence "If you did

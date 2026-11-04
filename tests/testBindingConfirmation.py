@@ -242,17 +242,25 @@ def testTheReadNamesWhatAppliesInTheDashboardsWords(tApp, monkeypatch):
     assert "production" not in json.dumps(dictDescribed)
 
 
-def testOnlyTheEnvironmentArchiveNamesNoTargetAndSaysWhatItAuthorizes(tApp):
-    """The environment kind authorizes an instance; every other kind names a record."""
-    client, _, _ = tApp
+def _fdictEntriesByAddress(client):
     dictDescribed = client.get(S_READ_PATH, params={"bFetchEvidence": "false"}).json()
-    dictByAddress = {
+    return {
         (dictEntry["sService"], dictEntry["sRecordKind"], dictEntry["sInstance"]): dictEntry
         for dictEntry in dictDescribed["listEntries"]
     }
+
+
+def testOnlyAnEntryThatNamesARecordComparesOne(tApp):
+    """The fixture's project.json names an Overleaf project and no Zenodo record.
+
+    The environment archive never names a record, and neither project
+    record names one yet, so only Overleaf has anything to compare;
+    every other entry says what confirming would allow.
+    """
+    client, _, _ = tApp
+    dictByAddress = _fdictEntriesByAddress(client)
     assert {tAddress for tAddress, dictEntry in dictByAddress.items()
-            if not dictEntry["bHasTarget"]} == {
-        ("zenodo", "environment", "sandbox"), ("zenodo", "environment", "zenodo")}
+            if dictEntry["bHasTarget"]} == {("overleaf", "", "")}
     assert all(dictEntry["sAuthorizes"] == "" for dictEntry in dictByAddress.values()
                if dictEntry["bHasTarget"])
     assert dictByAddress[("zenodo", "environment", "zenodo")]["sAuthorizes"] == (
@@ -263,6 +271,49 @@ def testOnlyTheEnvironmentArchiveNamesNoTargetAndSaysWhatItAuthorizes(tApp):
         "This lets vaibify deposit this workflow's container images on "
         "the Zenodo sandbox (testing only) with your token. Each deposit "
         "records its own DOI in .vaibify/environment.json.")
+
+
+@pytest.mark.falsification
+def testANewRecordsReviewSaysWhatItAllowsAndComparesNothing(tApp):
+    """A project record nobody has created yet has nothing to compare.
+
+    Kills: deciding the comparison by the KIND of binding, which drew
+    "no record yet" three times for a record that does not exist.
+    """
+    client, _, _ = tApp
+    dictNewRecord = _fdictEntriesByAddress(client)[("zenodo", "project", "zenodo")]
+    assert dictNewRecord["bHasTarget"] is False
+    assert dictNewRecord["sAuthorizes"] == (
+        "This lets vaibify create a new record on zenodo.org (permanent) for "
+        "this workflow's project deposits, with your token.")
+
+
+@pytest.mark.falsification
+def testANewRecordCarriesNoNotice(tApp):
+    """project.json declares the sandbox and names no record there yet.
+
+    Kills: noticing an unconfirmed project record that does not exist,
+    which greeted every project nobody had deposited yet.
+    """
+    client, _, _ = tApp
+    dictSandbox = _fdictEntriesByAddress(client)[("zenodo", "project", "sandbox")]
+    assert (dictSandbox["bApplies"], dictSandbox["sState"]) == (True, "unconfirmed")
+    assert dictSandbox["sNotice"] == ""
+
+
+@pytest.mark.falsification
+def testANamedRecordStillCarriesItsNotice(tApp):
+    """Once project.json names a record, an unconfirmed one is noticed and compared.
+
+    Kills: silencing every unconfirmed project record, named or not.
+    """
+    client, dictCtx, _ = tApp
+    dictCtx["workflows"][S_CONTAINER_ID]["sZenodoConceptDoi"] = "10.5072/zenodo.9"
+    dictSandbox = _fdictEntriesByAddress(client)[("zenodo", "project", "sandbox")]
+    assert dictSandbox["sNotice"] == (
+        "Not confirmed: this workflow's project deposits on the Zenodo sandbox "
+        "(testing only).")
+    assert (dictSandbox["bHasTarget"], dictSandbox["sAuthorizes"]) == (True, "")
 
 
 def testADifferingEntryNamesBothValues(tApp):
