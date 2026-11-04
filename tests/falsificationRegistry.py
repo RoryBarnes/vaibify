@@ -40145,24 +40145,20 @@ LIST_FALSIFICATIONS = [
         new='    bHasTarget = sRecordKind != remoteBindings.S_RECORD_KIND_ENVIRONMENT\n',
     ),
     Falsification(
-        nodeid='tests/testBindingConfirmation.py::testANewRecordCarriesNoNotice',
-        # Noticing an unconfirmed project record that does not exist.
+        nodeid='tests/testBindingConfirmation.py::testNothingConfirmedOnThisComputerCarriesNoNotice',
+        # Noticing an entry only because nobody confirmed it here.
         source='vaibify/gui/routes/bindingRoutes.py',
         old=(
-            '        if tAddress[1] == remoteBindings.S_RECORD_KIND_PROJECT and (\n'
-            '                not _fbNamesARecord(dictProjectTarget)):\n'
+            '        if not bAutoArchived:\n'
             '            return ""\n'
         ),
         new='',
     ),
     Falsification(
-        nodeid='tests/testBindingConfirmation.py::testANamedRecordStillCarriesItsNotice',
-        # Silencing every unconfirmed project record, named or not.
+        nodeid='tests/testBindingConfirmation.py::testAutoArchiveStillNoticesWhatItWouldSendTo',
+        # Silencing every unconfirmed entry, Auto Archive's included.
         source='vaibify/gui/routes/bindingRoutes.py',
-        old=(
-            '        if tAddress[1] == remoteBindings.S_RECORD_KIND_PROJECT and (\n'
-            '                not _fbNamesARecord(dictProjectTarget)):\n'
-        ),
-        new='        if tAddress[1] == remoteBindings.S_RECORD_KIND_PROJECT:\n',
+        old='    return bool(dictWorkflow.get("bAutoArchive")) and (\n',
+        new='    return False and (\n',
     ),
 ]

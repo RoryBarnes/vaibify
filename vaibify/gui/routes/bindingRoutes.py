@@ -15,8 +15,9 @@ whether anything to compare names a record (``bHasTarget``: never for
 the environment archive, which authorizes an instance only, and not for
 a project record nobody has created yet; ``sAuthorizes`` then says what
 confirming allows), and the exact confirm body a review sends
-(``dictReview``). An unconfirmed project record that ``project.json``
-names no record for carries no notice: the first deposit asks. With
+(``dictReview``). An entry nobody has confirmed on this computer carries
+no notice, because the first action that would spend a token on it asks,
+unless Auto Archive, which asks nobody, would send to it. With
 ``bFetchEvidence`` (the default) it also fetches, with the researcher's
 own token, what the host can see: for the entries that apply, or for the
 one entry ``sService``/``sRecordKind``/``sInstance`` name.
@@ -239,19 +240,26 @@ def _fbNamesARecord(dictTarget):
                if sField != "sInstance")
 
 
-def _fsNoticeFor(tAddress, sState, dictProjectTarget, dictConfirmed):
+def _fbAutoArchiveSendsTo(dictWorkflow, tAddress):
+    """True when Auto Archive would spend a token on this entry with nobody watching."""
+    return bool(dictWorkflow.get("bAutoArchive")) and (
+        tAddress[1] != remoteBindings.S_RECORD_KIND_ENVIRONMENT)
+
+
+def _fsNoticeFor(tAddress, sState, dictProjectTarget, dictConfirmed, bAutoArchived):
     """Return the sentence a notice shows for one entry, or '' when nothing is wrong.
 
-    A project record that ``project.json`` does not name yet is silent:
-    the first deposit would create it, nothing named could have been
-    redirected, and that deposit's own refusal opens the review.
+    An entry nobody has confirmed on this computer is silent: every
+    action that would spend a token on it is refused first, and that
+    refusal opens the review. Auto Archive is the exception, because it
+    runs with nobody watching and its refusal reaches only the hub's log.
     """
     sWhat = fsDescribeBoundEntry(*tAddress)
     if sState == "unconfirmed":
-        if tAddress[1] == remoteBindings.S_RECORD_KIND_PROJECT and (
-                not _fbNamesARecord(dictProjectTarget)):
+        if not bAutoArchived:
             return ""
-        return f"Not confirmed: {sWhat}."
+        return (f"Not confirmed: {sWhat}. Auto Archive sends nothing there "
+                f"until you confirm it.")
     if sState != "differs":
         return ""
     listDiffering = [
@@ -339,7 +347,9 @@ def _fdictDescribeEntry(dictWorkflow, sWorkflowKey, dictServices, tAddress, bApp
         "sLabel": fsDescribeBoundEntry(*tAddress),
         "bApplies": bApplies, "dictProjectTarget": dictProjectTarget,
         "dictConfirmed": dictConfirmed, "sState": sState,
-        "sNotice": _fsNoticeFor(tAddress, sState, dictProjectTarget, dictConfirmed),
+        "sNotice": _fsNoticeFor(
+            tAddress, sState, dictProjectTarget, dictConfirmed,
+            _fbAutoArchiveSendsTo(dictWorkflow, tAddress)),
         "bHasTarget": bHasTarget,
         "sAuthorizes": "" if bHasTarget else _fsDescribeWhatConfirmingAllows(tAddress),
         "dictReview": {
