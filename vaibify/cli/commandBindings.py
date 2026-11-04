@@ -139,6 +139,20 @@ def fsDescribeSetAside(dictAnswer, sProjectName):
     )
 
 
+def _fnSetAsideAndReport(sContainerName, iPort, sWorkflowPath, bJson):
+    """Ask the hub to move the unreadable record aside, and say what it did."""
+    try:
+        dictAnswer, _sConnectedPath = _ftAskTheHub(
+            sContainerName, iPort, sWorkflowPath, "POST", "/set-aside",
+            {}, "moving the binding record aside",
+        )
+    except hubSession.HubSessionError as error:
+        click.echo(f"Error: {error}", err=True)
+        sys.exit(4)
+    click.echo(json.dumps(dictAnswer, indent=2, sort_keys=True) if bJson
+               else fsDescribeSetAside(dictAnswer, sContainerName))
+
+
 @click.command("bindings")
 @click.option("--project", "-p", "sProjectName", default=None,
               help="Project name (omit inside a project directory).")
@@ -157,23 +171,16 @@ def fnBindingsCommand(sProjectName, sWorkflowPath, bAll, iPort, bJson, bSetAside
     """Show what this workflow's tokens may act on, and the command that confirms it."""
     from .configLoader import fconfigResolveProject
     sContainerName = fconfigResolveProject(sProjectName).sProjectName
+    if bSetAside:
+        _fnSetAsideAndReport(sContainerName, iPort, sWorkflowPath, bJson)
+        return
     try:
-        if bSetAside:
-            dictAnswer, _sConnectedPath = _ftAskTheHub(
-                sContainerName, iPort, sWorkflowPath, "POST", "/set-aside",
-                {}, "moving the binding record aside",
-            )
-        else:
-            dictDescribed, sConnectedPath = _ftFetchBindings(
-                sContainerName, iPort, sWorkflowPath,
-            )
+        dictDescribed, sConnectedPath = _ftFetchBindings(
+            sContainerName, iPort, sWorkflowPath,
+        )
     except hubSession.HubSessionError as error:
         click.echo(f"Error: {error}", err=True)
         sys.exit(4)
-    if bSetAside:
-        click.echo(json.dumps(dictAnswer, indent=2, sort_keys=True) if bJson
-                   else fsDescribeSetAside(dictAnswer, sContainerName))
-        return
     if bJson:
         click.echo(json.dumps(dictDescribed, indent=2, sort_keys=True))
         return
