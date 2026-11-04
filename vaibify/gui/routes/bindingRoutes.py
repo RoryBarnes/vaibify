@@ -286,7 +286,7 @@ def _fbEntryHasTarget(sService, sRecordKind):
     return bool(set(remoteBindings.ftTargetFields(sService, sRecordKind)) - {"sInstance"})
 
 
-def _fsAuthorizesFor(tAddress):
+def _fsDescribeWhatConfirmingAllows(tAddress):
     """Return what confirming a kind with no target authorizes, or '' for one with a target."""
     sService, sRecordKind, sInstance = tAddress
     if _fbEntryHasTarget(sService, sRecordKind):
@@ -310,7 +310,7 @@ def _fdictDescribeEntry(dictWorkflow, sWorkflowKey, dictServices, tAddress, bApp
         "dictConfirmed": dictConfirmed, "sState": sState,
         "sNotice": _fsNoticeFor(tAddress, sState, dictProjectTarget, dictConfirmed),
         "bHasTarget": _fbEntryHasTarget(sService, sRecordKind),
-        "sAuthorizes": _fsAuthorizesFor(tAddress),
+        "sAuthorizes": _fsDescribeWhatConfirmingAllows(tAddress),
         "dictReview": {
             "sService": sService, "sRecordKind": sRecordKind,
             "sWorkflowKey": sWorkflowKey,
