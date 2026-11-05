@@ -5454,7 +5454,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 826 -> 857 (2026-10-29): the readiness payload carries the Network row (mode, proxy state, refused destinations).
     # 857 -> 858 (2026-10-29): the Network row reads the mode defensively.
     # 858 -> 859 (2026-11-02): the Network row covers both sealed modes, web and allowlist (web network mode plan, A5).
-    "routes/systemRoutes.py": 859,
+    # 859 -> 866 (2026-11-04): the Network row reports a file that names no mode as unstated, never open (ruling D1 revised).
+    "routes/systemRoutes.py": 866,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -7392,7 +7393,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # running container's X authorization at once.
     # 2653 -> 2793 (2026-10-29): the network mode in the wizard and settings, the allow-host route and the YAML list append.
     # 2793 -> 2798 (2026-11-02): a creation request that names no mode gets the new-project mode, web (web network mode plan, A5).
-    "registryRoutes.py": 2798,
+    # 2798 -> 2799 (2026-11-04): the X11 refusal names a file with no mode (ruling D1 revised).
+    "registryRoutes.py": 2799,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

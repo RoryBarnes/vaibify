@@ -51,7 +51,8 @@ def test_the_settings_payload_reports_the_opt_in_and_the_isolation(tmp_path):
 @pytest.mark.falsification
 def test_turning_the_opt_in_on_persists_and_asks_for_a_recreate(tmp_path):
     """Kills: a settings save that drops the X11 forwarding choice."""
-    clientHttp, sConfigPath, patchProject = _fclientForConfig(tmp_path)
+    clientHttp, sConfigPath, patchProject = _fclientForConfig(
+        tmp_path, "networkMode: open\n")
     with patchProject:
         responseSave = clientHttp.post(
             f"/api/containers/{S_PROJECT_NAME}/settings",

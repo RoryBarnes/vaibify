@@ -482,11 +482,17 @@ def _ftDescribeX11Findings(connectionDocker, sContainerId):
         return [], []
 
 
+# What the Network row says for a file that names no mode: the wire
+# carries a word, never the empty string the configuration holds.
+S_NETWORK_MODE_UNSTATED_WIRE = "unstated"
+
+
 def _fdictDescribeNetwork(connectionDocker, sContainerId):
     """Return the Network row: the mode, the proxy's state, what it refused.
 
-    The mode is the file's, the rest is the daemon's; a project that is
-    not in allowlist mode has no proxy and says so (``not-applicable``).
+    The mode is the file's (``unstated`` for a file that names none,
+    ruling D1), the rest is the daemon's; a project that is not in a
+    sealed mode has no proxy and says so (``not-applicable``).
     Every failure to establish a fact answers ``unknown`` rather than a
     guess (ruling D8: a dead proxy is shown, never silent).
     """
@@ -496,8 +502,9 @@ def _fdictDescribeNetwork(connectionDocker, sContainerId):
     configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
     if configProject is None:
         return {"sMode": "unknown", "sProxyState": "unknown", "listRefused": []}
-    sMode = getattr(configProject, "sNetworkMode", "") or "open"
     from vaibify.config.projectConfig import fbIsSealedNetworkMode
+    from vaibify.docker.containerManager import fsNetworkModeOf
+    sMode = fsNetworkModeOf(configProject) or S_NETWORK_MODE_UNSTATED_WIRE
     dictNetwork = {"sMode": sMode, "sName": "", "bSealed": fbIsSealedNetworkMode(sMode),
                    "sProxyState": "not-applicable", "listRefused": []}
     if not dictNetwork["bSealed"]:

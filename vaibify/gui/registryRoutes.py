@@ -1269,7 +1269,8 @@ def _fbApplyX11Forwarding(sConfigPath, bNewValue, sContainerName):
         raise HTTPException(
             409,
             f"X11 forwarding cannot be combined with networkMode "
-            f"{configProject.sNetworkMode}. Set networkMode to open first.",
+            f"{configProject.sNetworkMode or '(none written)'}. Set "
+            "networkMode to open first.",
         )
     _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)
     if not bNewValue:

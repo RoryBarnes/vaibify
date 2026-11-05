@@ -210,6 +210,7 @@ def test_flistBuildRunArgs_detached_no_rm(mockX11):
         listSecrets=[],
         features=features,
         bNetworkIsolation=False,
+        sNetworkMode="open",
     )
     saArgs = flistBuildRunArgs(config, bDetached=True)
     assert "--rm" not in saArgs
@@ -236,6 +237,7 @@ def test_flistBuildRunArgs_interactive_has_rm(mockX11):
         listSecrets=[],
         features=features,
         bNetworkIsolation=False,
+        sNetworkMode="open",
     )
     saArgs = flistBuildRunArgs(config, bDetached=False)
     assert "--rm" in saArgs

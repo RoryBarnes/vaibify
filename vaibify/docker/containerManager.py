@@ -35,7 +35,8 @@ from .volumeManager import (
     fbVolumeExists, fsGetCredentialsVolumeName, fsGetVolumeName,
 )
 from vaibify.config.projectConfig import (
-    S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN, fbIsSealedNetworkMode,
+    S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_OPEN, S_NETWORK_MODE_UNSTATED,
+    fbIsSealedNetworkMode, fsDescribeUnstatedNetworkMode,
 )
 
 from . import egressProxy, projectEgress
@@ -572,6 +573,7 @@ def flistBuildRunArgs(
     capabilities and replaces the image's entrypoint; a posture without
     credentials leaves the credentials volume and the agent bridge off.
     """
+    _fnRequireStatedNetworkMode(config)
     bRestricted = bool(dictPosture) and dictPosture["sMode"] == "restricted"
     bCredentials = not dictPosture or dictPosture["bWithCredentials"]
     saRunArgs = _flistBuildProcessModeArgs(bDetached, bCreateOnly)
@@ -1250,13 +1252,29 @@ def _fnAddNetworkIsolation(config, saRunArgs, dictEgress=None):
     ])
 
 
+def _fnRequireStatedNetworkMode(config):
+    """Refuse to build a single argument for a project whose file names no mode.
+
+    The first line of the run-argument builder, so every launch path
+    (start, detached start, create-only, recreate) refuses through the
+    one builder before any argument exists (ruling D1, 2026-11-04).
+    """
+    if fsNetworkModeOf(config) == S_NETWORK_MODE_UNSTATED:
+        raise RuntimeError(fsDescribeUnstatedNetworkMode(config.sProjectName))
+
+
 def fsNetworkModeOf(config):
-    """Return the project's network mode, reading the old spelling too."""
+    """Return the project's network mode, reading the old spelling too.
+
+    The old boolean's ``true`` is ``isolated``; its ``false`` names no
+    mode, so a config with neither reads UNSTATED, never open.
+    """
     sMode = getattr(config, "sNetworkMode", "")
     if sMode:
         return sMode
-    return (S_NETWORK_MODE_ISOLATED if getattr(config, "bNetworkIsolation", False)
-            else S_NETWORK_MODE_OPEN)
+    if getattr(config, "bNetworkIsolation", False):
+        return S_NETWORK_MODE_ISOLATED
+    return S_NETWORK_MODE_UNSTATED
 
 
 def fdictPrepareEgressForLaunch(config):
@@ -1303,7 +1321,8 @@ def _fnAddX11Forwarding(config, saRunArgs):
         raise RuntimeError(
             f"'{config.sProjectName}' sets x11Forwarding with networkMode: "
             f"{sMode}. A sealed container cannot use a display channel; "
-            "set networkMode to open or x11Forwarding to false in vaibify.yml."
+            "set networkMode: open explicitly (vaibify will ask you to "
+            "approve it) or x11Forwarding to false in vaibify.yml."
         )
     saRunArgs.extend(flistConfigureX11Args(
         config.sProjectName, _fsProjectUuidOrEmpty(config.sProjectName),

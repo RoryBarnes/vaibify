@@ -138,7 +138,7 @@ def testASealingModeIsRefusedBesideX11AndX11BesideASealingMode(tmp_path):
     Kills: saving allowlist mode while X11 forwarding is on.
     """
     clientHttp, sConfigPath, patchProject = _fclientForConfig(
-        tmp_path, "x11Forwarding: true\n")
+        tmp_path, "networkMode: open\nx11Forwarding: true\n")
     with patchProject:
         responseMode = clientHttp.post(_fsSettingsPath(), json={"sNetworkMode": "allowlist"})
     assert responseMode.status_code == 409

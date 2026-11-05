@@ -50,6 +50,7 @@ def _fConfigMinimal():
         listSecrets=[],
         features=features,
         bNetworkIsolation=False,
+        sNetworkMode="open",
     )
 
 

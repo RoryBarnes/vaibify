@@ -39868,11 +39868,20 @@ LIST_FALSIFICATIONS = [
         new='    if sMode != "allowlist":\n        return\n    if not dictEgress',
     ),
     Falsification(
-        nodeid='tests/testNetworkMode.py::testAKeylessLegacyFileStillLoadsOpen',
-        # The configuration's own default becoming web.
+        nodeid='tests/testNetworkMode.py::testEveryLaunchFunctionRefusesAnUnstatedModeBeforeAnyArgumentIsBuilt',
+        # The run-argument builder no longer asking for a stated mode
+        # before it builds anything (ruling D1 revised, 2026-11-04).
+        source='vaibify/docker/containerManager.py',
+        old='    _fnRequireStatedNetworkMode(config)\n    bRestricted = ',
+        new='    bRestricted = ',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAKeylessLegacyFileIsUnstatedAndCannotStart',
+        # Deriving open again for a file that names no mode (the silent
+        # default ruling D1's 2026-11-04 revision removed).
         source='vaibify/config/projectConfig.py',
-        old='    sNetworkMode: str = S_NETWORK_MODE_OPEN\n',
-        new='    sNetworkMode: str = S_NETWORK_MODE_WEB\n',
+        old='    sNetworkMode: str = S_NETWORK_MODE_UNSTATED\n',
+        new='    sNetworkMode: str = S_NETWORK_MODE_OPEN\n',
     ),
     Falsification(
         nodeid='tests/testNetworkMode.py::testEveryNewProjectPathWritesWeb',

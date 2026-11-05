@@ -1501,8 +1501,11 @@ var VaibifyContainerManager = (function () {
                     "settingNeverSleep").checked;
                 var bX11Forwarding = document.getElementById(
                     "settingX11Forwarding").checked;
+                /* The placeholder of an unstated file has no value;
+                   null leaves the mode as it is, so the other settings
+                   still save. */
                 var sNetworkMode = document.getElementById(
-                    "settingNetworkMode").value;
+                    "settingNetworkMode").value || null;
                 var iCpuLimit = _fiParsePositiveNumber(
                     "settingCpuLimit", true);
                 var fMemoryLimitGigabytes = _fiParsePositiveNumber(
@@ -1519,8 +1522,11 @@ var VaibifyContainerManager = (function () {
     }
 
     function _fsNetworkModeOf(dictSettings) {
+        /* "" is a file that names no mode (ruling D1): not open, not
+           sealed, and no container can be created until one is
+           written. The old boolean's true still means isolated. */
         if (dictSettings.sNetworkMode) return dictSettings.sNetworkMode;
-        return dictSettings.bNetworkIsolation === true ? "isolated" : "open";
+        return dictSettings.bNetworkIsolation === true ? "isolated" : "";
     }
 
     function _fsRenderNetworkModeSetting(dictSettings) {
@@ -1534,19 +1540,24 @@ var VaibifyContainerManager = (function () {
             ["open", "Open (the whole network, including this computer)"],
             ["isolated", "Isolated (no network)"],
         ];
+        var sPlaceholder = sMode === ""
+            ? '<option value="" disabled selected>Choose a network ' +
+              'mode</option>' : "";
         var listAllowed = dictSettings.listAllowedHosts || [];
         return '<div class="settings-option">' +
             '<label class="settings-option-row">' +
             '<span class="settings-option-label">Network mode</span> ' +
             '<select id="settingNetworkMode"' + (bX11 ? " disabled" : "") +
-            '>' + listModes.map(function (tMode) {
+            '>' + sPlaceholder + listModes.map(function (tMode) {
                 return '<option value="' + tMode[0] + '"' +
                     (tMode[0] === sMode ? " selected" : "") + '>' +
                     VaibifyUtilities.fnEscapeHtml(tMode[1]) + '</option>';
             }).join("") + '</select></label>' +
             '<p class="settings-option-help">What the container may ' +
             'reach. It takes effect when the container is created ' +
-            'again.' + (bX11 ? ' Locked to open while X11 display ' +
+            'again.' + (sMode === "" ? ' No mode is written; the ' +
+            'container cannot be created until one is chosen.' : '') +
+            (bX11 ? ' Locked to open while X11 display ' +
             'forwarding is on.' : '') +
             (listAllowed.length ? ' Hosts you allowed: ' +
                 VaibifyUtilities.fnEscapeHtml(listAllowed.join(", ")) + '.'

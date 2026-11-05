@@ -36,9 +36,25 @@ T_NETWORK_MODES = (S_NETWORK_MODE_OPEN, S_NETWORK_MODE_ALLOWLIST,
                    S_NETWORK_MODE_ISOLATED, S_NETWORK_MODE_WEB)
 # The modes that join the sealed network behind the proxy sidecar.
 T_SEALED_NETWORK_MODES = (S_NETWORK_MODE_ALLOWLIST, S_NETWORK_MODE_WEB)
-# What every newly created project is written with; a file that names
-# no mode still means open (the dataclass default below).
+# A file that names no mode. Not a mode: it is outside T_NETWORK_MODES,
+# it loads and appears on the dashboard, and no container can be
+# created for it until one line is written (ruling D1, revised
+# 2026-11-04). Earlier versions read such a file as open.
+S_NETWORK_MODE_UNSTATED = ""
+# What every newly created project is written with.
 S_NEW_PROJECT_NETWORK_MODE = S_NETWORK_MODE_WEB
+
+
+def fsDescribeUnstatedNetworkMode(sProjectName):
+    """Return the one sentence every surface shows for a file with no mode."""
+    return (
+        f"'{sProjectName}' names no networkMode in vaibify.yml, so no "
+        "container can be created for it. Add one line: networkMode: web "
+        "(the public internet through vaibify's proxy, nothing on this "
+        "computer or your network), allowlist, isolated, or open (the "
+        "whole network, this computer included; vaibify asks for your "
+        "approval). Earlier versions read a file with no mode as open."
+    )
 
 
 def fbIsSealedNetworkMode(sMode):
@@ -136,10 +152,10 @@ class ProjectConfig:
     )
     # networkMode is the setting (ruling D1); bNetworkIsolation is its
     # old spelling, kept in agreement with it by the loader so every
-    # reader of either sees one truth.
-    # Open is what a keyless legacy file means; new projects are written
-    # with S_NEW_PROJECT_NETWORK_MODE instead.
-    sNetworkMode: str = S_NETWORK_MODE_OPEN
+    # reader of either sees one truth. A file that names no mode is
+    # UNSTATED and cannot start a container; new projects are written
+    # with S_NEW_PROJECT_NETWORK_MODE.
+    sNetworkMode: str = S_NETWORK_MODE_UNSTATED
     listAllowedHosts: List[str] = field(default_factory=list)
     bNetworkIsolation: bool = False
     bX11Forwarding: bool = False
@@ -346,18 +362,20 @@ def fconfigFromYamlDict(dictRaw):
 def fdictReconcileNetworkKeys(dictRaw):
     """Return the dict with ``networkMode`` and ``networkIsolation`` agreeing.
 
-    Ruling D1: a file that names only the old key is read as it always
-    was (``true`` is isolated, ``false`` is open); a file that names
-    only the new key gets the old one derived; a file that names both
-    is left alone here and refused by validation when they disagree.
+    Ruling D1, revised 2026-11-04: ``networkIsolation: true`` alone
+    still derives ``isolated``, but ``false`` alone derives NOTHING,
+    because the old boolean cannot express a three-way choice: ``false``
+    said only "not isolated", never "open", and reading it as open was
+    the silent default this revision removes. A file that names only
+    the new key gets the old one derived; a file that names both is
+    left alone here and refused by validation when they disagree.
     """
     dictResult = dict(dictRaw)
     bHasMode = "networkMode" in dictResult
     bHasIsolation = "networkIsolation" in dictResult
     if bHasIsolation and not bHasMode:
-        dictResult["networkMode"] = (
-            S_NETWORK_MODE_ISOLATED if dictResult["networkIsolation"] is True
-            else S_NETWORK_MODE_OPEN)
+        if dictResult["networkIsolation"] is True:
+            dictResult["networkMode"] = S_NETWORK_MODE_ISOLATED
     elif bHasMode and not bHasIsolation:
         dictResult["networkIsolation"] = (
             dictResult["networkMode"] == S_NETWORK_MODE_ISOLATED)
@@ -391,9 +409,15 @@ def fbValidateConfig(dictConfig):
 
 
 def _fbValidateNetworkMode(dictConfig):
-    """Check networkMode, allowedHosts and their agreement with networkIsolation."""
-    sMode = dictConfig.get("networkMode", S_NETWORK_MODE_OPEN)
-    if sMode not in T_NETWORK_MODES:
+    """Check networkMode, allowedHosts and their agreement with networkIsolation.
+
+    An UNSTATED mode (no key) passes on purpose: a config that fails to
+    load vanishes from the dashboard, and a project the researcher can
+    still see and correct is the better failure. Only a present value
+    outside the mode set is refused.
+    """
+    sMode = dictConfig.get("networkMode")
+    if sMode is not None and sMode not in T_NETWORK_MODES:
         return False
     if not isinstance(dictConfig.get("networkIsolation", False), bool):
         return False
@@ -908,7 +932,8 @@ def _fconfigFromYamlDict(dictYaml):
     dictHungarian["features"] = featuresConfig
     dictHungarian["reproducibility"] = reproConfig
     dictHungarian["bNetworkIsolation"] = (
-        dictHungarian.get("sNetworkMode", S_NETWORK_MODE_OPEN) == S_NETWORK_MODE_ISOLATED)
+        dictHungarian.get("sNetworkMode", S_NETWORK_MODE_UNSTATED)
+        == S_NETWORK_MODE_ISOLATED)
     return ProjectConfig(**dictHungarian)
 
 
@@ -962,7 +987,20 @@ def _fdictConfigToYamlDict(config):
 
 
 def _fdictScalarFieldsToYaml(config):
-    """Convert scalar and list fields of ProjectConfig to YAML dict."""
+    """Convert scalar and list fields of ProjectConfig to YAML dict.
+
+    An unstated network mode writes NO ``networkMode`` key: saving a
+    loaded legacy file must not write ``networkMode: ''``, which
+    validation would then refuse, and the absence is the whole fact.
+    """
+    dictFields = _fdictAllScalarFieldsToYaml(config)
+    if config.sNetworkMode == S_NETWORK_MODE_UNSTATED:
+        del dictFields["networkMode"]
+    return dictFields
+
+
+def _fdictAllScalarFieldsToYaml(config):
+    """Return every scalar and list field as a YAML dict, in file order."""
     return {
         "projectName": config.sProjectName,
         "containerUser": config.sContainerUser,

@@ -211,7 +211,7 @@ LIST_RESEARCHER_ACTIONS = [
         "/api/containers/{sName}/settings",
         "Change the container's settings, e.g. CPU and memory limits. "
         "Args: any of {iCpuLimit, fMemoryLimitGigabytes, bNeverSleep, "
-        "bX11Forwarding, sNetworkMode: open|allowlist|isolated, "
+        "bX11Forwarding, sNetworkMode: web|allowlist|isolated|open, "
         "b<Agent>AutoUpdate}."),
     _fdictHubEntry(
         "allow-network-host", "container", "POST",

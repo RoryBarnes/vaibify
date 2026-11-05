@@ -2614,7 +2614,7 @@ var VaibifyWorkflowManager = (function () {
     ];
 
     function _fsRenderNetworkModeRow() {
-        var sMode = _dictWizardData.sNetworkMode || "open";
+        var sMode = _dictWizardData.sNetworkMode || "web";
         var bBlocked = _dictWizardData.bX11Forwarding === true;
         return '<label class="wizard-toggle-row" title="What the ' +
             'container may reach. Web, allowlist and isolated seal it ' +
@@ -2632,7 +2632,7 @@ var VaibifyWorkflowManager = (function () {
 
     function _fsRenderX11ForwardingRow() {
         var bChecked = _dictWizardData.bX11Forwarding === true;
-        var bBlocked = (_dictWizardData.sNetworkMode || "open") !== "open";
+        var bBlocked = (_dictWizardData.sNetworkMode || "web") !== "open";
         return '<label class="wizard-toggle-row" title="Lets ' +
             'graphical programs in the container open windows on ' +
             'your screen. A connected program can draw on it, so it ' +
@@ -3008,7 +3008,7 @@ var VaibifyWorkflowManager = (function () {
             ? _fsSummaryRow("Prevent macOS sleep",
                 _dictWizardData.bNeverSleep ? "Yes" : "No") : "";
         return sNeverSleep + _fsSummaryRow(
-            "Network mode", _dictWizardData.sNetworkMode || "open") +
+            "Network mode", _dictWizardData.sNetworkMode || "web") +
             _fsSummaryRow("X11 display forwarding",
                 _dictWizardData.bX11Forwarding ? "Yes" : "No") +
             _fsSummaryResourceLimitLines();

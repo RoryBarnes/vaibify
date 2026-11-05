@@ -60,7 +60,7 @@ def fconfigAgentProject():
     return SimpleNamespace(
         sProjectName=S_PROJECT, sWorkspaceRoot="/workspace",
         sContainerUser="researcher", listPorts=[], listBindMounts=[],
-        listSecrets=[], bNetworkIsolation=False, iCpuLimit=0,
+        listSecrets=[], bNetworkIsolation=False, sNetworkMode="open", iCpuLimit=0,
         fMemoryLimitGigabytes=0.0,
         features=SimpleNamespace(
             bGpu=False, bClaude=True, bCodex=False, bGemini=False,

@@ -40,7 +40,8 @@ def fconfigBuildMinimal(sProjectName="reservationProject"):
         sWorkspaceRoot="/workspace",
         sContainerUser="researcher",
         listPorts=[], listBindMounts=[], listSecrets=[],
-        bNetworkIsolation=False, iCpuLimit=0, fMemoryLimitGigabytes=0.0,
+        bNetworkIsolation=False, sNetworkMode="open", iCpuLimit=0,
+        fMemoryLimitGigabytes=0.0,
         features=SimpleNamespace(
             bGpu=False, bClaude=False, bCodex=False, bGemini=False,
             bOpenCode=False, bCline=False, bOpenHands=False, bPi=False,

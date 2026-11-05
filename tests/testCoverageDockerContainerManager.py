@@ -103,6 +103,7 @@ def fconfigProject():
     """Return a real, validated configuration with no agents enabled."""
     return fconfigFromYamlDict({
         "projectName": S_PROJECT_NAME,
+        "networkMode": "open",
         "features": {"latex": False},
     })
 
