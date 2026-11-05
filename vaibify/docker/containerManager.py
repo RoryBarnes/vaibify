@@ -574,6 +574,7 @@ def flistBuildRunArgs(
     credentials leaves the credentials volume and the agent bridge off.
     """
     _fnRequireStatedNetworkMode(config)
+    _fnRequireReachApproval(config)
     bRestricted = bool(dictPosture) and dictPosture["sMode"] == "restricted"
     bCredentials = not dictPosture or dictPosture["bWithCredentials"]
     saRunArgs = _flistBuildProcessModeArgs(bDetached, bCreateOnly)
@@ -1261,6 +1262,49 @@ def _fnRequireStatedNetworkMode(config):
     """
     if fsNetworkModeOf(config) == S_NETWORK_MODE_UNSTATED:
         raise RuntimeError(fsDescribeUnstatedNetworkMode(config.sProjectName))
+
+
+def _fnRequireReachApproval(config):
+    """Refuse a configuration that widens reach until this host holds its approval.
+
+    The second line of the run-argument builder (ruling D2, 2026-11-04):
+    every launch path refuses through it before any argument exists. A
+    project the registry does not know has nowhere to hold a record, so
+    a widening configuration is refused for it with that reason.
+    """
+    from vaibify.config.reachApproval import ReachApprovalRequiredError
+    dictPrompt = fdictBuildReachPromptIfUnapproved(config)
+    if dictPrompt is not None:
+        raise ReachApprovalRequiredError(config.sProjectName, dictPrompt)
+
+
+def fdictBuildReachPromptIfUnapproved(config):
+    """Return the approval prompt when the launch would refuse, else ``None``.
+
+    The one judgement the launch gate, the start route's courtesy
+    refusal and the command line all read, so none of them can differ
+    on whether a question is owed.
+    """
+    from vaibify.config import reachApproval
+    from vaibify.config.registryManager import S_REACH_APPROVAL_KEY
+    if not reachApproval.fbConfigurationWidensReach(config):
+        return None
+    dictProject = _fdictRegisteredProjectOrNone(config.sProjectName)
+    dictRecord = (dictProject or {}).get(S_REACH_APPROVAL_KEY)
+    if dictProject is not None and reachApproval.fbApprovalCoversConfiguration(
+            dictRecord, config):
+        return None
+    return reachApproval.fdictBuildReachPrompt(
+        config, dictRecord, bRegistered=dictProject is not None)
+
+
+def _fdictRegisteredProjectOrNone(sProjectName):
+    """Return the registry entry for the project, or ``None`` when unknown."""
+    from vaibify.config.registryManager import fdictGetProject
+    try:
+        return fdictGetProject(sProjectName)
+    except (KeyError, OSError, ValueError):
+        return None
 
 
 def fsNetworkModeOf(config):

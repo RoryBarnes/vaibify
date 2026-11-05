@@ -1559,9 +1559,22 @@ var VaibifyContainerManager = (function () {
             'container cannot be created until one is chosen.' : '') +
             (bX11 ? ' Locked to open while X11 display ' +
             'forwarding is on.' : '') +
+            _fsReachApprovalNote(dictSettings.dictReachApproval) +
             (listAllowed.length ? ' Hosts you allowed: ' +
                 VaibifyUtilities.fnEscapeHtml(listAllowed.join(", ")) + '.'
                 : '') + '</p></div>';
+    }
+
+    function _fsReachApprovalNote(dictReachApproval) {
+        /* The host-held record that the file's reach-widening settings
+           were approved, by its date; no record means none is needed
+           or none was given, and the start asks when it matters. */
+        if (!dictReachApproval || !dictReachApproval.sRecordedIso) return "";
+        return ' <span id="settingReachApproval">Settings that widen ' +
+            'what the container reaches were approved on this computer ' +
+            'on ' + VaibifyUtilities.fnEscapeHtml(
+                String(dictReachApproval.sRecordedIso).slice(0, 10)) +
+            '.</span>';
     }
 
     function _fsRenderX11Setting(dictSettings) {
@@ -2248,6 +2261,7 @@ var VaibifyContainerManager = (function () {
             }
             if (_fbOfferBuildOfUnbuiltImage(error, sName)) return;
             if (_fbOfferImageTrust(error, sName)) return;
+            if (_fbOfferReachApproval(error, sName)) return;
             VaibifyDiagnosis.fnReportFailureFromError(error);
         } finally {
             fnLoadContainers();
@@ -2282,6 +2296,45 @@ var VaibifyContainerManager = (function () {
                 },
             });
         return true;
+    }
+
+    function _fbOfferReachApproval(error, sName) {
+        /* The start route refuses a vaibify.yml whose reach-widening
+           settings (open network mode, X11, bind mounts, allowed hosts)
+           this computer holds no approval for, and sends the question
+           with the refusal (ruling D2). The words are the server's.
+           Nothing was reserved or created, so cancelling leaves nothing
+           behind. */
+        var dictDetail = (error && error.dictDetail) || {};
+        if (dictDetail.sAction !== "confirm-reach") return false;
+        var dictPrompt = dictDetail.dictReachPrompt || {};
+        VaibifyModals.fnShowConfirmModal(
+            dictPrompt.sTitle || "Approve what this container may reach?",
+            dictPrompt.sText || dictDetail.sMessage || "",
+            function () { _fnApproveReachAndStart(sName, dictPrompt); },
+            {
+                sConfirmLabel: "Approve and start",
+                fnOnCancel: function () {
+                    VaibifyApp.fnShowToast(
+                        "'" + sName + "' was not started.", "info");
+                    fnLoadContainers();
+                },
+            });
+        return true;
+    }
+
+    async function _fnApproveReachAndStart(sName, dictPrompt) {
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/reach-approval",
+                {sReachFingerprint: dictPrompt.sReachFingerprint || ""});
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            fnLoadContainers();
+            return;
+        }
+        fnStartContainer(sName);
     }
 
     function _fnContinueAfterImageTrust(sName, dictRecord) {

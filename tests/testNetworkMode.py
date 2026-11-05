@@ -20,6 +20,10 @@ from vaibify.config import projectConfig
 from vaibify.docker import containerManager, egressAllowlist, egressProxy
 
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 def _fconfigForLaunch(sNetworkMode="open", bX11Forwarding=False, **dictExtra):
     features = SimpleNamespace(
         bGpu=False, bClaude=True, bClaudeAutoUpdate=True, bCodex=False,

@@ -39893,8 +39893,76 @@ LIST_FALSIFICATIONS = [
         # The run-argument builder no longer asking for a stated mode
         # before it builds anything (ruling D1 revised, 2026-11-04).
         source='vaibify/docker/containerManager.py',
-        old='    _fnRequireStatedNetworkMode(config)\n    bRestricted = ',
+        old='    _fnRequireStatedNetworkMode(config)\n    _fnRequireReachApproval(config)\n',
+        new='    _fnRequireReachApproval(config)\n',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testEveryLaunchFunctionRefusesAnUnapprovedWideningConfiguration',
+        # The run-argument builder no longer asking for the host-held
+        # approval of a reach-widening configuration (ruling D2, 2026-11-04).
+        source='vaibify/docker/containerManager.py',
+        old='    _fnRequireReachApproval(config)\n    bRestricted = ',
         new='    bRestricted = ',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testTheStartRouteAsksForApprovalBeforeReservingAnything',
+        # Dropping the courtesy half: the start would reserve and journal a
+        # start the launch guard then refuses.
+        source='vaibify/gui/startReservation.py',
+        old=(
+            '    dictReachRefusal = await asyncio.to_thread(\n'
+            '        _fdictRefusalForUnapprovedReach, sName)\n'
+            '    if dictReachRefusal:\n'
+            '        return (409, dictReachRefusal)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testTheApprovalRouteRefusesAStaleFingerprintAndRecordsTheCurrentOne',
+        # Approving blind: a file changed after the question was shown is
+        # approved as if it were the one shown.
+        source='vaibify/gui/routes/reachApprovalRoutes.py',
+        old='        if request.sReachFingerprint != reachApproval.fsComputeReachFingerprint(config):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testTheFingerprintIsTheCanonicalJsonOfTheFourFields',
+        # Hashing a different field set: a change to one of the four
+        # would no longer be a new question.
+        source='vaibify/config/reachApproval.py',
+        old='    "sNetworkMode", "bX11Forwarding", "listBindMounts", "listAllowedHosts",\n',
+        new='    "sNetworkMode", "bX11Forwarding", "listBindMounts",\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheReachApprovalModalAsksBeforeAWideningStart.py::testTheModalShowsTheServersWordsAndApproveRetriesTheStart',
+        # The frontend ignoring the confirm-reach refusal.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            if (_fbOfferReachApproval(error, sName)) return;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheReachApprovalModalAsksBeforeAWideningStart.py::testAHostilePromptRendersAsText',
+        # The modal's body interpolated unescaped.
+        source='vaibify/gui/static/scriptModals.js',
+        old=(
+            "            '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +\n"
+            "            '<p style=\"white-space:pre-wrap;margin-bottom:16px\">' +\n"
+            "            fnEscapeHtml(sMessage) + '</p>' +\n"
+            "            _fsBuildPendingSentence(dictDetails) +\n"
+        ),
+        new=(
+            "            '<h2>' + sTitle + '</h2>' +\n"
+            "            '<p style=\"white-space:pre-wrap;margin-bottom:16px\">' +\n"
+            "            sMessage + '</p>' +\n"
+            "            _fsBuildPendingSentence(dictDetails) +\n"
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalCommandLine.py::testWithoutATerminalAnUnapprovedConfigurationStopsAndNamesTheFlag',
+        # Approving by default when there is nobody to ask.
+        source='vaibify/cli/reachApprovalPrompt.py',
+        old='    if not (sys.stdin.isatty() and sys.stdout.isatty()):\n        click.echo(\n',
+        new='    if False:\n        click.echo(\n',
     ),
     Falsification(
         nodeid='tests/testNetworkMode.py::testAKeylessLegacyFileIsUnstatedAndCannotStart',

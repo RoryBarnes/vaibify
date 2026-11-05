@@ -15,6 +15,10 @@ from vaibify.docker.containerManager import (
 )
 
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 def test_fnAddCpuAllocation_adds():
     saRunArgs = []
     _fnAddCpuAllocation(_fConfigMinimal(), saRunArgs)

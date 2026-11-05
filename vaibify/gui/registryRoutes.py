@@ -1082,6 +1082,7 @@ def _fnRegisterContainerSettings(app, dictCtx):
             "fMemoryLimitGigabytes":
                 configProject.fMemoryLimitGigabytes,
             "dictImageTrust": dictProject.get("dictImageTrust"),
+            "dictReachApproval": dictProject.get("dictReachApproval"),
             "bImageObtained": fbProjectImageIsObtained(dictProject),
         }
         for _, sEnabledField, sAutoUpdateField, _ in _T_AGENT_SETTINGS:
@@ -1152,6 +1153,7 @@ def _fnRegisterContainerSettings(app, dictCtx):
         listLimitOutcomes = await _flistApplyLimitSettings(
             app.state, sName, dictProject, request,
         )
+        _fnRecordReachApprovalForWrite(sName, dictProject["sConfigPath"])
         from vaibify.config import resourceAdequacy
         from vaibify.config.projectConfig import fconfigLoadFromFile
         return {
@@ -1213,6 +1215,18 @@ def _fnRegisterWritableLayerPreview(app, dictCtx):
         return await fdictPreviewWritableLayer(
             dictCtx["docker"], sName, dictReadsInFlight,
         )
+
+
+def _fnRecordReachApprovalForWrite(sName, sConfigPath):
+    """Record the researcher's approval of the file a researcher-only route wrote.
+
+    The settings dialog, the allow-host button and project creation are
+    refused to the agent lane, so the call IS the approval (ruling D2):
+    a researcher never meets the reach prompt for a change they made
+    here. A file that widens nothing leaves no record.
+    """
+    from vaibify.config.reachApproval import fnRecordApprovalForConfigurationFile
+    fnRecordApprovalForConfigurationFile(sName, sConfigPath)
 
 
 def _fbApplyNetworkMode(sConfigPath, sNewMode):
@@ -1333,6 +1347,7 @@ def _fnRegisterAllowHost(app, dictCtx):
         fnRejectAgentTokenLane(requestHttp)
         dictProject = _fdictRequireProject(sName)
         listAllowed = _flistAllowHost(dictProject["sConfigPath"], request.sHost)
+        _fnRecordReachApprovalForWrite(sName, dictProject["sConfigPath"])
         return {"bSuccess": True, "bRestartRequired": True,
                 "listAllowedHosts": listAllowed}
 
@@ -1993,6 +2008,7 @@ def _fnRegisterCreateProject(app, dictCtx):
             _fnScaffoldProject(request)
             _fnWriteProjectConfig(request)
             _fnRegisterNewProject(request.sDirectory, request.sMode)
+            _fnRecordReachApprovalForNewProject(request)
         return {"bSuccess": True, "sDirectory": request.sDirectory}
 
 
@@ -2788,6 +2804,22 @@ def _flistRepositoriesFromUrls(listUrls):
     """
     from vaibify.cli.repositoryPreflight import flistRepositoryEntriesFromUrls
     return flistRepositoryEntriesFromUrls(listUrls)
+
+
+def _fnRecordReachApprovalForNewProject(request):
+    """Record approval for the file the wizard just wrote, once registered.
+
+    The entry exists only after ``fnAddProject``, so the record is
+    written after it, under the name the registry gave the project. A
+    host project has no container whose reach could widen.
+    """
+    if request.sMode == "host":
+        return
+    from vaibify.config.registryManager import fdictGetProject
+    dictProject = fdictGetProject(request.sProjectName)
+    if dictProject is None:
+        return
+    _fnRecordReachApprovalForWrite(request.sProjectName, dictProject["sConfigPath"])
 
 
 def _fnRegisterNewProject(sDirectory, sMode="container"):

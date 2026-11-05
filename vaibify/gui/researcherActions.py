@@ -314,6 +314,8 @@ DICT_ROUTE_TO_HOST_COMMAND = {
     ("POST", "/api/registry/{sName}/reconcile"): "reconcile",
     # `vaibify start --image-trust` records the same trust grant.
     ("POST", "/api/registry/{sName}/image-trust"): "start",
+    # `vaibify start --approve-reach` records the same approval.
+    ("POST", "/api/registry/{sName}/reach-approval"): "start",
     # `vaibify open` mints and redeems the transfer capability.
     ("POST", "/api/transfer"): "open",
     # The dashboard's new-project form; `vaibify init` scaffolds one.
