@@ -81,9 +81,10 @@ def testPreflightWarningsAreCollectedOffTheEventLoop():
     async def fnStatusCallback(dictEvent):
         listEvents.append(dictEvent)
 
+    fnLogging = pipelineLogger.ffBuildLoggingCallback(fnStatusCallback, [])
     with patch.object(
         pipelineRunner, "_ftPrepareLogAndVariables",
-        AsyncMock(return_value=("/log", [], AsyncMock(), {})),
+        AsyncMock(return_value=("/log", [], fnLogging, {})),
     ), patch.object(
         pipelineRunner, "_flistPreflightValidate", AsyncMock(return_value=[]),
     ), patch.object(

@@ -40036,6 +40036,27 @@ LIST_FALSIFICATIONS = [
         new='DICT_DARWIN_FLAG_SPELLINGS = {}\n',
     ),
     Falsification(
+        nodeid='tests/testPreRunWarningsReachTheRunLog.py::testAPreRunWarningReachesThePageAndTheRunLogAlike',
+        # The runner emitting a pre-run warning through the raw status
+        # callback, past the logging one, so the run log never has it.
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '    for sWarning in listPreflightWarnings:\n'
+            '        await fnLogging({\n'
+        ),
+        new=(
+            '    for sWarning in listPreflightWarnings:\n'
+            '        await fnStatusCallback({\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPreRunWarningsReachTheRunLog.py::testTheLogExtractorWritesTheWarningInThePagesWords',
+        # The log extractor knowing no pre-run warning event.
+        source='vaibify/gui/pipelineLogger.py',
+        old='        return S_LOG_WARNING_PREFIX + dictEvent.get("sMessage", "")\n',
+        new='        return None\n',
+    ),
+    Falsification(
         nodeid='tests/testRegistryRoutes.py::testGetRegistryMarksATabsOwnInFlightStartAsItsOwn',
         # Attributing a held record by its lease only, so a tab's own
         # in-flight start reads as another browser session's.
