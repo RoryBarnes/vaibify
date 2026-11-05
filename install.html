@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced Installation &mdash; Vaibify 0.2.4.dev18 documentation</title>
+  <title>Advanced Installation &mdash; Vaibify 0.2.4.dev32 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=dcb4d103"></script>
+      <script src="_static/documentation_options.js?v=a5384cf7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -524,8 +524,8 @@ comment <code class="docutils literal notranslate"><span class="pre">#</span> <s
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">networkMode</span></code></p></td>
 <td><p>string</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">open</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">web</span></code>, <code class="docutils literal notranslate"><span class="pre">allowlist</span></code>, <code class="docutils literal notranslate"><span class="pre">open</span></code> or <code class="docutils literal notranslate"><span class="pre">isolated</span></code>. <code class="docutils literal notranslate"><span class="pre">web</span></code> seals the container behind vaibify’s proxy, which reaches any public host but nothing on your machine or network; it is what every new project is created with, by the wizard and by <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code> (a file that names no mode means <code class="docutils literal notranslate"><span class="pre">open</span></code>). <code class="docutils literal notranslate"><span class="pre">allowlist</span></code> is the same seal with the proxy limited to the hosts the project needs. Both need Docker Engine 28. <code class="docutils literal notranslate"><span class="pre">isolated</span></code> is <code class="docutils literal notranslate"><span class="pre">--network</span> <span class="pre">none</span></code>. No sealing mode can be combined with <code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>. Takes effect when the container is created (see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>)</p></td>
+<td><p>none (required)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">web</span></code>, <code class="docutils literal notranslate"><span class="pre">allowlist</span></code>, <code class="docutils literal notranslate"><span class="pre">open</span></code> or <code class="docutils literal notranslate"><span class="pre">isolated</span></code>. <code class="docutils literal notranslate"><span class="pre">web</span></code> seals the container behind vaibify’s proxy, which reaches any public host but nothing on your machine or network; it is what every new project is created with, by the wizard and by <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code>. A file that names no mode cannot start a container until one is written; earlier versions read it as <code class="docutils literal notranslate"><span class="pre">open</span></code>. <code class="docutils literal notranslate"><span class="pre">allowlist</span></code> is the same seal with the proxy limited to the hosts the project needs. Both need Docker Engine 28. <code class="docutils literal notranslate"><span class="pre">isolated</span></code> is <code class="docutils literal notranslate"><span class="pre">--network</span> <span class="pre">none</span></code>. <code class="docutils literal notranslate"><span class="pre">open</span></code> is the whole network, this computer included, and asks for your approval on this computer before the container is created. No sealing mode can be combined with <code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>. Takes effect when the container is created (see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">allowedHosts</span></code></p></td>
 <td><p>list</p></td>

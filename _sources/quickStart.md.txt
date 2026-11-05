@@ -77,7 +77,7 @@ Using the dashboard to click through tasks is soooo 2025. Now we ask AI agents t
 
 So are the new files identical to the author's manifest? From the **Run** menu, choose **Check Files Against Manifest** again.
 
-You will see an alert in the top right that counts the files that do not match. Its **Learn more** button opens a window that lists each file with what was recorded about how it was made, on the author's computer and on yours. A fact only one of the two computers measured is never counted as a difference: a host-mode run does not probe NumPy and its BLAS library, so those facts read "not measured in host mode", and a Mac reports no processor vendor or x86-64 level, so those read "this machine does not report it". A difference in hardware or settings can change a file's last digits, but it doesn't prove that's why the bytes differ. Here's what happened:
+You will see an alert in the top right that counts the files that do not match. Its **Learn more** button opens a window that lists each file with what was recorded about how it was made, on the author's computer and on yours. A fact only one of the two computers measured is never counted as a difference: a host-mode run does not probe NumPy and its BLAS library, so those facts read "not measured in host mode", and an Apple Silicon Mac reports no processor vendor or x86-64 level, so those read "this machine does not report it". A difference in hardware or settings can change a file's last digits, but it doesn't prove that's why the bytes differ. Here's what happened:
 
 - **The fitted values differ in their last digits.** A least-squares fit
   is a sequence of floating-point operations, and different environments'

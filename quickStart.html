@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.2.4.dev18 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.2.4.dev32 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=dcb4d103"></script>
+      <script src="_static/documentation_options.js?v=a5384cf7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -168,7 +168,7 @@ pulses orange as it runs and turns to solid orange once it finishes. Orange mean
 <section id="check-the-bytes-again">
 <h2>6. Check the bytes again<a class="headerlink" href="#check-the-bytes-again" title="Link to this heading"></a></h2>
 <p>So are the new files identical to the author’s manifest? From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong> again.</p>
-<p>You will see an alert in the top right that counts the files that do not match. Its <strong>Learn more</strong> button opens a window that lists each file with what was recorded about how it was made, on the author’s computer and on yours. A fact only one of the two computers measured is never counted as a difference: a host-mode run does not probe NumPy and its BLAS library, so those facts read “not measured in host mode”, and a Mac reports no processor vendor or x86-64 level, so those read “this machine does not report it”. A difference in hardware or settings can change a file’s last digits, but it doesn’t prove that’s why the bytes differ. Here’s what happened:</p>
+<p>You will see an alert in the top right that counts the files that do not match. Its <strong>Learn more</strong> button opens a window that lists each file with what was recorded about how it was made, on the author’s computer and on yours. A fact only one of the two computers measured is never counted as a difference: a host-mode run does not probe NumPy and its BLAS library, so those facts read “not measured in host mode”, and an Apple Silicon Mac reports no processor vendor or x86-64 level, so those read “this machine does not report it”. A difference in hardware or settings can change a file’s last digits, but it doesn’t prove that’s why the bytes differ. Here’s what happened:</p>
 <ul class="simple">
 <li><p><strong>The fitted values differ in their last digits.</strong> A least-squares fit
 is a sequence of floating-point operations, and different environments’

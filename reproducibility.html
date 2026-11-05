@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.2.4.dev18 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.2.4.dev32 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=dcb4d103"></script>
+      <script src="_static/documentation_options.js?v=a5384cf7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -364,7 +364,15 @@ how many cores the run can see. A processor without <code class="docutils litera
 honor the instruction floor, so it runs without those two settings,
 keeps the thread settings, and records “floor not applied: this
 processor lacks x86-64-v3”; the dashboard warns you before such a run
-starts. Then a separate probe loads NumPy under exactly the settings the
+starts, as it does when the processor could not be read at all (the
+record then says why). A processor that is not x86-64 at all, such as
+an Apple Silicon Mac, whether the project runs on the Mac itself or in
+a container, arm64 or an x86-64 one running under emulation, drops the
+same two settings under a state of its own, “floor not applicable”,
+named in the run log and the run context but never warned about:
+nothing about that computer could change it. A Mac has no
+<code class="docutils literal notranslate"><span class="pre">/proc/cpuinfo</span></code>; a host project there is read through <code class="docutils literal notranslate"><span class="pre">sysctl</span></code>, which
+names the same features in Darwin’s spelling. Then a separate probe loads NumPy under exactly the settings the
 steps get, and records what OpenBLAS chose and whether NumPy applied
 each feature it was asked to disable. NumPy before version 2.4 does not
 know the name <code class="docutils literal notranslate"><span class="pre">X86_V4</span></code>; it ignores that request without a visible
@@ -571,8 +579,8 @@ differs, as information, not as a failure.</p>
 computers measured and found different is a recorded difference. A fact
 only one of them measured is named as not measured, with the reason the
 record gives (“not measured in host mode”, because a host-mode run skips
-the NumPy probe; “this machine does not report it”, because a Mac reports
-no processor vendor or <code class="docutils literal notranslate"><span class="pre">x86-64</span></code> level), and is never counted as a
+the NumPy probe; “this machine does not report it”, because an Apple Silicon
+Mac reports no processor vendor or <code class="docutils literal notranslate"><span class="pre">x86-64</span></code> level), and is never counted as a
 difference. Only when every differing file has a recorded difference
 does the check offer to make this computer’s results the published
 ones, by rerunning every step here and regenerating the manifest.

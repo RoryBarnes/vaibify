@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.2.4.dev18 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.2.4.dev32 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=dcb4d103"></script>
+      <script src="_static/documentation_options.js?v=a5384cf7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -371,8 +371,14 @@ reason; never counted as ok). Every <code class="docutils literal notranslate"><
 for the runtime this machine actually uses. For a running container,
 doctor also reports whether it was created consistently with
 <code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>, which is fixed when a container is created, and
-what its network mode is (a web- or allowlist-mode container reaches the
-network only through its proxy; see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). <code class="docutils literal notranslate"><span class="pre">--quiet</span></code> hides the <code class="docutils literal notranslate"><span class="pre">ok</span></code>
+what network it has (a web- or allowlist-mode container reaches the
+network only through its proxy; an open container is warned about as
+<code class="docutils literal notranslate"><span class="pre">network-exposure</span></code>; a container whose attachments contradict the mode
+it was created with fails; see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). The
+project scope also reports <code class="docutils literal notranslate"><span class="pre">network-mode-stated</span></code> (whether <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>
+names a mode at all) and <code class="docutils literal notranslate"><span class="pre">reach-approval</span></code> (whether this computer holds
+your approval of the settings that widen what the container reaches,
+and which of them changed since). <code class="docutils literal notranslate"><span class="pre">--quiet</span></code> hides the <code class="docutils literal notranslate"><span class="pre">ok</span></code>
 lines, <code class="docutils literal notranslate"><span class="pre">--json</span></code> emits the results as JSON, and <code class="docutils literal notranslate"><span class="pre">--explain</span> <span class="pre">CHECK</span></code>
 prints how one check decides and nothing else.</p>
 <p>Doctor works before any project exists, so it is the first check after
@@ -468,7 +474,7 @@ kept from sleeping with <code class="docutils literal notranslate"><span class="
 <h3>vaibify start<a class="headerlink" href="#vaibify-start" title="Link to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>start<span class="w"> </span><span class="o">[</span>-d<span class="o">]</span><span class="w"> </span><span class="o">[</span>--gui<span class="w"> </span><span class="o">[</span>--port<span class="w"> </span>N<span class="o">]]</span><span class="w"> </span><span class="o">[</span>--jupyter<span class="o">]</span><span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span>
 <span class="w">              </span><span class="o">[</span>--image-trust<span class="w"> </span>restricted<span class="p">|</span>as-built<span class="p">|</span>inspect<span class="o">]</span><span class="w"> </span><span class="o">[</span>--with-credentials<span class="o">]</span>
-<span class="w">              </span><span class="o">[</span>COMMAND<span class="o">]</span>
+<span class="w">              </span><span class="o">[</span>--approve-reach<span class="o">]</span><span class="w"> </span><span class="o">[</span>COMMAND<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -493,11 +499,16 @@ kept from sleeping with <code class="docutils literal notranslate"><span class="
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--with-credentials</span></code></p></td>
 <td><p>Let that image’s code read your stored credentials. Needs <code class="docutils literal notranslate"><span class="pre">--image-trust</span></code>; never implied</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--approve-reach</span></code></p></td>
+<td><p>Approve the settings in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> that widen what the container reaches (<code class="docutils literal notranslate"><span class="pre">networkMode:</span> <span class="pre">open</span></code>, <code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>, <code class="docutils literal notranslate"><span class="pre">bindMounts</span></code>, <code class="docutils literal notranslate"><span class="pre">allowedHosts</span></code>). Asked interactively on a terminal, default no; required without one when they are not yet approved on this computer</p></td>
+</tr>
 </tbody>
 </table>
 <p>Without <code class="docutils literal notranslate"><span class="pre">--detach</span></code>, <code class="docutils literal notranslate"><span class="pre">start</span></code> attaches a terminal to the container, or
 runs <code class="docutils literal notranslate"><span class="pre">COMMAND</span></code> in it. See <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a> for what each
-image-trust choice does.</p>
+image-trust choice does and what a reach approval covers. A project
+whose <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> names no <code class="docutils literal notranslate"><span class="pre">networkMode</span></code> is refused before anything
+is created, with the line to add.</p>
 </section>
 <section id="vaibify-status">
 <h3>vaibify status<a class="headerlink" href="#vaibify-status" title="Link to this heading"></a></h3>
