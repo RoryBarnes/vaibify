@@ -110,7 +110,7 @@ def _fnShowTwoFilesInViewerA(page):
 
 def _fnReturnToTheProjectHub(page):
     """Leave the dashboard by the menu's Switch Project path."""
-    page.evaluate("() => VaibifyApp.fnReconnectToCurrentContainer()")
+    page.evaluate("() => VaibifyApp.fnLeaveToProjectHub()")
     page.wait_for_selector(f"text={S_HOST_WORKFLOW_NAME}", timeout=20000)
 
 

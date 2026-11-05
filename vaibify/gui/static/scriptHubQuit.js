@@ -1,6 +1,6 @@
 /* Vaibify — Quit vaibify (D6-D8)
  *
- * One Quit for every entry point: the "Quit vaibify" button on the
+ * One Quit for every entry point: the "Quit" button on the
  * Environments hub and on the Project hub, and Admin -> Quit on the
  * dashboard. The server decides whether a Quit may proceed
  * (GET /api/session/quit-preflight, POST /api/session/quit); this
@@ -96,7 +96,7 @@ var VaibifyHubQuit = (function () {
             '<button class="btn btn-primary" id="btnQuitConfirm"' +
             (bCanQuit ? "" : " disabled title=\"Wait for the work " +
                 "listed above to finish, then try again.\"") +
-            '>Quit vaibify</button></div></div>';
+            '>Quit</button></div></div>';
         document.body.appendChild(elModal);
         elModal.querySelector("#btnQuitCancel").addEventListener(
             "click", function () { elModal.remove(); });

@@ -15,10 +15,13 @@ reuse it.
 """
 
 import os
+import tarfile
 
 import pytest
 from fastapi import HTTPException
 
+from vaibify.docker.dockerConnection import DockerConnection
+from vaibify.gui import seedLinks
 from vaibify.gui.routes.fileRoutes import (
     _flistResolveSeedPaths,
     _fsRequireHostDirectoryForSeed,
@@ -79,22 +82,47 @@ def testARelativeEscapeIsRefused(sProjectDirectory):
 def testASymlinkPointingOutOfTheProjectIsRefused(
     sProjectDirectory, tmp_path,
 ):
-    """Containment is proven after resolution, not before it.
+    """A link out of the project never carries the bytes it names, nor itself.
 
-    A symlink is the case that separates a real guard from a textual
-    one: "escape.txt" contains no ``..`` and is not absolute, so any
-    check on the STRING admits it. Only resolving the link and asking
-    where it actually lands refuses it.
+    Until 2026-11-03 the selected path was resolved and refused, which
+    also resolved every link INSIDE the project and landed a copy of
+    its target under the target's name. A selected link is now archived
+    as itself (it names the link, not ``secrets.txt``), and the seed's
+    link contract leaves one with an absolute target behind, by name.
 
-    Kills: checking the relative path's text instead of the resolved
-    path, and dropping the containment check outright.
+    Kills: dropping the link contract's filter, which carries a link to
+    a host path into the container.
     """
     os.symlink(
         str(tmp_path / "secrets.txt"),
         os.path.join(sProjectDirectory, "escape.txt"),
     )
+    listResolved = _flistResolveSeedPaths(sProjectDirectory, ["escape.txt"])
+    assert listResolved == [os.path.join(sProjectDirectory, "escape.txt")]
+    listSkipped = []
+    fileTar = DockerConnection._ffileBuildTreeTar(
+        listResolved, None, seedLinks.ffnBuildSeedLinkFilter(listSkipped))
+    with tarfile.open(fileobj=fileTar) as fileArchive:
+        assert fileArchive.getmembers() == []
+    assert listSkipped == [
+        {"sPath": "escape.txt", "sReason": "absolute target"}]
+
+
+@pytest.mark.falsification
+def testALinkedDirectoryOnTheWayOutOfTheProjectIsRefused(
+    sProjectDirectory, tmp_path,
+):
+    """Every component above the selected one is resolved before containment.
+
+    "outside/secrets.txt" contains no ``..`` and is not absolute, so a
+    check on the STRING admits it; only resolving the linked directory
+    shows it lands outside the project.
+
+    Kills: checking the parent's text instead of where it resolves to.
+    """
+    os.symlink(str(tmp_path), os.path.join(sProjectDirectory, "outside"))
     with pytest.raises(HTTPException) as excinfo:
-        _flistResolveSeedPaths(sProjectDirectory, ["escape.txt"])
+        _flistResolveSeedPaths(sProjectDirectory, ["outside/secrets.txt"])
     assert excinfo.value.status_code == 403
 
 

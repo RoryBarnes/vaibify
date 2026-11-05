@@ -199,7 +199,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
     def fnWriteTreeViaTar(
         self, sContainerId, sDestinationDirectory, listHostPaths,
         iUid=None, iGid=None, sArchiveName=None, sAuthorizedRoot=None,
-        tForbiddenNames=(), bCreateDestination=False,
+        tForbiddenNames=(), bCreateDestination=False, ffnMemberFilter=None,
     ):
         """The confined tree write: gated like every write, recorded by its name."""
         mutationAdmission.fnAssertContainerWriteAdmitted(

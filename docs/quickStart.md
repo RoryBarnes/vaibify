@@ -1,6 +1,6 @@
 # QuickStart
 
-In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author's. Thus, you will then recreate the author's computing environment inside your computer and verify that you reproduce the results exactly (usually). This latter step requires that you have [Docker installed](install.md) on your computer.
+In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author's. Thus, you will then recreate the author's computing environment inside your computer and verify the reproduction in the author's environment, where the files usually come out byte-identical. This latter step requires that you have [Docker installed](install.md) on your computer.
 
 ## 1. Install
 
@@ -43,7 +43,7 @@ workspace (a "sandbox") in which you can experiment in the environment. All `vai
 
 After a few seconds, you will land in the dashboard for this project. Take a look around. Along the top are some fundamental facts about the Project as well as menus for interacting with the Project. The left side shows the steps of the project and information about the project as a whole. `vaibify` divides the work of climbing the [PROOF Ladder](proofLadder.md) into **Steps**, the components of your pipeline,  and the **Project**, which are features that apply to all Steps. These sections give you up-to-date information on the status of the Project. The top right consists of two "viewing windows" that display images and ASCII text files for you to examine and compare. The bottom right is one large reproduction of a terminal. You can create multiple tabs (+) and multiple terminals (+pane in the very bottom right). This dashboard is where you will use coding agents to modify files, examine their efforts, lock down verified results, and connect to external resources like Overleaf and Zenodo.
 
-Although the published result is at [PROOF Level 3](proofLadder.md), meaning the author verified they reproduced the results at the bit level, your copy is not at that level. In fact, you're at "Level 0", meaning your results aren't even being labeled as "self-consistent"! This status is because you have not run any of the steps locally or verified the results pass the unit tests (which check that the output files match the author's results to some tolerance that they deemed acceptable for scientific reproduction). Before we start driving your copy up the PROOF Ladder, we're going to explore the repository a bit more.
+The published result is at [PROOF Level 3](proofLadder.md), meaning the author reran the project in its preserved environment and the rerun passed its assessment: every output byte-identical, or the author's published comparisons (the tests that ship with the project) passed. When the bytes are identical, the verdict says so. Your copy, however, is not at that level. In fact, you're at "Level 0", meaning your results aren't even being labeled as "self-consistent"! This status is because you have not run any of the steps locally or verified the results pass the unit tests (which check that the output files match the author's results to some tolerance that they deemed acceptable for scientific reproduction). Before we start driving your copy up the PROOF Ladder, we're going to explore the repository a bit more.
 
 ## 4. Check the archive before touching it
 
@@ -77,7 +77,7 @@ Using the dashboard to click through tasks is soooo 2025. Now we ask AI agents t
 
 So are the new files identical to the author's manifest? From the **Run** menu, choose **Check Files Against Manifest** again.
 
-You will see an alert in the top right that tells you that some files did not match. Here's what happened:
+You will see an alert in the top right that counts the files that do not match. Its **Learn more** button opens a window that lists each file with what was recorded about how it was made, on the author's computer and on yours. A fact only one of the two computers measured is never counted as a difference: a host-mode run does not probe NumPy and its BLAS library, so those facts read "not measured in host mode", and a Mac reports no processor vendor or x86-64 level, so those read "this machine does not report it". A difference in hardware or settings can change a file's last digits, but it doesn't prove that's why the bytes differ. Here's what happened:
 
 - **The fitted values differ in their last digits.** A least-squares fit
   is a sequence of floating-point operations, and different environments'
@@ -89,7 +89,7 @@ You will see an alert in the top right that tells you that some files did not ma
   differs by platform.
 
 Your run passed every *scientific test* (the unit tests) the project defines, but did
-not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the rules that govern computing standards (defined by the IEEE) allow changes in the last digits of some functions, like transcendentals. Thus, progress from here requires rerunning the work in the *exact same environment* that the author used.
+not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the rules that govern computing standards (defined by the IEEE) allow changes in the last digits of some functions, like transcendentals. Getting byte-identical files generally needs the author's environment, which the next section provides. Level 3 itself is decided by the published comparisons, and byte identity is reported when it holds.
 
 This next section, which describes how to rerun the work in the author's own environment and have the result assessed, is technically optional, but encouraged. While `vaibify`'s behavior is the same in both "host mode" and "container mode", the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use `vaibify` on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!
 
@@ -115,7 +115,7 @@ Once you're ready, then from the dashboard, press the Admin pulldown menu in the
 |---|------|--------------------|
 | 1 | **Project Name** | Set the **Project Name** to "AI Greenhouse" and note that the container's name changes to include a dash. Container names cannot have spaces or uppercase letters. Click "Next". |
 | 2 | **Environment** | Leave **Use the author's pinned image** selected. The table beneath it names the image, the kind of processor it was built for (`linux/amd64`), and the archived copy on Zenodo. If your computer has a different processor ("This daemon"), such as `arm64`, check the **Allow emulation** box. (About 0.2% of emulation runs fail. If you see a "killed by signal 11" message while running with an emulator, just run again and it will very likely work.) Below that, under "How the author's image may run on this machine", choose **Run it as its author built it**, so the environment remains exactly as the author saved it. Click "Next". |
-| 3 | **Features & Authentication** | Select one of the available coding agents. LaTeX and the other base features are grayed out because the author's image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under *Resource limits*, leave *CPU cores* blank, which reads **all cores − 1** and leaves 1 reserved for the host (you can still use all of them outside the container); and leave *Memory (GB)* blank, which reads **unlimited**: the container may use all the memory Docker has. On a Mac that is what Colima has: the **Set up Docker** wizard gives Colima half of your computer's memory, but never more than your memory minus 4 GB, so on an 8 GB Mac Colima has 4 GB (`colima list` shows it). (You can adjust this later if you choose to keep the container.) Click "Next".|
+| 3 | **Features & Authentication** | Select one of the available coding agents. LaTeX and the other base features are grayed out because the author's image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Leave **Network mode** at **Web**, the default: the container reaches the public internet, which the agents and package installs need, but not this computer or your network. Under *Resource limits*, leave *CPU cores* blank, which reads **all cores − 1** and leaves 1 reserved for the host (you can still use all of them outside the container); and leave *Memory (GB)* blank, which reads **unlimited**: the container may use all the memory Docker has. On a Mac that is what Colima has: the **Set up Docker** wizard gives Colima half of your computer's memory, but never more than your memory minus 4 GB, so on an 8 GB Mac Colima has 4 GB (`colima list` shows it). (You can adjust this later if you choose to keep the container.) Click "Next".|
 | 4 | **Files to Copy** | Leave everything at their defaults. Click "Next". |
 | 5 | **Summary** | Read it and confirm it matches the above instructions. Click **Convert and obtain**. |
 
@@ -141,11 +141,11 @@ environment.
 1. From the **Run** menu, choose **Check Files Against Manifest**. The
    data files and figures still differ, because they are still the
    bytes your own computer produced.
-2. From the **Run** menu, choose **Run All Steps**. This time every step runs inside the author's environment,
+2. From the **Run** menu, choose **Clean Outputs** and then **Run All Steps**. This time every step runs inside the author's environment,
    and the run log notes that it used the date the author recorded, so
-   any figure with a date inside it comes out the same. Each step's Researcher marker now reads stale because the plot's bytes changed. Click it once and the badge reads "Passed".
+   any figure with a date inside it comes out the same. Once again, skip the AI Declaration step. (Note that if you run under emulation, the rerun takes noticeably longer than when you ran it directly on your computer.) Each step's Researcher marker now reads stale because the plot's bytes changed. Click it once and the badge reads "Passed".
 3. Choose **Check Files Against Manifest** again. The files 
-  will very likely match because the author choose to prioritize reproducibility over speed. In some cases, however, you may find that all of your regenerated files are not an exact match. In that case, you can use an AI agent to explore what could be the difference.
+  will very likely match because the author chose to prioritize reproducibility over speed. In some cases, however, some of the regenerated files are not an exact match. If that happens, click **Learn more** in the alert to read what was recorded about how each file was made, and/or use an AI agent to explore what could be the difference.
 
 Finally, from the **Run** menu choose **Verify Level 3
 Reproducibility**. It makes a throwaway copy of the container from
@@ -162,6 +162,8 @@ Your copy stays at Level 1. Levels 2 and 3 record the *author's*
 publication (their GitHub push, their Zenodo deposit, their AI
 declaration), so they are the author's to earn. Bringing a project to
 Level 3 is the author's job; confirming it is yours, and the Reproduced badge is that confirmation.
+
+**If you are the author, testing your own project on a second machine:** vaibify counts a verification as the author's when the repository's `git config user.email` matches (ignoring case) the email that last committed `.vaibify/l3_attestation.json`, and as a reader's otherwise. To test as a reader would, first set a different email in the container's copy of the repository, for example `git config user.email reader@example.com` in its terminal.
 
 Anyone can run the same check starting from nothing but the project's
 URL: in the hub, press **+** and choose **Reproduce a published

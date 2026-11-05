@@ -32,6 +32,13 @@ S_REFUSAL_MESSAGE = (
     "zenodo.org (permanent). Review and confirm it from this project's "
     "binding notice in the dashboard."
 )
+S_ENVIRONMENT_AUTHORIZES = (
+    "This lets vaibify deposit this workflow's container images on "
+    "zenodo.org (permanent) with your token. Each deposit records its own "
+    "DOI in .vaibify/environment.json."
+)
+S_READ_THE_SERVED_BINDINGS = """async () => VaibifyApi.fdictGet(
+    '/api/bindings/' + VaibifyApp.fsGetContainerId() + '?bFetchEvidence=false')"""
 _RE_READ = re.compile(r".*/api/bindings/[^/?]+(\?.*)?$")
 _RE_CONFIRM = re.compile(r".*/api/bindings/[^/?]+/confirm$")
 _RE_RECONCILE = re.compile(rf".*/promotions/{S_PROMOTION}/reconcile$")
@@ -383,11 +390,73 @@ def testUnavailableEvidenceIsNotRedAndConfirmStaysDisabled(pageDashboard, server
     assert not (iRed > 180 and iGreen < 140 and iBlue < 140), sColor
 
 
+@pytest.mark.falsification
+def testAnEnvironmentArchiveDialogSaysWhatItAuthorizesAndComparesNoRecord(
+    pageDashboard, serverHub,
+):
+    """The environment kind names no record, so the dialog compares none.
+
+    The entry is the real hub's, with only the evidence added, so the
+    sentence on screen is the one the server writes.
+
+    Kills: rendering the record comparison for a kind with no target,
+    which read "no record yet" for a binding that never names a record.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    dictServed = pageDashboard.evaluate(S_READ_THE_SERVED_BINDINGS)
+    dictEnvironment = next(
+        dictEntry for dictEntry in dictServed["listEntries"]
+        if (dictEntry["sRecordKind"], dictEntry["sInstance"]) == (
+            "environment", "zenodo"))
+    dictEnvironment["dictEvidence"] = _DICT_ACCEPTED
+    _Hub(pageDashboard, [dict(dictServed, listEntries=[dictEnvironment])])
+    _fnOpenTheDialogFor(pageDashboard, ["zenodo", "environment", "zenodo"])
+    _fnWaitForConfirmEnabled(pageDashboard)
+    sText = _fsDialogText(pageDashboard)
+    assert S_ENVIRONMENT_AUTHORIZES in sText
+    assert "Zenodo accepts your token for" in sText
+    assert "no record yet" not in sText
+    assert pageDashboard.locator(
+        "#modalRemoteBinding .remote-binding-comparison").count() == 0
+
+
+@pytest.mark.falsification
+def testANewRecordsDialogSaysWhatItAllowsAndComparesNoRecord(
+    pageDashboard, serverHub,
+):
+    """A project record nobody has created yet is reviewed by a sentence.
+
+    The entry is the real hub's, with only the evidence added: the
+    seeded project names no record on zenodo.org, so the review must say
+    what confirming allows rather than compare three empty values.
+
+    Kills: deciding the comparison by the kind of binding, which drew
+    "no record yet" for a record that does not exist.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    dictServed = pageDashboard.evaluate(S_READ_THE_SERVED_BINDINGS)
+    dictNewRecord = next(
+        dictEntry for dictEntry in dictServed["listEntries"]
+        if (dictEntry["sRecordKind"], dictEntry["sInstance"]) == (
+            "project", "zenodo"))
+    dictNewRecord["dictEvidence"] = _DICT_ACCEPTED
+    _Hub(pageDashboard, [dict(dictServed, listEntries=[dictNewRecord])])
+    _fnOpenTheDialogFor(pageDashboard, ["zenodo", "project", "zenodo"])
+    _fnWaitForConfirmEnabled(pageDashboard)
+    sText = _fsDialogText(pageDashboard)
+    assert ("This lets vaibify create a new record on zenodo.org (permanent) "
+            "for this workflow's project deposits, with your token.") in sText
+    assert "no record yet" not in sText and "nothing yet" not in sText
+    assert pageDashboard.locator(
+        "#modalRemoteBinding .remote-binding-comparison").count() == 0
+
+
 def testEachKindNamesWhatItAuthorizesInTheDashboardsWords(pageDashboard, serverHub):
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     dictEnvironment = _fdictEntry(
         "zenodo", "environment", "zenodo", dictEvidence=_DICT_ACCEPTED,
-        dictTarget={"sInstance": "zenodo"},
+        dictTarget={"sInstance": "zenodo"}, bHasTarget=False,
+        sAuthorizes=S_ENVIRONMENT_AUTHORIZES,
     )
     dictRecord = _fdictEntry(
         "zenodo", "project", "sandbox", sState="differs",
@@ -400,7 +469,7 @@ def testEachKindNamesWhatItAuthorizesInTheDashboardsWords(pageDashboard, serverH
     _fnOpenTheDialogFor(pageDashboard, ["zenodo", "environment", "zenodo"])
     _fnWaitForConfirmEnabled(pageDashboard)
     sEnvironment = _fsDialogText(pageDashboard)
-    assert "Allow this workflow's environment archive to be deposited on zenodo.org (permanent)." in sEnvironment
+    assert S_ENVIRONMENT_AUTHORIZES in sEnvironment
     _fnOpenTheDialogFor(pageDashboard, ["zenodo", "project", "sandbox"])
     pageDashboard.wait_for_selector("#modalRemoteBinding .remote-binding-warning", timeout=10000)
     sRecord = _fsDialogText(pageDashboard)

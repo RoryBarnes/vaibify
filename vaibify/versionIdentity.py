@@ -51,6 +51,7 @@ __all__ = [
     "S_MEANING_UNKNOWN",
     "S_SOURCE_CHECKOUT",
     "S_SOURCE_INSTALLED",
+    "fdictDescribeForAbout",
     "fdictDescribeRunningVaibify",
     "fnCaptureStartupIdentity",
     "fnForgetStartupIdentity",
@@ -127,6 +128,28 @@ def fdictDescribeRunningVaibify():
     dictIdentity.update(_fdictCompareWithStart(
         dictIdentity, sCurrentSha256, sPackageDirectory, listErrors))
     return _fdictWithErrors(dictIdentity, listErrors)
+
+
+_DICT_SOURCE_WORDS = {
+    S_SOURCE_CHECKOUT: "source checkout", S_SOURCE_INSTALLED: "installed package",
+}
+
+
+def fdictDescribeForAbout():
+    """Return what the hubs' About section shows: never a path, which screenshots keep.
+
+    The version is git's describe for a checkout and the installed
+    version otherwise; ``bModified`` is None where that cannot be known.
+    """
+    import platform
+    dictIdentity = fdictDescribeRunningVaibify()
+    return {
+        "sVersion": dictIdentity.get("sDescribe", ""),
+        "sCommit": dictIdentity.get("sCommit", ""),
+        "sSource": _DICT_SOURCE_WORDS.get(dictIdentity.get("sSource"), "unknown"),
+        "bModified": dictIdentity.get("bModified"),
+        "sPythonVersion": platform.python_version(),
+    }
 
 
 def _ftStartupIdentity(sPackageDirectory=None):

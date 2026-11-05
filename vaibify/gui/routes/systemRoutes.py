@@ -789,6 +789,20 @@ def _fnRegisterDoctor(app, dictCtx):
         return {"listFindings": flistRenderResultsForJson(listResults)}
 
 
+def _fnRegisterAbout(app):
+    """Register GET /api/system/about, the version both hubs' help shows.
+
+    Read-only and container-free. Refused to the in-container agent
+    lane, like the doctor's report: it describes the host.
+    """
+
+    @app.get("/api/system/about")
+    async def fdictHandleGetAbout(request: Request):
+        fnRejectAgentTokenLane(request)
+        from vaibify.versionIdentity import fdictDescribeForAbout
+        return await asyncio.to_thread(fdictDescribeForAbout)
+
+
 def _fnRegisterDockerStatus(app, dictCtx):
     """Register the Docker availability probe + retry endpoints.
 
@@ -896,3 +910,4 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterVsCodeLink(app, dictCtx)
     _fnRegisterDockerStatus(app, dictCtx)
     _fnRegisterDoctor(app, dictCtx)
+    _fnRegisterAbout(app)

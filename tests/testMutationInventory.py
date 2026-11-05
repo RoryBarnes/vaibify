@@ -470,7 +470,13 @@ I_UNCLASSIFIED_ROW_BUDGET = 260
 # record; the caller-supplied write keeps refusing .vaibify. Classified
 # at birth; the guards behind it are kill-confirmed
 # (tests/testProofReceiptWrite.py).
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 228
+# 228 -> 229 (2026-11-03): the seed's agent-doc links
+# (seedLinks.flistCreateMissingAgentDocLinks), a fixed program run as
+# the container user inside the seed's own mode-(a) carrier, which only
+# creates a link where nothing exists (follow-up-after-210 plan, A7).
+# Classified at birth; the guards behind it are kill-confirmed
+# (tests/testSeedLinks.py).
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 229
 
 
 # Every acquisition of a declared capability that still has no reviewed

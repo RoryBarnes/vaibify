@@ -461,7 +461,7 @@ def test_each_file_outcome_reads_at_the_panel_width(pageDashboard, serverHub):
 
 
 def test_mismatches_against_the_authors_manifest_are_named_not_called_a_self_comparison(
-    pageDashboard, serverHub,
+    pageDashboard, serverHub, tmp_path,
 ):
     """A freshly converted container's check lists what differs, plainly.
 
@@ -470,18 +470,22 @@ def test_mismatches_against_the_authors_manifest_are_named_not_called_a_self_com
     many files differ, the report it opens names every one of them,
     and nothing says this machine wrote the manifest.
     """
+    from vaibify.gui import outputProvenance
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    listMismatches = [{"sPath": S_MATCHED_PATH}, {"sPath": S_DIVERGED_PATH}]
+    # The server's own explanation of a repository with no records.
+    dictExplanation = outputProvenance.fdictExplainManifestMismatches(
+        str(tmp_path), listMismatches, 24)
     pageDashboard.route(
         "**/api/workflow/**/manifest/verify",
         lambda route: route.fulfill(
             status=200, content_type="application/json",
             body=json.dumps({
                 "iTotal": 24, "iMatching": 22,
-                "listMismatches": [
-                    {"sPath": S_MATCHED_PATH}, {"sPath": S_DIVERGED_PATH},
-                ],
+                "listMismatches": listMismatches,
                 "saIncomplete": [], "sManifestOwnership": "foreign",
                 "bManifestDiffersFromHead": False,
+                "dictContextExplanation": dictExplanation,
                 "dictMismatchReport": {"listFiles": [
                     {"sPath": S_MATCHED_PATH,
                      "sDescription": "production context unknown"},
@@ -498,7 +502,7 @@ def test_mismatches_against_the_authors_manifest_are_named_not_called_a_self_com
     sToast = pageDashboard.text_content("#toastContainer .toast.warning")
     assert "2 of 24 files differ from the manifest" in sToast, sToast
     assert "this machine wrote" not in sToast, sToast
-    pageDashboard.click("#toastContainer .toast.warning")
+    pageDashboard.click("#toastContainer .toast.warning .toast-action")
     pageDashboard.wait_for_selector("#modalInfo", state="visible",
                                     timeout=5000)
     sReport = pageDashboard.inner_text("#modalInfo")

@@ -33,7 +33,9 @@ the agent's hand, and creates nothing.
 Schema version 2 is the only format read. A file that is not a
 well-formed version 2 record raises :class:`BindingRecordInvalidError`,
 naming the file and why; it is never read as unbound and never
-converted. Each record is mode 600 in a mode-700 directory, written
+converted. The researcher moves it aside instead
+(:func:`fsSetAsideUnreadableRecord`, a rename beside itself) and confirms
+again. Each record is mode 600 in a mode-700 directory, written
 atomically, and holds no secret. Every change is a read-modify-write
 under the record's lock (:mod:`vaibify.config.lockedJsonRecord`), so a
 confirmation and the hub's own update of a target cannot drop each
@@ -41,8 +43,10 @@ other.
 """
 
 import copy
+import errno
 import json
 import os
+import stat
 from datetime import datetime, timezone
 
 from vaibify.config.durableFile import fnWriteFileDurably
@@ -53,6 +57,7 @@ from vaibify.config.lockedJsonRecord import (
 __all__ = [
     "BindingMismatchError",
     "BindingRecordInvalidError",
+    "BindingRecordReadableError",
     "BindingRequiredError",
     "I_SCHEMA_VERSION",
     "S_INSTANCE_SANDBOX",
@@ -75,6 +80,7 @@ __all__ = [
     "fnConfirmBinding",
     "fnUpdateBoundTarget",
     "flistDeleteBindings",
+    "fsSetAsideUnreadableRecord",
     "fdictRequireOverleafTarget",
     "fdictRequireProjectRecordTarget",
     "fdictRequireEnvironmentArchiveTarget",
@@ -138,6 +144,10 @@ class BindingRecordInvalidError(ValueError):
             f"remotes again."
         )
         self.sPath, self.sReason = sPath, sReason
+
+
+class BindingRecordReadableError(ValueError):
+    """The binding record can be read, so it is never moved aside."""
 
 
 def _fsDisplayPath(sPath):
@@ -502,6 +512,51 @@ def flistDeleteBindings(sProjectUuid):
         except FileNotFoundError:
             pass
     return listServices
+
+
+def _fnRequireRegularRecordFile(sPath):
+    """Refuse a record that is a link or not a regular file; never follow one."""
+    try:
+        iDescriptor = os.open(sPath, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            raise OSError(f"{_fsDisplayPath(sPath)} is a symbolic link") from None
+        raise
+    try:
+        if not stat.S_ISREG(os.fstat(iDescriptor).st_mode):
+            raise OSError(f"{_fsDisplayPath(sPath)} is not a regular file")
+    finally:
+        os.close(iDescriptor)
+
+
+def fsSetAsideUnreadableRecord(sProjectUuid, sUtcStamp=""):
+    """Rename the project's unreadable record aside; return its new name.
+
+    The new name is ``<uuid>.json.unreadable-<UTC YYYYMMDDTHHMMSSZ>`` in
+    the same directory, so nothing is lost and no other file is read.
+    Raises :class:`BindingRecordReadableError` when the record can be
+    read now (an absent record reads as an empty one), so a valid
+    confirmation is never set aside, and ``OSError`` for a record that
+    is a link, is not a regular file, or whose new name is taken.
+    """
+    sPath = fsBindingPath(sProjectUuid)
+    sStamp = sUtcStamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    sSetAsidePath = f"{sPath}.unreadable-{sStamp}"
+    with fcontextHoldRecordLock(sPath + ".lock"):
+        try:
+            fdictReadBindings(sProjectUuid)
+        except BindingRecordInvalidError:
+            pass
+        else:
+            raise BindingRecordReadableError(
+                "The binding record for this project can be read, so "
+                "nothing was moved aside."
+            )
+        _fnRequireRegularRecordFile(sPath)
+        if os.path.lexists(sSetAsidePath):
+            raise OSError(f"{_fsDisplayPath(sSetAsidePath)} already exists")
+        os.rename(sPath, sSetAsidePath)
+    return os.path.basename(sSetAsidePath)
 
 
 # ---------------------------------------------------------------------------

@@ -40,8 +40,14 @@ var VaibifyZenodoTokens = (function () {
            the console; it never paints an answer nobody gave. */
         if (!sContainerId) return;
         _sContainerId = sContainerId;
+        var iViewGeneration = VaibifyApp.fiGetViewGeneration();
         try {
-            fnRender(await VaibifyApi.fdictGet(_fsUrl(sContainerId)));
+            var dictDescribed = await VaibifyApi.fdictGet(_fsUrl(sContainerId));
+            // An answer for a view the researcher has left describes
+            // nothing on screen.
+            if (VaibifyApp.fiGetViewGeneration() === iViewGeneration) {
+                fnRender(dictDescribed);
+            }
         } catch (error) {
             console.warn("[zenodo-tokens] could not read the migration state:",
                 error && error.message);

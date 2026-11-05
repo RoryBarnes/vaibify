@@ -2528,11 +2528,40 @@ var VaibifyContainerManager = (function () {
             return;
         }
         if (dictResult.bNothingPending) return;
+        var bShortOfAsked = Boolean(dictResult.sRestoreRefusal ||
+            dictResult.sAgentLinkRefusal ||
+            (dictResult.listSkippedLinks || []).length);
         VaibifyApp.fnShowToast(
             "Copied " + dictResult.iCopiedCount + " item(s) into " +
             dictResult.sDestination + "." +
+            _fsDescribeSeededLinks(dictResult) +
             _fsDescribeCommittedRestore(dictResult),
-            dictResult.sRestoreRefusal ? "warning" : "success");
+            bShortOfAsked ? "warning" : "success");
+    }
+
+    function _fsDescribeSeededLinks(dictResult) {
+        /* Each link the copy left behind is named with the server's
+           reason, and so is a failure to make the agent instruction
+           links a new container would have, so a link that reads as
+           deleted in the container's git status is never a mystery. */
+        var sText = "";
+        var listSkipped = dictResult.listSkippedLinks || [];
+        if (listSkipped.length) {
+            sText += " Links not copied: " + listSkipped.map(
+                function (dictLink) {
+                    return dictLink.sPath + " (" + dictLink.sReason + ")";
+                }).join(", ") + ".";
+        }
+        var listCreated = dictResult.listCreatedAgentLinks || [];
+        if (listCreated.length) {
+            sText += " Linked " + listCreated.join(", ") +
+                " to .vaibify/AGENTS.md, as a new container would.";
+        }
+        if (dictResult.sAgentLinkRefusal) {
+            sText += " The agent instruction links were not made: " +
+                dictResult.sAgentLinkRefusal;
+        }
+        return sText;
     }
 
     function _fsDescribeCommittedRestore(dictResult) {
@@ -3493,7 +3522,7 @@ var VaibifyContainerManager = (function () {
         );
         document.getElementById("btnHubHelp").addEventListener(
             "click", function () {
-                VaibifyModals.fnShowInfoModal(
+                VaibifyAbout.fnShowHubHelp(
                     "Environment hub \u2014 Help", _S_HUB_HELP);
             }
         );

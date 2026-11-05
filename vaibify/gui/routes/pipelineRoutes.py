@@ -3689,11 +3689,13 @@ async def _fdictFetchTestStatus(
     bChanged = fbRefreshAggregateTestStates(dictWorkflow) or bChanged
     if bChanged:
         dictCtx["save"](sContainerId, dictWorkflow)
+    # None, never {}, for a listing that did not finish: the page takes
+    # its first answer as the baseline that later test files are new to.
     return {
         "dictTestMarkers": dictTestMarkers,
         "dictTestFileChanges": _fdictBuildTestFileChanges(
             dictWorkflow, dictTestInfo,
-        ),
+        ) if dictTestInfo.get("bTestFilesListed") else None,
     }
 
 
@@ -4041,21 +4043,17 @@ def _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers):
 
 
 def _fsetExtractRegisteredTestFiles(dictStep):
-    """Extract registered test file names from step test commands."""
-    dictTests = dictStep.get("dictTests", {})
+    """Return the test file names in the commands the step's tests run."""
+    from ..workflowManager import flistResolveTestCommands
     setRegistered = set()
-    for sCatKey in (
-        "integrity", "qualitative", "quantitative"
-    ):
-        dictCat = dictTests.get(sCatKey, {})
-        for sCmd in dictCat.get("saCommands", []):
-            for sPart in sCmd.split():
-                if (sPart.startswith("test_")
-                        and sPart.endswith(".py")):
-                    setRegistered.add(sPart)
-                elif sPart.startswith("tests/test_"):
-                    setRegistered.add(
-                        sPart.replace("tests/", ""))
+    for sCmd in flistResolveTestCommands(dictStep):
+        for sPart in sCmd.split():
+            if (sPart.startswith("test_")
+                    and sPart.endswith(".py")):
+                setRegistered.add(sPart)
+            elif sPart.startswith("tests/test_"):
+                setRegistered.add(
+                    sPart.replace("tests/", ""))
     return setRegistered
 
 
@@ -4292,7 +4290,7 @@ def _fdictBuildManifestVerifyResult(
         # Context differences (design F5) and every file's own record.
         "dictContextExplanation": (
             outputProvenance.fdictExplainManifestMismatches(
-                filesRepo, listMismatches)),
+                filesRepo, listMismatches, iTotal)),
         "dictMismatchReport": outputProvenance.fdictReportManifestMismatches(
             filesRepo, listMismatches, dictWorkflow),
     }

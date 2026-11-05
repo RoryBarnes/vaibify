@@ -7,7 +7,9 @@
    confirmed or disagrees, and a review dialog that sets side by side what
    project.json names, what is confirmed and what the host could see with
    the researcher's own token, then posts, unchanged, the review body the
-   server offered. It derives no verdict of its own.
+   server offered. It derives no verdict of its own. An unreadable record's
+   notice offers Move it aside, which asks the server to rename the record
+   beside itself and then reads the notices again.
 
    A confirmation is tied to the view it was reviewed in. The context
    captured when a refusal opens the dialog is compared with the live one
@@ -25,6 +27,7 @@ var VaibifyRemoteBindings = (function () {
     var _S_BODY_ID = "remoteBindingBody";
     var _S_ACTIONS_ID = "remoteBindingActions";
     var _S_RECORD_INVALID = "BINDING-RECORD-INVALID";
+    var _S_RECORD_VALID = "BINDING-RECORD-VALID";
     var _LIST_DIALOG_CODES = ["BINDING-REQUIRED", "BINDING-MISMATCH"];
     var _S_CONFIRMED = "confirmed";
     var _S_CANCELLED = "cancelled";
@@ -119,6 +122,7 @@ var VaibifyRemoteBindings = (function () {
         var dictEntry = dictNotice.dictEntry;
         if (!dictEntry) {
             elRow.dataset.recordInvalid = "1";
+            elRow.appendChild(_felementSetAsideButton());
             return elRow;
         }
         elRow.dataset.service = dictEntry.sService;
@@ -134,6 +138,35 @@ var VaibifyRemoteBindings = (function () {
         });
         elRow.appendChild(elButton);
         return elRow;
+    }
+
+    function _felementSetAsideButton() {
+        var elButton = _felementButton("Move it aside", "btn-small");
+        elButton.title = "Rename the unreadable record beside itself " +
+            "(nothing is deleted), then confirm this workflow's remotes again.";
+        elButton.addEventListener("click", function () {
+            _fnSetAsideUnreadableRecord(elButton);
+        });
+        return elButton;
+    }
+
+    async function _fnSetAsideUnreadableRecord(elButton) {
+        /* The server decides whether the record is unreadable now; the
+           notices are then read again, so the banner shows its answer. */
+        var sContainerId = _sContainerId;
+        elButton.disabled = true;
+        try {
+            await VaibifyApi.fdictPost(_fsUrl(sContainerId, "/set-aside"), {});
+        } catch (error) {
+            elButton.disabled = false;
+            var dictDetail = (error && error.dictDetail) || {};
+            if (dictDetail.sError !== _S_RECORD_VALID) {
+                VaibifyDiagnosis.fnReportFailureFromError(error);
+                return;
+            }
+            VaibifyApp.fnShowToast(dictDetail.sMessage, "warning");
+        }
+        fnRefresh(sContainerId);
     }
 
     function _felementButton(sLabel, sClass) {
@@ -268,9 +301,18 @@ var VaibifyRemoteBindings = (function () {
             return;
         }
         dictDialog.dictEntry = dictEntry;
-        _fnAppendParagraph(elBody, _fsAuthorizationSentence(dictEntry),
-            "remote-binding-authorization");
-        elBody.appendChild(_felementComparison(dictEntry));
+        if (dictEntry.bHasTarget === false) {
+            /* Nothing names a record (the environment archive, or a
+               project record nobody has created yet), so a comparison of
+               records would read as broken; the server says what
+               confirming allows. */
+            _fnAppendParagraph(elBody, dictEntry.sAuthorizes,
+                "remote-binding-authorization");
+        } else {
+            _fnAppendParagraph(elBody, _fsAuthorizationSentence(dictEntry),
+                "remote-binding-authorization");
+            elBody.appendChild(_felementComparison(dictEntry));
+        }
         if (dictEntry.sState === "differs") {
             _fnAppendParagraph(elBody, _S_IF_NOT_YOURS, "remote-binding-warning");
         }
@@ -290,10 +332,6 @@ var VaibifyRemoteBindings = (function () {
             return "Allow this workflow's Overleaf pushes and pulls to use this project.";
         }
         var sSite = VaibifyWorkflowRequirements.fsDescribeZenodoService(dictEntry.sInstance);
-        if (dictEntry.sRecordKind === "environment") {
-            return "Allow this workflow's environment archive to be deposited on " +
-                sSite + ".";
-        }
         if (!dictTarget.sConceptDoi && !dictTarget.sDepositionId) {
             return "Allow a NEW " + (dictEntry.sInstance === "zenodo" ? "permanent " : "") +
                 "record on " + VaibifyWorkflowRequirements.fsZenodoSitePhrase(

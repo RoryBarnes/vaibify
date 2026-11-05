@@ -1093,7 +1093,7 @@ class TestFdictBuildTestFileChanges:
             "listSteps": [{
                 "sDirectory": "step1",
                 "dictTests": {
-                    "integrity": {
+                    "dictIntegrity": {
                         "saCommands": [
                             "pytest test_integrity.py"
                         ],

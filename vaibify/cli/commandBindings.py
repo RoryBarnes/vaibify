@@ -8,9 +8,16 @@ and the exact ``vaibify do confirm-remote-binding`` command that
 confirms what it showed. Nothing is confirmed here; the confirmation is
 yours to run, and the hub refuses it if the workflow or its target has
 moved since.
+
+``--set-aside`` is the one change it makes: it asks the hub to rename an
+unreadable binding record beside itself, so the workflow's remotes can
+be confirmed again. The hub refuses while the record can be read.
 """
 
-__all__ = ["fnBindingsCommand", "fsConfirmCommandLine", "fsRenderBindings"]
+__all__ = [
+    "fnBindingsCommand", "fsConfirmCommandLine", "fsDescribeSetAside",
+    "fsRenderBindings",
+]
 
 import json
 import shlex
@@ -84,30 +91,66 @@ def fsRenderBindings(dictDescribed, sProjectName, sWorkflowPath="", bAll=False):
     ]
     dictRecordState = dictDescribed["dictRecordState"]
     if not dictRecordState["bValid"]:
-        return "\n".join(listLines + ["", dictRecordState["sMessage"]])
+        return "\n".join(listLines + [
+            "", dictRecordState["sMessage"], "  to move it aside:",
+            f"    vaibify bindings --set-aside -p {shlex.quote(sProjectName)}",
+        ])
     for dictEntry in dictDescribed["listEntries"]:
         if bAll or dictEntry["bApplies"] or dictEntry["dictConfirmed"]:
             listLines.extend(_flistRenderEntry(dictEntry, sProjectName, sWorkflowPath))
     return "\n".join(listLines)
 
 
-def _ftFetchBindings(sContainerName, iPort, sWorkflowPath):
-    """Return ``(dictDescribed, sWorkflowPath)`` from the hub, releasing the claim."""
+def _ftAskTheHub(sContainerName, iPort, sWorkflowPath, sMethod, sSuffix, dictFields, sWhat):
+    """Return ``(jsonBody, sWorkflowPath)`` for one bindings request, releasing the claim."""
     dictSession = hubSession.fdictOpenResearcherSession(sContainerName, iPort, sWorkflowPath)
     try:
         tResponse = hubSession.ftSendSessionRequest(
-            dictSession, "GET", f"/api/bindings/{dictSession['sContainerId']}",
-            {"bFetchEvidence": "true"},
+            dictSession, sMethod,
+            f"/api/bindings/{dictSession['sContainerId']}{sSuffix}", dictFields,
         )
     finally:
         hubSession.fnReleaseContainer(dictSession)
     iStatusCode, jsonBody = tResponse
     if not 200 <= iStatusCode < 300:
         sDetail = jsonBody.get("detail", jsonBody) if isinstance(jsonBody, dict) else jsonBody
+        if isinstance(sDetail, dict) and sDetail.get("sMessage"):
+            sDetail = sDetail["sMessage"]
         raise hubSession.HubSessionError(
-            f"reading the bindings failed (HTTP {iStatusCode}): {sDetail}"
+            f"{sWhat} failed (HTTP {iStatusCode}): {sDetail}"
         )
     return jsonBody, dictSession["sWorkflowPath"]
+
+
+def _ftFetchBindings(sContainerName, iPort, sWorkflowPath):
+    """Return ``(dictDescribed, sWorkflowPath)`` from the hub."""
+    return _ftAskTheHub(
+        sContainerName, iPort, sWorkflowPath, "GET", "",
+        {"bFetchEvidence": "true"}, "reading the bindings",
+    )
+
+
+def fsDescribeSetAside(dictAnswer, sProjectName):
+    """Return what ``--set-aside`` did, and the way on."""
+    return (
+        f"Moved the unreadable binding record aside as "
+        f"{dictAnswer['sSetAsideName']}. Review and confirm this workflow's "
+        f"remotes again: vaibify bindings -p {shlex.quote(sProjectName)}"
+    )
+
+
+def _fnSetAsideAndReport(sContainerName, iPort, sWorkflowPath, bJson):
+    """Ask the hub to move the unreadable record aside, and say what it did."""
+    try:
+        dictAnswer, _sConnectedPath = _ftAskTheHub(
+            sContainerName, iPort, sWorkflowPath, "POST", "/set-aside",
+            {}, "moving the binding record aside",
+        )
+    except hubSession.HubSessionError as error:
+        click.echo(f"Error: {error}", err=True)
+        sys.exit(4)
+    click.echo(json.dumps(dictAnswer, indent=2, sort_keys=True) if bJson
+               else fsDescribeSetAside(dictAnswer, sContainerName))
 
 
 @click.command("bindings")
@@ -121,10 +164,16 @@ def _ftFetchBindings(sContainerName, iPort, sWorkflowPath):
               help="Port of the vaibify session to ask.")
 @click.option("--json", "bJson", is_flag=True, default=False,
               help="Print the hub's answer as JSON.")
-def fnBindingsCommand(sProjectName, sWorkflowPath, bAll, iPort, bJson):
+@click.option("--set-aside", "bSetAside", is_flag=True, default=False,
+              help="Move an unreadable binding record aside, so the "
+                   "remotes can be confirmed again.")
+def fnBindingsCommand(sProjectName, sWorkflowPath, bAll, iPort, bJson, bSetAside):
     """Show what this workflow's tokens may act on, and the command that confirms it."""
     from .configLoader import fconfigResolveProject
     sContainerName = fconfigResolveProject(sProjectName).sProjectName
+    if bSetAside:
+        _fnSetAsideAndReport(sContainerName, iPort, sWorkflowPath, bJson)
+        return
     try:
         dictDescribed, sConnectedPath = _ftFetchBindings(
             sContainerName, iPort, sWorkflowPath,
