@@ -134,6 +134,17 @@ TUPLE_X86_64_LEVEL_FLAGS = (
 S_FLOOR_NOT_REQUESTED = "not requested"
 S_FLOOR_APPLIED = "applied"
 S_FLOOR_NOT_APPLIED = "not applied"
+# The floor names an x86-64 level and the processor is not x86-64 at
+# all (an arm64 kernel, the Apple Silicon case), so nothing about this
+# computer could honor it: recorded, never warned about (2026-11-05).
+S_FLOOR_NOT_APPLICABLE = "not applicable"
+# What /proc/cpuinfo says the KERNEL's processor family is, read from
+# the keys the kernel itself writes: ``flags`` on x86, ``CPU
+# implementer`` and ``CPU architecture`` on arm64 (arch/arm64/kernel/
+# cpuinfo.c). ``os.uname()`` is not used for this: under Rosetta or
+# QEMU an x86-64 container reports x86_64 on an arm64 machine.
+S_PROCESSOR_FAMILY_X86_64 = "x86-64"
+S_PROCESSOR_FAMILY_ARM64 = "arm64"
 # What became of each CPU feature NumPy was asked to disable (design F7).
 S_FEATURE_APPLIED = "applied"
 S_FEATURE_NOT_APPLIED = "not applied"
@@ -577,22 +588,40 @@ def fdictReadProcessorCapabilities(sCpuinfoPath="/proc/cpuinfo"):
     dictCapabilities = {
         "sArchitecture": os.uname().machine, "sVendor": "", "sLevel": "",
         "iVisibleCores": fiCountVisibleCores(), "bReadable": False,
+        "sProcessorFamily": "",
     }
     try:
         with open(sCpuinfoPath, encoding="utf-8") as fileIn:
             listLines = fileIn.read().splitlines()
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError) as error:
+        dictCapabilities["sUnreadableReason"] = (
+            sCpuinfoPath + " could not be read: " + type(error).__name__)
         return dictCapabilities
     setFlags = set()
+    setKeys = set()
     for sLine in listLines:
         sKey, _, sValue = sLine.partition(":")
+        setKeys.add(sKey.strip())
         if sKey.strip() == "vendor_id" and not dictCapabilities["sVendor"]:
             dictCapabilities["sVendor"] = sValue.strip()
         if sKey.strip() == "flags" and not setFlags:
             setFlags = set(sValue.split())
+    dictCapabilities["sProcessorFamily"] = fsReadProcessorFamily(setKeys, setFlags)
     dictCapabilities["bReadable"] = bool(setFlags)
     dictCapabilities["sLevel"] = fsReadX86Level(setFlags)
+    if not setFlags:
+        dictCapabilities["sUnreadableReason"] = (
+            sCpuinfoPath + " carries no flags line")
     return dictCapabilities
+
+
+def fsReadProcessorFamily(setKeys, setFlags):
+    """Return the kernel's processor family from the keys cpuinfo carries."""
+    if setFlags:
+        return S_PROCESSOR_FAMILY_X86_64
+    if "CPU implementer" in setKeys or "CPU architecture" in setKeys:
+        return S_PROCESSOR_FAMILY_ARM64
+    return ""
 
 
 def fdictDecideAppliedSettings(dictCapabilities, sRequiredLevel,
@@ -602,15 +631,27 @@ def fdictDecideAppliedSettings(dictCapabilities, sRequiredLevel,
     A processor below the profile's required level cannot honor its
     instruction floor, so the floor keys are dropped and the thread pins
     kept. A processor whose capabilities could not be read is treated the
-    same way: the floor is not applied, and the reason says why.
+    same way: the floor is not applied, and the reason says why, with
+    the reading's own account when it left one. A processor that is not
+    x86-64 at all drops the same keys under a state of its own, ``not
+    applicable``: an arm64 machine cannot have an x86-64 instruction
+    floor, nothing about it could change that, and the dashboard warns
+    about the two other states only.
     """
     listFloorKeys = list(listFloorKeys or [])
     if not sRequiredLevel or not listFloorKeys:
         return {"sFloorState": S_FLOOR_NOT_REQUESTED, "listDroppedKeys": [],
                 "sReason": ""}
     sLevel = dictCapabilities.get("sLevel") or ""
+    if dictCapabilities.get("sProcessorFamily") == S_PROCESSOR_FAMILY_ARM64:
+        return {"sFloorState": S_FLOOR_NOT_APPLICABLE,
+                "listDroppedKeys": sorted(listFloorKeys),
+                "sReason": _fsDescribeInapplicableFloor(
+                    dictCapabilities, sRequiredLevel)}
     if not dictCapabilities.get("bReadable"):
         sReason = "floor not applied: capabilities unreadable on this host"
+        if dictCapabilities.get("sUnreadableReason"):
+            sReason += " (" + str(dictCapabilities["sUnreadableReason"]) + ")"
     elif (sLevel in TUPLE_X86_64_LEVELS
           and TUPLE_X86_64_LEVELS.index(sLevel)
           >= TUPLE_X86_64_LEVELS.index(sRequiredLevel)):
@@ -620,6 +661,15 @@ def fdictDecideAppliedSettings(dictCapabilities, sRequiredLevel,
         sReason = f"floor not applied: this processor lacks {sRequiredLevel}"
     return {"sFloorState": S_FLOOR_NOT_APPLIED,
             "listDroppedKeys": sorted(listFloorKeys), "sReason": sReason}
+
+
+def _fsDescribeInapplicableFloor(dictCapabilities, sRequiredLevel):
+    """Return why an x86-64 floor has no meaning on this processor."""
+    sReason = ("floor not applicable: " + sRequiredLevel + " is an x86-64 "
+               "instruction level and this computer's processor is arm64")
+    if dictCapabilities.get("sArchitecture") in ("x86_64", "amd64"):
+        sReason += " (the container runs under emulation)"
+    return sReason
 
 
 def flistValidateFloorRequest(sRequiredLevel, listFloorKeys):

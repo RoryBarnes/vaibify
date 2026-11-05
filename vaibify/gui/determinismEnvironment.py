@@ -525,15 +525,20 @@ def flistDescribeExecutionWarnings(dictVariables):
     """Return the run-start warnings the profile's settings earn.
 
     One for a floor this processor cannot honor, and one for each
-    setting the probe saw the image's NumPy refuse or ignore.
+    setting the probe saw the image's NumPy refuse or ignore. A floor
+    that is NOT APPLICABLE (an arm64 processor asked for an x86-64
+    level) is recorded in the run log and the run context and earns no
+    warning: nothing about this computer could change it, and a toast
+    on every run of an Apple Silicon Mac told the researcher nothing
+    they could act on (reported 2026-11-05).
     """
     from vaibify.reproducibility.rerunProcedure import (
-        flistDescribeProbeConcerns,
+        S_FLOOR_NOT_APPLIED, flistDescribeProbeConcerns,
     )
     dictSettings = dictVariables.get(S_EXECUTION_SETTINGS_KEY) or {}
     dictDecision = dictSettings.get("dictDecision") or {}
     listWarnings = []
-    if dictDecision.get("sFloorState") == "not applied":
+    if dictDecision.get("sFloorState") == S_FLOOR_NOT_APPLIED:
         listWarnings.append(
             dictDecision.get("sReason", "floor not applied")
             + f". The {dictSettings.get('sProfileId', '')} profile's other "

@@ -819,3 +819,99 @@ def testAHostProjectReadsThisMachineAndRunsNoProbe(monkeypatch):
     assert determinismEnvironment.fdictProbeUnderPrefix(
         None, "hostProject", "", "") == {
             "sProbeState": "probe not run in host mode"}
+
+
+# An arm64 kernel's /proc/cpuinfo, in the shape arch/arm64/kernel/cpuinfo.c
+# writes (no ``flags`` and no ``vendor_id`` line; ``Features``, ``CPU
+# implementer`` and ``CPU architecture`` instead). It is what every
+# container on an Apple Silicon Mac reads, whether the container is
+# arm64 or an x86-64 one running under Rosetta or QEMU, because the
+# container shares the VM's kernel.
+_S_ARM64_CPUINFO = (
+    "processor\t: 0\n"
+    "BogoMIPS\t: 48.00\n"
+    "Features\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp "
+    "asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 asimddp sha512 "
+    "asimdfhm dit uscat ilrcpc flagm ssbs sb paca pacg dcpodp flagm2 frint\n"
+    "CPU implementer\t: 0x61\n"
+    "CPU architecture: 8\n"
+    "CPU variant\t: 0x0\n"
+    "CPU part\t: 0x000\n"
+    "CPU revision\t: 0\n")
+
+
+def _fdictCapabilitiesFromCpuinfo(tmp_path, sText):
+    pathCpuinfo = tmp_path / "cpuinfo"
+    pathCpuinfo.write_text(sText, encoding="utf-8")
+    return rerunProcedure.fdictReadProcessorCapabilities(str(pathCpuinfo))
+
+
+@pytest.mark.falsification
+def testAnArm64ProcessorRecordsTheFloorAsNotApplicableAndIsNotWarnedAbout(
+    tmp_path,
+):
+    """An x86-64 instruction floor has no meaning on an arm64 processor.
+
+    The floor keys are dropped and the thread pins kept, as for an x86
+    processor below the level, but the state is "not applicable", the
+    reason names the architecture, and the run-start warnings are
+    silent: nothing about this computer could change it, and a warning
+    on every run of an Apple Silicon Mac told the researcher nothing
+    they could act on (reported 2026-11-05).
+
+    Kills: treating an arm64 processor as one whose capabilities could
+    not be read, which warns before every run.
+    """
+    dictCapabilities = _fdictCapabilitiesFromCpuinfo(tmp_path, _S_ARM64_CPUINFO)
+    assert dictCapabilities["sProcessorFamily"] == "arm64"
+    assert dictCapabilities["bReadable"] is False
+    dictSettings = executionProfiles.fdictDecideExecutionSettings(
+        executionProfiles.fdictProfileFromTable(S_ACROSS), dictCapabilities)
+    assert dictSettings["dictDecision"]["sFloorState"] == "not applicable"
+    assert dictSettings["dictDecision"]["sReason"].startswith(
+        "floor not applicable: x86-64-v3 is an x86-64 instruction level and "
+        "this computer's processor is arm64")
+    assert dictSettings["listDropped"] == [
+        "NPY_DISABLE_CPU_FEATURES", "OPENBLAS_CORETYPE"]
+    assert dictSettings["dictApplied"] == {
+        "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"}
+    assert determinismEnvironment.flistDescribeExecutionWarnings({
+        determinismEnvironment.S_EXECUTION_SETTINGS_KEY: dictSettings}) == []
+
+
+def testAnEmulatedContainerOnArm64SaysSo(tmp_path):
+    """Under Rosetta or QEMU uname reports x86_64; the kernel's cpuinfo is the truth."""
+    dictCapabilities = _fdictCapabilitiesFromCpuinfo(tmp_path, _S_ARM64_CPUINFO)
+    dictCapabilities["sArchitecture"] = "x86_64"
+    dictDecision = rerunProcedure.fdictDecideAppliedSettings(
+        dictCapabilities, "x86-64-v3", ["OPENBLAS_CORETYPE"])
+    assert dictDecision["sFloorState"] == "not applicable"
+    assert dictDecision["sReason"].endswith("(the container runs under emulation)")
+
+
+def testAReadingThatFailedStillWarnsAndNamesWhy(tmp_path):
+    """The two failure states keep their warning, and now carry the cause."""
+    dictCapabilities = {
+        "bReadable": False, "sVendor": "", "sLevel": "", "iVisibleCores": 0,
+        "sArchitecture": "",
+        "sUnreadableReason": "the capability reading failed: it exited 1 with no record",
+    }
+    dictSettings = executionProfiles.fdictDecideExecutionSettings(
+        executionProfiles.fdictProfileFromTable(S_ACROSS), dictCapabilities)
+    assert dictSettings["dictDecision"]["sFloorState"] == "not applied"
+    assert dictSettings["dictDecision"]["sReason"] == (
+        "floor not applied: capabilities unreadable on this host (the "
+        "capability reading failed: it exited 1 with no record)")
+    listWarnings = determinismEnvironment.flistDescribeExecutionWarnings({
+        determinismEnvironment.S_EXECUTION_SETTINGS_KEY: dictSettings})
+    assert len(listWarnings) == 1 and "it exited 1 with no record" in listWarnings[0]
+    dictMissing = rerunProcedure.fdictReadProcessorCapabilities(
+        str(tmp_path / "absent"))
+    assert dictMissing["bReadable"] is False
+    assert dictMissing["sProcessorFamily"] == ""
+    assert "could not be read" in dictMissing["sUnreadableReason"]
+    dictFlagless = _fdictCapabilitiesFromCpuinfo(
+        tmp_path, "processor\t: 0\nvendor_id\t: GenuineIntel\n")
+    assert dictFlagless["sProcessorFamily"] == ""
+    assert rerunProcedure.fdictDecideAppliedSettings(
+        dictFlagless, "x86-64-v3", ["OPENBLAS_CORETYPE"])["sFloorState"] == "not applied"

@@ -36057,8 +36057,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/reproducibility/rerunProcedure.py',
         # the host name is recorded with the capabilities
-        old='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n    }\n',
-        new='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sHostName": os.uname().nodename,\n    }\n',
+        old='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sProcessorFamily": "",\n    }\n',
+        new='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sProcessorFamily": "",\n        "sHostName": os.uname().nodename,\n    }\n',
     ),
     Falsification(
         nodeid=(
@@ -40005,6 +40005,14 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptUtilities.js',
         old='            if (sState === "not-applicable") continue;\n            iApplicable++;\n',
         new='            iApplicable++;\n',
+    ),
+    Falsification(
+        nodeid='tests/testExecutionProfiles.py::testAnArm64ProcessorRecordsTheFloorAsNotApplicableAndIsNotWarnedAbout',
+        # An arm64 processor read as one whose capabilities could not be
+        # read, which warns before every run.
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='        return {"sFloorState": S_FLOOR_NOT_APPLICABLE,\n',
+        new='        return {"sFloorState": S_FLOOR_NOT_APPLIED,\n',
     ),
     Falsification(
         nodeid='tests/testReachApprovalCommandLine.py::testWithoutATerminalAnUnapprovedConfigurationStopsAndNamesTheFlag',

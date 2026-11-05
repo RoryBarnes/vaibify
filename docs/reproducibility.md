@@ -243,7 +243,13 @@ how many cores the run can see. A processor without `x86-64-v3` cannot
 honor the instruction floor, so it runs without those two settings,
 keeps the thread settings, and records "floor not applied: this
 processor lacks x86-64-v3"; the dashboard warns you before such a run
-starts. Then a separate probe loads NumPy under exactly the settings the
+starts, as it does when the processor could not be read at all (the
+record then says why). A processor that is not x86-64 at all, such as
+an Apple Silicon Mac, whether the container is arm64 or an x86-64 one
+running under emulation, drops the same two settings under a state of
+its own, "floor not applicable", named in the run log and the run
+context but never warned about: nothing about that computer could
+change it. Then a separate probe loads NumPy under exactly the settings the
 steps get, and records what OpenBLAS chose and whether NumPy applied
 each feature it was asked to disable. NumPy before version 2.4 does not
 know the name `X86_V4`; it ignores that request without a visible
