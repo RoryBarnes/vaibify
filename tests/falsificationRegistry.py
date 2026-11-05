@@ -39977,6 +39977,33 @@ LIST_FALSIFICATIONS = [
         new='                var bNeverSleep = document.getElementById(\n',
     ),
     Falsification(
+        nodeid='tests/testStepLevelStates.py::testANeverRunDeclarationStepReadsNotApplicableAtLevelOne',
+        # The old precedence: the inactivity override ahead of the
+        # empty-requirement check, so a never-run declaration step reads
+        # not-started at Level 1 and holds the Steps banner at partial.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if iTotal == 0:\n'
+            '        return "not-applicable"\n'
+            '    if sInactivityState:\n'
+            '        return sInactivityState\n'
+        ),
+        new=(
+            '    if sInactivityState:\n'
+            '        return sInactivityState\n'
+            '    if iTotal == 0:\n'
+            '        return "not-applicable"\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheStepsBannerSkipsANeverRunDeclaration.py::testTheBannerReadsAttainedAndTheDeclarationRowNotApplicable',
+        # The banner's summarizer counting a not-applicable cell as an
+        # applicable, unassessed one.
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='            if (sState === "not-applicable") continue;\n            iApplicable++;\n',
+        new='            iApplicable++;\n',
+    ),
+    Falsification(
         nodeid='tests/testReachApprovalCommandLine.py::testWithoutATerminalAnUnapprovedConfigurationStopsAndNamesTheFlag',
         # Approving by default when there is nobody to ask.
         source='vaibify/cli/reachApprovalPrompt.py',
