@@ -28,7 +28,7 @@ def _fsWriteLoadableConfig(pathDirectory):
     sConfigPath = os.path.join(str(pathDirectory), "vaibify.yml")
     os.makedirs(str(pathDirectory), exist_ok=True)
     with open(sConfigPath, "w") as fileHandle:
-        fileHandle.write(f"projectName: {S_PROJECT_NAME}\n")
+        fileHandle.write(f"projectName: {S_PROJECT_NAME}\nnetworkMode: web\n")
     fconfigLoadFromFile(sConfigPath)
     return sConfigPath
 
@@ -47,6 +47,11 @@ def fixtureSettingsClient(tmp_path):
             "sDirectory": str(tmp_path / S_PROJECT_NAME),
             "sConfigPath": sConfigPath,
         },
+    ), patch(
+        # The registry is a stub here, so the reach approval the settings
+        # route records for the file it wrote is stubbed with it.
+        "vaibify.config.registryManager.fnRecordReachApproval",
+        lambda sName, dictRecord: None,
     ):
         yield TestClient(app), sConfigPath
 

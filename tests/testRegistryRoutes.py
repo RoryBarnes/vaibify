@@ -44,7 +44,7 @@ def _fnWriteMinimalConfig(tmp_path, sProjectName="test-project"):
     os.makedirs(sProjectDir, exist_ok=True)
     sConfigPath = os.path.join(sProjectDir, "vaibify.yml")
     with open(sConfigPath, "w") as fileHandle:
-        fileHandle.write(f"projectName: {sProjectName}\n")
+        fileHandle.write(f"projectName: {sProjectName}\nnetworkMode: web\n")
     return sProjectDir
 
 

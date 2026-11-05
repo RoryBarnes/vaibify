@@ -116,15 +116,20 @@ def _fsDescribeUnstatedNetworkMode(config):
     Only a loaded project configuration can be unstated: a wizard
     request never carries this field empty with that meaning (an empty
     request mode means the new-project mode), so this is asked of the
-    configuration lane alone.
+    configuration lane alone. As with the fields above, a config that
+    does not CARRY the mode at all is not graded; a loaded file always
+    carries it, empty when the file names none.
     """
     from vaibify.docker.containerManager import fsNetworkModeOf
     from vaibify.config.projectConfig import (
         S_NETWORK_MODE_UNSTATED, fsDescribeUnstatedNetworkMode,
     )
+    if not hasattr(config, "sNetworkMode") and not hasattr(config, "bNetworkIsolation"):
+        return ""
     if fsNetworkModeOf(config) != S_NETWORK_MODE_UNSTATED:
         return ""
-    return fsDescribeUnstatedNetworkMode(config.sProjectName)
+    return fsDescribeUnstatedNetworkMode(
+        getattr(config, "sProjectName", "") or "this project")
 
 
 _T_FIELD_DESCRIBERS = (
