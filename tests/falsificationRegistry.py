@@ -19543,11 +19543,11 @@ LIST_FALSIFICATIONS = [
         # continues the walk past a deliberately sealed container, so a
         # working configuration produces a wall of failures
         old=(
-            '    if bIsolated:\n'
+            '    if sState == S_NETWORK_STATE_ISOLATED:\n'
             '        return [_fpreflightIsolation(sEvidence)]'
         ),
         new=(
-            '    if bIsolated:\n'
+            '    if sState == S_NETWORK_STATE_ISOLATED:\n'
             '        listResults = [_fpreflightIsolation(sEvidence)]'
         ),
     ),
@@ -39866,6 +39866,27 @@ LIST_FALSIFICATIONS = [
         source='vaibify/docker/containerManager.py',
         old='    if not fbIsSealedNetworkMode(sMode):\n        return\n    if not dictEgress',
         new='    if sMode != "allowlist":\n        return\n    if not dictEgress',
+    ),
+    Falsification(
+        nodeid='tests/testDoctorNetworkGraph.py::test_the_sealed_flag_with_a_gateway_is_a_disagreement_never_sealed',
+        # The assessment trusting the sealed flag alone: no attachment check.
+        source='vaibify/docker/networkAssessment.py',
+        old='        sContradiction = _fsDescribeSealedContradiction(dictNetworks)\n',
+        new='        sContradiction = ""\n',
+    ),
+    Falsification(
+        nodeid='tests/testDoctorNetworkGraph.py::test_an_open_container_under_an_unstated_or_web_file_is_shown_open',
+        # The Network row answering the container's state from the file's mode.
+        source='vaibify/gui/routes/systemRoutes.py',
+        old=(
+            '        dictAssessment = fdictAssessContainerNetwork(\n'
+            '            fjsonInspectContainer(sContainerId))\n'
+        ),
+        new=(
+            '        dictAssessment = {"sState": {"web": "sealed", "allowlist": "sealed",\n'
+            '                                     "open": "open", "isolated": "isolated"}.get(\n'
+            '                                         sFileMode, "unknown"), "sEvidence": ""}\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testNetworkMode.py::testEveryLaunchFunctionRefusesAnUnstatedModeBeforeAnyArgumentIsBuilt',

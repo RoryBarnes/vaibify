@@ -5455,7 +5455,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 857 -> 858 (2026-10-29): the Network row reads the mode defensively.
     # 858 -> 859 (2026-11-02): the Network row covers both sealed modes, web and allowlist (web network mode plan, A5).
     # 859 -> 866 (2026-11-04): the Network row reports a file that names no mode as unstated, never open (ruling D1 revised).
-    "routes/systemRoutes.py": 866,
+    # 866 -> 898 (2026-11-04): the Network row carries the container's assessed network state and whether the file agrees.
+    "routes/systemRoutes.py": 898,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record

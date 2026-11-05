@@ -3015,17 +3015,59 @@ var VaibifyContainerManager = (function () {
         }
     }
 
+    function _fsNetworkBannerSentence(dictNetwork) {
+        /* What the container IS, from the server's assessment, beside
+           what the file asks for; the row never re-derives either. */
+        var sMode = dictNetwork.sMode || "unknown";
+        var sState = dictNetwork.sContainerState || "unknown";
+        if (sState === "unknown") {
+            return sMode === "unstated"
+                ? "vaibify.yml names no network mode; add one line " +
+                  "(networkMode: web, allowlist, isolated or open) " +
+                  "before the container is created again."
+                : "Network mode: " + sMode + " (network state could " +
+                  "not be read).";
+        }
+        if (dictNetwork.bFileAgrees === false) {
+            return "This container was created " + sState + "; " +
+                (sMode === "unstated"
+                    ? "vaibify.yml now names no network mode; add one and " +
+                      "recreate the container to apply it."
+                    : "vaibify.yml now asks for " + sMode + "; recreate " +
+                      "the container to apply it.") +
+                (sState === "open"
+                    ? " Until then anything in this container may reach " +
+                      "services on this computer and your network."
+                    : "");
+        }
+        if (sState === "open") {
+            return "Network mode: open. Anything in this container may " +
+                "reach services on this computer and your network.";
+        }
+        return "Network mode: " + sMode + " (" + sState + ").";
+    }
+
     function _fnRenderNetworkBanner(dictNetwork) {
-        /* The server's facts about the sealed network: the mode, whether
-           the proxy sidecar is up, and what it refused (ruling D8). A
-           project not in a sealed mode (web or allowlist) has no row. A
-           proxy that is down is said in so many words; nothing here is
-           re-derived. */
+        /* The server's facts about the network: the file's mode, the
+           container's assessed state (ruling D1 revised: an open
+           container is said to be open, whatever the file says now),
+           and for a sealed project whether the proxy sidecar is up and
+           what it refused (ruling D8). A proxy that is down is said in
+           so many words; nothing here is re-derived. */
         var elBanner = document.getElementById("networkBanner");
         if (!elBanner) return;
-        if (!dictNetwork || dictNetwork.bSealed !== true) {
+        if (!dictNetwork) {
             elBanner.style.display = "none";
             elBanner.innerHTML = "";
+            return;
+        }
+        if (dictNetwork.bSealed !== true) {
+            elBanner.innerHTML =
+                '<div class="build-warnings-banner-header"><span>' +
+                VaibifyUtilities.fnEscapeHtml(
+                    _fsNetworkBannerSentence(dictNetwork)) +
+                '</span></div>';
+            elBanner.style.display = "block";
             return;
         }
         var listRefused = dictNetwork.listRefused || [];
@@ -3035,11 +3077,18 @@ var VaibifyContainerManager = (function () {
             : (sState === "unknown" ? "network proxy state could not be read"
                 : "network proxy down: nothing in the container reaches " +
                   "the network until the container is started again");
+        var sDisagreement = dictNetwork.bFileAgrees === false &&
+            dictNetwork.sContainerState !== "unknown"
+            ? '<p class="build-warnings-banner-list">' +
+              VaibifyUtilities.fnEscapeHtml(
+                  _fsNetworkBannerSentence(dictNetwork)) + '</p>'
+            : "";
         elBanner.innerHTML =
             '<div class="build-warnings-banner-header">' +
             '<span>Network mode: ' +
             VaibifyUtilities.fnEscapeHtml(dictNetwork.sMode) + ' (' +
             VaibifyUtilities.fnEscapeHtml(sStateText) + ')</span></div>' +
+            sDisagreement +
             (listRefused.length
                 ? '<ul class="build-warnings-banner-list">' +
                   listRefused.map(function (dictEntry) {
