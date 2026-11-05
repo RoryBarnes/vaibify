@@ -139,8 +139,14 @@ reason; never counted as ok). Every `warn` and `fail` names a next step
 for the runtime this machine actually uses. For a running container,
 doctor also reports whether it was created consistently with
 `x11Forwarding`, which is fixed when a container is created, and
-what its network mode is (a web- or allowlist-mode container reaches the
-network only through its proxy; see [Security Model](security.md)). `--quiet` hides the `ok`
+what network it has (a web- or allowlist-mode container reaches the
+network only through its proxy; an open container is warned about as
+`network-exposure`; a container whose attachments contradict the mode
+it was created with fails; see [Security Model](security.md)). The
+project scope also reports `network-mode-stated` (whether `vaibify.yml`
+names a mode at all) and `reach-approval` (whether this computer holds
+your approval of the settings that widen what the container reaches,
+and which of them changed since). `--quiet` hides the `ok`
 lines, `--json` emits the results as JSON, and `--explain CHECK`
 prints how one check decides and nothing else.
 
@@ -229,7 +235,7 @@ kept from sleeping with `caffeinate -s vaibify build`.
 ```bash
 vaibify start [-d] [--gui [--port N]] [--jupyter] [-p NAME]
               [--image-trust restricted|as-built|inspect] [--with-credentials]
-              [COMMAND]
+              [--approve-reach] [COMMAND]
 ```
 
 | Option | Meaning |
@@ -239,10 +245,13 @@ vaibify start [-d] [--gui [--port N]] [--jupyter] [-p NAME]
 | `--jupyter` | Enable JupyterLab with port forwarding |
 | `--image-trust` | How an image vaibify did not build may run. Asked interactively on a terminal; required without one |
 | `--with-credentials` | Let that image's code read your stored credentials. Needs `--image-trust`; never implied |
+| `--approve-reach` | Approve the settings in `vaibify.yml` that widen what the container reaches (`networkMode: open`, `x11Forwarding`, `bindMounts`, `allowedHosts`). Asked interactively on a terminal, default no; required without one when they are not yet approved on this computer |
 
 Without `--detach`, `start` attaches a terminal to the container, or
 runs `COMMAND` in it. See [Security Model](security.md) for what each
-image-trust choice does.
+image-trust choice does and what a reach approval covers. A project
+whose `vaibify.yml` names no `networkMode` is refused before anything
+is created, with the line to add.
 
 ### vaibify status
 
