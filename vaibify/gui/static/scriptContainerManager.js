@@ -1495,8 +1495,10 @@ var VaibifyContainerManager = (function () {
         document.getElementById("btnSettingsCancel").addEventListener(
             "click", function () { elModal.remove(); });
         _fnBindImageTrustSetting(sName, elModal);
+        _fnBindOpenModeQuestion();
         document.getElementById("btnSettingsSave").addEventListener(
             "click", async function () {
+                if (_bOpenModeQuestionPending) return;
                 var bNeverSleep = document.getElementById(
                     "settingNeverSleep").checked;
                 var bX11Forwarding = document.getElementById(
@@ -1519,6 +1521,31 @@ var VaibifyContainerManager = (function () {
                     fMemoryLimitGigabytes: fMemoryLimitGigabytes,
                 });
             });
+    }
+
+    var _bOpenModeQuestionPending = false;
+
+    function _fnBindOpenModeQuestion() {
+        /* Choosing open in the settings dialog asks first; Cancel puts
+           the select back, and Save does not submit while the question
+           is open. The save itself records the approval (ruling D2). */
+        var elMode = document.getElementById("settingNetworkMode");
+        if (!elMode) return;
+        var sSettledMode = elMode.value;
+        elMode.addEventListener("change", function () {
+            if (elMode.value !== "open" || sSettledMode === "open") {
+                sSettledMode = elMode.value;
+                return;
+            }
+            _bOpenModeQuestionPending = true;
+            VaibifyModals.fnConfirmOpenNetworkMode(function () {
+                _bOpenModeQuestionPending = false;
+                sSettledMode = "open";
+            }, function () {
+                _bOpenModeQuestionPending = false;
+                elMode.value = sSettledMode;
+            });
+        });
     }
 
     function _fsNetworkModeOf(dictSettings) {

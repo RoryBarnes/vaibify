@@ -39958,6 +39958,25 @@ LIST_FALSIFICATIONS = [
         ),
     ),
     Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testChoosingOpenInTheWizardAsksFirstAndCancelPutsTheControlBack',
+        # The wizard's cancel handler leaving the select on open.
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old=(
+            '                    elMode.value = sSettledMode;\n'
+            '                    elForwarding.disabled = sSettledMode !== "open";\n'
+        ),
+        new=(
+            '                    elForwarding.disabled = sSettledMode !== "open";\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testChoosingOpenInTheSettingsDialogAsksFirstAndSaveWaits',
+        # A settings save that submits while the open-mode question is open.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                if (_bOpenModeQuestionPending) return;\n                var bNeverSleep = document.getElementById(\n',
+        new='                var bNeverSleep = document.getElementById(\n',
+    ),
+    Falsification(
         nodeid='tests/testReachApprovalCommandLine.py::testWithoutATerminalAnUnapprovedConfigurationStopsAndNamesTheFlag',
         # Approving by default when there is nobody to ask.
         source='vaibify/cli/reachApprovalPrompt.py',

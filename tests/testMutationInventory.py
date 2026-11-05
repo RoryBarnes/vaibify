@@ -2167,6 +2167,9 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # BEFORE the launch functions create one.
     "fdictResolveLaunchPosture",
     "fdictBuildImageTrustPromptForProject",
+    # Reads the project's registry entry and builds the reach-approval
+    # prompt; no daemon call and no container.
+    "fdictBuildReachPromptIfUnapproved",
     # A pure predicate over an exception object. It reads a status code
     # that a daemon call already returned; it makes no call of its own.
     "fbErrorMeansContainerGone",

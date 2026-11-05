@@ -164,3 +164,71 @@ def test_a_missing_repository_names_the_checks_it_cost():
     dictOrphans = {r.sName: r for r in listResults}[
         "orphaned-write-temporaries"]
     assert dictOrphans.sLevel == "ok"
+
+
+# ---------------------------------------------------------------------
+# The network mode and the reach approval (2026-11-04)
+# ---------------------------------------------------------------------
+
+from types import SimpleNamespace  # noqa: E402
+
+from vaibify.config import reachApproval  # noqa: E402
+from vaibify.docker import containerManager  # noqa: E402
+
+
+def _fconfigNamed(sNetworkMode, **dictFields):
+    dictConfig = {
+        "sProjectName": "probe", "sNetworkMode": sNetworkMode,
+        "bNetworkIsolation": False, "bX11Forwarding": False,
+        "listBindMounts": [], "listAllowedHosts": []}
+    dictConfig.update(dictFields)
+    return SimpleNamespace(**dictConfig)
+
+
+def test_an_unstated_mode_fails_with_the_one_sentence_and_a_stated_one_passes():
+    listResults = doctorProjectChecks.flistCheckNetworkModeStated(_fconfigNamed(""))
+    assert [(r.sName, r.sLevel) for r in listResults] == [("network-mode-stated", "fail")]
+    assert "'probe' names no networkMode" in listResults[0].sMessage
+    assert "networkMode: web" in listResults[0].sRemediation
+    listResults = doctorProjectChecks.flistCheckNetworkModeStated(_fconfigNamed("web"))
+    assert [(r.sName, r.sLevel) for r in listResults] == [("network-mode-stated", "ok")]
+
+
+def test_the_reach_approval_finding_agrees_with_the_launch(monkeypatch):
+    """OK where the launch would not ask, WARN where it would, by the same judgement."""
+    dictEntry = {"sName": "probe"}
+    monkeypatch.setattr(
+        containerManager, "_fdictRegisteredProjectOrNone", lambda sName: dictEntry)
+    assert doctorProjectChecks.flistCheckReachApproval(
+        _fconfigNamed("web"))[0].sLevel == "ok"
+    resultNever = doctorProjectChecks.flistCheckReachApproval(_fconfigNamed("open"))[0]
+    assert (resultNever.sName, resultNever.sLevel) == ("reach-approval", "warn")
+    assert "never approved on this computer" in resultNever.sMessage
+    assert "next start will ask" in resultNever.sMessage
+    assert "--approve-reach" in resultNever.sRemediation
+    dictEntry["dictReachApproval"] = reachApproval.fdictBuildReachApprovalRecord(
+        _fconfigNamed("open"))
+    assert doctorProjectChecks.flistCheckReachApproval(
+        _fconfigNamed("open"))[0].sLevel == "ok"
+    resultChanged = doctorProjectChecks.flistCheckReachApproval(
+        _fconfigNamed("open", bX11Forwarding=True))[0]
+    assert resultChanged.sLevel == "warn"
+    assert "changed since it was approved: X11 forwarding" in resultChanged.sMessage
+
+
+def test_the_two_findings_ride_the_start_scope(monkeypatch):
+    from vaibify.cli import commandDoctor
+    monkeypatch.setattr(
+        containerManager, "_fdictRegisteredProjectOrNone", lambda sName: {"sName": "probe"})
+    config = _fconfigNamed("open", listPorts=[], listSecrets=[], sWorkspaceRoot="/workspace")
+    for sName in ("_fpreflightImage", "flistPreflightSecrets", "_flistPreflightPorts",
+                  "_fpreflightContainerName", "_flistPreflightBindMounts",
+                  "_flistPreflightBindMountFormats", "_flistPreflightColimaSharedRoots"):
+        monkeypatch.setattr(
+            "vaibify.cli.commandStart." + sName,
+            (lambda *tArgs: []) if sName.startswith("flist") or sName.startswith("_flist")
+            else (lambda *tArgs: None))
+    monkeypatch.setattr(commandDoctor, "flistCheckX11Host", lambda config: [])
+    listResults = [r for r in commandDoctor._flistStartOnlyChecks(config) if r is not None]
+    assert [r.sName for r in listResults][-2:] == ["network-mode-stated", "reach-approval"]
+    assert [r.sLevel for r in listResults][-2:] == ["ok", "warn"]
