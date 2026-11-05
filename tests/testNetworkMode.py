@@ -1,11 +1,14 @@
 """The network mode: one setting with an old spelling, and what a launch does with it.
 
-Ruling D1: ``networkMode`` is the setting; ``networkIsolation`` is its
-old spelling, read as it always was, derived when absent, and refused
-when the two disagree. Ruling D4: a display channel and a sealing mode
-exclude each other. The launch in allowlist mode joins the sealed
-network with its resolver black-holed and every client pointed at the
-proxy, and is refused outright when no proxy was prepared.
+Ruling D1 (revised 2026-11-04): ``networkMode`` is the setting;
+``networkIsolation`` is its old spelling, whose ``true`` still means
+isolated, whose ``false`` names no mode, and which is refused when the
+two disagree. A file that names no mode is UNSTATED: it loads, it is
+shown, and no launch path builds a single argument for it. Ruling D4:
+a display channel and a sealing mode exclude each other. The launch in
+allowlist mode joins the sealed network with its resolver black-holed
+and every client pointed at the proxy, and is refused outright when no
+proxy was prepared.
 """
 
 from types import SimpleNamespace
@@ -16,6 +19,10 @@ from vaibify.cli.configFieldPreflight import flistDescribeUnusableConfiguration
 from vaibify.config import projectConfig
 from vaibify.docker import containerManager, egressAllowlist, egressProxy
 
+
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
 
 def _fconfigForLaunch(sNetworkMode="open", bX11Forwarding=False, **dictExtra):
     features = SimpleNamespace(
@@ -40,12 +47,13 @@ DICT_EGRESS = {"sNetworkName": "vaibifyProjectEgress-" + "a" * 32,
 
 # ----- the configuration ---------------------------------------------------
 
-def testTheOldSpellingAloneStillMeansWhatItMeant():
+def testTheOldSpellingTrueStillMeansIsolatedAndFalseNamesNoMode():
     assert projectConfig.fconfigFromYamlDict(
         {"projectName": "demo", "networkIsolation": True}).sNetworkMode == "isolated"
     config = projectConfig.fconfigFromYamlDict(
         {"projectName": "demo", "networkIsolation": False})
-    assert config.sNetworkMode == "open" and config.bNetworkIsolation is False
+    assert config.sNetworkMode == projectConfig.S_NETWORK_MODE_UNSTATED
+    assert config.bNetworkIsolation is False
 
 
 def testTheModeAloneDerivesTheOldSpelling():
@@ -57,10 +65,13 @@ def testTheModeAloneDerivesTheOldSpelling():
     assert config.bNetworkIsolation is False
 
 
-def testTheDefaultIsOpenForAFileThatNamesNeither():
+def testAFileThatNamesNeitherIsUnstated():
     config = projectConfig.fconfigFromYamlDict({"projectName": "demo"})
     assert (config.sNetworkMode, config.bNetworkIsolation, config.listAllowedHosts) == (
-        "open", False, [])
+        projectConfig.S_NETWORK_MODE_UNSTATED, False, [])
+    assert projectConfig.S_NETWORK_MODE_UNSTATED not in projectConfig.T_NETWORK_MODES
+    assert projectConfig.fbIsSealedNetworkMode(
+        projectConfig.S_NETWORK_MODE_UNSTATED) is False
 
 
 @pytest.mark.falsification
@@ -172,7 +183,11 @@ def testX11WithAllowlistModeIsRefusedEverywhereItIsAsked():
 def testTheModeIsReadFromTheOldSpellingWhenAConfigPredatesIt():
     assert containerManager.fsNetworkModeOf(
         SimpleNamespace(bNetworkIsolation=True)) == "isolated"
-    assert containerManager.fsNetworkModeOf(SimpleNamespace()) == "open"
+    assert containerManager.fsNetworkModeOf(SimpleNamespace()) == (
+        projectConfig.S_NETWORK_MODE_UNSTATED)
+    assert containerManager.fsNetworkModeOf(
+        SimpleNamespace(bNetworkIsolation=False)) == (
+        projectConfig.S_NETWORK_MODE_UNSTATED)
 
 
 def testAnUnregisteredProjectCannotLaunchInAllowlistMode(monkeypatch):
@@ -275,17 +290,24 @@ def testWebModeRefusesX11AndNeedsARegisteredProject(monkeypatch):
 
 
 @pytest.mark.falsification
-def testAKeylessLegacyFileStillLoadsOpen(tmp_path):
-    """An existing project that never named a mode keeps the network it had.
+def testAKeylessLegacyFileIsUnstatedAndCannotStart(tmp_path):
+    """An existing project that never named a mode is refused until it does.
 
-    Kills: the configuration's own default becoming web.
+    Nothing is reinterpreted in either direction: the file is not read
+    as open (the old default) and not as web (the new-project mode).
+
+    Kills: deriving open again for a file that names no mode.
     """
     sPath = str(tmp_path / "vaibify.yml")
     with open(sPath, "w", encoding="utf-8") as fileYaml:
         fileYaml.write("projectName: legacyProject\n")
     configLegacy = projectConfig.fconfigLoadFromFile(sPath)
-    assert (configLegacy.sNetworkMode, configLegacy.bNetworkIsolation) == ("open", False)
-    assert projectConfig.ProjectConfig(sProjectName="legacyProject").sNetworkMode == "open"
+    assert (configLegacy.sNetworkMode, configLegacy.bNetworkIsolation) == (
+        projectConfig.S_NETWORK_MODE_UNSTATED, False)
+    assert projectConfig.ProjectConfig(sProjectName="legacyProject").sNetworkMode == (
+        projectConfig.S_NETWORK_MODE_UNSTATED)
+    with pytest.raises(RuntimeError, match="names no networkMode"):
+        containerManager.flistBuildRunArgs(configLegacy)
     assert projectConfig.fconfigFromYamlDict(
         {"projectName": "demo", "networkMode": "web"}).sNetworkMode == "web"
 
@@ -314,7 +336,8 @@ def testEveryNewProjectPathWritesWeb(tmp_path, monkeypatch):
     """Plain, minimal and template init, and the creation route, all start at web.
 
     Kills: init leaving the mode to the configuration's own default,
-    which is what a file that names no mode means: open.
+    which is no mode at all (unstated), so the new project could not
+    start.
     """
     from vaibify.cli import commandInit
     from vaibify.config import templateManager
@@ -358,3 +381,94 @@ def testTheNetworkRowSaysWhetherTheModeIsSealed(monkeypatch):
         dictNetwork = systemRoutes._fdictDescribeNetwork(None, "cid")
         assert (dictNetwork["sMode"], dictNetwork["bSealed"]) == (sMode, bSealed)
         assert (dictNetwork["sProxyState"] == "running") is bSealed
+    monkeypatch.setattr(
+        systemRoutes, "_fconfigForContainerOrNone",
+        lambda *tArgs: SimpleNamespace(sNetworkMode="", bNetworkIsolation=False))
+    dictNetwork = systemRoutes._fdictDescribeNetwork(None, "cid")
+    assert (dictNetwork["sMode"], dictNetwork["bSealed"]) == ("unstated", False)
+
+
+# ----- the unstated mode (ruling D1, revised 2026-11-04) ----------------------
+
+
+def _fnRefuseEveryLaunchCommand(monkeypatch):
+    monkeypatch.setattr(
+        containerManager, "_fsRunDetachedCommand",
+        lambda saCommand: pytest.fail("a container was launched"))
+    monkeypatch.setattr(
+        containerManager, "_fnRunDockerCommand",
+        lambda saCommand: pytest.fail("a container was launched"))
+    monkeypatch.setattr(
+        containerManager, "_fsRunKillableDockerCommand",
+        lambda *tArgs, **dictKeywords: pytest.fail("a container was created"))
+    monkeypatch.setattr(
+        containerManager, "fdictResolveLaunchPosture",
+        lambda sProjectName, sImageReference="": {
+            "sMode": "built", "bWithCredentials": True, "sImageDigest": "sha256:built"})
+
+
+@pytest.mark.falsification
+def testEveryLaunchFunctionRefusesAnUnstatedModeBeforeAnyArgumentIsBuilt(monkeypatch):
+    """Kills: the run-argument builder no longer asking for a stated mode first."""
+    _fnRefuseEveryLaunchCommand(monkeypatch)
+    listBuilt = []
+    monkeypatch.setattr(
+        containerManager, "_flistBuildProcessModeArgs",
+        lambda *tArgs: listBuilt.append(tArgs) or [])
+    config = _fconfigForLaunch("")
+    sReservation = "0123456789abcdef0123456789abcdef"
+    for fnLaunch in (
+        lambda: containerManager.flistBuildRunArgs(config),
+        lambda: containerManager.fnStartContainer(config, "/d"),
+        lambda: containerManager.fsStartContainerDetached(config, "/d"),
+        lambda: containerManager.fsCreateContainerForReservation(config, sReservation),
+        lambda: containerManager.fsRecreateContainerDetachedFromImage(config, "sha256:x"),
+    ):
+        with pytest.raises(RuntimeError, match="names no networkMode"):
+            fnLaunch()
+    assert listBuilt == []
+
+
+def testNothingReadsAnUnstatedModeAsOpen(monkeypatch):
+    configUnstated = _fconfigForLaunch("")
+    assert containerManager.fsNetworkModeOf(configUnstated) == ""
+    assert containerManager._fbAgentBridgeRequired(configUnstated) is False
+    assert containerManager.fdictPrepareEgressForLaunch(configUnstated) is None
+    assert containerManager._fbAgentBridgeRequired(_fconfigForLaunch("open")) is True
+
+
+def testASavedUnstatedConfigurationWritesNoModeKeyAndLoadsBackUnstated(tmp_path):
+    sPath = str(tmp_path / "vaibify.yml")
+    projectConfig.fnSaveToFile(projectConfig.ProjectConfig(sProjectName="demo"), sPath)
+    with open(sPath, encoding="utf-8") as fileYaml:
+        sWritten = fileYaml.read()
+    assert "networkMode" not in sWritten
+    configLoaded = projectConfig.fconfigLoadFromFile(sPath)
+    assert configLoaded.sNetworkMode == projectConfig.S_NETWORK_MODE_UNSTATED
+    assert "networkMode" not in projectConfig.fdictLoadDefaults()
+    assert projectConfig.fbValidateConfig({"projectName": "demo", "networkMode": ""}) is False
+
+
+def testTheConfigurationPreflightComplainsWithTheOneSentence():
+    from vaibify.cli.configFieldPreflight import (
+        flistDescribeUnusableProjectConfiguration, fpreflightConfigurationFields,
+    )
+    configUnstated = projectConfig.ProjectConfig(sProjectName="legacyProject")
+    listComplaints = flistDescribeUnusableProjectConfiguration(configUnstated)
+    assert listComplaints == [
+        projectConfig.fsDescribeUnstatedNetworkMode("legacyProject")]
+    assert fpreflightConfigurationFields(configUnstated).sLevel == "fail"
+    assert flistDescribeUnusableProjectConfiguration(
+        projectConfig.ProjectConfig(sProjectName="demo", sNetworkMode="web")) == []
+    assert flistDescribeUnusableConfiguration(configUnstated) == []
+
+
+def testTheBuildRouteRefusesAnUnstatedModeBeforeBuilding(monkeypatch):
+    from vaibify.gui import buildRoutes
+    configUnstated = projectConfig.ProjectConfig(sProjectName="legacyProject")
+    listChecks = buildRoutes._flistConfigurationPreflights()
+    fpreflightFields, sRefusal = listChecks[0]
+    preflightResult = fpreflightFields(configUnstated)
+    assert preflightResult.sLevel == "fail"
+    assert "names no networkMode" in preflightResult.sMessage
+    assert sRefusal == buildRoutes.S_REFUSAL_UNUSABLE_CONFIGURATION

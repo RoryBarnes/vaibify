@@ -211,7 +211,7 @@ LIST_RESEARCHER_ACTIONS = [
         "/api/containers/{sName}/settings",
         "Change the container's settings, e.g. CPU and memory limits. "
         "Args: any of {iCpuLimit, fMemoryLimitGigabytes, bNeverSleep, "
-        "bX11Forwarding, sNetworkMode: open|allowlist|isolated, "
+        "bX11Forwarding, sNetworkMode: web|allowlist|isolated|open, "
         "b<Agent>AutoUpdate}."),
     _fdictHubEntry(
         "allow-network-host", "container", "POST",
@@ -314,6 +314,8 @@ DICT_ROUTE_TO_HOST_COMMAND = {
     ("POST", "/api/registry/{sName}/reconcile"): "reconcile",
     # `vaibify start --image-trust` records the same trust grant.
     ("POST", "/api/registry/{sName}/image-trust"): "start",
+    # `vaibify start --approve-reach` records the same approval.
+    ("POST", "/api/registry/{sName}/reach-approval"): "start",
     # `vaibify open` mints and redeems the transfer capability.
     ("POST", "/api/transfer"): "open",
     # The dashboard's new-project form; `vaibify init` scaffolds one.

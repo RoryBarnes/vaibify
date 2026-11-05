@@ -209,7 +209,8 @@ def fdictRefusalDetail(dictBody):
     that container and retry, which is the remedy the message implies.
     """
     dictDetail = {"sMessage": dictBody.get("sMessage", "")}
-    for sKey in ("sHeldContainerName", "sAction", "dictImageTrust"):
+    for sKey in ("sHeldContainerName", "sAction", "dictImageTrust",
+                 "dictReachPrompt"):
         if dictBody.get(sKey):
             dictDetail[sKey] = dictBody[sKey]
     return dictDetail
@@ -252,6 +253,10 @@ async def ftBeginStart(
         _fdictRefusalForUnconfirmedImageTrust, sName)
     if dictTrustRefusal:
         return (409, dictTrustRefusal)
+    dictReachRefusal = await asyncio.to_thread(
+        _fdictRefusalForUnapprovedReach, sName)
+    if dictReachRefusal:
+        return (409, dictReachRefusal)
     sOutcome, dictBody, recordOwner = (
         await sessionLifecycle.ftReserveContainerForStart(
             appState, sName, sBrowserSessionId, iPort, connectionDocker,
@@ -422,6 +427,35 @@ def _fdictRefusalForUnconfirmedImageTrust(sName):
     except imageTrust.ImageProvenanceUnavailableError:
         return {}
     return {}
+
+
+def _fdictRefusalForUnapprovedReach(sName):
+    """Return the 409 body asking to approve what the container may reach, or ``{}``.
+
+    The courtesy half of ruling D2: asked here, before any reservation
+    or container, so declining creates nothing; the launch functions
+    run the same judgement and are the guard. It needs no daemon. A
+    file that cannot be loaded is left to the launch, which fails with
+    the cause rather than a prompt about nothing.
+    """
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    from vaibify.config.registryManager import fdictGetProject
+    dictProject = fdictGetProject(sName)
+    if not dictProject:
+        return {}
+    try:
+        config = fconfigLoadFromFile(dictProject["sConfigPath"])
+    except (OSError, ValueError, KeyError):
+        return {}
+    dictPrompt = containerManager.fdictBuildReachPromptIfUnapproved(config)
+    if dictPrompt is None:
+        return {}
+    return {
+        "sName": sName,
+        "sMessage": f"'{sName}' cannot be started: {dictPrompt['sText']}",
+        "sAction": "confirm-reach",
+        "dictReachPrompt": dictPrompt,
+    }
 
 
 def _fdictReservationBody(sName, sReservationId, bAlreadyStarting):

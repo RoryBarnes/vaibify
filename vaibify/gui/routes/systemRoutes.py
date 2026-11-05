@@ -482,26 +482,66 @@ def _ftDescribeX11Findings(connectionDocker, sContainerId):
         return [], []
 
 
-def _fdictDescribeNetwork(connectionDocker, sContainerId):
-    """Return the Network row: the mode, the proxy's state, what it refused.
+# What the Network row says for a file that names no mode: the wire
+# carries a word, never the empty string the configuration holds.
+S_NETWORK_MODE_UNSTATED_WIRE = "unstated"
 
-    The mode is the file's, the rest is the daemon's; a project that is
-    not in allowlist mode has no proxy and says so (``not-applicable``).
-    Every failure to establish a fact answers ``unknown`` rather than a
-    guess (ruling D8: a dead proxy is shown, never silent).
+
+def _fdictDescribeNetwork(connectionDocker, sContainerId):
+    """Return the Network row: the file's mode, the container's state, the proxy.
+
+    The mode is the file's (``unstated`` for a file that names none,
+    ruling D1); ``sContainerState`` and ``sEvidence`` are what the
+    container HAS, from the one assessment the doctor also reads, and
+    ``bFileAgrees`` says whether the two name the same thing -- so a
+    container created open under the old default while the file is now
+    unstated or web is shown as open. The proxy's state and what it
+    refused are the daemon's; a project not in a sealed mode has no
+    proxy and says so (``not-applicable``). Every failure to establish
+    a fact answers ``unknown`` rather than a guess (ruling D8: a dead
+    proxy is shown, never silent).
     """
+    from vaibify.config.projectConfig import fbIsSealedNetworkMode
+    from vaibify.docker.containerManager import fsNetworkModeOf
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    if configProject is None:
+        return {"sMode": "unknown", "sProxyState": "unknown", "listRefused": [],
+                **_fdictAssessContainerState(sContainerId, "unknown")}
+    sMode = fsNetworkModeOf(configProject) or S_NETWORK_MODE_UNSTATED_WIRE
+    dictNetwork = {"sMode": sMode, "sName": "", "bSealed": fbIsSealedNetworkMode(sMode),
+                   "sProxyState": "not-applicable", "listRefused": [],
+                   **_fdictAssessContainerState(sContainerId, sMode)}
+    if not dictNetwork["bSealed"]:
+        return dictNetwork
+    _fnDescribeProxyInto(dictNetwork, connectionDocker, sContainerId)
+    return dictNetwork
+
+
+def _fdictAssessContainerState(sContainerId, sFileMode):
+    """Return the container's assessed network state beside the file's mode."""
+    from vaibify.docker.containerManager import fjsonInspectContainer
+    from vaibify.docker.networkAssessment import (
+        fbFileModeAgreesWithContainerState, fdictAssessContainerNetwork,
+    )
+    try:
+        dictAssessment = fdictAssessContainerNetwork(
+            fjsonInspectContainer(sContainerId))
+    except Exception:
+        dictAssessment = {"sState": "unknown",
+                          "sEvidence": "the container could not be inspected"}
+    return {
+        "sContainerState": dictAssessment["sState"],
+        "sEvidence": dictAssessment["sEvidence"],
+        "bFileAgrees": fbFileModeAgreesWithContainerState(
+            sFileMode, dictAssessment["sState"]),
+    }
+
+
+def _fnDescribeProxyInto(dictNetwork, connectionDocker, sContainerId):
+    """Add the sealed project's proxy state and refusals, or ``unknown``."""
     from vaibify.config.registryManager import fdictGetProject
     from vaibify.docker import projectEgress
     from ..pipelineServer import fsContainerNameForId
-    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
-    if configProject is None:
-        return {"sMode": "unknown", "sProxyState": "unknown", "listRefused": []}
-    sMode = getattr(configProject, "sNetworkMode", "") or "open"
-    from vaibify.config.projectConfig import fbIsSealedNetworkMode
-    dictNetwork = {"sMode": sMode, "sName": "", "bSealed": fbIsSealedNetworkMode(sMode),
-                   "sProxyState": "not-applicable", "listRefused": []}
-    if not dictNetwork["bSealed"]:
-        return dictNetwork
     try:
         dictNetwork["sName"] = fsContainerNameForId(connectionDocker, sContainerId)
         dictProject = fdictGetProject(dictNetwork["sName"]) or {}
@@ -509,7 +549,6 @@ def _fdictDescribeNetwork(connectionDocker, sContainerId):
             dictProject.get("sProjectUuid") or ""))
     except Exception:
         dictNetwork["sProxyState"] = "unknown"
-    return dictNetwork
 
 
 def _flistDescribeBindMountDrift(connectionDocker, sContainerId):

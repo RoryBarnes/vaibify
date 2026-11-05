@@ -15,6 +15,10 @@ from vaibify.docker.containerManager import (
 )
 
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 def test_fnAddCpuAllocation_adds():
     saRunArgs = []
     _fnAddCpuAllocation(_fConfigMinimal(), saRunArgs)
@@ -209,6 +213,7 @@ def _fConfigMinimal():
         listSecrets=[],
         features=features,
         bNetworkIsolation=False,
+        sNetworkMode="open",
     )
 
 
@@ -232,6 +237,7 @@ def test_flistBuildRunArgs_contains_basics(mockX11):
 def test_flistBuildRunArgs_network_isolation(mockX11):
     config = _fConfigMinimal()
     config.bNetworkIsolation = True
+    config.sNetworkMode = "isolated"
     saArgs = flistBuildRunArgs(config)
     assert "--network" in saArgs
     assert "none" in saArgs
@@ -440,6 +446,7 @@ def test_flistBuildRunArgs_omits_host_gateway_under_network_isolation(
     config = _fConfigMinimal()
     config.features.bClaude = True
     config.bNetworkIsolation = True
+    config.sNetworkMode = "isolated"
     saArgs = flistBuildRunArgs(config)
     assert "--add-host" not in saArgs
 

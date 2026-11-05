@@ -1835,7 +1835,7 @@ async def _fiRunWithLogging(
         dictVariables.get("sRepoRoot", ""),
     ) + flistDescribeExecutionWarnings(dictVariables)
     for sWarning in listPreflightWarnings:
-        await fnStatusCallback({
+        await fnLogging({
             "sType": "preflightWarning", "sMessage": sWarning,
         })
     return await _fiRunStepsAndLog(

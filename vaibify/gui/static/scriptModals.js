@@ -826,8 +826,35 @@ var VaibifyModals = (function () {
         elBreadcrumb.innerHTML = sHtml;
     }
 
+    /* Shown before open network mode is chosen, in the creation wizard
+       and in the settings dialog alike, so the warning has one home.
+       Cancel is the default button: the researcher must reach for
+       "Use open mode". The save that follows records the approval
+       (ruling D2), so no second prompt follows this one. */
+    var S_OPEN_MODE_TITLE = "Use open mode?";
+    var S_OPEN_MODE_BODY =
+        "Open mode removes the network boundary around this container. " +
+        "Anything running in it, including an AI agent or code the agent " +
+        "runs, may be able to reach services on this computer and on " +
+        "your network, and the public internet. Any such service that is " +
+        "unauthenticated or vulnerable could be used. Web mode reaches " +
+        "the public internet without exposing this computer. Choose open " +
+        "only if the container must talk to a service running here. The " +
+        "change applies when the container is created again.";
+
+    function fnConfirmOpenNetworkMode(fnOnConfirm, fnOnCancel) {
+        fnShowConfirmModal(S_OPEN_MODE_TITLE, S_OPEN_MODE_BODY, fnOnConfirm, {
+            sConfirmLabel: "Use open mode",
+            sCancelLabel: "Cancel",
+            fnOnCancel: fnOnCancel,
+        });
+        var elCancel = document.getElementById("btnConfirmCancel");
+        if (elCancel) elCancel.focus();
+    }
+
     return {
         fnShowConfirmModal: fnShowConfirmModal,
+        fnConfirmOpenNetworkMode: fnConfirmOpenNetworkMode,
         fnShowTypedConfirmModal: fnShowTypedConfirmModal,
         fnShowInputModal: fnShowInputModal,
         fnShowRuntimeLimitModal: fnShowRuntimeLimitModal,

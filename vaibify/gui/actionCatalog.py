@@ -1555,6 +1555,12 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # agent granting that trust to the very image it runs in is the
     # exact inversion of the question, so only the researcher answers.
     ("POST", "/api/registry/{sName}/image-trust"),
+    # Approving what the container may reach (open network mode, X11,
+    # bind mounts, allowed hosts, as vaibify.yml asks for them) is the
+    # researcher's: an in-container agent approving the reach of the
+    # very container it runs in is the exact inversion of the question,
+    # so only the researcher answers.
+    ("POST", "/api/registry/{sName}/reach-approval"),
     ("POST", "/api/host-directories/create"),
     ("POST", "/api/projects/create"),
     # Host-global browser preference (per-directory host-warning

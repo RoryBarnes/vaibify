@@ -836,3 +836,23 @@ def fnKeepEveryTestOutOfTheRealCouncilStore(
         agentCouncilStore, "fsResolveDurableStoreRoot",
         lambda: sIsolatedRoot)
     yield
+
+
+@pytest.fixture
+def fixtureReachApproved(monkeypatch):
+    """Stand in for the researcher's recorded approval of what a container may reach.
+
+    The run-argument builder refuses a configuration that widens the
+    container's reach (open network mode, X11, bind mounts, allowed
+    hosts) until this host holds the researcher's approval of exactly
+    those values; ``tests/testReachApprovalGuardsTheLaunch.py`` is that
+    gate's own kill-confirmed guard. A module whose subject is something
+    else -- the arguments open mode adds, the X11 arguments, a resource
+    limit -- opts in with ``pytestmark =
+    pytest.mark.usefixtures("fixtureReachApproved")`` rather than
+    registering a project and recording an approval for every fixture
+    configuration it builds.
+    """
+    from vaibify.docker import containerManager
+    monkeypatch.setattr(
+        containerManager, "_fnRequireReachApproval", lambda config: None)

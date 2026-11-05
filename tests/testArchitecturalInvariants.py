@@ -4401,7 +4401,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 802 -> 803 (2026-10-29): the X11 authorization lifecycle is
     # registered beside the rename recovery.
     # 803 -> 804 (2026-10-29): the project egress lifecycle is registered beside the X11 one.
-    "appFactory.py": 804,
+    # 804 -> 805 (2026-11-04): the reach-approval routes are mounted beside the image-trust ones.
+    "appFactory.py": 805,
     # 892 -> 897 (2026-10-28): a live environment rename vetoes the idle
     # watchdog, on the conversion's terms.
     # 897 -> 929 (2026-10-28): the idle watchdog's work vetoes become
@@ -5455,7 +5456,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 857 -> 858 (2026-10-29): the Network row reads the mode defensively.
     # 858 -> 859 (2026-11-02): the Network row covers both sealed modes, web and allowlist (web network mode plan, A5).
     # 859 -> 874 (2026-11-03): GET /api/system/about, the version both hubs' help shows (follow-up-after-210 plan, A2, A8).
-    "routes/systemRoutes.py": 874,
+    # 874 -> 913 (2026-11-04): the Network row reports a file that names no mode as unstated, never open, and carries the container's assessed network state and whether the file agrees (ruling D1 revised; merged with main, re-measured).
+    "routes/systemRoutes.py": 913,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -6862,7 +6864,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1136 -> 1141 (2026-10-28): the reserved create-and-start holds the
     # name's lifecycle lock, so a rename or a CLI start cannot land
     # between the clear, the create and the start.
-    "startReservation.py": 1141,
+    # 1141 -> 1174 (2026-11-04): the start route asks, before reserving, to approve what the container may reach (ruling D2).
+    "startReservation.py": 1175,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -7395,7 +7398,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2793 -> 2798 (2026-11-02): a creation request that names no mode gets the new-project mode, web (web network mode plan, A5).
     # 2798 -> 2800 (2026-11-03): every writer composes both network keys through projectConfig.fdictNetworkKeysForMode (follow-up-after-210 plan, A6, A8).
     # 2800 -> 2807 (2026-11-03): the Files to Copy listing describes each top-level link with what the seed's link contract will do (follow-up-after-210 plan, A7, A8).
-    "registryRoutes.py": 2807,
+    # 2807 -> 2840 (2026-11-04): the X11 refusal names a file with no mode (ruling D1 revised), and the settings, allow-host and creation routes record the reach approval for the file they wrote (ruling D2); merged with main, re-measured.
+    # 2840 -> 2853 (2026-11-05): the listing attributes a held record bound to the caller's own browser session to the caller, so a tab's in-flight start is not "another session".
+    "registryRoutes.py": 2853,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7625,7 +7630,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1603 -> 1608 (2026-10-31): archive-zenodo-completion, the user-only retry for a PROOF completion version (proof-receipt plan, A11).
     # 1608 -> 1619 (2026-11-02): decide-token-rotation, the user-only answer to the token rotation notice (binding-and-rotation plan, A2, A5).
     # 1619 -> 1627 (2026-11-03): set-aside-binding-record, the user-only way out of an unreadable binding record (follow-up-after-210 plan, A3, A8).
-    "actionCatalog.py": 1627,
+    # 1627 -> 1633 (2026-11-04): the reach-approval route is researcher-only, with its reason; merged with main, re-measured.
+    "actionCatalog.py": 1633,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8193,7 +8199,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1251 + 1208 -> 1261 (2026-10-29): the two
     # lines of work above, merged.
     # 1261 -> 1265 (2026-10-29): the allow-host route's lifecycle scope.
-    "routeScope.py": 1265,
+    # 1265 -> 1266 (2026-11-04): the reach-approval route's scope.
+    "routeScope.py": 1266,
 }
 
 

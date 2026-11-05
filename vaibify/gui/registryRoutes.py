@@ -296,6 +296,7 @@ def _fnRegisterGetRegistry(app, dictCtx):
         _fnAnnotateLockState(listContainers, dictCtx)
         _fnAnnotateOwnershipState(
             listContainers, app.state.dictContainerOwners, sLeaseId,
+            _fsBrowserSessionFor(app, request),
         )
         _fnAnnotatePinnedImageObtainable(listContainers)
         from . import conversionLifecycle
@@ -366,31 +367,43 @@ def _fnAnnotateJournalState(dictContainer, sName, dictCtx):
         dictContainer["bLocked"] = True
 
 
+def _fbCallerHoldsRecord(recordOwner, sCallerLease, sCallerSessionId):
+    """True when the caller presents the owner's lease or is its bound session."""
+    if sCallerLease and recordOwner.sLeaseId == sCallerLease:
+        return True
+    return bool(
+        sCallerSessionId
+        and getattr(recordOwner, "sBrowserSessionId", "") == sCallerSessionId)
+
+
 def _fnAnnotateOwnershipState(
-    listContainers, dictContainerOwners, sCallerLease,
+    listContainers, dictContainerOwners, sCallerLease, sCallerSessionId="",
 ):
     """Flag who holds each container: another session, or the caller.
 
     ``bOwnedByOtherSession`` is True when an in-process owner record
-    exists whose lease differs from the caller's, so the picker can grey
-    a tile that another tab already holds. ``bOwnedByThisSession`` is
-    the complement the caller can act on: its own tab holds the
-    container -- a start from the picker claims before anything is
-    opened -- so the tile can say so and offer Release instead of
-    looking like every other running container. The owner's lease is
-    never echoed; only the booleans leave the process.
+    exists that the caller does not hold, so the picker can grey a tile
+    that another tab already holds. ``bOwnedByThisSession`` is the
+    complement the caller can act on: its own tab holds the container
+    -- a start from the picker claims before anything is opened -- so
+    the tile can say so and offer Release instead of looking like every
+    other running container. The caller holds a record when it presents
+    the record's lease, or when the record is bound to the caller's own
+    browser session: a start mints the lease at reservation but the
+    page learns it only when the start succeeds, and in between (minutes
+    for a container whose entrypoint clones repositories) the tab's own
+    start read as "another browser session" (researcher-reported,
+    2026-11-05). Display only, never authorization: the lease stays the
+    access principal. The owner's lease is never echoed; only the
+    booleans leave the process.
     """
     for dictContainer in listContainers:
         recordOwner = dictContainerOwners.get(dictContainer.get("sName"))
+        bHeldByCaller = recordOwner is not None and _fbCallerHoldsRecord(
+            recordOwner, sCallerLease, sCallerSessionId)
         dictContainer["bOwnedByOtherSession"] = bool(
-            recordOwner is not None
-            and recordOwner.sLeaseId != sCallerLease
-        )
-        dictContainer["bOwnedByThisSession"] = bool(
-            recordOwner is not None
-            and sCallerLease
-            and recordOwner.sLeaseId == sCallerLease
-        )
+            recordOwner is not None and not bHeldByCaller)
+        dictContainer["bOwnedByThisSession"] = bool(bHeldByCaller)
         # Honest surfacing of a force-abandoned (poisoned) owner: the
         # journal annotation already renders the durable quarantine
         # mirror; this adds the live in-process axis (design §2.1).
@@ -1083,6 +1096,7 @@ def _fnRegisterContainerSettings(app, dictCtx):
             "fMemoryLimitGigabytes":
                 configProject.fMemoryLimitGigabytes,
             "dictImageTrust": dictProject.get("dictImageTrust"),
+            "dictReachApproval": dictProject.get("dictReachApproval"),
             "bImageObtained": fbProjectImageIsObtained(dictProject),
         }
         for _, sEnabledField, sAutoUpdateField, _ in _T_AGENT_SETTINGS:
@@ -1153,6 +1167,7 @@ def _fnRegisterContainerSettings(app, dictCtx):
         listLimitOutcomes = await _flistApplyLimitSettings(
             app.state, sName, dictProject, request,
         )
+        _fnRecordReachApprovalForWrite(sName, dictProject["sConfigPath"])
         from vaibify.config import resourceAdequacy
         from vaibify.config.projectConfig import fconfigLoadFromFile
         return {
@@ -1216,6 +1231,18 @@ def _fnRegisterWritableLayerPreview(app, dictCtx):
         )
 
 
+def _fnRecordReachApprovalForWrite(sName, sConfigPath):
+    """Record the researcher's approval of the file a researcher-only route wrote.
+
+    The settings dialog, the allow-host button and project creation are
+    refused to the agent lane, so the call IS the approval (ruling D2):
+    a researcher never meets the reach prompt for a change they made
+    here. A file that widens nothing leaves no record.
+    """
+    from vaibify.config.reachApproval import fnRecordApprovalForConfigurationFile
+    fnRecordApprovalForConfigurationFile(sName, sConfigPath)
+
+
 def _fbApplyNetworkMode(sConfigPath, sNewMode):
     """Apply the network mode; return True when it changed (ruling D1).
 
@@ -1271,7 +1298,8 @@ def _fbApplyX11Forwarding(sConfigPath, bNewValue, sContainerName):
         raise HTTPException(
             409,
             f"X11 forwarding cannot be combined with networkMode "
-            f"{configProject.sNetworkMode}. Set networkMode to open first.",
+            f"{configProject.sNetworkMode or '(none written)'}. Set "
+            "networkMode to open first.",
         )
     _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)
     if not bNewValue:
@@ -1334,6 +1362,7 @@ def _fnRegisterAllowHost(app, dictCtx):
         fnRejectAgentTokenLane(requestHttp)
         dictProject = _fdictRequireProject(sName)
         listAllowed = _flistAllowHost(dictProject["sConfigPath"], request.sHost)
+        _fnRecordReachApprovalForWrite(sName, dictProject["sConfigPath"])
         return {"bSuccess": True, "bRestartRequired": True,
                 "listAllowedHosts": listAllowed}
 
@@ -2000,6 +2029,7 @@ def _fnRegisterCreateProject(app, dictCtx):
             _fnScaffoldProject(request)
             _fnWriteProjectConfig(request)
             _fnRegisterNewProject(request.sDirectory, request.sMode)
+            _fnRecordReachApprovalForNewProject(request)
         return {"bSuccess": True, "sDirectory": request.sDirectory}
 
 
@@ -2796,6 +2826,22 @@ def _flistRepositoriesFromUrls(listUrls):
     """
     from vaibify.cli.repositoryPreflight import flistRepositoryEntriesFromUrls
     return flistRepositoryEntriesFromUrls(listUrls)
+
+
+def _fnRecordReachApprovalForNewProject(request):
+    """Record approval for the file the wizard just wrote, once registered.
+
+    The entry exists only after ``fnAddProject``, so the record is
+    written after it, under the name the registry gave the project. A
+    host project has no container whose reach could widen.
+    """
+    if request.sMode == "host":
+        return
+    from vaibify.config.registryManager import fdictGetProject
+    dictProject = fdictGetProject(request.sProjectName)
+    if dictProject is None:
+        return
+    _fnRecordReachApprovalForWrite(request.sProjectName, dictProject["sConfigPath"])
 
 
 def _fnRegisterNewProject(sDirectory, sMode="container"):

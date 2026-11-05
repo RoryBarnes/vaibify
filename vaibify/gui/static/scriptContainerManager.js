@@ -1495,14 +1495,19 @@ var VaibifyContainerManager = (function () {
         document.getElementById("btnSettingsCancel").addEventListener(
             "click", function () { elModal.remove(); });
         _fnBindImageTrustSetting(sName, elModal);
+        _fnBindOpenModeQuestion();
         document.getElementById("btnSettingsSave").addEventListener(
             "click", async function () {
+                if (_bOpenModeQuestionPending) return;
                 var bNeverSleep = document.getElementById(
                     "settingNeverSleep").checked;
                 var bX11Forwarding = document.getElementById(
                     "settingX11Forwarding").checked;
+                /* The placeholder of an unstated file has no value;
+                   null leaves the mode as it is, so the other settings
+                   still save. */
                 var sNetworkMode = document.getElementById(
-                    "settingNetworkMode").value;
+                    "settingNetworkMode").value || null;
                 var iCpuLimit = _fiParsePositiveNumber(
                     "settingCpuLimit", true);
                 var fMemoryLimitGigabytes = _fiParsePositiveNumber(
@@ -1518,9 +1523,37 @@ var VaibifyContainerManager = (function () {
             });
     }
 
+    var _bOpenModeQuestionPending = false;
+
+    function _fnBindOpenModeQuestion() {
+        /* Choosing open in the settings dialog asks first; Cancel puts
+           the select back, and Save does not submit while the question
+           is open. The save itself records the approval (ruling D2). */
+        var elMode = document.getElementById("settingNetworkMode");
+        if (!elMode) return;
+        var sSettledMode = elMode.value;
+        elMode.addEventListener("change", function () {
+            if (elMode.value !== "open" || sSettledMode === "open") {
+                sSettledMode = elMode.value;
+                return;
+            }
+            _bOpenModeQuestionPending = true;
+            VaibifyModals.fnConfirmOpenNetworkMode(function () {
+                _bOpenModeQuestionPending = false;
+                sSettledMode = "open";
+            }, function () {
+                _bOpenModeQuestionPending = false;
+                elMode.value = sSettledMode;
+            });
+        });
+    }
+
     function _fsNetworkModeOf(dictSettings) {
+        /* "" is a file that names no mode (ruling D1): not open, not
+           sealed, and no container can be created until one is
+           written. The old boolean's true still means isolated. */
         if (dictSettings.sNetworkMode) return dictSettings.sNetworkMode;
-        return dictSettings.bNetworkIsolation === true ? "isolated" : "open";
+        return dictSettings.bNetworkIsolation === true ? "isolated" : "";
     }
 
     function _fsRenderNetworkModeSetting(dictSettings) {
@@ -1534,23 +1567,41 @@ var VaibifyContainerManager = (function () {
             ["open", "Open (the whole network, including this computer)"],
             ["isolated", "Isolated (no network)"],
         ];
+        var sPlaceholder = sMode === ""
+            ? '<option value="" disabled selected>Choose a network ' +
+              'mode</option>' : "";
         var listAllowed = dictSettings.listAllowedHosts || [];
         return '<div class="settings-option">' +
             '<label class="settings-option-row">' +
             '<span class="settings-option-label">Network mode</span> ' +
             '<select id="settingNetworkMode"' + (bX11 ? " disabled" : "") +
-            '>' + listModes.map(function (tMode) {
+            '>' + sPlaceholder + listModes.map(function (tMode) {
                 return '<option value="' + tMode[0] + '"' +
                     (tMode[0] === sMode ? " selected" : "") + '>' +
                     VaibifyUtilities.fnEscapeHtml(tMode[1]) + '</option>';
             }).join("") + '</select></label>' +
             '<p class="settings-option-help">What the container may ' +
             'reach. It takes effect when the container is created ' +
-            'again.' + (bX11 ? ' Locked to open while X11 display ' +
+            'again.' + (sMode === "" ? ' No mode is written; the ' +
+            'container cannot be created until one is chosen.' : '') +
+            (bX11 ? ' Locked to open while X11 display ' +
             'forwarding is on.' : '') +
+            _fsReachApprovalNote(dictSettings.dictReachApproval) +
             (listAllowed.length ? ' Hosts you allowed: ' +
                 VaibifyUtilities.fnEscapeHtml(listAllowed.join(", ")) + '.'
                 : '') + '</p></div>';
+    }
+
+    function _fsReachApprovalNote(dictReachApproval) {
+        /* The host-held record that the file's reach-widening settings
+           were approved, by its date; no record means none is needed
+           or none was given, and the start asks when it matters. */
+        if (!dictReachApproval || !dictReachApproval.sRecordedIso) return "";
+        return ' <span id="settingReachApproval">Settings that widen ' +
+            'what the container reaches were approved on this computer ' +
+            'on ' + VaibifyUtilities.fnEscapeHtml(
+                String(dictReachApproval.sRecordedIso).slice(0, 10)) +
+            '.</span>';
     }
 
     function _fsRenderX11Setting(dictSettings) {
@@ -2237,6 +2288,7 @@ var VaibifyContainerManager = (function () {
             }
             if (_fbOfferBuildOfUnbuiltImage(error, sName)) return;
             if (_fbOfferImageTrust(error, sName)) return;
+            if (_fbOfferReachApproval(error, sName)) return;
             VaibifyDiagnosis.fnReportFailureFromError(error);
         } finally {
             fnLoadContainers();
@@ -2271,6 +2323,45 @@ var VaibifyContainerManager = (function () {
                 },
             });
         return true;
+    }
+
+    function _fbOfferReachApproval(error, sName) {
+        /* The start route refuses a vaibify.yml whose reach-widening
+           settings (open network mode, X11, bind mounts, allowed hosts)
+           this computer holds no approval for, and sends the question
+           with the refusal (ruling D2). The words are the server's.
+           Nothing was reserved or created, so cancelling leaves nothing
+           behind. */
+        var dictDetail = (error && error.dictDetail) || {};
+        if (dictDetail.sAction !== "confirm-reach") return false;
+        var dictPrompt = dictDetail.dictReachPrompt || {};
+        VaibifyModals.fnShowConfirmModal(
+            dictPrompt.sTitle || "Approve what this container may reach?",
+            dictPrompt.sText || dictDetail.sMessage || "",
+            function () { _fnApproveReachAndStart(sName, dictPrompt); },
+            {
+                sConfirmLabel: "Approve and start",
+                fnOnCancel: function () {
+                    VaibifyApp.fnShowToast(
+                        "'" + sName + "' was not started.", "info");
+                    fnLoadContainers();
+                },
+            });
+        return true;
+    }
+
+    async function _fnApproveReachAndStart(sName, dictPrompt) {
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/reach-approval",
+                {sReachFingerprint: dictPrompt.sReachFingerprint || ""});
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            fnLoadContainers();
+            return;
+        }
+        fnStartContainer(sName);
     }
 
     function _fnContinueAfterImageTrust(sName, dictRecord) {
@@ -3033,17 +3124,82 @@ var VaibifyContainerManager = (function () {
         }
     }
 
+    function _fsNetworkBannerSentence(dictNetwork) {
+        /* What the container IS, from the server's assessment, beside
+           what the file asks for; the row never re-derives either. */
+        var sMode = dictNetwork.sMode || "unknown";
+        var sState = dictNetwork.sContainerState || "unknown";
+        if (sState === "unknown") {
+            return sMode === "unstated"
+                ? "vaibify.yml names no network mode; add one line " +
+                  "(networkMode: web, allowlist, isolated or open) " +
+                  "before the container is created again."
+                : "Network mode: " + sMode + " (network state could " +
+                  "not be read).";
+        }
+        if (dictNetwork.bFileAgrees === false) {
+            return "This container was created " + sState + "; " +
+                (sMode === "unstated"
+                    ? "vaibify.yml now names no network mode; add one and " +
+                      "recreate the container to apply it."
+                    : "vaibify.yml now asks for " + sMode + "; recreate " +
+                      "the container to apply it.") +
+                (sState === "open"
+                    ? " Until then anything in this container may reach " +
+                      "services on this computer and your network."
+                    : "");
+        }
+        if (sState === "open") {
+            return "Network mode: open. Anything in this container may " +
+                "reach services on this computer and your network.";
+        }
+        return "Network mode: " + sMode + " (" + sState + ").";
+    }
+
+    function _fbNetworkNeedsAttention(dictNetwork) {
+        /* The row is for something the researcher can act on or must
+           know, never for a normal state: a sealed project whose proxy
+           is running with nothing refused, an isolated project, and a
+           container whose state could not be read under a stated mode
+           show nothing (a web-mode project walking the quickstart used
+           to see "Network mode: web (network proxy running) Nothing
+           refused recently" above its steps, researcher-reported,
+           2026-11-05). What remains: an open container (what it can
+           reach), a container that disagrees with its file, a file that
+           names no mode, a proxy that is down or unreadable, and hosts
+           the proxy refused, which carry the Allow host action. */
+        if (!dictNetwork) return false;
+        if (dictNetwork.bFileAgrees === false &&
+                dictNetwork.sContainerState !== "unknown") return true;
+        if (dictNetwork.sContainerState === "open") return true;
+        if (dictNetwork.sMode === "unstated") return true;
+        if (dictNetwork.bSealed !== true) return false;
+        return dictNetwork.sProxyState !== "running" ||
+            (dictNetwork.listRefused || []).length > 0;
+    }
+
     function _fnRenderNetworkBanner(dictNetwork) {
-        /* The server's facts about the sealed network: the mode, whether
-           the proxy sidecar is up, and what it refused (ruling D8). A
-           project not in a sealed mode (web or allowlist) has no row. A
-           proxy that is down is said in so many words; nothing here is
-           re-derived. */
+        /* The server's facts about the network: the file's mode, the
+           container's assessed state (ruling D1 revised: an open
+           container is said to be open, whatever the file says now),
+           and for a sealed project whether the proxy sidecar is up and
+           what it refused (ruling D8). A proxy that is down is said in
+           so many words; nothing here is re-derived, and a normal state
+           renders nothing. */
         var elBanner = document.getElementById("networkBanner");
         if (!elBanner) return;
-        if (!dictNetwork || dictNetwork.bSealed !== true) {
+        if (!_fbNetworkNeedsAttention(dictNetwork)) {
             elBanner.style.display = "none";
             elBanner.innerHTML = "";
+            return;
+        }
+        if (dictNetwork.bSealed !== true) {
+            elBanner.innerHTML =
+                '<div class="build-warnings-banner-header"><span>' +
+                VaibifyUtilities.fnEscapeHtml(
+                    _fsNetworkBannerSentence(dictNetwork)) +
+                '</span></div>';
+            elBanner.style.display = "block";
             return;
         }
         var listRefused = dictNetwork.listRefused || [];
@@ -3053,11 +3209,18 @@ var VaibifyContainerManager = (function () {
             : (sState === "unknown" ? "network proxy state could not be read"
                 : "network proxy down: nothing in the container reaches " +
                   "the network until the container is started again");
+        var sDisagreement = dictNetwork.bFileAgrees === false &&
+            dictNetwork.sContainerState !== "unknown"
+            ? '<p class="build-warnings-banner-list">' +
+              VaibifyUtilities.fnEscapeHtml(
+                  _fsNetworkBannerSentence(dictNetwork)) + '</p>'
+            : "";
         elBanner.innerHTML =
             '<div class="build-warnings-banner-header">' +
             '<span>Network mode: ' +
             VaibifyUtilities.fnEscapeHtml(dictNetwork.sMode) + ' (' +
             VaibifyUtilities.fnEscapeHtml(sStateText) + ')</span></div>' +
+            sDisagreement +
             (listRefused.length
                 ? '<ul class="build-warnings-banner-list">' +
                   listRefused.map(function (dictEntry) {
@@ -3070,8 +3233,7 @@ var VaibifyContainerManager = (function () {
                           VaibifyUtilities.fnEscapeHtml(sHost) +
                           '">Allow host</button></li>';
                   }).join("") + '</ul>'
-                : '<p class="build-warnings-banner-list">Nothing refused ' +
-                  'recently.</p>');
+                : "");
         elBanner.style.display = "block";
         elBanner.querySelectorAll(".btn-allow-network-host").forEach(
             function (elButton) {

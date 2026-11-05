@@ -16,6 +16,13 @@ def _fConfigStub():
 
 
 @pytest.fixture(autouse=True)
+def fixtureNoReachQuestion(monkeypatch):
+    """The config here is a MagicMock; the reach question has its own tests."""
+    monkeypatch.setattr(
+        "vaibify.cli.commandStart.fnConfirmReachOrExit", lambda config, bApprove: None)
+
+
+@pytest.fixture(autouse=True)
 def fnNoRealSockets():
     """The launcher binds real sockets before uvicorn sees them.
 

@@ -19546,11 +19546,11 @@ LIST_FALSIFICATIONS = [
         # continues the walk past a deliberately sealed container, so a
         # working configuration produces a wall of failures
         old=(
-            '    if bIsolated:\n'
+            '    if sState == S_NETWORK_STATE_ISOLATED:\n'
             '        return [_fpreflightIsolation(sEvidence)]'
         ),
         new=(
-            '    if bIsolated:\n'
+            '    if sState == S_NETWORK_STATE_ISOLATED:\n'
             '        listResults = [_fpreflightIsolation(sEvidence)]'
         ),
     ),
@@ -36057,8 +36057,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/reproducibility/rerunProcedure.py',
         # the host name is recorded with the capabilities
-        old='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n    }\n',
-        new='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sHostName": os.uname().nodename,\n    }\n',
+        old='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sProcessorFamily": "",\n    }\n',
+        new='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sProcessorFamily": "",\n        "sHostName": os.uname().nodename,\n    }\n',
     ),
     Falsification(
         nodeid=(
@@ -39871,11 +39871,237 @@ LIST_FALSIFICATIONS = [
         new='    if sMode != "allowlist":\n        return\n    if not dictEgress',
     ),
     Falsification(
-        nodeid='tests/testNetworkMode.py::testAKeylessLegacyFileStillLoadsOpen',
-        # The configuration's own default becoming web.
+        nodeid='tests/testDoctorNetworkGraph.py::test_the_sealed_flag_with_a_gateway_is_a_disagreement_never_sealed',
+        # The assessment trusting the sealed flag alone: no attachment check.
+        source='vaibify/docker/networkAssessment.py',
+        old='        sContradiction = _fsDescribeSealedContradiction(dictNetworks)\n',
+        new='        sContradiction = ""\n',
+    ),
+    Falsification(
+        nodeid='tests/testDoctorNetworkGraph.py::test_an_open_container_under_an_unstated_or_web_file_is_shown_open',
+        # The Network row answering the container's state from the file's mode.
+        source='vaibify/gui/routes/systemRoutes.py',
+        old=(
+            '        dictAssessment = fdictAssessContainerNetwork(\n'
+            '            fjsonInspectContainer(sContainerId))\n'
+        ),
+        new=(
+            '        dictAssessment = {"sState": {"web": "sealed", "allowlist": "sealed",\n'
+            '                                     "open": "open", "isolated": "isolated"}.get(\n'
+            '                                         sFileMode, "unknown"), "sEvidence": ""}\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testEveryLaunchFunctionRefusesAnUnstatedModeBeforeAnyArgumentIsBuilt',
+        # The run-argument builder no longer asking for a stated mode
+        # before it builds anything (ruling D1 revised, 2026-11-04).
+        source='vaibify/docker/containerManager.py',
+        old='    _fnRequireStatedNetworkMode(config)\n    _fnRequireReachApproval(config)\n',
+        new='    _fnRequireReachApproval(config)\n',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testEveryLaunchFunctionRefusesAnUnapprovedWideningConfiguration',
+        # The run-argument builder no longer asking for the host-held
+        # approval of a reach-widening configuration (ruling D2, 2026-11-04).
+        source='vaibify/docker/containerManager.py',
+        old='    _fnRequireReachApproval(config)\n    bRestricted = ',
+        new='    bRestricted = ',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testTheStartRouteAsksForApprovalBeforeReservingAnything',
+        # Dropping the courtesy half: the start would reserve and journal a
+        # start the launch guard then refuses.
+        source='vaibify/gui/startReservation.py',
+        old=(
+            '    dictReachRefusal = await asyncio.to_thread(\n'
+            '        _fdictRefusalForUnapprovedReach, sName)\n'
+            '    if dictReachRefusal:\n'
+            '        return (409, dictReachRefusal)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testTheApprovalRouteRefusesAStaleFingerprintAndRecordsTheCurrentOne',
+        # Approving blind: a file changed after the question was shown is
+        # approved as if it were the one shown.
+        source='vaibify/gui/routes/reachApprovalRoutes.py',
+        old='        if request.sReachFingerprint != reachApproval.fsComputeReachFingerprint(config):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testTheFingerprintIsTheCanonicalJsonOfTheFourFields',
+        # Hashing a different field set: a change to one of the four
+        # would no longer be a new question.
+        source='vaibify/config/reachApproval.py',
+        old='    "sNetworkMode", "bX11Forwarding", "listBindMounts", "listAllowedHosts",\n',
+        new='    "sNetworkMode", "bX11Forwarding", "listBindMounts",\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheReachApprovalModalAsksBeforeAWideningStart.py::testTheModalShowsTheServersWordsAndApproveRetriesTheStart',
+        # The frontend ignoring the confirm-reach refusal.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            if (_fbOfferReachApproval(error, sName)) return;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheReachApprovalModalAsksBeforeAWideningStart.py::testAHostilePromptRendersAsText',
+        # The modal's body interpolated unescaped.
+        source='vaibify/gui/static/scriptModals.js',
+        old=(
+            "            '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +\n"
+            "            '<p style=\"white-space:pre-wrap;margin-bottom:16px\">' +\n"
+            "            fnEscapeHtml(sMessage) + '</p>' +\n"
+            "            _fsBuildPendingSentence(dictDetails) +\n"
+        ),
+        new=(
+            "            '<h2>' + sTitle + '</h2>' +\n"
+            "            '<p style=\"white-space:pre-wrap;margin-bottom:16px\">' +\n"
+            "            sMessage + '</p>' +\n"
+            "            _fsBuildPendingSentence(dictDetails) +\n"
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testChoosingOpenInTheWizardAsksFirstAndCancelPutsTheControlBack',
+        # The wizard's cancel handler leaving the select on open.
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old=(
+            '                    elMode.value = sSettledMode;\n'
+            '                    elForwarding.disabled = sSettledMode !== "open";\n'
+        ),
+        new=(
+            '                    elForwarding.disabled = sSettledMode !== "open";\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testChoosingOpenInTheSettingsDialogAsksFirstAndSaveWaits',
+        # A settings save that submits while the open-mode question is open.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                if (_bOpenModeQuestionPending) return;\n                var bNeverSleep = document.getElementById(\n',
+        new='                var bNeverSleep = document.getElementById(\n',
+    ),
+    Falsification(
+        nodeid='tests/testStepLevelStates.py::testANeverRunDeclarationStepReadsNotApplicableAtLevelOne',
+        # The old precedence: the inactivity override ahead of the
+        # empty-requirement check, so a never-run declaration step reads
+        # not-started at Level 1 and holds the Steps banner at partial.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if iTotal == 0:\n'
+            '        return "not-applicable"\n'
+            '    if sInactivityState:\n'
+            '        return sInactivityState\n'
+        ),
+        new=(
+            '    if sInactivityState:\n'
+            '        return sInactivityState\n'
+            '    if iTotal == 0:\n'
+            '        return "not-applicable"\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheStepsBannerSkipsANeverRunDeclaration.py::testTheBannerReadsAttainedAndTheDeclarationRowNotApplicable',
+        # The banner's summarizer counting a not-applicable cell as an
+        # applicable, unassessed one.
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='            if (sState === "not-applicable") continue;\n            iApplicable++;\n',
+        new='            iApplicable++;\n',
+    ),
+    Falsification(
+        nodeid='tests/testExecutionProfiles.py::testAnArm64ProcessorRecordsTheFloorAsNotApplicableAndIsNotWarnedAbout',
+        # An arm64 processor read as one whose capabilities could not be
+        # read, which warns before every run.
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='        return {"sFloorState": S_FLOOR_NOT_APPLICABLE,\n',
+        new='        return {"sFloorState": S_FLOOR_NOT_APPLIED,\n',
+    ),
+    Falsification(
+        nodeid='tests/testExecutionProfiles.py::testAnAppleSiliconMacHostReadsItsKernelThroughSysctlAndIsNotWarnedAbout',
+        # Reading every kernel from /proc/cpuinfo, so a Mac host reads as
+        # unreadable and warns before every run.
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    if (sKernelName or os.uname().sysname) == S_DARWIN_KERNEL_NAME:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testExecutionProfiles.py::testAnIntelMacHostReadsItsLevelFromDarwinsOwnSpellings',
+        # Comparing Darwin's feature names against Linux's without the
+        # translation, which grades a Haswell-class Mac below x86-64-v2.
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old=(
+            'DICT_DARWIN_FLAG_SPELLINGS = {\n'
+            '    "sse3": "pni", "sse4.1": "sse4_1", "sse4.2": "sse4_2", "avx1.0": "avx",\n'
+            '    "lahf": "lahf_lm", "lzcnt": "abm",\n'
+            '}\n'
+        ),
+        new='DICT_DARWIN_FLAG_SPELLINGS = {}\n',
+    ),
+    Falsification(
+        nodeid='tests/testPreRunWarningsReachTheRunLog.py::testAPreRunWarningReachesThePageAndTheRunLogAlike',
+        # The runner emitting a pre-run warning through the raw status
+        # callback, past the logging one, so the run log never has it.
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '    for sWarning in listPreflightWarnings:\n'
+            '        await fnLogging({\n'
+        ),
+        new=(
+            '    for sWarning in listPreflightWarnings:\n'
+            '        await fnStatusCallback({\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPreRunWarningsReachTheRunLog.py::testTheLogExtractorWritesTheWarningInThePagesWords',
+        # The log extractor knowing no pre-run warning event.
+        source='vaibify/gui/pipelineLogger.py',
+        old='        return S_LOG_WARNING_PREFIX + dictEvent.get("sMessage", "")\n',
+        new='        return None\n',
+    ),
+    Falsification(
+        nodeid='tests/testRegistryRoutes.py::testGetRegistryMarksATabsOwnInFlightStartAsItsOwn',
+        # Attributing a held record by its lease only, so a tab's own
+        # in-flight start reads as another browser session's.
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    return bool(\n'
+            '        sCallerSessionId\n'
+            '        and getattr(recordOwner, "sBrowserSessionId", "") == sCallerSessionId)\n'
+        ),
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAStartInFlightIsHeldByThisTab.py::testATileThisTabIsStartingWearsTheHeldChipAndIsNotLocked',
+        # The same mutation, seen on the tile.
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '        bHeldByCaller = recordOwner is not None and _fbCallerHoldsRecord(\n'
+            '            recordOwner, sCallerLease, sCallerSessionId)\n'
+        ),
+        new=(
+            '        bHeldByCaller = recordOwner is not None and _fbCallerHoldsRecord(\n'
+            '            recordOwner, sCallerLease, "")\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheNetworkRowShowsOnlyWhatNeedsAttention.py::testANormalSealedOrIsolatedProjectShowsNoRow',
+        # Drawing the row for every readiness answer that carries a network.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!_fbNetworkNeedsAttention(dictNetwork)) {\n',
+        new='        if (!dictNetwork) {\n',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalCommandLine.py::testWithoutATerminalAnUnapprovedConfigurationStopsAndNamesTheFlag',
+        # Approving by default when there is nobody to ask.
+        source='vaibify/cli/reachApprovalPrompt.py',
+        old='    if not (sys.stdin.isatty() and sys.stdout.isatty()):\n        click.echo(\n',
+        new='    if False:\n        click.echo(\n',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAKeylessLegacyFileIsUnstatedAndCannotStart',
+        # Deriving open again for a file that names no mode (the silent
+        # default ruling D1's 2026-11-04 revision removed).
         source='vaibify/config/projectConfig.py',
-        old='    sNetworkMode: str = S_NETWORK_MODE_OPEN\n',
-        new='    sNetworkMode: str = S_NETWORK_MODE_WEB\n',
+        old='    sNetworkMode: str = S_NETWORK_MODE_UNSTATED\n',
+        new='    sNetworkMode: str = S_NETWORK_MODE_OPEN\n',
     ),
     Falsification(
         nodeid='tests/testNetworkMode.py::testEveryNewProjectPathWritesWeb',

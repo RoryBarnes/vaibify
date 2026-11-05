@@ -20,6 +20,32 @@ from vaibify.gui.registryRoutes import fnRegisterRegistryRoutes
 S_PROJECT_NAME = "sealedSettings"
 
 
+class _PatchedRegistry:
+    """Patch the registry lookup to one entry, and its approval write to nothing.
+
+    The settings and allow-host routes record the researcher's approval
+    of the file they wrote (ruling D2); here the registry is a stub, so
+    the write is stubbed with it. The recording itself is asserted in
+    tests/testReachApprovalGuardsTheLaunch.py against a real registry.
+    """
+
+    def __init__(self, sLookupTarget, return_value):
+        self.listPatches = [
+            patch(sLookupTarget, return_value=return_value),
+            patch("vaibify.config.registryManager.fnRecordReachApproval",
+                  lambda sName, dictRecord: None),
+        ]
+
+    def __enter__(self):
+        for patchOne in self.listPatches:
+            patchOne.__enter__()
+        return self
+
+    def __exit__(self, *tExceptionInfo):
+        for patchOne in reversed(self.listPatches):
+            patchOne.__exit__(*tExceptionInfo)
+
+
 def _fclientForConfig(tmp_path, sExtraYaml=""):
     pathProject = tmp_path / S_PROJECT_NAME
     os.makedirs(str(pathProject), exist_ok=True)
@@ -29,7 +55,7 @@ def _fclientForConfig(tmp_path, sExtraYaml=""):
     app = FastAPI()
     fnRegisterRegistryRoutes(
         app, {"require": lambda *aArgs: None, "docker": None})
-    patchProject = patch(
+    patchProject = _PatchedRegistry(
         "vaibify.config.registryManager.fdictGetProject",
         return_value={
             "sName": S_PROJECT_NAME, "sDirectory": str(pathProject),
@@ -138,7 +164,7 @@ def testASealingModeIsRefusedBesideX11AndX11BesideASealingMode(tmp_path):
     Kills: saving allowlist mode while X11 forwarding is on.
     """
     clientHttp, sConfigPath, patchProject = _fclientForConfig(
-        tmp_path, "x11Forwarding: true\n")
+        tmp_path, "networkMode: open\nx11Forwarding: true\n")
     with patchProject:
         responseMode = clientHttp.post(_fsSettingsPath(), json={"sNetworkMode": "allowlist"})
     assert responseMode.status_code == 409
