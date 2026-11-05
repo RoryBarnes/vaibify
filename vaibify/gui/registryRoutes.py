@@ -296,6 +296,7 @@ def _fnRegisterGetRegistry(app, dictCtx):
         _fnAnnotateLockState(listContainers, dictCtx)
         _fnAnnotateOwnershipState(
             listContainers, app.state.dictContainerOwners, sLeaseId,
+            _fsBrowserSessionFor(app, request),
         )
         _fnAnnotatePinnedImageObtainable(listContainers)
         from . import conversionLifecycle
@@ -366,31 +367,43 @@ def _fnAnnotateJournalState(dictContainer, sName, dictCtx):
         dictContainer["bLocked"] = True
 
 
+def _fbCallerHoldsRecord(recordOwner, sCallerLease, sCallerSessionId):
+    """True when the caller presents the owner's lease or is its bound session."""
+    if sCallerLease and recordOwner.sLeaseId == sCallerLease:
+        return True
+    return bool(
+        sCallerSessionId
+        and getattr(recordOwner, "sBrowserSessionId", "") == sCallerSessionId)
+
+
 def _fnAnnotateOwnershipState(
-    listContainers, dictContainerOwners, sCallerLease,
+    listContainers, dictContainerOwners, sCallerLease, sCallerSessionId="",
 ):
     """Flag who holds each container: another session, or the caller.
 
     ``bOwnedByOtherSession`` is True when an in-process owner record
-    exists whose lease differs from the caller's, so the picker can grey
-    a tile that another tab already holds. ``bOwnedByThisSession`` is
-    the complement the caller can act on: its own tab holds the
-    container -- a start from the picker claims before anything is
-    opened -- so the tile can say so and offer Release instead of
-    looking like every other running container. The owner's lease is
-    never echoed; only the booleans leave the process.
+    exists that the caller does not hold, so the picker can grey a tile
+    that another tab already holds. ``bOwnedByThisSession`` is the
+    complement the caller can act on: its own tab holds the container
+    -- a start from the picker claims before anything is opened -- so
+    the tile can say so and offer Release instead of looking like every
+    other running container. The caller holds a record when it presents
+    the record's lease, or when the record is bound to the caller's own
+    browser session: a start mints the lease at reservation but the
+    page learns it only when the start succeeds, and in between (minutes
+    for a container whose entrypoint clones repositories) the tab's own
+    start read as "another browser session" (researcher-reported,
+    2026-11-05). Display only, never authorization: the lease stays the
+    access principal. The owner's lease is never echoed; only the
+    booleans leave the process.
     """
     for dictContainer in listContainers:
         recordOwner = dictContainerOwners.get(dictContainer.get("sName"))
+        bHeldByCaller = recordOwner is not None and _fbCallerHoldsRecord(
+            recordOwner, sCallerLease, sCallerSessionId)
         dictContainer["bOwnedByOtherSession"] = bool(
-            recordOwner is not None
-            and recordOwner.sLeaseId != sCallerLease
-        )
-        dictContainer["bOwnedByThisSession"] = bool(
-            recordOwner is not None
-            and sCallerLease
-            and recordOwner.sLeaseId == sCallerLease
-        )
+            recordOwner is not None and not bHeldByCaller)
+        dictContainer["bOwnedByThisSession"] = bool(bHeldByCaller)
         # Honest surfacing of a force-abandoned (poisoned) owner: the
         # journal annotation already renders the durable quarantine
         # mirror; this adds the live in-process axis (design §2.1).

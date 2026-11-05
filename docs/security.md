@@ -339,9 +339,12 @@ one way out: an HTTP CONNECT proxy that vaibify runs beside it.
   name, no raw address, and the port is the one the hub recorded when
   it launched. The container's published ports (`ports`, Jupyter) are
   published on the sidecar and relayed to the container.
-- **The dashboard** shows the Network row: the mode, whether the proxy
-  is up (a dead proxy is said in so many words, never silent), and the
-  destinations the proxy refused recently with their counts. The
+- **The dashboard** shows the Network row only when there is something
+  to act on or to know: a proxy that is down (said in so many words,
+  never silent), the destinations the proxy refused recently with their
+  counts, an open container, a container whose network disagrees with
+  its file, or a file that names no mode. A sealed project whose proxy
+  is running with nothing refused shows no row at all. The
   researcher-only **Allow host** action adds one to `allowedHosts`
   (also `vaibify do allow-network-host`); it takes effect when the
   container is created again. Agents cannot extend the allowlist.

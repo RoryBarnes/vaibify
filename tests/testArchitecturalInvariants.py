@@ -7399,7 +7399,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2798 -> 2800 (2026-11-03): every writer composes both network keys through projectConfig.fdictNetworkKeysForMode (follow-up-after-210 plan, A6, A8).
     # 2800 -> 2807 (2026-11-03): the Files to Copy listing describes each top-level link with what the seed's link contract will do (follow-up-after-210 plan, A7, A8).
     # 2807 -> 2840 (2026-11-04): the X11 refusal names a file with no mode (ruling D1 revised), and the settings, allow-host and creation routes record the reach approval for the file they wrote (ruling D2); merged with main, re-measured.
-    "registryRoutes.py": 2840,
+    # 2840 -> 2853 (2026-11-05): the listing attributes a held record bound to the caller's own browser session to the caller, so a tab's in-flight start is not "another session".
+    "registryRoutes.py": 2853,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

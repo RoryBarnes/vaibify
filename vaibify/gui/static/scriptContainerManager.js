@@ -3156,16 +3156,39 @@ var VaibifyContainerManager = (function () {
         return "Network mode: " + sMode + " (" + sState + ").";
     }
 
+    function _fbNetworkNeedsAttention(dictNetwork) {
+        /* The row is for something the researcher can act on or must
+           know, never for a normal state: a sealed project whose proxy
+           is running with nothing refused, an isolated project, and a
+           container whose state could not be read under a stated mode
+           show nothing (a web-mode project walking the quickstart used
+           to see "Network mode: web (network proxy running) Nothing
+           refused recently" above its steps, researcher-reported,
+           2026-11-05). What remains: an open container (what it can
+           reach), a container that disagrees with its file, a file that
+           names no mode, a proxy that is down or unreadable, and hosts
+           the proxy refused, which carry the Allow host action. */
+        if (!dictNetwork) return false;
+        if (dictNetwork.bFileAgrees === false &&
+                dictNetwork.sContainerState !== "unknown") return true;
+        if (dictNetwork.sContainerState === "open") return true;
+        if (dictNetwork.sMode === "unstated") return true;
+        if (dictNetwork.bSealed !== true) return false;
+        return dictNetwork.sProxyState !== "running" ||
+            (dictNetwork.listRefused || []).length > 0;
+    }
+
     function _fnRenderNetworkBanner(dictNetwork) {
         /* The server's facts about the network: the file's mode, the
            container's assessed state (ruling D1 revised: an open
            container is said to be open, whatever the file says now),
            and for a sealed project whether the proxy sidecar is up and
            what it refused (ruling D8). A proxy that is down is said in
-           so many words; nothing here is re-derived. */
+           so many words; nothing here is re-derived, and a normal state
+           renders nothing. */
         var elBanner = document.getElementById("networkBanner");
         if (!elBanner) return;
-        if (!dictNetwork) {
+        if (!_fbNetworkNeedsAttention(dictNetwork)) {
             elBanner.style.display = "none";
             elBanner.innerHTML = "";
             return;
@@ -3210,8 +3233,7 @@ var VaibifyContainerManager = (function () {
                           VaibifyUtilities.fnEscapeHtml(sHost) +
                           '">Allow host</button></li>';
                   }).join("") + '</ul>'
-                : '<p class="build-warnings-banner-list">Nothing refused ' +
-                  'recently.</p>');
+                : "");
         elBanner.style.display = "block";
         elBanner.querySelectorAll(".btn-allow-network-host").forEach(
             function (elButton) {

@@ -1037,3 +1037,61 @@ def testCreateHostDirectoryAcceptsSpacesAndDashes(
     assert response.status_code == 200
     assert os.path.isdir(
         os.path.join(str(tmp_path), "my new-folder"))
+
+
+@pytest.mark.falsification
+def testGetRegistryMarksATabsOwnInFlightStartAsItsOwn(
+    fixtureApp, fixtureClient, monkeypatch,
+):
+    """A start the caller's own tab began is held by this session, not another.
+
+    A start mints the container's lease at reservation and binds the
+    owner record to the tab's browser session, but the page learns the
+    lease only when the start succeeds. For the minutes in between the
+    listing compared leases alone, so the tab's own start greyed its
+    tile as "In use in another browser session" (researcher-reported,
+    2026-11-05). The caller holds a record bound to its own session
+    whatever lease it presents; a record bound to another session is
+    another session's. Display only: the lease stays the access
+    principal, and an unbound record is still matched by lease alone.
+
+    Kills: attributing a held record by its lease only.
+    """
+    from tests.sessionTokenTestHelper import fsBootstrapCredential
+    from vaibify.gui import browserSession, containerOwnership
+    fixtureApp.state.dictBrowserSessions = (
+        browserSession.fdictCreateBrowserSessionStore())
+    sCredential = fsBootstrapCredential(fixtureApp)
+    fixtureClient.headers["X-Session-Token"] = sCredential
+    sCallerSession = browserSession.fsSessionIdForCredential(
+        fixtureApp.state.dictBrowserSessions, sCredential)
+    assert sCallerSession, "the test client carries no browser credential"
+    monkeypatch.setattr(
+        "vaibify.config.registryManager.flistGetAllProjectsWithStatus",
+        lambda: [{"sName": sName, "sContainerName": sName,
+                  "sStatus": "running", "bRunning": True}
+                 for sName in ("startedByMe", "startedByAnother", "unboundLease")])
+    fixtureApp.state.dictContainerOwners["startedByMe"] = containerOwnership.OwnerRecord(
+        sLeaseId="lease-the-page-has-not-seen", fileHandleLock=None,
+        sBrowserSessionId=sCallerSession)
+    fixtureApp.state.dictContainerOwners["startedByAnother"] = containerOwnership.OwnerRecord(
+        sLeaseId="lease-of-another-tab", fileHandleLock=None,
+        sBrowserSessionId="some-other-browser-session")
+    fixtureApp.state.dictContainerOwners["unboundLease"] = containerOwnership.OwnerRecord(
+        sLeaseId="lease-unbound", fileHandleLock=None)
+    response = fixtureClient.get("/api/registry")
+    assert response.status_code == 200, response.text
+    dictFlags = {
+        dictContainer["sName"]: (
+            dictContainer["bOwnedByThisSession"], dictContainer["bOwnedByOtherSession"])
+        for dictContainer in response.json()["listContainers"]}
+    assert dictFlags["startedByMe"] == (True, False)
+    assert dictFlags["startedByAnother"] == (False, True)
+    assert dictFlags["unboundLease"] == (False, True)
+    responseWithLease = fixtureClient.get(
+        "/api/registry", headers={"X-Vaibify-Lease": "lease-unbound"})
+    dictWithLease = {
+        dictContainer["sName"]: dictContainer["bOwnedByThisSession"]
+        for dictContainer in responseWithLease.json()["listContainers"]}
+    assert dictWithLease["unboundLease"] is True
+    assert dictWithLease["startedByMe"] is True

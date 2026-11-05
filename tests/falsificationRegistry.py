@@ -40015,6 +40015,38 @@ LIST_FALSIFICATIONS = [
         new='        return {"sFloorState": S_FLOOR_NOT_APPLIED,\n',
     ),
     Falsification(
+        nodeid='tests/testRegistryRoutes.py::testGetRegistryMarksATabsOwnInFlightStartAsItsOwn',
+        # Attributing a held record by its lease only, so a tab's own
+        # in-flight start reads as another browser session's.
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    return bool(\n'
+            '        sCallerSessionId\n'
+            '        and getattr(recordOwner, "sBrowserSessionId", "") == sCallerSessionId)\n'
+        ),
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAStartInFlightIsHeldByThisTab.py::testATileThisTabIsStartingWearsTheHeldChipAndIsNotLocked',
+        # The same mutation, seen on the tile.
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '        bHeldByCaller = recordOwner is not None and _fbCallerHoldsRecord(\n'
+            '            recordOwner, sCallerLease, sCallerSessionId)\n'
+        ),
+        new=(
+            '        bHeldByCaller = recordOwner is not None and _fbCallerHoldsRecord(\n'
+            '            recordOwner, sCallerLease, "")\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheNetworkRowShowsOnlyWhatNeedsAttention.py::testANormalSealedOrIsolatedProjectShowsNoRow',
+        # Drawing the row for every readiness answer that carries a network.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!_fbNetworkNeedsAttention(dictNetwork)) {\n',
+        new='        if (!dictNetwork) {\n',
+    ),
+    Falsification(
         nodeid='tests/testReachApprovalCommandLine.py::testWithoutATerminalAnUnapprovedConfigurationStopsAndNamesTheFlag',
         # Approving by default when there is nobody to ask.
         source='vaibify/cli/reachApprovalPrompt.py',
