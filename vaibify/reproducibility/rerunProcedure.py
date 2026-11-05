@@ -145,6 +145,23 @@ S_FLOOR_NOT_APPLICABLE = "not applicable"
 # QEMU an x86-64 container reports x86_64 on an arm64 machine.
 S_PROCESSOR_FAMILY_X86_64 = "x86-64"
 S_PROCESSOR_FAMILY_ARM64 = "arm64"
+# A Darwin kernel (a host project on a Mac) writes no /proc/cpuinfo and
+# answers the same questions through sysctl: ``hw.optional.arm64`` is 1
+# on an Apple Silicon Mac, for a process translated by Rosetta too, and
+# the three feature lists carry the x86 instruction names in Darwin's
+# own spelling, mapped below onto the names Linux writes.
+S_DARWIN_KERNEL_NAME = "Darwin"
+S_DARWIN_ARM64_SYSCTL = "hw.optional.arm64"
+S_DARWIN_VENDOR_SYSCTL = "machdep.cpu.vendor"
+TUPLE_DARWIN_FEATURE_SYSCTLS = (
+    "machdep.cpu.features", "machdep.cpu.leaf7_features",
+    "machdep.cpu.extfeatures",
+)
+DICT_DARWIN_FLAG_SPELLINGS = {
+    "sse3": "pni", "sse4.1": "sse4_1", "sse4.2": "sse4_2", "avx1.0": "avx",
+    "lahf": "lahf_lm", "lzcnt": "abm",
+}
+F_SYSCTL_TIMEOUT_SECONDS = 5.0
 # What became of each CPU feature NumPy was asked to disable (design F7).
 S_FEATURE_APPLIED = "applied"
 S_FEATURE_NOT_APPLIED = "not applied"
@@ -579,17 +596,28 @@ def fiCountVisibleCores():
     return os.cpu_count() or 0
 
 
-def fdictReadProcessorCapabilities(sCpuinfoPath="/proc/cpuinfo"):
+def fdictReadProcessorCapabilities(sCpuinfoPath="/proc/cpuinfo",
+                                   sKernelName="", fsQuerySysctl=None):
     """Return vendor, x86-64 level and visible cores; never a model name.
 
     Only what explains a difference is kept. The model string and the
-    host name identify a machine, and these records are published.
+    host name identify a machine, and these records are published. A
+    Linux kernel is read from ``/proc/cpuinfo``; a Darwin kernel, which
+    has no such file, through sysctl.
     """
     dictCapabilities = {
         "sArchitecture": os.uname().machine, "sVendor": "", "sLevel": "",
         "iVisibleCores": fiCountVisibleCores(), "bReadable": False,
         "sProcessorFamily": "",
     }
+    if (sKernelName or os.uname().sysname) == S_DARWIN_KERNEL_NAME:
+        return _fdictReadDarwinCapabilities(
+            dictCapabilities, fsQuerySysctl or fsQueryDarwinSysctl)
+    return _fdictReadCpuinfoCapabilities(dictCapabilities, sCpuinfoPath)
+
+
+def _fdictReadCpuinfoCapabilities(dictCapabilities, sCpuinfoPath):
+    """Fill the capabilities from the keys a Linux kernel writes."""
     try:
         with open(sCpuinfoPath, encoding="utf-8") as fileIn:
             listLines = fileIn.read().splitlines()
@@ -612,6 +640,45 @@ def fdictReadProcessorCapabilities(sCpuinfoPath="/proc/cpuinfo"):
     if not setFlags:
         dictCapabilities["sUnreadableReason"] = (
             sCpuinfoPath + " carries no flags line")
+    return dictCapabilities
+
+
+def fsQueryDarwinSysctl(sName):
+    """Return one sysctl value, or "" when this kernel does not carry it."""
+    try:
+        processResult = subprocess.run(
+            ["sysctl", "-n", sName], capture_output=True, encoding="utf-8",
+            errors="replace", timeout=F_SYSCTL_TIMEOUT_SECONDS)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if processResult.returncode != 0:
+        return ""
+    return processResult.stdout.strip()
+
+
+def fsSpellDarwinFlagAsLinux(sDarwinFlag):
+    """Return a Darwin feature name as Linux spells it in ``flags``."""
+    sFlag = sDarwinFlag.lower()
+    return DICT_DARWIN_FLAG_SPELLINGS.get(sFlag, sFlag)
+
+
+def _fdictReadDarwinCapabilities(dictCapabilities, fsQuery):
+    """Fill the capabilities from what a Darwin kernel answers to sysctl."""
+    if fsQuery(S_DARWIN_ARM64_SYSCTL).strip() == "1":
+        dictCapabilities["sProcessorFamily"] = S_PROCESSOR_FAMILY_ARM64
+        return dictCapabilities
+    setFlags = set()
+    for sName in TUPLE_DARWIN_FEATURE_SYSCTLS:
+        setFlags.update(
+            fsSpellDarwinFlagAsLinux(sWord) for sWord in fsQuery(sName).split())
+    if not setFlags:
+        dictCapabilities["sUnreadableReason"] = (
+            "sysctl reports no processor features")
+        return dictCapabilities
+    dictCapabilities["sVendor"] = fsQuery(S_DARWIN_VENDOR_SYSCTL).strip()
+    dictCapabilities["sProcessorFamily"] = S_PROCESSOR_FAMILY_X86_64
+    dictCapabilities["bReadable"] = True
+    dictCapabilities["sLevel"] = fsReadX86Level(setFlags)
     return dictCapabilities
 
 
@@ -668,7 +735,7 @@ def _fsDescribeInapplicableFloor(dictCapabilities, sRequiredLevel):
     sReason = ("floor not applicable: " + sRequiredLevel + " is an x86-64 "
                "instruction level and this computer's processor is arm64")
     if dictCapabilities.get("sArchitecture") in ("x86_64", "amd64"):
-        sReason += " (the container runs under emulation)"
+        sReason += " (this process runs under emulation)"
     return sReason
 
 

@@ -841,9 +841,11 @@ _S_ARM64_CPUINFO = (
 
 
 def _fdictCapabilitiesFromCpuinfo(tmp_path, sText):
+    """Read as a Linux kernel would, whatever kernel runs the suite."""
     pathCpuinfo = tmp_path / "cpuinfo"
     pathCpuinfo.write_text(sText, encoding="utf-8")
-    return rerunProcedure.fdictReadProcessorCapabilities(str(pathCpuinfo))
+    return rerunProcedure.fdictReadProcessorCapabilities(
+        str(pathCpuinfo), sKernelName="Linux")
 
 
 @pytest.mark.falsification
@@ -886,7 +888,119 @@ def testAnEmulatedContainerOnArm64SaysSo(tmp_path):
     dictDecision = rerunProcedure.fdictDecideAppliedSettings(
         dictCapabilities, "x86-64-v3", ["OPENBLAS_CORETYPE"])
     assert dictDecision["sFloorState"] == "not applicable"
-    assert dictDecision["sReason"].endswith("(the container runs under emulation)")
+    assert dictDecision["sReason"].endswith("(this process runs under emulation)")
+
+
+# What a Darwin kernel answers to sysctl, on the two kinds of Mac. The
+# Apple Silicon answer is ``hw.optional.arm64`` alone; the Intel feature
+# lists are the three the kernel keeps, in Darwin's own spelling (SSE4.1
+# where Linux writes sse4_1, AVX1.0 for avx, LAHF for lahf_lm, LZCNT for
+# abm, SSE3 for pni), for a Haswell-class processor.
+_DICT_APPLE_SILICON_SYSCTL = {"hw.optional.arm64": "1"}
+_DICT_INTEL_MAC_SYSCTL = {
+    "machdep.cpu.vendor": "GenuineIntel",
+    "machdep.cpu.features": (
+        "FPU VME DE PSE TSC MSR PAE MCE CX8 APIC SEP MTRR PGE MCA CMOV PAT "
+        "PSE36 CLFSH DS ACPI MMX FXSR SSE SSE2 SS HTT TM PBE SSE3 PCLMULQDQ "
+        "DTES64 MON DSCPL VMX SMX EST TM2 SSSE3 FMA CX16 TPR PDCM SSE4.1 "
+        "SSE4.2 x2APIC MOVBE POPCNT AES PCID XSAVE OSXSAVE SEGLIM64 TSCTMR "
+        "AVX1.0 RDRAND F16C"),
+    "machdep.cpu.leaf7_features": (
+        "RDWRFSGS TSC_THREAD_OFFSET SGX BMI1 AVX2 SMEP BMI2 ERMS INVPCID "
+        "FPU_CSDS MPX RDSEED ADX SMAP CLFSOPT IPT SGXLC MDCLEAR IBRS STIBP "
+        "L1DF ACAPMSR SSBD"),
+    "machdep.cpu.extfeatures": (
+        "SYSCALL XD 1GBPAGE EM64T LAHF LZCNT PREFETCHW RDTSCP TSCI"),
+}
+
+
+def _ffsAnswerSysctlFrom(dictAnswers):
+    """Return a sysctl stand-in that answers "" for a key the kernel lacks."""
+    return lambda sName: dictAnswers.get(sName, "")
+
+
+def _fdictCapabilitiesOnDarwin(tmp_path, dictAnswers):
+    """Read as a Mac would: a Darwin kernel, and no cpuinfo file anywhere."""
+    return rerunProcedure.fdictReadProcessorCapabilities(
+        str(tmp_path / "absent"), sKernelName="Darwin",
+        fsQuerySysctl=_ffsAnswerSysctlFrom(dictAnswers))
+
+
+@pytest.mark.falsification
+def testAnAppleSiliconMacHostReadsItsKernelThroughSysctlAndIsNotWarnedAbout(
+    tmp_path,
+):
+    """A host project on an Apple Silicon Mac is read through sysctl.
+
+    Darwin writes no /proc/cpuinfo, so reading the Mac as a Linux kernel
+    answered "unreadable" and warned before every host-mode run of the
+    quickstart (reported 2026-11-05, after the arm64 cpuinfo reading had
+    silenced the container case). The kernel is asked the way Darwin
+    answers, and an Apple Silicon Mac reads as arm64, floor not
+    applicable, no warning.
+
+    Kills: reading every kernel from /proc/cpuinfo, so a Mac host reads
+    as unreadable and warns before every run.
+    """
+    dictCapabilities = _fdictCapabilitiesOnDarwin(tmp_path, _DICT_APPLE_SILICON_SYSCTL)
+    assert dictCapabilities["sProcessorFamily"] == "arm64"
+    assert dictCapabilities["bReadable"] is False
+    assert "sUnreadableReason" not in dictCapabilities
+    dictSettings = executionProfiles.fdictDecideExecutionSettings(
+        executionProfiles.fdictProfileFromTable(S_ACROSS), dictCapabilities)
+    assert dictSettings["dictDecision"]["sFloorState"] == "not applicable"
+    assert determinismEnvironment.flistDescribeExecutionWarnings({
+        determinismEnvironment.S_EXECUTION_SETTINGS_KEY: dictSettings}) == []
+
+
+@pytest.mark.falsification
+def testAnIntelMacHostReadsItsLevelFromDarwinsOwnSpellings(tmp_path):
+    """An Intel Mac's features are spelled Darwin's way and still grade.
+
+    The x86-64-v3 level needs every flag of v1 through v3 (the psABI
+    levels); the fixture carries all of them, three under names Darwin
+    spells differently from Linux (SSE3, SSE4.1, SSE4.2, AVX1.0, LAHF,
+    LZCNT), so the level reads v3 only through the spelling table.
+
+    Kills: comparing Darwin's names against Linux's without the
+    translation, which grades a Haswell-class Mac below x86-64-v2.
+    """
+    dictCapabilities = _fdictCapabilitiesOnDarwin(tmp_path, _DICT_INTEL_MAC_SYSCTL)
+    assert dictCapabilities["sProcessorFamily"] == "x86-64"
+    assert dictCapabilities["bReadable"] is True
+    assert dictCapabilities["sVendor"] == "GenuineIntel"
+    assert dictCapabilities["sLevel"] == "x86-64-v3"
+    dictDecision = rerunProcedure.fdictDecideAppliedSettings(
+        dictCapabilities, "x86-64-v3", ["OPENBLAS_CORETYPE"])
+    assert dictDecision["sFloorState"] == "applied"
+
+
+def testADarwinKernelThatAnswersNothingStillWarnsAndNamesWhy(tmp_path):
+    """A Mac whose kernel names no features reads as unreadable, with the cause."""
+    dictCapabilities = _fdictCapabilitiesOnDarwin(tmp_path, {})
+    assert dictCapabilities["bReadable"] is False
+    assert dictCapabilities["sProcessorFamily"] == ""
+    assert dictCapabilities["sUnreadableReason"] == "sysctl reports no processor features"
+    dictDecision = rerunProcedure.fdictDecideAppliedSettings(
+        dictCapabilities, "x86-64-v3", ["OPENBLAS_CORETYPE"])
+    assert dictDecision["sFloorState"] == "not applied"
+    assert dictDecision["sReason"].endswith("(sysctl reports no processor features)")
+
+
+def testALinuxKernelIsReadFromCpuinfoAndNeverAsksSysctl(tmp_path):
+    """Inside a container the kernel is Linux, and no sysctl binary is assumed."""
+    def fsRefuse(sName):
+        raise AssertionError("sysctl asked on a Linux kernel for " + sName)
+    pathCpuinfo = tmp_path / "cpuinfo"
+    pathCpuinfo.write_text(_S_ARM64_CPUINFO, encoding="utf-8")
+    dictCapabilities = rerunProcedure.fdictReadProcessorCapabilities(
+        str(pathCpuinfo), sKernelName="Linux", fsQuerySysctl=fsRefuse)
+    assert dictCapabilities["sProcessorFamily"] == "arm64"
+
+
+def testTheRealSysctlQueryAnswersEmptyForAKeyNoKernelCarries():
+    """The subprocess path itself: an unknown key is "", on any platform."""
+    assert rerunProcedure.fsQueryDarwinSysctl("vaibify.no.such.key") == ""
 
 
 def testAReadingThatFailedStillWarnsAndNamesWhy(tmp_path):
@@ -906,7 +1020,7 @@ def testAReadingThatFailedStillWarnsAndNamesWhy(tmp_path):
         determinismEnvironment.S_EXECUTION_SETTINGS_KEY: dictSettings})
     assert len(listWarnings) == 1 and "it exited 1 with no record" in listWarnings[0]
     dictMissing = rerunProcedure.fdictReadProcessorCapabilities(
-        str(tmp_path / "absent"))
+        str(tmp_path / "absent"), sKernelName="Linux")
     assert dictMissing["bReadable"] is False
     assert dictMissing["sProcessorFamily"] == ""
     assert "could not be read" in dictMissing["sUnreadableReason"]

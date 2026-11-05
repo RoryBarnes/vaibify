@@ -245,11 +245,13 @@ keeps the thread settings, and records "floor not applied: this
 processor lacks x86-64-v3"; the dashboard warns you before such a run
 starts, as it does when the processor could not be read at all (the
 record then says why). A processor that is not x86-64 at all, such as
-an Apple Silicon Mac, whether the container is arm64 or an x86-64 one
-running under emulation, drops the same two settings under a state of
-its own, "floor not applicable", named in the run log and the run
-context but never warned about: nothing about that computer could
-change it. Then a separate probe loads NumPy under exactly the settings the
+an Apple Silicon Mac, whether the project runs on the Mac itself or in
+a container, arm64 or an x86-64 one running under emulation, drops the
+same two settings under a state of its own, "floor not applicable",
+named in the run log and the run context but never warned about:
+nothing about that computer could change it. A Mac has no
+`/proc/cpuinfo`; a host project there is read through `sysctl`, which
+names the same features in Darwin's spelling. Then a separate probe loads NumPy under exactly the settings the
 steps get, and records what OpenBLAS chose and whether NumPy applied
 each feature it was asked to disable. NumPy before version 2.4 does not
 know the name `X86_V4`; it ignores that request without a visible
@@ -456,8 +458,8 @@ differs, as information, not as a failure.
 computers measured and found different is a recorded difference. A fact
 only one of them measured is named as not measured, with the reason the
 record gives ("not measured in host mode", because a host-mode run skips
-the NumPy probe; "this machine does not report it", because a Mac reports
-no processor vendor or `x86-64` level), and is never counted as a
+the NumPy probe; "this machine does not report it", because an Apple Silicon
+Mac reports no processor vendor or `x86-64` level), and is never counted as a
 difference. Only when every differing file has a recorded difference
 does the check offer to make this computer's results the published
 ones, by rerunning every step here and regenerating the manifest.

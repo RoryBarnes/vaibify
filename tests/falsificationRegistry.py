@@ -40015,6 +40015,27 @@ LIST_FALSIFICATIONS = [
         new='        return {"sFloorState": S_FLOOR_NOT_APPLIED,\n',
     ),
     Falsification(
+        nodeid='tests/testExecutionProfiles.py::testAnAppleSiliconMacHostReadsItsKernelThroughSysctlAndIsNotWarnedAbout',
+        # Reading every kernel from /proc/cpuinfo, so a Mac host reads as
+        # unreadable and warns before every run.
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    if (sKernelName or os.uname().sysname) == S_DARWIN_KERNEL_NAME:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testExecutionProfiles.py::testAnIntelMacHostReadsItsLevelFromDarwinsOwnSpellings',
+        # Comparing Darwin's feature names against Linux's without the
+        # translation, which grades a Haswell-class Mac below x86-64-v2.
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old=(
+            'DICT_DARWIN_FLAG_SPELLINGS = {\n'
+            '    "sse3": "pni", "sse4.1": "sse4_1", "sse4.2": "sse4_2", "avx1.0": "avx",\n'
+            '    "lahf": "lahf_lm", "lzcnt": "abm",\n'
+            '}\n'
+        ),
+        new='DICT_DARWIN_FLAG_SPELLINGS = {}\n',
+    ),
+    Falsification(
         nodeid='tests/testRegistryRoutes.py::testGetRegistryMarksATabsOwnInFlightStartAsItsOwn',
         # Attributing a held record by its lease only, so a tab's own
         # in-flight start reads as another browser session's.

@@ -408,8 +408,8 @@ def fdictDecideRunExecutionSettings(
     """Stage A: read this processor before any library loads, then decide.
 
     A host project is read in this process, from this machine's own
-    ``/proc/cpuinfo`` where one exists; elsewhere the capabilities are
-    unreadable, and the floor is not applied.
+    kernel: ``/proc/cpuinfo`` on Linux, sysctl on a Mac. Where neither
+    answers, the capabilities are unreadable and the floor is not applied.
     """
     from vaibify.config.registryManager import fbIsHostProject
     from vaibify.reproducibility import executionProfiles, rerunProcedure
