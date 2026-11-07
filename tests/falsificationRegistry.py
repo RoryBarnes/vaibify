@@ -40635,4 +40635,42 @@ LIST_FALSIFICATIONS = [
         old='    if [ "$bHook" = 1 ] && [ -n "${VAIBIFY_TERMINAL_LIFECYCLE:-}" ] \\\n',
         new='    if false && [ -n "${VAIBIFY_TERMINAL_LIFECYCLE:-}" ] \\\n',
     ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testAProjectRepositoryThatIsNotNormalizedIsNeverAKey',
+        # The store's repository-path check no longer refusing.
+        source='vaibify/config/dashboardRecords.py',
+        old='        raise RecordContentError(f"{sLabel} is not a normalized absolute path")\n',
+        new='        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testAnOversizedRecordIsRefused',
+        # A refused record answered as a server fault.
+        source='vaibify/gui/routes/dashboardStateRoutes.py',
+        old=(
+            '            "iRevision": error.iStoredRevision,\n'
+            '        }) from error\n'
+            '    except dashboardRecords.RecordContentError as error:\n'
+            '        raise HTTPException(400, detail={\n'
+        ),
+        new=(
+            '            "iRevision": error.iStoredRevision,\n'
+            '        }) from error\n'
+            '    except dashboardRecords.RecordContentError as error:\n'
+            '        raise HTTPException(500, detail={\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testTheCatalogProgramTakesOnlyValidatedArguments',
+        # The catalog's repository check no longer refusing.
+        source='vaibify/gui/agentChatCatalog.py',
+        old='        raise ValueError("the project repository is not a normalized path")\n',
+        new='        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testAListedChatWithAMalformedFieldIsDropped',
+        # A listed chat's session id no longer checked.
+        source='vaibify/gui/agentChatCatalog.py',
+        old='    if not fbIsSessionId(dictEntry.get("sSessionId")):\n        return None\n',
+        new='',
+    ),
 ]

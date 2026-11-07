@@ -282,7 +282,9 @@ def testTheAnswerGivesCatalogChatsNoFlagsAndSavedChatsTheirOwn(sHome):
         "bTranscriptFound"] is False
 
 
+@pytest.mark.falsification
 def testTheCatalogProgramTakesOnlyValidatedArguments():
+    """Kills: dropping the repository check on the program's arguments."""
     with pytest.raises(ValueError):
         agentChatCatalog.flistCatalogArguments("/repo/../etc", [])
     assert agentChatCatalog.flistCatalogArguments(S_REPO, [
@@ -305,7 +307,9 @@ def testOnlyAProgramBuiltOnTheSharedLaunchRulesIsRun():
     assert listRan == [promptRecordManager._S_LIST_SCRIPT]
 
 
+@pytest.mark.falsification
 def testAListedChatWithAMalformedFieldIsDropped():
+    """Kills: accepting a listed chat whose session id is not a UUID."""
     sStdout = json.dumps({"listChats": [
         {"sProvider": "claude", "sSessionId": "x; rm", "sLaunchDirectory": S_REPO},
         {"sProvider": "claude", "sSessionId": S_UUID,

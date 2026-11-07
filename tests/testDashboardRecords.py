@@ -220,7 +220,19 @@ def testARecordCannotHoldAStatusField(tClient):
     assert _fdictGetProject(tClient, S_FIRST_PROJECT)["iRevision"] == 0
 
 
+@pytest.mark.falsification
+def testAProjectRepositoryThatIsNotNormalizedIsNeverAKey(tmp_path, monkeypatch):
+    """Kills: dropping the store's own repository-path check."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for sRepo in ("/repo/../etc", "relative/repo", "/repo//x"):
+        with pytest.raises(dashboardRecords.RecordContentError):
+            dashboardRecords.fsProjectRecordPath(
+                S_ENVIRONMENT, sRepo, ".vaibify/projects/a.json")
+
+
+@pytest.mark.falsification
 def testAnOversizedRecordIsRefused(tClient):
+    """Kills: answering a refused record as a server fault, not a 400."""
     sHuge = "x" * (dashboardRecords.I_MAXIMUM_RECORD_BYTES + 1)
     assert _fresponsePutEnvironment(
         tClient, 0, {"dictTerminals": {"sNote": sHuge}}).status_code == 400
