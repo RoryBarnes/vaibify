@@ -46,6 +46,8 @@ __all__ = [
     "fnAssertDurableExecAdmitted",
     "fnAssertOperationAdmittedByIdentity",
     "fdictBeginJournaledExec",
+    "fdictBeginJournaledCommandExec",
+    "fadmissionFindCommandJournaling",
     "fdictBeginJournaledHostExec",
     "fnPromoteJournaledHostExec",
     "fnSettleJournaledHostExec",
@@ -86,6 +88,14 @@ S_ADMISSION_MODE_DURABLE_TASK = "durableTask"
 # authorizes nothing against the researcher's project container, which
 # is the only thing the lease machinery would have been protecting.
 S_ADMISSION_MODE_DISPOSABLE = "disposableContainer"
+
+# The carrier modes whose every container command gets its own journal
+# record (see :func:`fdictBeginJournaledCommandExec`).
+_T_MODES_JOURNALING_EACH_COMMAND = (
+    S_ADMISSION_MODE_SYNCHRONOUS,
+    S_ADMISSION_MODE_LOCK_HELD,
+    S_ADMISSION_MODE_DURABLE_TASK,
+)
 
 _OBJECT_MINT_KEY = object()
 
@@ -343,7 +353,10 @@ class MutationAdmission:
         # The exec records this admission's work has in flight. One at a
         # time for most durable work; several when pipeline runs of
         # different projects share one durable record, each running its
-        # own command. ``sActiveExecOperationId`` is the latest of them.
+        # own command. ``sActiveExecOperationId`` is the one record a
+        # start reservation publishes for itself; an exec never
+        # overwrites it, or a start's record would drop out of the set
+        # a transfer may adopt.
         self.dictLiveState = {
             "sActiveExecOperationId": "", "setActiveExecOperationIds": set(),
         }
@@ -680,6 +693,42 @@ def fdictBeginJournaledExec(sContainerId):
     )
     if admission is None:
         return None
+    return _fdictPrepareExecRecord(admission, sContainerId)
+
+
+def fdictBeginJournaledCommandExec(sContainerId):
+    """Prepare an exec record for a command a carrier mode admitted.
+
+    The carrier's own record names the hub as its holder, and the hub's
+    worker finishing proves nothing about a command it started: an exec
+    whose caller gave up at a socket deadline keeps running in the
+    container. A record of its own, written before the exec starts,
+    gives that command an identity the exec probe can judge, whichever
+    path later reconciles the container. An audited read changes
+    nothing and is not journaled; a disposable container is destroyed
+    with whatever it ran; an unenforced lane has no admission. Each of
+    those returns ``None``, so the caller journals nothing.
+    """
+    admission = fadmissionFindCommandJournaling(sContainerId)
+    if admission is None:
+        return None
+    return _fdictPrepareExecRecord(admission, sContainerId)
+
+
+def fadmissionFindCommandJournaling(sContainerId):
+    """Return the live admission whose commands are journaled, or None."""
+    if fbInsideAuditedRead():
+        return None
+    admission = fadmissionActiveForContainerId(sContainerId)
+    if admission is None or admission.sMode not in (
+        _T_MODES_JOURNALING_EACH_COMMAND
+    ):
+        return None
+    return admission
+
+
+def _fdictPrepareExecRecord(admission, sContainerId):
+    """Write the PREPARED exec record and return its handle."""
     sOperationId = operationJournal.fsPrepareOperation(
         admission.sContainerName, "exec", sContainerId,
     )
@@ -691,7 +740,11 @@ def fdictBeginJournaledExec(sContainerId):
 
 
 def fnPromoteJournaledExec(dictExecHandle, sExecId):
-    """Persist the real exec id, then identity-gate before exec_start."""
+    """Persist the real exec id, then identity-gate before exec_start.
+
+    A refusal settles the record: the exec was created but never
+    started, so nothing it names ever ran.
+    """
     if dictExecHandle is None:
         return
     dictIdentity = {"sDockerExecId": sExecId}
@@ -699,15 +752,17 @@ def fnPromoteJournaledExec(dictExecHandle, sExecId):
         dictExecHandle["sContainerName"],
         dictExecHandle["sOperationId"], dictIdentity,
     )
-    fnAssertOperationAdmittedByIdentity(
-        dictExecHandle["sContainerName"],
-        dictExecHandle["sOperationId"], dictIdentity,
-    )
-    dictLiveState = dictExecHandle["admission"].dictLiveState
-    dictLiveState["sActiveExecOperationId"] = dictExecHandle["sOperationId"]
-    dictLiveState["setActiveExecOperationIds"].add(
-        dictExecHandle["sOperationId"],
-    )
+    try:
+        fnAssertOperationAdmittedByIdentity(
+            dictExecHandle["sContainerName"],
+            dictExecHandle["sOperationId"], dictIdentity,
+        )
+    except MutationNotAdmittedError:
+        fnSettleJournaledExec(dictExecHandle)
+        raise
+    dictExecHandle["admission"].dictLiveState[
+        "setActiveExecOperationIds"
+    ].add(dictExecHandle["sOperationId"])
 
 
 def fsetActiveExecOperationIds(admission):
@@ -727,14 +782,9 @@ def fnSettleJournaledExec(dictExecHandle):
     """Settle the exec record once the daemon reports the exec ended."""
     if dictExecHandle is None:
         return
-    dictLiveState = dictExecHandle["admission"].dictLiveState
-    dictLiveState["setActiveExecOperationIds"].discard(
-        dictExecHandle["sOperationId"],
-    )
-    if dictLiveState.get("sActiveExecOperationId") == (
-        dictExecHandle["sOperationId"]
-    ):
-        dictLiveState["sActiveExecOperationId"] = ""
+    dictExecHandle["admission"].dictLiveState[
+        "setActiveExecOperationIds"
+    ].discard(dictExecHandle["sOperationId"])
     try:
         operationJournal.fnSettleOperation(
             dictExecHandle["sContainerName"],

@@ -1071,20 +1071,8 @@ LIST_FALSIFICATIONS = [
         old="""        mutationAdmission.fnAssertContainerCommandAdmitted(
             sContainerId, "ftRunInContainerStreamed",
         )
-        container = self.fcontainerGetById(sContainerId)
-        if sUser is None:
-            sUser = _fsResolveExecUser(container, sLane)
-        dictKwargs = self._fdictBuildExecKwargs(
-            sCommand, sWorkdir, sUser,
-            _fdictResolveLaneEnvironment(container, sLane),
-        )""",
-        new="""        container = self.fcontainerGetById(sContainerId)
-        if sUser is None:
-            sUser = _fsResolveExecUser(container, sLane)
-        dictKwargs = self._fdictBuildExecKwargs(
-            sCommand, sWorkdir, sUser,
-            _fdictResolveLaneEnvironment(container, sLane),
-        )""",
+        if mutationAdmission.fadmissionFindCommandJournaling(sContainerId):""",
+        new="""        if mutationAdmission.fadmissionFindCommandJournaling(sContainerId):""",
     ),
 
     Falsification(
@@ -40484,5 +40472,65 @@ LIST_FALSIFICATIONS = [
             'host."\n'
         ),
         new='        "failure is, not here."\n',
+    ),
+    # --- 2026-11-07: every command a carrier mode admits is journaled
+    # before it starts, so an abandoned one is never cleared as done ---
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testALockHeldCommandIsJournaledBeforeItStarts'
+        ),
+        # No carrier mode journals its commands: exec_run starts them unrecorded.
+        source='vaibify/config/mutationAdmission.py',
+        old=(
+            '    if admission is None or admission.sMode not in (\n'
+            '        _T_MODES_JOURNALING_EACH_COMMAND\n'
+            '    ):\n'
+            '        return None\n'
+        ),
+        new='    return None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testAnAbandonedCommandKeepsTheContainerUnreconciledUntilItEnds'
+        ),
+        # The same, so a command its worker abandoned has no record of its own.
+        source='vaibify/config/mutationAdmission.py',
+        old=(
+            '    if admission is None or admission.sMode not in (\n'
+            '        _T_MODES_JOURNALING_EACH_COMMAND\n'
+            '    ):\n'
+            '        return None\n'
+        ),
+        new='    return None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testACommandRefusedAtItsGateLeavesNoRecordAndNeverStarts'
+        ),
+        # A refused, never-started exec keeps its record.
+        source='vaibify/config/mutationAdmission.py',
+        old=(
+            '    except MutationNotAdmittedError:\n'
+            '        fnSettleJournaledExec(dictExecHandle)\n'
+            '        raise\n'
+        ),
+        new='    except MutationNotAdmittedError:\n        raise\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testACommandTheDaemonRefusesToCreateLeavesNoRecord'
+        ),
+        # A refused creation leaves its PREPARED exec record behind.
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        except Exception:\n'
+            '            mutationAdmission.fnSettleJournaledExec(dictExecHandle)\n'
+            '            raise\n'
+        ),
+        new='        except Exception:\n            raise\n',
     ),
 ]
