@@ -2434,6 +2434,58 @@ def testARepoPanelPushOfTheProjectRepoRecordsNoGithubBinding():
     assert mockRecord.call_count == 0
 
 
+@pytest.mark.falsification
+def testARefusedPostPushVerifyLeavesTheContainerUsable():
+    """A verify that refuses after a push must not quarantine the container.
+
+    The field case: an agent pushed with ``git`` inside the container,
+    so the hub had recorded no GitHub binding, and the verify refused
+    with the not-bound sentence before writing anything. The worker
+    raised it, the carrier poisoned the record, and every later
+    mutation was refused until the researcher reconciled.
+
+    So the assertion is on the JOURNAL. The refusal must still reach the
+    researcher, in its own words, as the push's verify warning.
+
+    Kills: letting the post-push verify worker raise instead of carrying
+    the failure back, which poisons its record.
+    """
+    from vaibify.config import operationJournal
+    from vaibify.gui import routeContext
+    from vaibify.reproducibility.scheduledReverify import (
+        S_GITHUB_NOT_BOUND, ReverifyConfigError,
+    )
+
+    def fnRefuseAsUnbound(dictWorkflow, sService, filesRepo):
+        raise ReverifyConfigError(S_GITHUB_NOT_BOUND)
+
+    client, _connectionDocker = _tConnectGatedClient(
+        DockerDoubleWhereThePushedRepoIsTheProjectRepo(),
+    )
+    with patch.object(
+        routeContext, "fdictRunRemoteVerifyBlocking", fnRefuseAsUnbound,
+    ):
+        response = client.post(
+            f"/api/repos/{S_CONTAINER_ID}/{S_PUSH_REPO_NAME}/push-staged",
+            json={"sCommitMessage": "[vaibify] Update repository"},
+        )
+    assert response.status_code == 200, response.text
+    assert S_GITHUB_NOT_BOUND in response.json().get(
+        "sPostPushVerifyWarning", ""), response.text
+    dictOperations = operationJournal.fdictReadJournalOutcome(
+        S_CONTAINER_NAME,
+    )["dictOperations"]
+    listVerifyRecords = [
+        dictRecord for dictRecord in dictOperations.values()
+        if dictRecord.get("sTarget") == "post-push-verify github"
+    ]
+    assert listVerifyRecords == [], (
+        "the refused verify left its journal record behind: "
+        f"{listVerifyRecords}. A NEEDS_RECONCILIATION state quarantines "
+        "the container over a verify that wrote nothing."
+    )
+
+
 class DockerDoubleThatBlocksTheRepoPush(
     DockerDoubleServingATokenedTrackedRepo,
 ):
