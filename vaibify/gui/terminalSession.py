@@ -52,8 +52,12 @@ class TerminalSession:
     def __init__(
         self, connectionDocker, sContainerId, sUser=None,
         sShellCommand="/bin/bash", dictContainment=None,
+        dictEnvironmentOverlay=None,
     ):
         self._connectionDocker = connectionDocker
+        # Per-terminal variables beside the agent environment: today
+        # only the agent-chat lifecycle record's path.
+        self._dictEnvironmentOverlay = dict(dictEnvironmentOverlay or {})
         self._sContainerId = sContainerId
         self._sUser = sUser
         self._sShellCommand = sShellCommand
@@ -69,12 +73,18 @@ class TerminalSession:
     def sSessionId(self):
         return self._sSessionId
 
+    def _fdictTerminalEnvironment(self):
+        return dict(
+            fdictBuildAgentTerminalEnvironment(),
+            **self._dictEnvironmentOverlay,
+        )
+
     def fnStart(self):
         """Create and start the docker exec instance."""
         if self._dictContainment is None:
             self._sExecId = self._connectionDocker.fsExecCreate(
                 self._sContainerId, sUser=self._sUser,
-                dictEnvironment=fdictBuildAgentTerminalEnvironment(),
+                dictEnvironment=self._fdictTerminalEnvironment(),
                 sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
             )
             self._socketExec = (
@@ -97,7 +107,7 @@ class TerminalSession:
         self._sExecId = self._connectionDocker.fsExecCreate(
             self._sContainerId, sUser=self._sUser,
             listCommand=["/bin/sh", "-c", sWrapperScript],
-            dictEnvironment=fdictBuildAgentTerminalEnvironment(),
+            dictEnvironment=self._fdictTerminalEnvironment(),
             sLane=S_EXEC_LANE_RESEARCHER_COMMAND,
         )
         terminalContainment.fnPromoteTerminalOperation(
@@ -238,8 +248,10 @@ class HostTerminalSession:
     is the name.
     """
 
-    def __init__(self, connectionHost, sResourceName, dictContainment):
+    def __init__(self, connectionHost, sResourceName, dictContainment,
+                 dictEnvironmentOverlay=None):
         self._connectionHost = connectionHost
+        self._dictEnvironmentOverlay = dict(dictEnvironmentOverlay or {})
         self._sResourceName = sResourceName
         self._dictContainment = dictContainment
         self._sSessionId = fsGenerateSessionId()
@@ -261,6 +273,7 @@ class HostTerminalSession:
         )
         dictLaunch = self._connectionHost.fdictLaunchTerminalShellSuspended(
             self._sResourceName,
+            dictEnvironmentOverlay=self._dictEnvironmentOverlay,
         )
         self._processChild = dictLaunch["processChild"]
         self._iMasterFd = dictLaunch["iMasterFd"]

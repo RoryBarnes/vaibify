@@ -31771,19 +31771,19 @@ LIST_FALSIFICATIONS = [
     # --- 2026-10-08: a terminal's prompt resets the input modes a killed program left on ---
     Falsification(
         nodeid='tests/testTerminalPromptResetLive.py::testTheResetRunsLastAfterTheResearchersArrayHooks',
-        source='vaibify/gui/terminalContainment.py',
+        source='vaibify/config/terminalRcfile.py',
         old='    \'if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]];\'\n    " then\\n"\n    "    PROMPT_COMMAND+=(fnVaibifyResetInputModes)\\n"\n    "else\\n"\n',
         new='    "if false; then\\n"\n    "    :\\n"\n    "else\\n"\n',
     ),
     Falsification(
         nodeid='tests/testTerminalPromptResetLive.py::testTheResetHandsOnTheStatusItWasGiven',
-        source='vaibify/gui/terminalContainment.py',
+        source='vaibify/config/terminalRcfile.py',
         old='    \'    return "$iStatus"\\n\'\n',
         new='    "    return 0\\n"\n',
     ),
     Falsification(
         nodeid='tests/testTerminalPromptResetLive.py::testTheRcfileAndItsDirectoryAreGoneOnceTheShellStarts',
-        source='vaibify/gui/terminalContainment.py',
+        source='vaibify/config/terminalRcfile.py',
         old='    \'rm -f -- "${BASH_SOURCE[0]}" && rmdir -- "${BASH_SOURCE[0]%/*}"\\n\'\n',
         new='    ": the rcfile is kept\\n"\n',
     ),
@@ -36875,7 +36875,7 @@ LIST_FALSIFICATIONS = [
         # the dashboard terminal's exec omits the switch
         old=(
             '            listCommand=["/bin/sh", "-c", sWrapperScript],\n'
-            '            dictEnvironment=fdictBuildAgentTerminalEnvironment(),\n'
+            '            dictEnvironment=self._fdictTerminalEnvironment(),\n'
         ),
         new='            listCommand=["/bin/sh", "-c", sWrapperScript],\n',
     ),
@@ -36889,7 +36889,7 @@ LIST_FALSIFICATIONS = [
         # reachable daemon, or the test skips and survives vacuously
         old=(
             '            listCommand=["/bin/sh", "-c", sWrapperScript],\n'
-            '            dictEnvironment=fdictBuildAgentTerminalEnvironment(),\n'
+            '            dictEnvironment=self._fdictTerminalEnvironment(),\n'
         ),
         new='            listCommand=["/bin/sh", "-c", sWrapperScript],\n',
     ),
@@ -36901,8 +36901,9 @@ LIST_FALSIFICATIONS = [
         source='vaibify/host/hostConnection.py',
         # the host terminal's PTY inherits the hub's environment alone
         old=(
-            '                env=_fdictComposeLaunchEnvironment(\n'
-            '                    fdictBuildAgentTerminalEnvironment()),\n'
+            '                env=_fdictComposeLaunchEnvironment(dict(\n'
+            '                    fdictBuildAgentTerminalEnvironment(),\n'
+            '                    **(dictEnvironmentOverlay or {}))),\n'
         ),
         new='',
     ),
@@ -40463,5 +40464,54 @@ LIST_FALSIFICATIONS = [
             '        sName = _fsEnvironmentName(dictCtx, sContainerId)\n'
             '        return await _fdictWriteOrRefuse(\n'
         ),
+    ),
+    # --- 2026-11-07: a terminal's agent chat is read back honestly ---
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testAnEndedChatIsNotRevived',
+        # The exit line ignored.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='            if dictChat is not None:\n                dictChat["bEnded"] = True\n',
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testASwitchInsideClaudeReplacesTheLaunchId',
+        # The switch signal ignored.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='        dictChat["sSessionId"] = sSessionId\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testAPlantedNonUuidIdIsNeverOffered',
+        # The launch session id no longer checked as a UUID.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='    if dictChat["sSessionId"] and not fbIsSessionId(dictChat["sSessionId"]):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testAWorkingDirectoryOutsideTheWorkspaceIsRefused',
+        # The working-directory confinement dropped.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='    if not _fbPathInside(dictChat["sCwd"], sWorkspaceRoot):\n',
+        new='    if not isinstance(dictChat["sCwd"], str):\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testTheExtendedRcfileStillDeletesItselfAndResetsLast',
+        # The agent wrappers installed after the reset hook.
+        source='vaibify/config/terminalRcfile.py',
+        old=(
+            '    _S_SELF_DELETE_AND_BASHRC + S_AGENT_CHAT_WRAPPERS\n'
+            '    + _S_INPUT_MODE_RESET_HOOK\n'
+        ),
+        new=(
+            '    _S_SELF_DELETE_AND_BASHRC + _S_INPUT_MODE_RESET_HOOK\n'
+            '    + S_AGENT_CHAT_WRAPPERS\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testHostTerminalRcfile.py::testAHostShellHasTheWrappersAndTheResetHook',
+        # The host shell launched as a plain bash -i again.
+        source='vaibify/host/hostConnection.py',
+        old='    "    listArgv = [\'/bin/bash\', \'--rcfile\', sRcPath, \'-i\']\\n"\n',
+        new='',
     ),
 ]

@@ -5,7 +5,10 @@ agent catalog (``actionCatalog.SET_INTENTIONALLY_EXCLUDED_PATHS``) and
 each handler also refuses the agent token lane by name, so an agent can
 neither read how the researcher works nor rewrite it. The records live
 on the host (:mod:`vaibify.config.dashboardRecords`), never in the
-container, and reach no container at all.
+container. Only ``terminal-chats`` reads the container: one batched
+typed read of the page's own terminals' lifecycle records
+(:mod:`vaibify.gui.agentChatLifecycle`), naming paths the hub derives
+from validated terminal ids.
 
 The environment is named from the container id on the server, never by
 the request. A project record is keyed by the project repository and
@@ -26,10 +29,11 @@ from pydantic import BaseModel
 
 from vaibify.config import dashboardRecords
 
-from ..pipelineServer import fsContainerNameForId
+from .. import agentChatLifecycle, projectRoots
+from ..pipelineServer import WORKSPACE_ROOT, fsContainerNameForId
 from ..routeContext import fnRejectAgentTokenLane
 from ..routeScope import (
-    S_CARRIER_SEPARATE_AUTHORITY, ffnDeclareCarrierMode,
+    S_CARRIER_SEPARATE_AUTHORITY, S_CARRIER_TYPED_READ, ffnDeclareCarrierMode,
 )
 from ..stateManager import fsWorkflowKeyFromPath
 
@@ -181,7 +185,46 @@ def _fnRegisterProjectRecord(app, dictCtx):
         )
 
 
+def _flistRequestedTerminalIds(sTerminalIds):
+    """Return the ids asked about, or 400 when any is not a terminal id."""
+    listIds = [sId for sId in (sTerminalIds or "").split(",") if sId]
+    if len(listIds) > agentChatLifecycle.I_MAXIMUM_TERMINAL_IDS or not all(
+            agentChatLifecycle.fbIsTerminalId(sId) for sId in listIds):
+        raise HTTPException(400, detail={
+            "sError": S_RECORD_REFUSED,
+            "sMessage": "sTerminalIds names something that is not a "
+                        "terminal of this page",
+        })
+    return listIds
+
+
+def _fnRegisterTerminalChats(app, dictCtx):
+    """Register GET /api/dashboard-state/{sContainerId}/terminal-chats."""
+
+    @app.get("/api/dashboard-state/{sContainerId}/terminal-chats")
+    # typed-read: one batched small-file read of the terminals' own
+    # lifecycle records; no exec of anything a caller supplies.
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictAnswerTerminalChats(
+        sContainerId: str, sTerminalIds: str, requestHttp: Request,
+    ):
+        fnRejectAgentTokenLane(requestHttp)
+        listIds = _flistRequestedTerminalIds(sTerminalIds)
+        if not listIds:
+            return {"dictChats": {}}
+        dictCtx["require"](sContainerId)
+        sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, WORKSPACE_ROOT,
+        )
+        dictChats = await asyncio.to_thread(
+            agentChatLifecycle.fdictReadTerminalChats, dictCtx["docker"],
+            sContainerId, listIds, sWorkspaceRoot,
+        )
+        return {"dictChats": dictChats}
+
+
 def fnRegisterAll(app, dictCtx):
     """Register the saved-layout routes."""
     _fnRegisterEnvironmentRecord(app, dictCtx)
     _fnRegisterProjectRecord(app, dictCtx)
+    _fnRegisterTerminalChats(app, dictCtx)

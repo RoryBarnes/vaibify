@@ -90,6 +90,7 @@ from vaibify.host.hostCancellation import (
     fnTerminateProcessGroup,
 )
 from vaibify.host.hostScratch import fsHostScratchRootForProject
+from vaibify.config.terminalRcfile import S_PROMPT_RESET_RCFILE
 
 I_MAX_FETCH_FILE_BYTES = 64 * 1024 * 1024
 I_STREAM_CHUNK_BYTES = 1048576
@@ -132,6 +133,21 @@ _S_GATED_LAUNCH_STUB = (
 # launched in the background starts with both ignored, an ignored
 # signal survives exec, and the shell's jobs would then never take
 # Ctrl-C or the Kill button.
+#
+# bash then starts with the same rcfile a container terminal gets
+# (vaibify.config.terminalRcfile, handed over as argv[2] -- constant
+# text, never caller data), written into a fresh directory created
+# mode 0700 under a random name, which the rcfile deletes on its first
+# line. A host terminal thereby gains the input-mode reset hook too,
+# for the same reason a container terminal has it. If the rcfile
+# cannot be written, bash starts exactly as before.
+#
+# The stub runs with ``python -I``. Its working directory is the
+# project, and without isolation ``python -c`` puts that directory
+# first on the import path: a ``signal.py`` in the project was
+# imported and run merely by opening a host terminal (measured with
+# the system Python, 2026-11-07). The stub imports nothing but os,
+# signal and sys.
 _S_TERMINAL_LAUNCH_STUB = (
     "import os,signal,sys\n"
     "signal.signal(signal.SIGINT,signal.SIG_DFL)\n"
@@ -140,7 +156,19 @@ _S_TERMINAL_LAUNCH_STUB = (
     "os.setsid()\n"
     "iTty = os.open(os.ttyname(0), os.O_RDWR)\n"
     "os.close(iTty)\n"
-    "os.execv('/bin/bash', ['/bin/bash', '-i'])\n"
+    "listArgv = ['/bin/bash', '-i']\n"
+    "try:\n"
+    "    sRcDirectory = os.path.join(os.environ.get('TMPDIR') or '/tmp',\n"
+    "                                'vaibify-rc-' + os.urandom(12).hex())\n"
+    "    os.mkdir(sRcDirectory, 0o700)\n"
+    "    sRcPath = os.path.join(sRcDirectory, 'rc')\n"
+    "    iRc = os.open(sRcPath, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)\n"
+    "    os.write(iRc, sys.argv[2].encode())\n"
+    "    os.close(iRc)\n"
+    "    listArgv = ['/bin/bash', '--rcfile', sRcPath, '-i']\n"
+    "except Exception:\n"
+    "    pass\n"
+    "os.execv('/bin/bash', listArgv)\n"
 )
 
 
@@ -785,7 +813,9 @@ class HostConnection:
     # The terminal PTY cluster (host leg).
     # -----------------------------------------------------------------
 
-    def fdictLaunchTerminalShellSuspended(self, sResourceId):
+    def fdictLaunchTerminalShellSuspended(
+        self, sResourceId, dictEnvironmentOverlay=None,
+    ):
         """Spawn the terminal shell SUSPENDED; return its live handle.
 
         The host terminal's half of the journal-before-first-
@@ -810,12 +840,13 @@ class HostConnection:
         os.set_inheritable(iGateRead, True)
         try:
             processChild = subprocess.Popen(
-                [sys.executable, "-c", _S_TERMINAL_LAUNCH_STUB,
-                 str(iGateRead)],
+                [sys.executable, "-I", "-c", _S_TERMINAL_LAUNCH_STUB,
+                 str(iGateRead), S_PROMPT_RESET_RCFILE],
                 stdin=iSlaveFd, stdout=iSlaveFd, stderr=iSlaveFd,
                 cwd=sWorkdir, pass_fds=(iGateRead,), close_fds=True,
-                env=_fdictComposeLaunchEnvironment(
-                    fdictBuildAgentTerminalEnvironment()),
+                env=_fdictComposeLaunchEnvironment(dict(
+                    fdictBuildAgentTerminalEnvironment(),
+                    **(dictEnvironmentOverlay or {}))),
             )
         except Exception:
             os.close(iMasterFd)

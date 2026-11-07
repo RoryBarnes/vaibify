@@ -399,6 +399,9 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # agent lane by name, and the catalog excludes both reads.
     ("GET", "/api/dashboard-state/{sContainerId}/environment"),
     ("GET", "/api/dashboard-state/{sContainerId}/project"),
+    # Which agent chat each of the page's terminals holds: one batched
+    # small-file typed read of the terminals' own lifecycle records.
+    ("GET", "/api/dashboard-state/{sContainerId}/terminal-chats"),
     # The Zenodo token panel: which slots moved out of the container,
     # how the host-side validation went, and what Zenodo reports about
     # a pending token. Reads host state only; the handler also refuses

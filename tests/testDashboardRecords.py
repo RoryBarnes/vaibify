@@ -293,3 +293,71 @@ def testTheRecordsAreAHostFileTheEnvironmentNameOwns(tmp_path, monkeypatch):
     dictKinds = dict(environmentResources.flistHostFilesOwnedBy(S_ENVIRONMENT))
     assert dictKinds["dashboard layout records"] == (
         dashboardRecords.fsEnvironmentDirectoryFor(S_ENVIRONMENT))
+
+
+# ---------------------------------------------------------------------
+# Which chat each terminal holds
+# ---------------------------------------------------------------------
+
+
+class _FakeConnection:
+    """Answers the small-file typed read from a dict, recording the asks."""
+
+    def __init__(self, dictFiles):
+        self.dictFiles = dictFiles
+        self.listAsked = []
+
+    def fdictFetchSmallFiles(self, sContainerId, listPaths, sLane=None):
+        self.listAsked.append((sContainerId, list(listPaths)))
+        return {sPath: self.dictFiles.get(sPath) for sPath in listPaths}
+
+
+def _fclientWithFiles(dictFiles, monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    connection = _FakeConnection(dictFiles)
+    app = FastAPI()
+    dashboardStateRoutes.fnRegisterAll(app, {
+        "docker": connection, "require": lambda sContainerId: None})
+    return TestClient(app), connection
+
+
+def testTheTerminalChatsAreReadFromEachTerminalsOwnRecord(
+    monkeypatch, tmp_path,
+):
+    sRunning, sIdle = "ab" * 16, "cd" * 16
+    dictFiles = {f"/tmp/vaibify-terminal-{sRunning}.jsonl": (json.dumps({
+        "sEvent": "start", "sProvider": "claude",
+        "sSessionId": "1c37be47-a36d-45b8-9688-6f971b50c106",
+        "bSwitchHook": True, "iStartedEpoch": 1, "sCwd": "/workspace/repo",
+        "listArguments": []}) + "\n").encode()}
+    client, connection = _fclientWithFiles(dictFiles, monkeypatch, tmp_path)
+    dictAnswer = client.get(
+        f"/api/dashboard-state/{S_CONTAINER_ID}/terminal-chats",
+        params={"sTerminalIds": sRunning + "," + sIdle}).json()
+    assert dictAnswer["dictChats"][sIdle] is None
+    assert dictAnswer["dictChats"][sRunning]["sIdentityClass"] == "tracked"
+    assert connection.listAsked == [(S_CONTAINER_ID, [
+        f"/tmp/vaibify-terminal-{sRunning}.jsonl",
+        f"/tmp/vaibify-terminal-{sIdle}.jsonl"])]
+
+
+def testATerminalIdThatIsNotOneIsRefusedBeforeAnyRead(monkeypatch, tmp_path):
+    client, connection = _fclientWithFiles({}, monkeypatch, tmp_path)
+    for sIds in ("../../etc/passwd", "ab" * 16 + ",x", ",".join(["ab" * 16] * 65)):
+        responseHttp = client.get(
+            f"/api/dashboard-state/{S_CONTAINER_ID}/terminal-chats",
+            params={"sTerminalIds": sIds})
+        assert responseHttp.status_code == 400, sIds
+    assert connection.listAsked == []
+
+
+def testTheAgentLaneCannotAskWhichChatsAreOpen(monkeypatch, tmp_path):
+    client, connection = _fclientWithFiles({}, monkeypatch, tmp_path)
+    responseHttp = client.get(
+        f"/api/dashboard-state/{S_CONTAINER_ID}/terminal-chats",
+        params={"sTerminalIds": "ab" * 16},
+        headers={"X-Vaibify-Session": "agent-token"})
+    assert responseHttp.status_code == 403
+    assert connection.listAsked == []
+    assert actionCatalog.fbAgentLanePermitsRoute(
+        "GET", "/api/dashboard-state/{sContainerId}/terminal-chats") is False
