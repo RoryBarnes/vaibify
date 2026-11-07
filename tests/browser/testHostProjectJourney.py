@@ -37,6 +37,7 @@ import os
 import pytest
 
 from tests.browser.conftest import (
+    fnAnswerTheEntryDialog,
     fnOpenTheSeededHostWorkflow,
     S_HOST_PROJECT_READY,
     S_HOST_STEP_NAME,
@@ -1084,6 +1085,7 @@ def testAnEmptyWorkflowSaysSoAndOffersTheFirstStep(
         "text=emptyLaneProject", timeout=20000,
     )
     pageDashboard.click("text=emptyLaneProject")
+    fnAnswerTheEntryDialog(pageDashboard)
     elNotice = pageDashboard.wait_for_selector(
         ".step-empty-state", timeout=20000,
     )
