@@ -10231,3 +10231,82 @@ body.council-workspace-open #mainLayout {
     font-size: 18px;
     text-align: center;
 }
+
+/* --- The entry dialog: Default, Latest, Choose chats --- */
+
+.entry-choice-modal {
+    max-width: 760px;
+    width: 92vw;
+}
+
+.entry-choice-option {
+    display: block;
+    margin: 6px 0;
+    cursor: pointer;
+}
+
+.entry-choice-option--disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.entry-choice-detail,
+.entry-choice-where,
+.entry-choice-when {
+    display: block;
+    color: var(--text-secondary, #8a8aa0);
+    font-size: 0.9em;
+    margin-left: 22px;
+}
+
+.entry-choice-chats {
+    max-height: 46vh;
+    overflow-y: auto;
+    margin-top: 10px;
+}
+
+.entry-choice-notice {
+    font-size: 0.9em;
+    border-left: 3px solid var(--color-orange, #e09401);
+    padding-left: 8px;
+}
+
+.entry-choice-list {
+    list-style: none;
+    padding: 0;
+}
+
+.entry-choice-list li {
+    border-top: 1px solid var(--border-color, #33334a);
+    padding: 8px 0;
+}
+
+.entry-choice-prompt {
+    display: block;
+    margin-left: 22px;
+    font-style: italic;
+    overflow-wrap: anywhere;
+}
+
+.entry-choice-place,
+.entry-choice-provider {
+    font-weight: 600;
+}
+
+.entry-choice-warning {
+    display: block;
+    color: var(--color-orange, #e09401);
+    margin-left: 22px;
+}
+
+.entry-choice-gate {
+    margin: 6px 0 0 22px;
+    padding: 6px 8px;
+    border: 1px solid var(--color-red, #e5484d);
+    border-radius: 4px;
+}
+
+.entry-choice-gate label {
+    display: block;
+    margin-top: 4px;
+}

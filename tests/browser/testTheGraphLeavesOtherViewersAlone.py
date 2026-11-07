@@ -17,6 +17,7 @@ returning to the same project finds the graph where it was left.
 import pytest
 
 from tests.browser.conftest import (
+    fnAnswerTheEntryDialog,
     S_HOST_STEP_NAME,
     S_HOST_WORKFLOW_NAME,
     fnOpenTheSeededHostWorkflow,
@@ -174,6 +175,7 @@ def testReturningToTheSameProjectKeepsTheGraph(pageDashboard, serverHub):
     sLetter = _fsShowTheGraph(pageDashboard)
     _fnLeaveForTheProjectHub(pageDashboard)
     pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
+    fnAnswerTheEntryDialog(pageDashboard)
     pageDashboard.wait_for_selector(f"text={S_HOST_STEP_NAME}", timeout=20000)
     assert pageDashboard.evaluate(S_VIEWER_GRAPH_SCRIPT, sLetter)
     pageDashboard.evaluate(

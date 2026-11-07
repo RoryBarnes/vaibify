@@ -98,6 +98,8 @@ var VaibifyWorkflowManager = (function () {
         return (
             '<div class="container-card project-card" data-path="' +
             VaibifyUtilities.fnEscapeHtml(dictWf.sPath) +
+            '" data-repo-path="' +
+            VaibifyUtilities.fnEscapeHtml(dictWf.sProjectRepoPath || "") +
             '" data-size-bytes="' + iSize + '">' +
             '<span class="name">' +
             VaibifyUtilities.fnEscapeHtml(dictWf.sName) +
@@ -127,7 +129,12 @@ var VaibifyWorkflowManager = (function () {
                         ".name").textContent;
                     var iSize = parseInt(
                         el.dataset.sizeBytes || "0", 10);
-                    fnSelectWorkflow(sId, sPath, sName, iSize);
+                    /* A researcher's click asks how terminals and
+                       agent chats start (scriptEntryChoice.js). */
+                    VaibifyEntryChoice.fnEnterProject(sId, {
+                        sPath: sPath, sName: sName, iSizeBytes: iSize,
+                        sRepoPath: el.dataset.repoPath || "",
+                    });
                 });
                 _fnBindProjectCardMenu(el, sId);
             }

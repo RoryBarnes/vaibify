@@ -157,6 +157,22 @@ var VaibifyDashboardMemory = (function () {
         return dictKey ? JSON.stringify(dictKey) : "";
     }
 
+    function _fsCanonicalJson(value) {
+        /* Keys sorted at every level, as the hub stores them, so an
+           unchanged layout compares equal to its stored record. */
+        if (Array.isArray(value)) {
+            return "[" + value.map(_fsCanonicalJson).join(",") + "]";
+        }
+        if (value && typeof value === "object") {
+            return "{" + Object.keys(value).sort().filter(function (sKey) {
+                return value[sKey] !== undefined;
+            }).map(function (sKey) {
+                return JSON.stringify(sKey) + ":" + _fsCanonicalJson(value[sKey]);
+            }).join(",") + "}";
+        }
+        return JSON.stringify(value === undefined ? null : value);
+    }
+
     function _fnSchedule(dictSaver, bAskForChats) {
         if (dictSaver.iSuspensions > 0) return;
         var dictKey = dictSaver.dictScope.fdictCurrentKey();
@@ -181,7 +197,7 @@ var VaibifyDashboardMemory = (function () {
 
     function _fnEnqueue(dictSaver, dictKey, dictState) {
         var sKey = _fsKeyString(dictKey);
-        var sJson = JSON.stringify(dictState);
+        var sJson = _fsCanonicalJson(dictState);
         if (dictSaver.dictStoredJsonByKey[sKey] === sJson &&
                 !dictSaver.promiseInFlight) {
             return;
@@ -254,7 +270,7 @@ var VaibifyDashboardMemory = (function () {
             dictSaver.dictScope.fsReadUrl(dictKey));
         dictSaver.dictRevisionByKey[sKey] = dictRecord.iRevision || 0;
         dictSaver.dictStoredJsonByKey[sKey] =
-            JSON.stringify(dictRecord.dictState || {});
+            _fsCanonicalJson(dictRecord.dictState || {});
         return dictRecord;
     }
 
@@ -269,12 +285,14 @@ var VaibifyDashboardMemory = (function () {
 
     /* --- Reading a record on entry --- */
 
-    async function fdictReadRecord(sScope) {
+    async function fdictReadRecord(sScope, dictKeyGiven) {
         /* The stored revision becomes this page's base, so a reload
            never restarts at zero. Waits for this page's own saves to
-           land first, so it never reads behind itself. */
+           land first, so it never reads behind itself. The key is the
+           current one unless the caller names it (the entry dialog
+           reads the environment before any project is open). */
         var dictSaver = _dictSavers[sScope];
-        var dictKey = dictSaver.dictScope.fdictCurrentKey();
+        var dictKey = dictKeyGiven || dictSaver.dictScope.fdictCurrentKey();
         if (!dictKey) return null;
         await _fpromiseIdle(dictSaver);
         return _fpromiseReadInto(dictSaver, dictKey);
@@ -291,13 +309,21 @@ var VaibifyDashboardMemory = (function () {
         });
     }
 
+    var I_RESUMED_CHAT_SETTLE_MILLISECONDS = 6000;
+
     function fnResumeSaving() {
-        /* One save records what the restore produced. */
+        /* One save records what the restore produced. A resumed chat is
+           typed into its tab with no keystroke of the researcher's, so
+           the environment record asks the hub which chat each tab holds
+           now, and again once the CLIs have had time to start. */
         Object.keys(_dictSavers).forEach(function (sScope) {
             var dictSaver = _dictSavers[sScope];
             dictSaver.iSuspensions = Math.max(0, dictSaver.iSuspensions - 1);
-            _fnSchedule(dictSaver, false);
+            _fnSchedule(dictSaver, true);
         });
+        setTimeout(function () {
+            _fnSchedule(_dictSavers.environment, true);
+        }, I_RESUMED_CHAT_SETTLE_MILLISECONDS);
     }
 
     /* --- Leaving --- */
@@ -349,7 +375,7 @@ var VaibifyDashboardMemory = (function () {
             if (!dictKey || dictSaver.iSuspensions > 0) return;
             var sKey = _fsKeyString(dictKey);
             var dictState = dictSaver.dictScope.fdictCaptureNow();
-            if (dictSaver.dictStoredJsonByKey[sKey] === JSON.stringify(dictState)) {
+            if (dictSaver.dictStoredJsonByKey[sKey] === _fsCanonicalJson(dictState)) {
                 return;
             }
             VaibifyApi.fnPutKeepalive(

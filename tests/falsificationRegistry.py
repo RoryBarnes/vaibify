@@ -40540,4 +40540,28 @@ LIST_FALSIFICATIONS = [
         old='    if not fbIsSessionId(sSessionId):\n        raise ValueError("a chat with no session id is never resumed")\n',
         new='    if False:\n        raise ValueError("a chat with no session id is never resumed")\n',
     ),
+    # --- 2026-11-07: the dashboard remembers its layout, in order ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLayoutIsRemembered.py::'
+            'test_a_save_that_lost_the_race_is_discarded_and_the_next_change_saves'
+        ),
+        # The refused snapshot retried on the adopted revision.
+        source='vaibify/gui/static/scriptDashboardMemory.js',
+        old='            delete dictSaver.dictStoredJsonByKey[dictItem.sKey];\n',
+        new=(
+            '            delete dictSaver.dictStoredJsonByKey[dictItem.sKey];\n'
+            '            dictSaver.dictQueued = dictItem;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLayoutIsRemembered.py::'
+            'test_admin_projects_keeps_the_terminals_and_restores_the_projects_view'
+        ),
+        # The dialog asked even with the terminals live.
+        source='vaibify/gui/static/scriptEntryChoice.js',
+        old='        if (VaibifyTerminal.fbHasOpenPanes()) {\n',
+        new='        if (false) {\n',
+    ),
 ]

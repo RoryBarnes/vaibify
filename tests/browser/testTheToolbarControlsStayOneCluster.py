@@ -23,6 +23,7 @@ here is geometry.
 import pytest
 
 from tests.browser.conftest import (
+    fnAnswerTheEntryDialog,
     S_HOST_PROJECT_READY,
     S_HOST_STEP_NAME,
     S_HOST_WORKFLOW_NAME,
@@ -78,6 +79,7 @@ def _fnOpenTheProjectDashboard(page, serverHub):
     page.click("#btnConfirmOk")
     page.wait_for_selector(f"text={S_HOST_WORKFLOW_NAME}", timeout=20000)
     page.click(f"text={S_HOST_WORKFLOW_NAME}")
+    fnAnswerTheEntryDialog(page)
     page.wait_for_selector(f"text={S_HOST_STEP_NAME}", timeout=20000)
 
 
