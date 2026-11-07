@@ -394,6 +394,11 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # it with the researcher's own token. Reaches no container; the
     # handler also refuses the agent lane by name.
     ("GET", "/api/bindings/{sContainerId}"),
+    # The saved dashboard layout. Each reads a host file under
+    # ~/.vaibify and reaches no container; the handlers also refuse the
+    # agent lane by name, and the catalog excludes both reads.
+    ("GET", "/api/dashboard-state/{sContainerId}/environment"),
+    ("GET", "/api/dashboard-state/{sContainerId}/project"),
     # The Zenodo token panel: which slots moved out of the container,
     # how the host-side validation went, and what Zenodo reports about
     # a pending token. Reads host state only; the handler also refuses

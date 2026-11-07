@@ -40416,4 +40416,52 @@ LIST_FALSIFICATIONS = [
         old='        if (dictStatus.dictTestFileChanges) {\n',
         new='        if (true) {\n',
     ),
+    # --- 2026-11-07: the saved dashboard layout is revisioned, keyed
+    # per project file, holds layout only, and is the researcher's ---
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testAStaleBaseRevisionIsRefusedAndChangesNothing',
+        # The base-revision comparison dropped.
+        source='vaibify/config/dashboardRecords.py',
+        old='        if iBaseRevision != iStoredRevision:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testTwoConcurrentWritesAtOneBaseYieldExactlyOneSuccess',
+        # The compare-and-write no longer under the record's lock.
+        source='vaibify/config/dashboardRecords.py',
+        old='    with fcontextHoldRecordLock(sPath + ".lock"):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testTwoProjectFilesInOneRepositoryKeepSeparateRecords',
+        # The project record keyed by the repository alone.
+        source='vaibify/config/dashboardRecords.py',
+        old='        json.dumps([sProjectRepoPath, sWorkflowKey]).encode("utf-8"),\n',
+        new='        json.dumps([sProjectRepoPath]).encode("utf-8"),\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testARecordCannotHoldAStatusField',
+        # The per-scope field allow-list dropped.
+        source='vaibify/config/dashboardRecords.py',
+        old='    setUnknown = set(dictState) - DICT_FIELDS_BY_SCOPE[sScope]\n',
+        new='    setUnknown = set()\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testTheAgentLaneIsRefusedOnEveryRoute',
+        # The environment PUT no longer refusing the agent lane itself.
+        source='vaibify/gui/routes/dashboardStateRoutes.py',
+        old=(
+            '        requestHttp: Request,\n'
+            '    ):\n'
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        sName = _fsEnvironmentName(dictCtx, sContainerId)\n'
+            '        return await _fdictWriteOrRefuse(\n'
+        ),
+        new=(
+            '        requestHttp: Request,\n'
+            '    ):\n'
+            '        sName = _fsEnvironmentName(dictCtx, sContainerId)\n'
+            '        return await _fdictWriteOrRefuse(\n'
+        ),
+    ),
 ]

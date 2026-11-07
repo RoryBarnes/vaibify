@@ -22,6 +22,7 @@ __all__ = [
 
 from vaibify.cli.commandBuild import fsBuildArgHashPathFor
 from vaibify.config import abandonmentAudit, operationJournal
+from vaibify.config.dashboardRecords import fsEnvironmentDirectoryFor
 from vaibify.config.containerConfig import fsRepositoryListPathFor
 from vaibify.config.imageOrigins import fsOriginRecordPathFor
 from vaibify.config.keepAliveManager import fsPidFilePathFor
@@ -36,6 +37,7 @@ _T_HOST_FILE_KINDS = (
     ("repository list", fsRepositoryListPathFor),
     ("build-argument hash", fsBuildArgHashPathFor),
     ("keep-alive record", fsPidFilePathFor),
+    ("dashboard layout records", fsEnvironmentDirectoryFor),
 )
 
 

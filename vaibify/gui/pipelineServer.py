@@ -3691,6 +3691,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
     routes.committedFileRoutes.fnRegisterAll(app, dictCtx)
     routes.bindingRoutes.fnRegisterAll(app, dictCtx)
+    routes.dashboardStateRoutes.fnRegisterAll(app, dictCtx)
     routes.zenodoTokenRoutes.fnRegisterAll(app, dictCtx)
     routes.environmentArchiveRoutes.fnRegisterAll(app, dictCtx)
     routes.promotionRecoveryRoutes.fnRegisterAll(app, dictCtx)

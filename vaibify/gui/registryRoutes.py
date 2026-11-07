@@ -25,6 +25,7 @@ from pydantic import BaseModel
 import yaml
 from typing import List, Optional
 
+from vaibify.config import dashboardRecords
 from vaibify.config.containerLock import (
     LifecycleLockedError,
     fcontextHoldLifecycleLock,
@@ -783,6 +784,9 @@ def _fnRegisterRemoveProject(app, dictCtx):
                 fnRemoveProject(sName)
             except KeyError as error:
                 raise HTTPException(404, str(error))
+            # The saved dashboard layout belongs to the name, and a later
+            # environment registered under it must not inherit it.
+            dashboardRecords.fbRemoveEnvironmentRecords(sName)
         return {"bSuccess": True}
 
 

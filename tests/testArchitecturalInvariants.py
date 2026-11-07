@@ -6401,7 +6401,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # mounted, and connect runs a migration pass.
     # 3809 + 3792 -> 3820 (2026-10-29): the two
     # lines of work above, merged.
-    "pipelineServer.py": 3820,
+    # 3820 -> 3821 (2026-11-07): mounts the saved dashboard layout routes.
+    "pipelineServer.py": 3821,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -7400,7 +7401,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2800 -> 2807 (2026-11-03): the Files to Copy listing describes each top-level link with what the seed's link contract will do (follow-up-after-210 plan, A7, A8).
     # 2807 -> 2840 (2026-11-04): the X11 refusal names a file with no mode (ruling D1 revised), and the settings, allow-host and creation routes record the reach approval for the file they wrote (ruling D2); merged with main, re-measured.
     # 2840 -> 2853 (2026-11-05): the listing attributes a held record bound to the caller's own browser session to the caller, so a tab's in-flight start is not "another session".
-    "registryRoutes.py": 2853,
+    # 2853 -> 2857 (2026-11-07): removing a registry entry removes the dashboard layout its name owned.
+    "registryRoutes.py": 2857,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7631,7 +7633,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1608 -> 1619 (2026-11-02): decide-token-rotation, the user-only answer to the token rotation notice (binding-and-rotation plan, A2, A5).
     # 1619 -> 1627 (2026-11-03): set-aside-binding-record, the user-only way out of an unreadable binding record (follow-up-after-210 plan, A3, A8).
     # 1627 -> 1633 (2026-11-04): the reach-approval route is researcher-only, with its reason; merged with main, re-measured.
-    "actionCatalog.py": 1633,
+    # 1633 -> 1642 (2026-11-07): the saved dashboard layout's four routes are researcher-only, reads included, with why.
+    "actionCatalog.py": 1642,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8200,7 +8203,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # lines of work above, merged.
     # 1261 -> 1265 (2026-10-29): the allow-host route's lifecycle scope.
     # 1265 -> 1266 (2026-11-04): the reach-approval route's scope.
-    "routeScope.py": 1266,
+    # 1266 -> 1271 (2026-11-07): the saved dashboard layout's two reads, with what they read.
+    "routeScope.py": 1271,
 }
 
 
