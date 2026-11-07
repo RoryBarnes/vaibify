@@ -30,8 +30,24 @@ var VaibifyFiles = (function () {
             VaibifyApp.fsGetWorkspaceRoot();
     }
 
+    /* A saved layout's directory, used by the next opening of the
+       panel only. The listing still goes through the validated files
+       route, so a directory that no longer exists shows as missing. */
+    var _sRestoredDirectory = "";
+
     function fnOpenPanel() {
-        return fnLoadDirectory(fsGetPanelOpeningDirectory());
+        var sDirectory = _sRestoredDirectory || fsGetPanelOpeningDirectory();
+        _sRestoredDirectory = "";
+        return fnLoadDirectory(sDirectory);
+    }
+
+    function fsCaptureDirectory() {
+        return sCurrentPath;
+    }
+
+    function fnRestoreDirectory(sDirectory) {
+        _sRestoredDirectory = typeof sDirectory === "string" &&
+            sDirectory.charAt(0) === "/" ? sDirectory : "";
     }
 
     async function fnLoadDirectory(sPath) {
@@ -611,6 +627,8 @@ var VaibifyFiles = (function () {
     return {
         fnLoadDirectory: fnLoadDirectory,
         fnOpenPanel: fnOpenPanel,
+        fsCaptureDirectory: fsCaptureDirectory,
+        fnRestoreDirectory: fnRestoreDirectory,
         fnRefreshCurrentDirectory: fnRefreshCurrentDirectory,
         fsAdoptableDirectoryName: fsAdoptableDirectoryName,
     };

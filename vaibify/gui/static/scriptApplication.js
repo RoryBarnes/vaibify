@@ -622,6 +622,7 @@ const VaibifyApp = (function () {
         VaibifyEventBindings.fnBindGlobalSettingsToggle();
         VaibifyEventBindings.fnBindHostSettingsToggle();
         VaibifyEventBindings.fnBindRefreshRemoteStatus();
+        VaibifyDashboardMemory.fnBindGestureTriggers();
         /* A start outlives the request that asked for it, so a reload
            mid-start must pick the poll back up. Deliberately NOT
            awaited: the poll runs for as long as the start does, and
@@ -699,6 +700,166 @@ const VaibifyApp = (function () {
         _dictUiState.setExpandedStepDescriptions.clear();
         _dictUiState.setDescriptionSeededSteps.clear();
         _dictUiState.bBinaryAddFormOpen = false;
+    }
+
+    /* --- The saved project view ---
+
+       What the researcher had open in this project, saved on the host
+       and restored on entry. Steps are named by sStepId, never by
+       index, so a step inserted above the selection cannot move the
+       selection onto its neighbour. Nothing here is a status: the step
+       list, its lights and every level cell are recomputed by the poll
+       as they always are. */
+
+    var _DICT_STEP_INDEXED_SETS = {
+        steps: "setExpandedSteps",
+        deps: "setExpandedDeps",
+        qualitative: "setExpandedQualitative",
+        quantitative: "setExpandedQuantitative",
+        integrity: "setExpandedIntegrity",
+        descriptions: "setExpandedStepDescriptions",
+        levelSeeded: "setLevelSeededSteps",
+        descriptionSeeded: "setDescriptionSeededSteps",
+    };
+    var _DICT_KEYED_SETS = {
+        requirementGroups: "setExpandedRequirementGroups",
+        requirementRows: "setExpandedRequirementRows",
+        fileGroups: "setToggledFileGroups",
+    };
+
+    function _flistCurrentSteps() {
+        return (_dictWorkflowState.dictWorkflow || {}).listSteps || [];
+    }
+
+    function _fsStepIdAt(iIndex) {
+        var dictStep = _flistCurrentSteps()[iIndex];
+        return (dictStep && dictStep.sStepId) || "";
+    }
+
+    function _fiStepIndexForId(sStepId) {
+        var listSteps = _flistCurrentSteps();
+        for (var i = 0; i < listSteps.length; i++) {
+            if (sStepId && listSteps[i].sStepId === sStepId) return i;
+        }
+        return -1;
+    }
+
+    function _fdictCaptureExpansion() {
+        var dictExpanded = {};
+        Object.keys(_DICT_STEP_INDEXED_SETS).forEach(function (sName) {
+            dictExpanded[sName] = Array.from(
+                _dictUiState[_DICT_STEP_INDEXED_SETS[sName]]
+            ).map(_fsStepIdAt).filter(Boolean);
+        });
+        dictExpanded.stepLevels = Array.from(
+            _dictUiState.setExpandedStepLevels).map(function (sKey) {
+                var listParts = String(sKey).split(":");
+                var sStepId = _fsStepIdAt(parseInt(listParts[0], 10));
+                return sStepId ? sStepId + ":" + listParts[1] : "";
+            }).filter(Boolean);
+        Object.keys(_DICT_KEYED_SETS).forEach(function (sName) {
+            dictExpanded[sName] = Array.from(
+                _dictUiState[_DICT_KEYED_SETS[sName]]).map(String);
+        });
+        dictExpanded.bStepsCollapsed = _dictUiState.bStepsCollapsed;
+        dictExpanded.bProjectBlockCollapsed =
+            _dictUiState.bProjectBlockCollapsed;
+        return dictExpanded;
+    }
+
+    function _fsActiveLeftTab() {
+        var elActive = document.querySelector(".left-tab.active");
+        return elActive ? (elActive.dataset.panel || "") : "";
+    }
+
+    function _fdictCaptureSplitters() {
+        var elLayout = document.getElementById("mainLayout");
+        var elDual = document.getElementById("panelViewerDual");
+        var elViewerA = document.getElementById("viewerA");
+        return {
+            sLeftColumns: elLayout ? elLayout.style.gridTemplateColumns : "",
+            sViewerFlex: elDual ? elDual.style.flex : "",
+            sViewerAFlex: elViewerA ? elViewerA.style.flex : "",
+        };
+    }
+
+    function fdictCaptureProjectView() {
+        return {
+            sLeftTab: _fsActiveLeftTab(),
+            sSelectedStepId: _fsStepIdAt(_dictUiState.iSelectedStepIndex),
+            dictExpanded: _fdictCaptureExpansion(),
+            dictSplitters: _fdictCaptureSplitters(),
+            dictViewers: VaibifyFigureViewer.fdictCaptureViewers(),
+            sFilesDirectory: VaibifyFiles.fsCaptureDirectory(),
+        };
+    }
+
+    function _fnRestoreExpansion(dictExpanded) {
+        Object.keys(_DICT_STEP_INDEXED_SETS).forEach(function (sName) {
+            var setTarget = _dictUiState[_DICT_STEP_INDEXED_SETS[sName]];
+            setTarget.clear();
+            (dictExpanded[sName] || []).forEach(function (sStepId) {
+                var iIndex = _fiStepIndexForId(sStepId);
+                if (iIndex >= 0) setTarget.add(iIndex);
+            });
+        });
+        _dictUiState.setExpandedStepLevels.clear();
+        (dictExpanded.stepLevels || []).forEach(function (sKey) {
+            var iSplit = String(sKey).lastIndexOf(":");
+            var iIndex = _fiStepIndexForId(String(sKey).slice(0, iSplit));
+            if (iIndex >= 0) {
+                _dictUiState.setExpandedStepLevels.add(
+                    iIndex + ":" + String(sKey).slice(iSplit + 1));
+            }
+        });
+        Object.keys(_DICT_KEYED_SETS).forEach(function (sName) {
+            var setTarget = _dictUiState[_DICT_KEYED_SETS[sName]];
+            setTarget.clear();
+            (dictExpanded[sName] || []).forEach(function (sKey) {
+                setTarget.add(String(sKey));
+            });
+        });
+        _dictUiState.bStepsCollapsed = dictExpanded.bStepsCollapsed === true;
+        _dictUiState.bProjectBlockCollapsed =
+            dictExpanded.bProjectBlockCollapsed === true;
+    }
+
+    var _REGEX_COLUMN_SPLIT = /^\d{2,4}px 1fr$/;
+    var _REGEX_FLEX_SPLIT = /^\d+(\.\d+)?(e-?\d+)? 1 0(px|%)?$/;
+
+    function _fnRestoreSplitters(dictSplitters) {
+        var elLayout = document.getElementById("mainLayout");
+        var elDual = document.getElementById("panelViewerDual");
+        var elViewerA = document.getElementById("viewerA");
+        if (elLayout && _REGEX_COLUMN_SPLIT.test(dictSplitters.sLeftColumns)) {
+            elLayout.style.gridTemplateColumns = dictSplitters.sLeftColumns;
+        }
+        if (elDual && _REGEX_FLEX_SPLIT.test(dictSplitters.sViewerFlex)) {
+            elDual.style.flex = dictSplitters.sViewerFlex;
+        }
+        if (elViewerA && _REGEX_FLEX_SPLIT.test(dictSplitters.sViewerAFlex)) {
+            elViewerA.style.flex = dictSplitters.sViewerAFlex;
+        }
+    }
+
+    function _fnRestoreLeftTab(sLeftTab) {
+        if (!sLeftTab) return;
+        var elTab = document.querySelector(
+            '.left-tab[data-panel="' + CSS.escape(sLeftTab) + '"]');
+        if (elTab && elTab.offsetParent !== null) elTab.click();
+    }
+
+    function fnRestoreProjectView(dictView) {
+        if (!dictView || typeof dictView !== "object") return;
+        _fnRestoreExpansion(dictView.dictExpanded || {});
+        _dictUiState.iSelectedStepIndex =
+            _fiStepIndexForId(dictView.sSelectedStepId || "");
+        _fnRestoreSplitters(dictView.dictSplitters || {});
+        VaibifyFigureViewer.fnRestoreViewers(dictView.dictViewers);
+        VaibifyFiles.fnRestoreDirectory(dictView.sFilesDirectory || "");
+        _fnRestoreLeftTab(dictView.sLeftTab || "");
+        fnRenderStepList();
+        VaibifyTerminal.fnFitActiveTerminal();
     }
 
     function fnApplyWorkspaceRoot(sWorkspaceRoot) {
@@ -1517,6 +1678,9 @@ const VaibifyApp = (function () {
         if (_bLeavingForEnvironments) return;
         _bLeavingForEnvironments = true;
         try {
+            /* Before the release: releasing ends the shells, and the
+               chat each one holds is read from them. */
+            await VaibifyDashboardMemory.fbFlushBeforeLeaving();
             if (await fbReleaseHeldClaimForLeaving()) fnDisconnect();
         } finally {
             _bLeavingForEnvironments = false;
@@ -1610,9 +1774,11 @@ const VaibifyApp = (function () {
         VaibifyRemoteBindings.fnRenderNotices(null);
     }
 
-    function fnLeaveToProjectHub() {
+    async function fnLeaveToProjectHub() {
         var sContainerId = _dictSessionState.sContainerId;
         if (!sContainerId) return;
+        await VaibifyDashboardMemory.fbFlushBeforeLeaving();
+        if (_dictSessionState.sContainerId !== sContainerId) return;
         _fnCloseOpenProject();
         VaibifyContainerManager.fnConnectToContainer(sContainerId);
     }
@@ -8022,6 +8188,20 @@ const VaibifyApp = (function () {
     return {
         fnInitialize: fnInitialize,
         fnShowToast: fnShowToast,
+        fdictCaptureProjectView: fdictCaptureProjectView,
+        fnRestoreProjectView: fnRestoreProjectView,
+        fdictGetProjectRecordKey: function () {
+            /* The project a saved view belongs to: its repository and
+               project file, or null while no project is open. */
+            var sWorkflowPath = _dictWorkflowState.sWorkflowPath || "";
+            var sRepo = (_dictWorkflowState.dictWorkflow || {})
+                .sProjectRepoPath || "";
+            if (!_dictSessionState.sContainerId || !sWorkflowPath || !sRepo) {
+                return null;
+            }
+            return {sContainerId: _dictSessionState.sContainerId,
+                    sProjectRepoPath: sRepo, sWorkflowPath: sWorkflowPath};
+        },
         fnRenderStepList: fnRenderStepList,
         fnRenderStepListPartial: fnRenderStepListPartial,
         _fnInvalidateAllRenderCaches: _fnInvalidateAllRenderCaches,
@@ -8284,8 +8464,11 @@ window.addEventListener("pagehide", function (event) {
      * it is NOT release intent: releasing the container here would drop a
      * running container on a mere reload. Abandonment is decided by the
      * WebSocket closing without a reconnect and the grace reaper freeing
-     * the owner — never by an unload beacon. Just stop polling. */
+     * the owner — never by an unload beacon. Stop polling, and send the
+     * layout once, best effort (keepalive): a layout is not release
+     * intent, and a reload that never closed anything changes nothing. */
     VaibifyApp.fnStopAllHubPolling();
+    VaibifyDashboardMemory.fnSendOnPageHide();
 });
 
 document.addEventListener("visibilitychange", function () {

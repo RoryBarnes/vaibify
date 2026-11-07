@@ -704,6 +704,89 @@ const VaibifyFigureViewer = (function () {
         fnRefreshHistoryDropdowns();
     }
 
+    /* --- The saved layout ---
+
+       What each viewer showed and where it stood in its own history,
+       plus the shared history behind the dropdowns. Paths only: the
+       line marks a graded manifest was opened with are the server's
+       verdict, so they are never saved, and a restored entry is
+       fetched again through the ordinary file routes, which show a
+       file that has gone as missing. */
+
+    var I_MAX_SAVED_NAVIGATION = 50;
+
+    function _fdictCaptureOneViewer(dictViewer) {
+        var iStart = Math.max(
+            0, dictViewer.listNavHistory.length - I_MAX_SAVED_NAVIGATION);
+        return {
+            listNavigation: dictViewer.listNavHistory.slice(iStart).map(
+                function (dictEntry) {
+                    return {sPath: dictEntry.sPath,
+                            sWorkdir: dictEntry.sWorkdir || ""};
+                }),
+            iNavIndex: dictViewer.iNavIndex - iStart,
+        };
+    }
+
+    function fdictCaptureViewers() {
+        return {
+            dictA: _fdictCaptureOneViewer(dictViewerA),
+            dictB: _fdictCaptureOneViewer(dictViewerB),
+            sNextViewer: sNextViewer,
+            listHistory: flistGetSortedHistory().map(function (dictItem) {
+                return {sPath: dictItem.sPath, sWorkdir: dictItem.sWorkdir,
+                        iViewCount: dictItem.iViewCount,
+                        iLastViewed: dictItem.iLastViewed};
+            }),
+        };
+    }
+
+    function _flistValidNavigation(listNavigation) {
+        if (!Array.isArray(listNavigation)) return [];
+        return listNavigation.filter(function (dictEntry) {
+            return dictEntry && typeof dictEntry.sPath === "string" &&
+                dictEntry.sPath !== "";
+        }).map(function (dictEntry) {
+            return {sPath: dictEntry.sPath,
+                    sWorkdir: String(dictEntry.sWorkdir || ""),
+                    dictLineMarks: null};
+        });
+    }
+
+    function _fnRestoreOneViewer(dictViewer, dictSaved) {
+        var listNavigation = _flistValidNavigation(
+            (dictSaved || {}).listNavigation);
+        var iIndex = parseInt((dictSaved || {}).iNavIndex, 10);
+        dictViewer.listNavHistory = listNavigation;
+        dictViewer.iNavIndex = (iIndex >= 0 && iIndex < listNavigation.length)
+            ? iIndex : listNavigation.length - 1;
+        var dictCurrent = fdictGetCurrentEntry(dictViewer);
+        if (dictCurrent) {
+            fnDisplayInViewport(dictViewer, dictCurrent);
+        } else {
+            fnEmptyViewer(dictViewer);
+        }
+        fnUpdateNavButtons(dictViewer);
+    }
+
+    function fnRestoreViewers(dictSaved) {
+        if (!dictSaved || typeof dictSaved !== "object") return;
+        listHistory = _flistValidNavigation(dictSaved.listHistory).map(
+            function (dictEntry, iPosition) {
+                var dictItem = dictSaved.listHistory[iPosition] || {};
+                return {sPath: dictEntry.sPath, sWorkdir: dictEntry.sWorkdir,
+                        iViewCount: Math.max(1, parseInt(dictItem.iViewCount, 10) || 1),
+                        iLastViewed: Math.max(0, parseInt(dictItem.iLastViewed, 10) || 0)};
+            }).slice(0, I_MAX_HISTORY_ENTRIES);
+        iHistoryCounter = listHistory.reduce(function (iHighest, dictItem) {
+            return Math.max(iHighest, dictItem.iLastViewed);
+        }, 0);
+        sNextViewer = dictSaved.sNextViewer === "B" ? "B" : "A";
+        _fnRestoreOneViewer(dictViewerA, dictSaved.dictA);
+        _fnRestoreOneViewer(dictViewerB, dictSaved.dictB);
+        fnRefreshHistoryDropdowns();
+    }
+
     function fnEmptyViewer(dictViewer) {
         var elViewport = fnGetViewport(dictViewer);
         if (!elViewport) return;
@@ -1960,6 +2043,8 @@ const VaibifyFigureViewer = (function () {
         fnDisplayTestOutput: fnDisplayTestOutput,
         fnCreateZoomToolbar: fnCreateZoomToolbar,
         fnBindViewersToProject: fnBindViewersToProject,
+        fdictCaptureViewers: fdictCaptureViewers,
+        fnRestoreViewers: fnRestoreViewers,
         fbAnyViewerDirty: fbAnyViewerDirty,
         fbViewerIsDirty: fbViewerIsDirty,
         fbViewerHasOpenEditor: fbViewerHasOpenEditor,

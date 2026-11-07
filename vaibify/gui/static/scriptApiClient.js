@@ -456,6 +456,23 @@ var VaibifyApi = (function () {
         });
     }
 
+    function fnPutKeepalive(sUrl, dictBody) {
+        /* Fired while the page is being torn down: the browser keeps
+           the request alive after the page is gone, and nobody is left
+           to read the answer, so it is best-effort by construction.
+           No claim recovery -- a recovery cannot outlive the page. */
+        try {
+            fetch(sUrl, {
+                method: "PUT",
+                keepalive: true,
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(dictBody),
+            }).catch(function () {});
+        } catch (error) {
+            /* A body over the keepalive budget is refused outright. */
+        }
+    }
+
     function fnDelete(sUrl) {
         return _fvalueWithClaimRecovery(sUrl, function () {
             return _fnDeleteOnce(sUrl);
@@ -623,6 +640,7 @@ var VaibifyApi = (function () {
         fdictPost: fdictPost,
         fdictPostRaw: fdictPostRaw,
         fdictPut: fdictPut,
+        fnPutKeepalive: fnPutKeepalive,
         fnDelete: fnDelete,
         fsGetText: fsGetText,
         fbHead: fbHead,

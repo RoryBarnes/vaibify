@@ -40119,12 +40119,12 @@ LIST_FALSIFICATIONS = [
         # Admin > Projects showing the hub with the project still open.
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '        if (!sContainerId) return;\n'
+            '        if (_dictSessionState.sContainerId !== sContainerId) return;\n'
             '        _fnCloseOpenProject();\n'
             '        VaibifyContainerManager.fnConnectToContainer(sContainerId);\n'
         ),
         new=(
-            '        if (!sContainerId) return;\n'
+            '        if (_dictSessionState.sContainerId !== sContainerId) return;\n'
             '        VaibifyContainerManager.fnConnectToContainer(sContainerId);\n'
         ),
     ),

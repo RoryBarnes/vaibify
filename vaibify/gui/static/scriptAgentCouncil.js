@@ -3593,6 +3593,39 @@ var VaibifyAgentCouncil = (function () {
             "</div>";
     }
 
+    /* --- The saved layout ---
+
+       Whether the workspace was open, on which campaign and which tab.
+       A restore re-reads the campaign from the server like any other
+       open, so nothing about its state comes from the saved record. */
+
+    var _REGEX_COUNCIL_TAB = /^(council|plan|chat|participant:[A-Za-z0-9_.-]{1,64})$/;
+
+    function fdictCaptureModalState() {
+        return {
+            bOpen: _fbWorkspaceVisible() &&
+                Boolean(_dictState.sActiveCampaignId),
+            sCampaignId: _dictState.sActiveCampaignId || "",
+            sActiveTab: _dictState.sActiveTab || "council",
+        };
+    }
+
+    async function fnRestoreModalState(dictSaved) {
+        if (!dictSaved || dictSaved.bOpen !== true) return;
+        var sCampaignId = String(dictSaved.sCampaignId || "");
+        if (!/^[A-Za-z0-9_-]{1,128}$/.test(sCampaignId)) return;
+        await _fnLoadCampaign(sCampaignId);
+        if (_dictState.sActiveCampaignId !== sCampaignId) return;
+        if (_REGEX_COUNCIL_TAB.test(dictSaved.sActiveTab || "")) {
+            _dictState.sActiveTab = dictSaved.sActiveTab;
+        }
+        _fnShowWorkspace();
+        _fnRenderToolbarButton();
+        if (_dictState.sActiveTab === "chat") {
+            _fnLoadChatQuietly().then(_fnRenderWorkspace);
+        }
+    }
+
     function _fnSelectTab(sTab) {
         _dictState.sActiveTab = sTab;
         _fnRenderWorkspace();
@@ -4963,6 +4996,8 @@ var VaibifyAgentCouncil = (function () {
         fnInitialize: fnInitialize,
         fnActivate: fnActivate,
         fnTeardown: fnTeardown,
+        fdictCaptureModalState: fdictCaptureModalState,
+        fnRestoreModalState: fnRestoreModalState,
         fnHandleToolbarClick: fnHandleToolbarClick,
         fnRefreshCapabilities: fnRefreshCapabilities,
         /* Exported so the panel can be opened without first convening a
