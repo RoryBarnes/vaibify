@@ -540,7 +540,8 @@ def _fsDescribeQuarantiningRecord(sContainerName, sRecordId, dictRecord):
         f"({sRecordId}): a '{sKind}' operation on '{sTarget}'"
         f"{sSince} was left unfinished, so no new operation may commit "
         "until it is reconciled. That operation is where the original "
-        "failure is, not here."
+        "failure is, not here. The researcher clears it by running "
+        f"'vaibify reconcile {sContainerName}' on the host."
     )
 
 

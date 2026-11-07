@@ -719,25 +719,38 @@ async def _fnRunPostPushVerifyBlocking(
     never a pretend-guarded one. The two lanes are not a divergence to
     tidy away: this helper is shared by three push routes that migrate
     one at a time.
+
+    EVERY failure is carried back as a value and re-raised out here,
+    after the supervisor has settled its record — the same contract as
+    the manual verify route (``syncRoutes._fdictVerifyRemoteUnderTheDrain``).
+    This copy once raised from inside the worker, so an ordinary refusal
+    ("this project has not pushed to GitHub from this hub") marked its
+    journal record NEEDS RECONCILIATION and quarantined the container
+    over a verify that had written nothing.
     """
     def fdictVerifyWorker(supervisor=None):
         del supervisor
-        return fdictRunRemoteVerifyBlocking(
-            dictWorkflow, sService, filesRepo,
-        )
+        try:
+            fdictRunRemoteVerifyBlocking(dictWorkflow, sService, filesRepo)
+        except Exception as errorAny:  # noqa: BLE001 — carried, not raised
+            return {"errorRemote": errorAny}
+        return {"errorRemote": None}
 
     if requestHttp is None:
-        await asyncio.to_thread(fdictVerifyWorker)
-        return
-    from . import commitCarrier
-    dictLaneTuple = fdictRequireLaneTupleForCommit(
-        requestHttp, sContainerId, f"The post-push {sService} verify",
-    )
-    await commitCarrier.fdictRunLockHeldMutation(
-        requestHttp.app.state, dictLaneTuple["sContainerName"],
-        sContainerId, dictLaneTuple, "helper",
-        "post-push-verify " + sService, fdictVerifyWorker,
-    )
+        dictCarried = await asyncio.to_thread(fdictVerifyWorker)
+    else:
+        from . import commitCarrier
+        dictLaneTuple = fdictRequireLaneTupleForCommit(
+            requestHttp, sContainerId, f"The post-push {sService} verify",
+        )
+        dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+            requestHttp.app.state, dictLaneTuple["sContainerName"],
+            sContainerId, dictLaneTuple, "helper",
+            "post-push-verify " + sService, fdictVerifyWorker,
+        )
+        dictCarried = dictOutcome["result"]
+    if dictCarried["errorRemote"] is not None:
+        raise dictCarried["errorRemote"]
 
 
 async def fsRefreshVerifyCacheAfterPush(

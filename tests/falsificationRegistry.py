@@ -12294,7 +12294,10 @@ LIST_FALSIFICATIONS = [
             'may commit "\n'
             '        "until it is reconciled. That operation is where the '
             'original "\n'
-            '        "failure is, not here."\n'
+            '        "failure is, not here. The researcher clears it by '
+            'running "\n'
+            '        f"\'vaibify reconcile {sContainerName}\' on the '
+            'host."\n'
             '    )\n'
         ),
         new=(
@@ -12316,9 +12319,10 @@ LIST_FALSIFICATIONS = [
         old=(
             '        "until it is reconciled. That operation is where the '
             'original "\n'
-            '        "failure is, not here."\n'
+            '        "failure is, not here. The researcher clears it by '
+            'running "\n'
         ),
-        new='        "until it is reconciled."\n',
+        new='        "until it is reconciled. The researcher clears it by running "\n',
     ),
     Falsification(
         nodeid=(
@@ -40415,5 +40419,70 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptApplication.js',
         old='        if (dictStatus.dictTestFileChanges) {\n',
         new='        if (true) {\n',
+    ),
+    # --- 2026-11-07: a refused verify or a refused request never
+    # quarantines a container, and the refusal says how to clear one ---
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testARefusedPostPushVerifyLeavesTheContainerUsable'
+        ),
+        # The shipped worker: the verify's refusal raised inside the
+        # carrier, which poisoned the record.
+        source='vaibify/gui/routeContext.py',
+        old=(
+            '        try:\n'
+            '            fdictRunRemoteVerifyBlocking(dictWorkflow, sService, '
+            'filesRepo)\n'
+            '        except Exception as errorAny:  # noqa: BLE001 — '
+            'carried, not raised\n'
+            '            return {"errorRemote": errorAny}\n'
+            '        return {"errorRemote": None}\n'
+        ),
+        new=(
+            '        fdictRunRemoteVerifyBlocking(dictWorkflow, sService, '
+            'filesRepo)\n'
+            '        return {"errorRemote": None}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testAModeBRequestRefusedByAQuarantineLeavesNoRecord'
+        ),
+        # A refused request leaves its never-launched record IN_FLIGHT.
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    except MutationNotAdmittedError:\n'
+            '        _fnSettleNeverLaunchedRecord(sName, sOperationId)\n'
+            '        raise\n'
+        ),
+        new='    except MutationNotAdmittedError:\n        raise\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReconciliation.py::'
+            'test_self_held_helper_record_refusal_says_to_quit_the_hub'
+        ),
+        # The record falls through to the probe's "missing identity;
+        # remove the residue" -- advice nobody can follow.
+        source='vaibify/config/reconciliation.py',
+        old='        return (False, S_SELF_HELD_PROCESS_RECORD_REFUSAL)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testQuarantineRefusalNamesItsCause.py::'
+            'testTheRefusalNamesTheCommandThatClearsIt'
+        ),
+        # The refusal says the container needs reconciling, not how.
+        source='vaibify/config/mutationAdmission.py',
+        old=(
+            '        "failure is, not here. The researcher clears it by '
+            'running "\n'
+            '        f"\'vaibify reconcile {sContainerName}\' on the '
+            'host."\n'
+        ),
+        new='        "failure is, not here."\n',
     ),
 ]

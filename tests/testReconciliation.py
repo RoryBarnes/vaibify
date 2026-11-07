@@ -413,6 +413,36 @@ def test_self_holder_record_is_probed_without_identity_only_when_idle(
     assert dictProven["bProven"] is True
 
 
+@pytest.mark.falsification
+def test_self_held_helper_record_refusal_says_to_quit_the_hub():
+    """A helper record the live hub holds is refused with advice that works.
+
+    A helper's only proof is its holder process. When that holder is
+    the running hub, the identity the live-hub substitution drops is
+    the whole proof, and the probe used to answer "missing identity;
+    remove the residue", which no researcher can act on. The hub's
+    exit is the proof, so the refusal must say to quit it first.
+
+    Kills: removing the self-held helper branch from
+    ``reconciliation._ftReconcileRecordVerdict``.
+    """
+    sOperationId = fsPrepareOperation(
+        S_PROJECT, "helper", "post-push-verify github",
+    )
+    fnPromoteOperationToInFlight(
+        S_PROJECT, sOperationId,
+        {"iHolderPid": os.getpid(), "iHolderProcessGroup": os.getpgrp()},
+    )
+    dictRefused = fdictProveJournalRecordsSettled(
+        S_PROJECT, None, {sOperationId},
+        fbSelfHolderProvenIdle=lambda: True,
+    )
+    assert dictRefused["bProven"] is False
+    assert reconciliation.S_SELF_HELD_PROCESS_RECORD_REFUSAL in (
+        dictRefused["sRefusalReason"]
+    ), dictRefused["sRefusalReason"]
+
+
 def test_self_holder_substitution_never_touches_a_foreign_pid_record():
     """The substitution is for the hub's OWN pid only; a dead foreign
     holder is proven by the ordinary recycle-proof probe."""

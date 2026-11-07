@@ -575,7 +575,9 @@ that vaibify stopped partway through, before anything else. A plain run shows wh
 and in which container; proves the recorded writer dead and the
 operation settled; and only then clears the quarantine, or refuses and
 leaves the container quarantined. The dashboard's **Reconcile now**
-button runs the same proof. The other options are destructive
+button runs the same proof. When the recorded writer is the running hub
+itself, its exit is the only proof, so the refusal says to quit
+vaibify first and then run `vaibify reconcile` again. The other options are destructive
 judgments available only here:
 
 | Option | Meaning |

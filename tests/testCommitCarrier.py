@@ -1272,3 +1272,99 @@ def testABusyDurableRefusalNamesTheLiveWork():
         await asyncio.sleep(0.05)
 
     asyncio.run(_fnDrive())
+
+
+# ---------------------------------------------------------------------
+# A request a quarantine refuses never ran, so it leaves no record.
+# ---------------------------------------------------------------------
+
+def _fsPoisonAnEarlierOperation():
+    """Quarantine the container with one foreign, unfinished record."""
+    sPoisonedId = operationJournal.fsPrepareOperation(
+        S_CONTAINER_NAME, "helper", "post-push-verify github",
+    )
+    operationJournal.fnPromoteOperationToInFlight(
+        S_CONTAINER_NAME, sPoisonedId,
+        {"iHolderPid": 12345, "iHolderProcessGroup": 12345},
+    )
+    operationJournal.fnMarkOperationNeedsReconciliation(
+        S_CONTAINER_NAME, sPoisonedId, sNote="worker failed",
+    )
+    return sPoisonedId
+
+
+def _fsetRecordedOperationIds():
+    """Return the ids of every record in the container's journal."""
+    return set(operationJournal.fdictReadJournalOutcome(
+        S_CONTAINER_NAME,
+    )["dictOperations"])
+
+
+@pytest.mark.falsification
+def testAModeBRequestRefusedByAQuarantineLeavesNoRecord():
+    """A refused lock-held request erases the record it just wrote.
+
+    The gate runs after promotion by design, and the worker only after
+    the gate, so a refusal here describes work that never happened. The
+    record used to stay IN_FLIGHT: every request a quarantined container
+    turned away added a phantom operation to the journal the researcher
+    then had to reconcile.
+
+    Kills: dropping the settle from the refusal branch of
+    ``commitCarrier._fnPromoteAndGateBeforeAnyEffect``.
+    """
+    sPoisonedId = _fsPoisonAnEarlierOperation()
+    listRan = []
+
+    async def _fnDrive():
+        appState, _, dictLaneTuple = _ftBuildOwnedAppState()
+        with pytest.raises(MutationNotAdmittedError):
+            await commitCarrier.fdictRunLockHeldMutation(
+                appState, S_CONTAINER_NAME, S_CONTAINER_ID,
+                dictLaneTuple, "helper", "update-step",
+                lambda supervisor: listRan.append("ran"),
+            )
+
+    asyncio.run(_fnDrive())
+    assert listRan == []
+    assert _fsetRecordedOperationIds() == {sPoisonedId}
+
+
+def testAModeARequestRefusedByAQuarantineLeavesNoRecord():
+    """The synchronous carrier settles its refused record the same way."""
+    sPoisonedId = _fsPoisonAnEarlierOperation()
+    appState, _, dictLaneTuple = _ftBuildOwnedAppState()
+    listEffects = []
+    with pytest.raises(MutationNotAdmittedError):
+        commitCarrier.fdictCommitSynchronousMutation(
+            appState, S_CONTAINER_NAME, S_CONTAINER_ID, dictLaneTuple,
+            "file-write", "/workspace/project.json",
+            lambda: listEffects.append("ran"),
+            {"sExpectedSha256": "aa", "sPriorSha256": "bb"},
+        )
+    assert listEffects == []
+    assert _fsetRecordedOperationIds() == {sPoisonedId}
+
+
+def testAModeAOwnerChangeAfterTheGateLeavesNoRecord():
+    """An owner rotation between gate and effect also settles the record."""
+    appState, recordOwner, dictLaneTuple = _ftBuildOwnedAppState()
+    listEffects = []
+
+    def fnRotateTheOwnerAtTheGate(sName, sOperationId, dictIdentity):
+        recordOwner.iOwnerGeneration = 2
+
+    with patch.object(
+        commitCarrier, "fnAssertOperationAdmittedByIdentity",
+        fnRotateTheOwnerAtTheGate,
+    ), pytest.raises(commitCarrier.CommitRefusedError):
+        commitCarrier.fdictCommitSynchronousMutation(
+            appState, S_CONTAINER_NAME, S_CONTAINER_ID, dictLaneTuple,
+            "file-write", "/workspace/project.json",
+            lambda: listEffects.append("ran"),
+            {"sExpectedSha256": "aa", "sPriorSha256": "bb"},
+        )
+    assert listEffects == []
+    assert operationJournal.fdictReadJournalOutcome(
+        S_CONTAINER_NAME,
+    )["sReadState"] == "absent"
