@@ -16216,7 +16216,7 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/agentCouncilController.py',
         old=(
             '    listUnsettledCampaignIds = list(\n'
-            '        await agentCouncilChat.flistCloseChatSessionsForResource(\n'
+            '        await agentCouncilChat.flistSetChatSessionsAsideForResource(\n'
             '            dictControllerState, sResourceName))'
         ),
         new='    listUnsettledCampaignIds = []',
@@ -16411,9 +16411,9 @@ LIST_FALSIFICATIONS = [
             '        councilRouteGuards.fjsonRequireCampaign(\n'
             '            councilRouteGuards.fdictCampaignStore(requestHttp), sCampaignId,\n'
             '            sName, sProjectRepoPath)\n'
-            '        return agentCouncilChat.fdictDescribeChatSession('
+            '        dictStore = councilRouteGuards.fdictCampaignStore(requestHttp)\n'
         ),
-        new='        return agentCouncilChat.fdictDescribeChatSession(',
+        new='        dictStore = councilRouteGuards.fdictCampaignStore(requestHttp)\n',
     ),
     Falsification(
         nodeid=(
@@ -40563,5 +40563,69 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptEntryChoice.js',
         old='        if (VaibifyTerminal.fbHasOpenPanes()) {\n',
         new='        if (false) {\n',
+    ),
+    # --- 2026-11-07: the council's conversations and event log survive
+    # the hub ---
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testAShutdownLeavesTheConversationOpenOnDisk',
+        # Hub shutdown closing (archiving) conversations again.
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '        await agentCouncilChat.fdictSetChatSessionAside(\n'
+            '            dictControllerState, sCampaignId)\n'
+        ),
+        new=(
+            '        await agentCouncilChat.fdictCloseChatSession(\n'
+            '            dictControllerState, sCampaignId)\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testAPendingQuestionIsNeverReAsked',
+        # The question no longer written before the runner is asked.
+        source='vaibify/gui/agentCouncilChat.py',
+        old=(
+            '    _fnPersistSession(dictSession)\n'
+            '    dictSession["taskAnswer"] = asyncio.create_task(\n'
+        ),
+        new='    dictSession["taskAnswer"] = asyncio.create_task(\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testTheSequenceContinuesAcrossARestart',
+        # The reload no longer refilling the ring from the log.
+        source='vaibify/gui/agentCouncilStore.py',
+        old='    dictEntry["ringEvents"].fnSeedFromLog(listTail, iLastSequence)\n',
+        new='    del listTail, iLastSequence\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testATornLastLineIsTruncatedAndRecovered',
+        # A torn final line left in place.
+        source='vaibify/gui/agentCouncilEventLog.py',
+        old='            fileLog.truncate(iStart)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testRetentionSparesACampaignHoldingAConversation',
+        # Retention no longer sparing chat-bearing campaigns.
+        source='vaibify/gui/agentCouncilStore.py',
+        old=(
+            '    if agentCouncilChatRecords.fbCampaignHoldsConversation(\n'
+            '            _fsCampaignDirectory(dictStore, sCampaignId)):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilRetentionBoundaryIsInTheConsole.py::'
+            'testEarlierEventsAreReadBackFromTheDurableLog'
+        ),
+        # Events no longer appended to the durable log.
+        source='vaibify/gui/agentCouncilStore.py',
+        old=(
+            '        agentCouncilEventLog.fnAppendEventToLog(\n'
+            '            dictEntry["sEventLogPath"],\n'
+            '            fjsonRedactCredentialsInRecord(dictStamped))\n'
+        ),
+        new='        pass\n',
     ),
 ]

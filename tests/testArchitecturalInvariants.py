@@ -4694,7 +4694,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1581 -> 1585 (2026-10-26): the snapshot capture is bounded by the
     # council kind's own ceiling, so a read-only council keeps the whole
     # working tree and a full-sandbox one keeps half of it free.
-    "routes/councilRoutes.py": 1585,
+    # 1585 -> 1616 (2026-11-07): the Agent tabs page back through the durable event log.
+    "routes/councilRoutes.py": 1616,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4790,7 +4791,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (fsRedactCredentialSpans) instead of replacing the whole text.
     # 1017 -> 1071 (2026-10-01): retention deletes only settled campaigns,
     # oldest checkpoint first, instead of the first one alphabetically.
-    "agentCouncilStore.py": 1071,
+    # 1071 -> 1141 (2026-11-07): every council event is also appended to the campaign's durable log, a reload refills the ring from it, and retention spares campaigns holding a conversation.
+    "agentCouncilStore.py": 1141,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -6812,7 +6814,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2238 -> 2251 (2026-10-01): the shutdown releases the egress boundary after the runners drain.
     # 2251 -> 2279 (2026-10-26): the launch composes the note telling a
     # member what its council's kind permits and how much room it has.
-    "agentCouncilController.py": 2279,
+    # 2279 -> 2283 (2026-11-07): shutdown and release set chairbot conversations aside instead of closing them, with why.
+    "agentCouncilController.py": 2283,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
@@ -6821,7 +6824,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # runner's credential residency.
     # 868 -> 870 (2026-10-01): the chat runner is created with the limits
     # the daemon allows.
-    "agentCouncilChat.py": 870,
+    # 870 -> 969 (2026-11-07): a hub shutdown or lease release sets a chairbot conversation aside, open on disk, and every state change is saved (records in agentCouncilChatRecords).
+    "agentCouncilChat.py": 969,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -8203,8 +8207,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # lines of work above, merged.
     # 1261 -> 1265 (2026-10-29): the allow-host route's lifecycle scope.
     # 1265 -> 1266 (2026-11-04): the reach-approval route's scope.
-    # 1266 -> 1274 (2026-11-07): the saved dashboard layout's three reads, with what they read.
-    "routeScope.py": 1274,
+    # 1266 -> 1277 (2026-11-07): the saved dashboard layout's three reads and the council's earlier-events read, with what each reads.
+    "routeScope.py": 1277,
 }
 
 

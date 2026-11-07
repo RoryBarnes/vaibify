@@ -72,8 +72,8 @@ def testTheRetentionBoundaryAppearsInTheLogAndNowhereElse(
             return Boolean(el && el.closest('.council-event-log'));
         }"""), "the retention marker is not inside the event log"
     sMarker = pageDashboard.inner_text(".council-event-evicted")
-    assert "no longer retained" in sMarker
-    assert "artifacts remain" in sMarker
+    assert "not in this window" in sMarker
+    assert "Show earlier events" in sMarker
 
     # And absent from every tab that shows no events at all — the whole
     # reason it moved.
@@ -83,5 +83,31 @@ def testTheRetentionBoundaryAppearsInTheLogAndNowhereElse(
             f"the retention notice is showing on the {sTab} tab, which "
             "displays no console events")
 
+    assert pageDashboard.listPageErrors == []
+    assert pageDashboard.listConsoleErrors == []
+
+
+@pytest.mark.falsification
+def testEarlierEventsAreReadBackFromTheDurableLog(pageDashboard, serverHub):
+    """Events the window dropped are paged back from the log on disk.
+
+    The ring keeps three events; the deliberation records more. Paging
+    back must reach sequence 1, after which the boundary row goes.
+
+    Kills: no longer appending events to the durable log.
+    """
+    _fdictClaimAndActivate(pageDashboard, serverHub)
+    _fnConveneThroughTheForm(pageDashboard)
+    pageDashboard.click('.council-tab[data-tab^="participant:"]')
+    pageDashboard.wait_for_selector(".council-earlier-events", timeout=20000)
+    sCountRows = """() => document.querySelectorAll(
+        '.council-event-log li:not(.council-event-evicted)').length"""
+    iRowsBefore = pageDashboard.evaluate(sCountRows)
+    pageDashboard.click(".council-earlier-events")
+    pageDashboard.wait_for_function(
+        "() => !document.querySelector('.council-event-evicted')",
+        timeout=20000)
+    assert pageDashboard.evaluate(sCountRows) > iRowsBefore, (
+        "paging back added no event the window had dropped")
     assert pageDashboard.listPageErrors == []
     assert pageDashboard.listConsoleErrors == []

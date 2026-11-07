@@ -417,6 +417,9 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     ("GET", "/api/agent-councils/{sContainerId}/snapshot-feasibility"),
     ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}"),
     ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/events"),
+    # Pages back through the same campaign's durable event log on the
+    # host (agentCouncilEventLog); reaches no container, writes nothing.
+    ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/events/earlier"),
     # The ask-the-chairbot transcript. Acknowledged as an owned-container
     # read even though what it reads is in-process state rather than the
     # container: it exposes the researcher's private conversation with
