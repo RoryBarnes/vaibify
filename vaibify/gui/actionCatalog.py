@@ -1327,6 +1327,7 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     ("GET", "/api/dashboard-state/{sContainerId}/project"),
     ("PUT", "/api/dashboard-state/{sContainerId}/project"),
     ("GET", "/api/dashboard-state/{sContainerId}/terminal-chats"),
+    ("POST", "/api/dashboard-state/{sContainerId}/chat-catalog"),
     # A pending containerization is the researcher's decision at every
     # step: try again after a failed download, finish the switch once
     # the project is closed, or give up and delete the partial. The

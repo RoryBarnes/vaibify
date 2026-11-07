@@ -5,10 +5,15 @@ agent catalog (``actionCatalog.SET_INTENTIONALLY_EXCLUDED_PATHS``) and
 each handler also refuses the agent token lane by name, so an agent can
 neither read how the researcher works nor rewrite it. The records live
 on the host (:mod:`vaibify.config.dashboardRecords`), never in the
-container. Only ``terminal-chats`` reads the container: one batched
-typed read of the page's own terminals' lifecycle records
+container. Two routes reach where the work runs. ``terminal-chats`` is
+one batched typed read of the page's own terminals' lifecycle records
 (:mod:`vaibify.gui.agentChatLifecycle`), naming paths the hub derives
-from validated terminal ids.
+from validated terminal ids. ``chat-catalog`` (POST, because it is an
+exec) runs one constant program under a mode-b carrier that lists the
+agent CLIs' transcripts (:mod:`vaibify.gui.agentChatCatalog`) and
+answers each chat's resume commands and permission verdict
+(:mod:`vaibify.gui.agentChatResume`). A listed chat is discovered
+conversation data, never verified.
 
 The environment is named from the container id on the server, never by
 the request. A project record is keyed by the project repository and
@@ -22,6 +27,7 @@ when another window saved first.
 __all__ = ["fnRegisterAll"]
 
 import asyncio
+import json
 import posixpath
 
 from fastapi import HTTPException, Request
@@ -29,11 +35,16 @@ from pydantic import BaseModel
 
 from vaibify.config import dashboardRecords
 
-from .. import agentChatLifecycle, projectRoots
+from .. import (
+    agentChatCatalog, agentChatLifecycle, agentChatResume, projectRoots,
+)
 from ..pipelineServer import WORKSPACE_ROOT, fsContainerNameForId
-from ..routeContext import fnRejectAgentTokenLane
+from ..routeContext import (
+    fdictRequireLaneTupleForCommit, fnRejectAgentTokenLane,
+)
 from ..routeScope import (
-    S_CARRIER_SEPARATE_AUTHORITY, S_CARRIER_TYPED_READ, ffnDeclareCarrierMode,
+    S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_SEPARATE_AUTHORITY,
+    S_CARRIER_TYPED_READ, ffnDeclareCarrierMode,
 )
 from ..stateManager import fsWorkflowKeyFromPath
 
@@ -223,8 +234,133 @@ def _fnRegisterTerminalChats(app, dictCtx):
         return {"dictChats": dictChats}
 
 
+class ChatCatalogRequest(BaseModel):
+    """Which project's chats to list, and the saved chats to confirm."""
+
+    sProjectRepoPath: str
+    listRequested: list = []
+
+
+def _flistValidRequestedChats(listRequested, sWorkspaceRoot):
+    """The saved chats asked about, each in the shape the lifecycle emits."""
+    listValid = []
+    for dictChat in listRequested[:agentChatCatalog.I_MAXIMUM_REQUESTED_CHATS]:
+        if not isinstance(dictChat, dict):
+            continue
+        dictRecord = {
+            "sEvent": "start", "sProvider": dictChat.get("sProvider"),
+            "sSessionId": dictChat.get("sSessionId"), "bSwitchHook": False,
+            "sCwd": dictChat.get("sCwd"),
+            "listArguments": dictChat.get("listArguments") or [],
+            "iStartedEpoch": 0,
+        }
+        dictValid = agentChatLifecycle.fdictCurrentChatFromRecord(
+            (json.dumps(dictRecord) + "\n").encode(), sWorkspaceRoot)
+        if dictValid is not None and dictValid["sSessionId"]:
+            listValid.append(dictValid)
+    return listValid
+
+
+def _fdictPlanOrNone(dictChat, dictConfig, sRecordedMode):
+    try:
+        return agentChatResume.fdictBuildResumePlan(
+            dictChat, dictConfig, sRecordedMode)
+    except ValueError:
+        return None
+
+
+def _fdictComposeCatalogAnswer(dictListing, listRequested):
+    """Attach resume plans: catalog chats replay no flags, saved ones theirs."""
+    dictConfig = dictListing["dictConfig"]
+    dictByKey = {d["sProvider"] + ":" + d["sSessionId"]: d
+                 for d in dictListing["listChats"]}
+    listCatalog = []
+    for dictChat in dictListing["listChats"]:
+        if not dictChat["bInProject"]:
+            continue
+        dictEntry = dict(dictChat, listArguments=[])
+        dictEntry["dictPlan"] = _fdictPlanOrNone(
+            dictEntry, dictConfig, dictChat["sRecordedMode"])
+        listCatalog.append(dictEntry)
+    dictResolved = {}
+    for dictChat in listRequested:
+        sKey = dictChat["sProvider"] + ":" + dictChat["sSessionId"]
+        dictFound = dictByKey.get(sKey)
+        dictResolved[sKey] = {
+            "bTranscriptFound": dictFound is not None,
+            "sFirstPrompt": (dictFound or {}).get("sFirstPrompt", ""),
+            "iModifiedEpoch": (dictFound or {}).get("iModifiedEpoch", 0),
+            "dictPlan": _fdictPlanOrNone(
+                dictChat, dictConfig, (dictFound or {}).get("sRecordedMode", "")),
+        }
+    return {"listCatalog": listCatalog, "dictResolved": dictResolved,
+            "dictConfig": dictConfig}
+
+
+async def _fdictListChatsUnderTheDrain(dictCtx, sContainerId, requestHttp,
+                                       sProjectRepoPath, listRequested):
+    """Run the catalog program under a mode-b carrier; never raise inside it.
+
+    A failed listing is a failed READ, so the worker carries it back as a
+    value: raising inside the carrier would poison its journal record
+    and quarantine the container over a list nobody wrote.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Listing agent chats")
+
+    def fdictWorker(supervisor=None):
+        del supervisor
+        try:
+            return {"dictListing": agentChatCatalog.fdictListAgentChats(
+                dictCtx["docker"], sContainerId, sProjectRepoPath,
+                listRequested)}
+        except (RuntimeError, ValueError, OSError) as error:
+            return {"sFailure": str(error)}
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"], sContainerId,
+        dictLaneTuple, "helper", "agent-chat-catalog", fdictWorker,
+    )
+    return dictOutcome["result"]
+
+
+def _fnRegisterChatCatalog(app, dictCtx):
+    """Register POST /api/dashboard-state/{sContainerId}/chat-catalog."""
+
+    @app.post("/api/dashboard-state/{sContainerId}/chat-catalog")
+    # mode-b: listing the transcripts runs one constant program where
+    # they live, under the drain, as the Prompt Record capture does.
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictAnswerChatCatalog(
+        sContainerId: str, request: ChatCatalogRequest, requestHttp: Request,
+    ):
+        fnRejectAgentTokenLane(requestHttp)
+        dictCtx["require"](sContainerId)
+        sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, WORKSPACE_ROOT)
+        listRequested = _flistValidRequestedChats(
+            request.listRequested, sWorkspaceRoot)
+        try:
+            agentChatCatalog.flistCatalogArguments(
+                request.sProjectRepoPath, listRequested)
+        except ValueError as error:
+            raise HTTPException(400, detail={
+                "sError": S_RECORD_REFUSED, "sMessage": str(error)}) from error
+        dictResult = await _fdictListChatsUnderTheDrain(
+            dictCtx, sContainerId, requestHttp, request.sProjectRepoPath,
+            listRequested)
+        if "sFailure" in dictResult:
+            raise HTTPException(502, detail={
+                "sError": "AGENT-CHATS-UNLISTED",
+                "sMessage": dictResult["sFailure"]})
+        return _fdictComposeCatalogAnswer(
+            dictResult["dictListing"], listRequested)
+
+
 def fnRegisterAll(app, dictCtx):
     """Register the saved-layout routes."""
     _fnRegisterEnvironmentRecord(app, dictCtx)
     _fnRegisterProjectRecord(app, dictCtx)
     _fnRegisterTerminalChats(app, dictCtx)
+    _fnRegisterChatCatalog(app, dictCtx)

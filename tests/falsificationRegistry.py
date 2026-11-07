@@ -40514,4 +40514,30 @@ LIST_FALSIFICATIONS = [
         old='    "    listArgv = [\'/bin/bash\', \'--rcfile\', sRcPath, \'-i\']\\n"\n',
         new='',
     ),
+    # --- 2026-11-07: a saved chat resumes from a fixed table, with
+    # honest permissions ---
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testStandardModeStripsTheBypassAndAddsTheExplicitStandard',
+        # Standard mode emitting the kept flags without the standard pair.
+        source='vaibify/gui/agentChatResume.py',
+        old='    return _flistTokens(listOthers) + list(DICT_STANDARD_FLAGS[sProvider])\n',
+        new='    return _flistTokens(listOthers)\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testAnArgvBypassAndAConfigBypassBothTriggerTheGate',
+        # Claude's config default no longer counted.
+        source='vaibify/gui/agentChatResume.py',
+        old=(
+            '        "config": not bDanger and not sFlagMode\n'
+            '        and sConfigMode == "bypassPermissions",\n'
+        ),
+        new='        "config": False,\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testAChatWithNoIdIsNeverGivenAResumeCommand',
+        # The session-id check dropped from the command builder.
+        source='vaibify/gui/agentChatResume.py',
+        old='    if not fbIsSessionId(sSessionId):\n        raise ValueError("a chat with no session id is never resumed")\n',
+        new='    if False:\n        raise ValueError("a chat with no session id is never resumed")\n',
+    ),
 ]

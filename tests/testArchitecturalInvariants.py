@@ -7633,8 +7633,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1608 -> 1619 (2026-11-02): decide-token-rotation, the user-only answer to the token rotation notice (binding-and-rotation plan, A2, A5).
     # 1619 -> 1627 (2026-11-03): set-aside-binding-record, the user-only way out of an unreadable binding record (follow-up-after-210 plan, A3, A8).
     # 1627 -> 1633 (2026-11-04): the reach-approval route is researcher-only, with its reason; merged with main, re-measured.
-    # 1633 -> 1643 (2026-11-07): the saved dashboard layout's routes are researcher-only, reads included, with why.
-    "actionCatalog.py": 1643,
+    # 1633 -> 1644 (2026-11-07): the saved dashboard layout's routes are researcher-only, reads included, with why.
+    "actionCatalog.py": 1644,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
