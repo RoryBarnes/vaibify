@@ -438,9 +438,27 @@ def test_self_held_helper_record_refusal_says_to_quit_the_hub():
         fbSelfHolderProvenIdle=lambda: True,
     )
     assert dictRefused["bProven"] is False
-    assert reconciliation.S_SELF_HELD_PROCESS_RECORD_REFUSAL in (
-        dictRefused["sRefusalReason"]
-    ), dictRefused["sRefusalReason"]
+    sReason = dictRefused["sRefusalReason"]
+    assert "quit vaibify" in sReason, sReason
+    assert "residue" not in sReason, sReason
+
+
+def test_a_poisoned_helper_record_clears_once_its_hub_has_exited():
+    """The advice the self-held refusal gives does clear the record.
+
+    The field shape: a post-push verify's worker raised, so its record
+    is NEEDS_RECONCILIATION, and its holder is the hub. Once the hub has
+    exited, the crash-time proof must accept it, or "quit vaibify, then
+    reconcile" would be advice that leads nowhere.
+    """
+    sOperationId = _fsJournalDeadHelperRecord()
+    fnMarkOperationNeedsReconciliation(
+        S_PROJECT, sOperationId, sNote="worker failed before settling",
+    )
+    dictProven = fdictProveJournalRecordsSettled(
+        S_PROJECT, None, {sOperationId},
+    )
+    assert dictProven["bProven"] is True, dictProven
 
 
 def test_self_holder_substitution_never_touches_a_foreign_pid_record():

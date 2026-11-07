@@ -720,13 +720,13 @@ async def _fnRunPostPushVerifyBlocking(
     tidy away: this helper is shared by three push routes that migrate
     one at a time.
 
-    EVERY failure is carried back as a value and re-raised out here,
-    after the supervisor has settled its record — the same contract as
-    the manual verify route (``syncRoutes._fdictVerifyRemoteUnderTheDrain``).
-    This copy once raised from inside the worker, so an ordinary refusal
-    ("this project has not pushed to GitHub from this hub") marked its
-    journal record NEEDS RECONCILIATION and quarantined the container
-    over a verify that had written nothing.
+    EVERY failure is carried back and re-raised out here, after the
+    record settles, as ``syncRoutes._fdictVerifyRemoteUnderTheDrain``
+    does: for GitHub, Overleaf and Zenodo the verify changes nothing in
+    the project before its one write, and that write is atomic, so no
+    failure leaves a state to reconcile. Raised inside the worker, a
+    refusal ("this project has not pushed to GitHub from this hub")
+    quarantined the container over a verify that had written nothing.
     """
     def fdictVerifyWorker(supervisor=None):
         del supervisor
