@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.2.4.dev32 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.3.1.dev4 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a5384cf7"></script>
+      <script src="_static/documentation_options.js?v=0cf57713"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -1480,7 +1480,14 @@ answers <code class="docutils literal notranslate"><span class="pre">Running</sp
 <code class="docutils literal notranslate"><span class="pre">ExitCode</span></code> afterwards, to a <em>different</em> client than the one that
 started it. This is why the durable-task launch journals the exec id
 <strong>before</strong> <code class="docutils literal notranslate"><span class="pre">exec_start</span></code>: the journaled id is a probeable handle, and
-the experiment is what makes that worth relying on.</p></li>
+the experiment is what makes that worth relying on. Every command a
+synchronous, lock-held or durable carrier admits is journaled the
+same way (<code class="docutils literal notranslate"><span class="pre">mutationAdmission.fdictBeginJournaledCommandExec</span></code>), never
+through the one-call <code class="docutils literal notranslate"><span class="pre">exec_run</span></code>. The carrier’s own record names the
+hub as its holder, and the hub’s worker finishing, or the hub
+exiting, says nothing about a command that worker started and gave
+up waiting on: only the command’s own record, probed against the
+daemon, can.</p></li>
 <li><p><strong>What is lost is the stream, not the work.</strong> Re-attaching with
 <code class="docutils literal notranslate"><span class="pre">exec_start</span></code> on an already-started exec yields no output. A hub that
 died mid-run can learn <em>that</em> and <em>how</em> its step finished; it cannot

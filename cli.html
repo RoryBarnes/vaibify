@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.2.4.dev32 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.3.1.dev4 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a5384cf7"></script>
+      <script src="_static/documentation_options.js?v=0cf57713"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -907,7 +907,10 @@ that vaibify stopped partway through, before anything else. A plain run shows wh
 and in which container; proves the recorded writer dead and the
 operation settled; and only then clears the quarantine, or refuses and
 leaves the container quarantined. The dashboard’s <strong>Reconcile now</strong>
-button runs the same proof. The other options are destructive
+button runs the same proof. A record whose only proof is its writer
+process, when that writer is the running hub itself, can be proven
+only after the hub exits; the refusal then says to quit vaibify and
+run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span></code> again. The other options are destructive
 judgments available only here:</p>
 <table class="docutils align-default">
 <thead>
