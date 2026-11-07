@@ -58,7 +58,11 @@ S_FILL_MARKER = "selectline 400"
 
 # The shell turns on mouse reporting itself (X10 + button-event +
 # SGR), which is what an agent's TUI does on startup.
-S_MOUSE_REPORTING_ON = "printf '\\033[?1000h\\033[?1002h\\033[?1006h'"
+# The command keeps running, as an agent's TUI does while it holds the
+# mouse: the terminal's prompt hook switches mouse reporting off the
+# moment the shell is back at its prompt, which host terminals do too
+# since 2026-11-07.
+S_MOUSE_REPORTING_ON = "printf '\\033[?1000h\\033[?1002h\\033[?1006h'; sleep 600"
 
 F_DRAG_SECONDS = 1.0
 

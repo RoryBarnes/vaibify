@@ -769,8 +769,22 @@ const VaibifyFigureViewer = (function () {
         fnUpdateNavButtons(dictViewer);
     }
 
+    function _fbAnyViewerShowsSomething() {
+        return ["viewportA", "viewportB"].some(function (sId) {
+            var elViewport = document.getElementById(sId);
+            if (!elViewport) return false;
+            return Array.from(elViewport.children).some(function (elChild) {
+                return !elChild.classList.contains("placeholder");
+            });
+        });
+    }
+
     function fnRestoreViewers(dictSaved) {
+        /* Never over what is on screen: returning to the project the
+           viewers already belong to keeps them as they are, the graph
+           included, which no saved entry describes. */
         if (!dictSaved || typeof dictSaved !== "object") return;
+        if (_fbAnyViewerShowsSomething()) return;
         listHistory = _flistValidNavigation(dictSaved.listHistory).map(
             function (dictEntry, iPosition) {
                 var dictItem = dictSaved.listHistory[iPosition] || {};

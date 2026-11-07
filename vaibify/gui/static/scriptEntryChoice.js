@@ -129,7 +129,17 @@ var VaibifyEntryChoice = (function () {
         elModal.addEventListener("change", _fnHandleDialogChange);
         _fnSetEntryState("asking");
         _fnRenderDialog();
-        if (_dictDialog.sChoice !== "default") _fnLoadCatalog();
+        if (_fbChoiceNeedsCatalog()) _fnLoadCatalog();
+    }
+
+    function _fbChoiceNeedsCatalog() {
+        /* Listing chats runs a program where the transcripts live, so
+           it is asked only when the answer is needed: Choose chats
+           always, Latest only when its layout held a chat. */
+        if (_dictDialog.dictCatalog || _dictDialog.sCatalogError) return false;
+        if (_dictDialog.sChoice === "choose") return true;
+        return _dictDialog.sChoice === "latest" &&
+            _dictDialog.listSavedTabs.length > 0;
     }
 
     function _fnCloseDialog() {
@@ -179,6 +189,10 @@ var VaibifyEntryChoice = (function () {
 
     function _fsChatsSection() {
         if (_dictDialog.sChoice === "default") return "";
+        if (_dictDialog.sChoice === "latest" &&
+                !_dictDialog.listSavedTabs.length) {
+            return _fsLatestRows();
+        }
         if (_dictDialog.sCatalogError) {
             return '<p class="entry-choice-warning">The past chats could not ' +
                 'be listed: ' + fsEscape(_dictDialog.sCatalogError) + '</p>';
@@ -355,9 +369,7 @@ var VaibifyEntryChoice = (function () {
         var sName = elInput.name || "";
         if (sName === "entryChoice") {
             _dictDialog.sChoice = elInput.value;
-            if (_dictDialog.sChoice !== "default" && !_dictDialog.dictCatalog) {
-                _fnLoadCatalog();
-            }
+            if (_fbChoiceNeedsCatalog()) _fnLoadCatalog();
         } else if (sName.indexOf("gate:") === 0) {
             _dictDialog.dictAnswers[sName.slice(5)] = elInput.value;
         } else if (sName.indexOf("choose:") === 0) {
@@ -383,7 +395,10 @@ var VaibifyEntryChoice = (function () {
 
     function _fsWhyContinueIsDisabled() {
         if (_dictDialog.sChoice === "default") return "";
-        if (!_dictDialog.dictCatalog && !_dictDialog.sCatalogError) {
+        var bCatalogNeeded = _dictDialog.sChoice === "choose" ||
+            _dictDialog.listSavedTabs.length > 0;
+        if (bCatalogNeeded && !_dictDialog.dictCatalog &&
+                !_dictDialog.sCatalogError) {
             return "Still looking for past chats.";
         }
         var iUnanswered = 0;
