@@ -188,3 +188,58 @@ def testAKilledMouseProgramLeavesTheNextPromptReset(containerThrowaway):
     iSet = baOutput.rfind(S_SET_MOUSE_ANY)
     assert iSet >= 0, baOutput
     assert S_RESET_MOUSE_ANY in baOutput[iSet:], baOutput[iSet:]
+
+
+S_FAKE_CLAUDE = (
+    "#!/bin/sh\n"
+    'if [ "$1" = "--help" ]; then echo "--session-id --settings"; exit 0; fi\n'
+    'printf "ARGS[%s]\\n" "$*"\n'
+)
+
+
+def testTheAgentWrappersArriveOnAStockImage(containerThrowaway):
+    """Delivery only: an image vaibify did not build gets the wrappers.
+
+    A fake ``claude`` on the researcher's PATH stands in for the CLI.
+    What is proved is that the rcfile, delivered through the exec, makes
+    ``claude`` the wrapper under a real pty, that the wrapper injects a
+    session id from this kernel's UUID source, and that the start and
+    exit lines land in the record the exec environment names.
+    """
+    _fnWriteBashrc(containerThrowaway, 'export PATH="$HOME/bin:$PATH"\n')
+    import io
+    import tarfile
+    bufferArchive = io.BytesIO()
+    with tarfile.open(fileobj=bufferArchive, mode="w") as tarOut:
+        for sName, baText, iMode in (
+                ("bin/", b"", 0o755), ("bin/claude", S_FAKE_CLAUDE.encode(), 0o755)):
+            infoEntry = tarfile.TarInfo(sName.rstrip("/"))
+            infoEntry.uid = infoEntry.gid = 1000
+            infoEntry.mode = iMode
+            if sName.endswith("/"):
+                infoEntry.type = tarfile.DIRTYPE
+                tarOut.addfile(infoEntry)
+            else:
+                infoEntry.size = len(baText)
+                tarOut.addfile(infoEntry, io.BytesIO(baText))
+    assert containerThrowaway.put_archive(
+        "/home/researcher", bufferArchive.getvalue())
+    sRecord = "/tmp/vaibify-terminal-" + "ab" * 16 + ".jsonl"
+    sWrapper = fsBuildGroupReportingCommand(
+        "/bin/bash", "/tmp/.vaibifyTerminalGroup.livetest")
+    iExitCode, baOutput = containerThrowaway.exec_run(
+        ["python3", "-c", S_PTY_DRIVER, sWrapper, "claude hello"],
+        user="researcher", workdir="/home/researcher",
+        environment={"VAIBIFY_TERMINAL_LIFECYCLE": sRecord})
+    assert iExitCode == 0, baOutput
+    assert b"ARGS[--session-id " in bytes.fromhex(baOutput.decode().strip())
+    iExitCode, baRecord = containerThrowaway.exec_run(
+        ["cat", sRecord], user="researcher")
+    assert iExitCode == 0, baRecord
+    import json
+    listEvents = [json.loads(s) for s in baRecord.decode().splitlines() if s]
+    assert listEvents[0]["sEvent"] == "start"
+    assert listEvents[0]["sProvider"] == "claude"
+    assert len(listEvents[0]["sSessionId"]) == 36
+    assert listEvents[0]["listArguments"] == ["hello"]
+    assert listEvents[-1] == {"sEvent": "exit", "iStatus": 0}

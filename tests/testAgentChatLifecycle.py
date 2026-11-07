@@ -306,3 +306,62 @@ def testTheRcfileParsesInThisMachinesBash():
         ["/bin/bash", "-n"], input=S_PROMPT_RESET_RCFILE,
         capture_output=True, text=True, timeout=30)
     assert processBash.returncode == 0, processBash.stderr
+
+
+S_SWITCHING_CLAUDE = """#!{sPython}
+import json, subprocess, sys
+listArgs = sys.argv[1:]
+if listArgs[:1] == ["--help"]:
+    print("--session-id <uuid>  --settings <file-or-json>")
+    sys.exit(0)
+dictSettings = json.loads(listArgs[listArgs.index("--settings") + 1])
+sHook = dictSettings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+for sSessionId, sSource in (
+        (listArgs[listArgs.index("--session-id") + 1], "startup"),
+        ("{sSwitchedTo}", "resume")):
+    subprocess.run(["/bin/sh", "-c", sHook], check=True, input=json.dumps(
+        {{"session_id": sSessionId, "source": sSource,
+          "hook_event_name": "SessionStart"}}).encode())
+"""
+
+
+@pytest.mark.falsification
+def testASwitchInsideTheCliIsWhatGetsResumed(tmp_path):
+    """Launch with an injected id, switch inside the CLI, resume the NEW one.
+
+    A fake Claude runs the very hook command the wrapper handed it,
+    reporting a switch to another conversation, as Claude Code does on
+    ``/resume``. Kills: the wrapper no longer supplying the hook.
+    """
+    import sys
+    from vaibify.gui import agentChatResume
+    sSwitchedTo = "96969a67-6545-426c-b128-aeacfda91223"
+    sBin = tmp_path / "bin"
+    sBin.mkdir()
+    (sBin / "claude").write_text(S_SWITCHING_CLAUDE.format(
+        sPython=sys.executable, sSwitchedTo=sSwitchedTo))
+    (sBin / "claude").chmod(0o755)
+    sWorkspace = tmp_path / "workspace"
+    sWorkspace.mkdir()
+    sRecord = str(tmp_path / "terminal.jsonl")
+    (tmp_path / "rcdir").mkdir()
+    (tmp_path / "rcdir" / "rc").write_text(S_PROMPT_RESET_RCFILE)
+    processBash = subprocess.run(
+        ["/bin/bash", "--rcfile", str(tmp_path / "rcdir" / "rc"), "-i",
+         "-c", "claude"], cwd=str(sWorkspace), capture_output=True,
+        text=True, timeout=60,
+        env={"HOME": str(tmp_path), "PATH": f"{sBin}:/usr/bin:/bin",
+             "VAIBIFY_TERMINAL_LIFECYCLE": sRecord})
+    assert processBash.returncode == 0, processBash.stderr
+    with open(sRecord, "rb") as fileRecord:
+        baRecord = fileRecord.read()
+    dictChat = agentChatLifecycle.fdictCurrentChatFromRecord(
+        baRecord, os.path.realpath(str(tmp_path)))
+    assert dictChat is None, "the fake CLI exited, so the chat ended"
+    listLines = baRecord.splitlines()
+    dictRunning = agentChatLifecycle.fdictCurrentChatFromRecord(
+        b"\n".join(listLines[:-1]) + b"\n", os.path.realpath(str(tmp_path)))
+    assert dictRunning["sIdentityClass"] == "tracked"
+    assert dictRunning["sSessionId"] == sSwitchedTo
+    dictPlan = agentChatResume.fdictBuildResumePlan(dictRunning, {}, "")
+    assert sSwitchedTo in dictPlan["sResumeCommand"]

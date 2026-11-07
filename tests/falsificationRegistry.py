@@ -40628,4 +40628,11 @@ LIST_FALSIFICATIONS = [
         ),
         new='        pass\n',
     ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testASwitchInsideTheCliIsWhatGetsResumed',
+        # The Claude wrapper no longer supplying the switch hook.
+        source='vaibify/config/terminalRcfile.py',
+        old='    if [ "$bHook" = 1 ] && [ -n "${VAIBIFY_TERMINAL_LIFECYCLE:-}" ] \\\n',
+        new='    if false && [ -n "${VAIBIFY_TERMINAL_LIFECYCLE:-}" ] \\\n',
+    ),
 ]
