@@ -42,6 +42,7 @@ __all__ = [
     "conversionRoutes",
     "connectionCheckRoutes",
     "runtimeSetupRoutes",
+    "dashboardStateRoutes",
 ]
 
 from . import (
@@ -64,6 +65,7 @@ from . import (
     levelRoutes,
     reproducibilityRoutes,
     bindingRoutes,
+    dashboardStateRoutes,
     zenodoTokenRoutes,
     committedFileRoutes,
     environmentArchiveRoutes,

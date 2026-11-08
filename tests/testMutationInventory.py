@@ -172,7 +172,10 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # execs with them), and the reads and writes that replaced them -- the
 # host lanes' confined file read, the migration's keyring read, and the
 # pull's confined tree write -- are classified.
-I_UNCLASSIFIED_ROW_BUDGET = 260
+# 260 -> 259 (2026-11-07): Prompt Record's unclassified transcript
+# listing and the saved layout's chat catalog share one classified
+# runner, promptRecordManager.ftRunTranscriptProgram.
+I_UNCLASSIFIED_ROW_BUDGET = 259
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

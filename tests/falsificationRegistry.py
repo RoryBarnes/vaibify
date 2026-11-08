@@ -16208,7 +16208,7 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/agentCouncilController.py',
         old=(
             '    listUnsettledCampaignIds = list(\n'
-            '        await agentCouncilChat.flistCloseChatSessionsForResource(\n'
+            '        await agentCouncilChat.flistSetChatSessionsAsideForResource(\n'
             '            dictControllerState, sResourceName))'
         ),
         new='    listUnsettledCampaignIds = []',
@@ -16403,9 +16403,9 @@ LIST_FALSIFICATIONS = [
             '        councilRouteGuards.fjsonRequireCampaign(\n'
             '            councilRouteGuards.fdictCampaignStore(requestHttp), sCampaignId,\n'
             '            sName, sProjectRepoPath)\n'
-            '        return agentCouncilChat.fdictDescribeChatSession('
+            '        dictStore = councilRouteGuards.fdictCampaignStore(requestHttp)\n'
         ),
-        new='        return agentCouncilChat.fdictDescribeChatSession(',
+        new='        dictStore = councilRouteGuards.fdictCampaignStore(requestHttp)\n',
     ),
     Falsification(
         nodeid=(
@@ -31763,19 +31763,19 @@ LIST_FALSIFICATIONS = [
     # --- 2026-10-08: a terminal's prompt resets the input modes a killed program left on ---
     Falsification(
         nodeid='tests/testTerminalPromptResetLive.py::testTheResetRunsLastAfterTheResearchersArrayHooks',
-        source='vaibify/gui/terminalContainment.py',
+        source='vaibify/config/terminalRcfile.py',
         old='    \'if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]];\'\n    " then\\n"\n    "    PROMPT_COMMAND+=(fnVaibifyResetInputModes)\\n"\n    "else\\n"\n',
         new='    "if false; then\\n"\n    "    :\\n"\n    "else\\n"\n',
     ),
     Falsification(
         nodeid='tests/testTerminalPromptResetLive.py::testTheResetHandsOnTheStatusItWasGiven',
-        source='vaibify/gui/terminalContainment.py',
+        source='vaibify/config/terminalRcfile.py',
         old='    \'    return "$iStatus"\\n\'\n',
         new='    "    return 0\\n"\n',
     ),
     Falsification(
         nodeid='tests/testTerminalPromptResetLive.py::testTheRcfileAndItsDirectoryAreGoneOnceTheShellStarts',
-        source='vaibify/gui/terminalContainment.py',
+        source='vaibify/config/terminalRcfile.py',
         old='    \'rm -f -- "${BASH_SOURCE[0]}" && rmdir -- "${BASH_SOURCE[0]%/*}"\\n\'\n',
         new='    ": the rcfile is kept\\n"\n',
     ),
@@ -36867,7 +36867,7 @@ LIST_FALSIFICATIONS = [
         # the dashboard terminal's exec omits the switch
         old=(
             '            listCommand=["/bin/sh", "-c", sWrapperScript],\n'
-            '            dictEnvironment=fdictBuildAgentTerminalEnvironment(),\n'
+            '            dictEnvironment=self._fdictTerminalEnvironment(),\n'
         ),
         new='            listCommand=["/bin/sh", "-c", sWrapperScript],\n',
     ),
@@ -36881,7 +36881,7 @@ LIST_FALSIFICATIONS = [
         # reachable daemon, or the test skips and survives vacuously
         old=(
             '            listCommand=["/bin/sh", "-c", sWrapperScript],\n'
-            '            dictEnvironment=fdictBuildAgentTerminalEnvironment(),\n'
+            '            dictEnvironment=self._fdictTerminalEnvironment(),\n'
         ),
         new='            listCommand=["/bin/sh", "-c", sWrapperScript],\n',
     ),
@@ -36893,8 +36893,9 @@ LIST_FALSIFICATIONS = [
         source='vaibify/host/hostConnection.py',
         # the host terminal's PTY inherits the hub's environment alone
         old=(
-            '                env=_fdictComposeLaunchEnvironment(\n'
-            '                    fdictBuildAgentTerminalEnvironment()),\n'
+            '                env=_fdictComposeLaunchEnvironment(dict(\n'
+            '                    fdictBuildAgentTerminalEnvironment(),\n'
+            '                    **(dictEnvironmentOverlay or {}))),\n'
         ),
         new='',
     ),
@@ -40111,12 +40112,12 @@ LIST_FALSIFICATIONS = [
         # Admin > Projects showing the hub with the project still open.
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '        if (!sContainerId) return;\n'
+            '        if (_dictSessionState.sContainerId !== sContainerId) return;\n'
             '        _fnCloseOpenProject();\n'
             '        VaibifyContainerManager.fnConnectToContainer(sContainerId);\n'
         ),
         new=(
-            '        if (!sContainerId) return;\n'
+            '        if (_dictSessionState.sContainerId !== sContainerId) return;\n'
             '        VaibifyContainerManager.fnConnectToContainer(sContainerId);\n'
         ),
     ),
@@ -40407,6 +40408,262 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptApplication.js',
         old='        if (dictStatus.dictTestFileChanges) {\n',
         new='        if (true) {\n',
+    ),
+    # --- 2026-11-07: the saved dashboard layout is revisioned, keyed
+    # per project file, holds layout only, and is the researcher's ---
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testAStaleBaseRevisionIsRefusedAndChangesNothing',
+        # The base-revision comparison dropped.
+        source='vaibify/config/dashboardRecords.py',
+        old='        if iBaseRevision != iStoredRevision:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testTwoConcurrentWritesAtOneBaseYieldExactlyOneSuccess',
+        # The compare-and-write no longer under the record's lock.
+        source='vaibify/config/dashboardRecords.py',
+        old='    with fcontextHoldRecordLock(sPath + ".lock"):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testTwoProjectFilesInOneRepositoryKeepSeparateRecords',
+        # The project record keyed by the repository alone.
+        source='vaibify/config/dashboardRecords.py',
+        old='        json.dumps([sProjectRepoPath, sWorkflowKey]).encode("utf-8"),\n',
+        new='        json.dumps([sProjectRepoPath]).encode("utf-8"),\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testARecordCannotHoldAStatusField',
+        # The per-scope field allow-list dropped.
+        source='vaibify/config/dashboardRecords.py',
+        old='    setUnknown = set(dictState) - DICT_FIELDS_BY_SCOPE[sScope]\n',
+        new='    setUnknown = set()\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testTheAgentLaneIsRefusedOnEveryRoute',
+        # The environment PUT no longer refusing the agent lane itself.
+        source='vaibify/gui/routes/dashboardStateRoutes.py',
+        old=(
+            '        requestHttp: Request,\n'
+            '    ):\n'
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        sName = _fsEnvironmentName(dictCtx, sContainerId)\n'
+            '        return await _fdictWriteOrRefuse(\n'
+        ),
+        new=(
+            '        requestHttp: Request,\n'
+            '    ):\n'
+            '        sName = _fsEnvironmentName(dictCtx, sContainerId)\n'
+            '        return await _fdictWriteOrRefuse(\n'
+        ),
+    ),
+    # --- 2026-11-07: a terminal's agent chat is read back honestly ---
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testAnEndedChatIsNotRevived',
+        # The exit line ignored.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='            if dictChat is not None:\n                dictChat["bEnded"] = True\n',
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testASwitchInsideClaudeReplacesTheLaunchId',
+        # The switch signal ignored.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='        dictChat["sSessionId"] = sSessionId\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testAPlantedNonUuidIdIsNeverOffered',
+        # The launch session id no longer checked as a UUID.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='    if dictChat["sSessionId"] and not fbIsSessionId(dictChat["sSessionId"]):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testAWorkingDirectoryOutsideTheWorkspaceIsRefused',
+        # The working-directory confinement dropped.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='    if not _fbPathInside(dictChat["sCwd"], sWorkspaceRoot):\n',
+        new='    if not isinstance(dictChat["sCwd"], str):\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testTheExtendedRcfileStillDeletesItselfAndResetsLast',
+        # The agent wrappers installed after the reset hook.
+        source='vaibify/config/terminalRcfile.py',
+        old=(
+            '    _S_SELF_DELETE_AND_BASHRC + S_AGENT_CHAT_WRAPPERS\n'
+            '    + _S_INPUT_MODE_RESET_HOOK\n'
+        ),
+        new=(
+            '    _S_SELF_DELETE_AND_BASHRC + _S_INPUT_MODE_RESET_HOOK\n'
+            '    + S_AGENT_CHAT_WRAPPERS\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testHostTerminalRcfile.py::testAHostShellHasTheWrappersAndTheResetHook',
+        # The host shell launched as a plain bash -i again.
+        source='vaibify/host/hostConnection.py',
+        old='    "    listArgv = [\'/bin/bash\', \'--rcfile\', sRcPath, \'-i\']\\n"\n',
+        new='',
+    ),
+    # --- 2026-11-07: a saved chat resumes from a fixed table, with
+    # honest permissions ---
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testStandardModeStripsTheBypassAndAddsTheExplicitStandard',
+        # Standard mode emitting the kept flags without the standard pair.
+        source='vaibify/gui/agentChatResume.py',
+        old='    return _flistTokens(listOthers) + list(DICT_STANDARD_FLAGS[sProvider])\n',
+        new='    return _flistTokens(listOthers)\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testAnArgvBypassAndAConfigBypassBothTriggerTheGate',
+        # Claude's config default no longer counted.
+        source='vaibify/gui/agentChatResume.py',
+        old=(
+            '        "config": not bDanger and not sFlagMode\n'
+            '        and sConfigMode == "bypassPermissions",\n'
+        ),
+        new='        "config": False,\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testAChatWithNoIdIsNeverGivenAResumeCommand',
+        # The session-id check dropped from the command builder.
+        source='vaibify/gui/agentChatResume.py',
+        old='    if not fbIsSessionId(sSessionId):\n        raise ValueError("a chat with no session id is never resumed")\n',
+        new='    if False:\n        raise ValueError("a chat with no session id is never resumed")\n',
+    ),
+    # --- 2026-11-07: the dashboard remembers its layout, in order ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLayoutIsRemembered.py::'
+            'test_a_save_that_lost_the_race_is_discarded_and_the_next_change_saves'
+        ),
+        # The refused snapshot retried on the adopted revision.
+        source='vaibify/gui/static/scriptDashboardMemory.js',
+        old='            delete dictSaver.dictStoredJsonByKey[dictItem.sKey];\n',
+        new=(
+            '            delete dictSaver.dictStoredJsonByKey[dictItem.sKey];\n'
+            '            dictSaver.dictQueued = dictItem;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLayoutIsRemembered.py::'
+            'test_admin_projects_keeps_the_terminals_and_restores_the_projects_view'
+        ),
+        # The dialog asked even with the terminals live.
+        source='vaibify/gui/static/scriptEntryChoice.js',
+        old='        if (VaibifyTerminal.fbHasOpenPanes()) {\n',
+        new='        if (false) {\n',
+    ),
+    # --- 2026-11-07: the council's conversations and event log survive
+    # the hub ---
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testAShutdownLeavesTheConversationOpenOnDisk',
+        # Hub shutdown closing (archiving) conversations again.
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '        await agentCouncilChat.fdictSetChatSessionAside(\n'
+            '            dictControllerState, sCampaignId)\n'
+        ),
+        new=(
+            '        await agentCouncilChat.fdictCloseChatSession(\n'
+            '            dictControllerState, sCampaignId)\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testAPendingQuestionIsNeverReAsked',
+        # The question no longer written before the runner is asked.
+        source='vaibify/gui/agentCouncilChat.py',
+        old=(
+            '    _fnPersistSession(dictSession)\n'
+            '    dictSession["taskAnswer"] = asyncio.create_task(\n'
+        ),
+        new='    dictSession["taskAnswer"] = asyncio.create_task(\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testTheSequenceContinuesAcrossARestart',
+        # The reload no longer refilling the ring from the log.
+        source='vaibify/gui/agentCouncilStore.py',
+        old='    dictEntry["ringEvents"].fnSeedFromLog(listTail, iLastSequence)\n',
+        new='    del listTail, iLastSequence\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testATornLastLineIsTruncatedAndRecovered',
+        # A torn final line left in place.
+        source='vaibify/gui/agentCouncilEventLog.py',
+        old='            fileLog.truncate(iStart)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testRetentionSparesACampaignHoldingAConversation',
+        # Retention no longer sparing chat-bearing campaigns.
+        source='vaibify/gui/agentCouncilStore.py',
+        old=(
+            '    if agentCouncilChatRecords.fbCampaignHoldsConversation(\n'
+            '            _fsCampaignDirectory(dictStore, sCampaignId)):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilRetentionBoundaryIsInTheConsole.py::'
+            'testEarlierEventsAreReadBackFromTheDurableLog'
+        ),
+        # Events no longer appended to the durable log.
+        source='vaibify/gui/agentCouncilStore.py',
+        old=(
+            '        agentCouncilEventLog.fnAppendEventToLog(\n'
+            '            dictEntry["sEventLogPath"],\n'
+            '            fjsonRedactCredentialsInRecord(dictStamped))\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testASwitchInsideTheCliIsWhatGetsResumed',
+        # The Claude wrapper no longer supplying the switch hook.
+        source='vaibify/config/terminalRcfile.py',
+        old='    if [ "$bHook" = 1 ] && [ -n "${VAIBIFY_TERMINAL_LIFECYCLE:-}" ] \\\n',
+        new='    if false && [ -n "${VAIBIFY_TERMINAL_LIFECYCLE:-}" ] \\\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testAProjectRepositoryThatIsNotNormalizedIsNeverAKey',
+        # The store's repository-path check no longer refusing.
+        source='vaibify/config/dashboardRecords.py',
+        old='        raise RecordContentError(f"{sLabel} is not a normalized absolute path")\n',
+        new='        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testAnOversizedRecordIsRefused',
+        # A refused record answered as a server fault.
+        source='vaibify/gui/routes/dashboardStateRoutes.py',
+        old=(
+            '            "iRevision": error.iStoredRevision,\n'
+            '        }) from error\n'
+            '    except dashboardRecords.RecordContentError as error:\n'
+            '        raise HTTPException(400, detail={\n'
+        ),
+        new=(
+            '            "iRevision": error.iStoredRevision,\n'
+            '        }) from error\n'
+            '    except dashboardRecords.RecordContentError as error:\n'
+            '        raise HTTPException(500, detail={\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testTheCatalogProgramTakesOnlyValidatedArguments',
+        # The catalog's repository check no longer refusing.
+        source='vaibify/gui/agentChatCatalog.py',
+        old='        raise ValueError("the project repository is not a normalized path")\n',
+        new='        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testAListedChatWithAMalformedFieldIsDropped',
+        # A listed chat's session id no longer checked.
+        source='vaibify/gui/agentChatCatalog.py',
+        old='    if not fbIsSessionId(dictEntry.get("sSessionId")):\n        return None\n',
+        new='',
     ),
     # --- 2026-11-07: a refused verify or a refused request never
     # quarantines a container, and the refusal says how to clear one ---

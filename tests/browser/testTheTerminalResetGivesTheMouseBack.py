@@ -33,7 +33,11 @@ pytestmark = [pytest.mark.browser]
 
 S_FILL_COMMAND = "for i in $(seq 1 30); do echo resetline $i; done"
 S_FILL_MARKER = "resetline 30"
-S_MOUSE_REPORTING_ON = "printf '\\033[?1000h\\033[?1003h\\033[?1006h'"
+# The command keeps running, as an agent's TUI does while it holds the
+# mouse: the terminal's prompt hook switches mouse reporting off the
+# moment the shell is back at its prompt, which host terminals do too
+# since 2026-11-07.
+S_MOUSE_REPORTING_ON = "printf '\\033[?1000h\\033[?1003h\\033[?1006h'; sleep 600"
 F_DEADLINE_SECONDS = 20.0
 
 

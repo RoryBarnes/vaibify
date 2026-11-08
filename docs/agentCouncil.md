@@ -377,8 +377,11 @@ items, assumptions, rejected alternatives and why, required
 verification, stop conditions telling an implementer when to halt and
 return to the council, noted findings, and open questions. A candidate
 never accepted says so in its own text. The Plan tab copies it to the
-clipboard or saves it as a file. The live event log per participant is
-bounded and may roll off; the structured record does not.
+clipboard or saves it as a file. Every event shown in the Agent tabs
+is also kept in the campaign's event log on disk, mode 600 and
+redacted, so the tabs reopen after vaibify restarts; the tabs show the
+newest 500 events, and **Show earlier events** pages back through the
+rest.
 
 ## Asking the chairbot
 
@@ -393,9 +396,15 @@ objection, or answer a blocking question. It **remembers only what is
 on screen**: each message is a fresh run, so vaibify re-sends the
 transcript, and at the message limit it refuses rather than forgetting
 its middle. It **answers from the snapshot**, not the repository as it
-stands now. The conversation closes after fifteen minutes idle, and
-after two hours however active, because its runner holds a copy of the
-login.
+stands now. Its runner rests after fifteen minutes idle, and after two
+hours however active, because the runner holds a copy of the login;
+the conversation stays, and your next question builds a new runner.
+The conversation is **kept on disk**: quitting vaibify or releasing the
+Project keeps it open, and **Close conversation** archives it, readable
+under **Past conversations**. A question vaibify stopped in the middle
+of is shown as interrupted and is asked again only when you click
+**Ask again**. A campaign holding a conversation is never removed by
+automatic retention.
 
 ## Honest limits
 

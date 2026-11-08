@@ -30,6 +30,7 @@ import time
 import pytest
 
 from tests.browser.conftest import (
+    fnAnswerTheEntryDialog,
     S_HOST_PROJECT_READY,
     S_HOST_WORKFLOW_NAME,
 )
@@ -165,6 +166,7 @@ def testALostClaimIsReclaimedAndTheWorkflowOpens(
     _fnReachTheWorkflowPicker(pageDashboard, serverHub)
     _fnTakeTheClaimAway(serverHub)
     pageDashboard.click(f'text={S_HOST_WORKFLOW_NAME}')
+    fnAnswerTheEntryDialog(pageDashboard)
     pageDashboard.wait_for_selector("#hostModeBadge", timeout=20000)
     assert S_HOST_PROJECT_READY in (
         serverHub.app.state.dictContainerOwners
@@ -216,6 +218,7 @@ def testAnInUseRefusalDoesNotBounceYouBackToTheTile(
         if request.url.endswith("/claim") else None
     ))
     pageDashboard.click(f'text={S_HOST_WORKFLOW_NAME}')
+    fnAnswerTheEntryDialog(pageDashboard)
     pageDashboard.wait_for_selector("#toastContainer", timeout=20000)
     pageDashboard.wait_for_function(
         """() => document.getElementById('toastContainer')
@@ -239,6 +242,7 @@ def testAClaimThatStillHoldsOpensTheWorkflow(pageDashboard, serverHub):
     """The ordinary path still works, which nothing above asserts."""
     _fnReachTheWorkflowPicker(pageDashboard, serverHub)
     pageDashboard.click(f'text={S_HOST_WORKFLOW_NAME}')
+    fnAnswerTheEntryDialog(pageDashboard)
     pageDashboard.wait_for_selector("#hostModeBadge", timeout=20000)
     assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
 

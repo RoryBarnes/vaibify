@@ -124,6 +124,9 @@ var VaibifyHubQuit = (function () {
     }
 
     async function _fnSendQuit(bStopEnvironments) {
+        /* Before the hub stops: the layout and the chat each terminal
+           holds can only be read while both still exist. */
+        await VaibifyDashboardMemory.fbFlushBeforeLeaving();
         VaibifyConnectionMonitor.fnExpectShutdown();
         try {
             await VaibifyApi.fdictPost(

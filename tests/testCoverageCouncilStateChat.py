@@ -305,7 +305,7 @@ def testResourceDrainClosesOnlyThatResourcesConversations(
                                 S_RESOURCE_ALPHA, dictStore)
     sBetaId, dictBetaSession = ftOpenSession(
         tmp_path, dictControllerState, S_RESOURCE_BETA, dictStore)
-    listUnsettled = asyncio.run(chat.flistCloseChatSessionsForResource(
+    listUnsettled = asyncio.run(chat.flistSetChatSessionsAsideForResource(
         dictControllerState, S_RESOURCE_ALPHA))
     assert listUnsettled == []
     dictSessions = chat._fdictSessionsByCampaign(dictControllerState)

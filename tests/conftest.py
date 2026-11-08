@@ -414,6 +414,10 @@ T_REDIRECTED_STATE_STORES = (
         bCreateOnResolve=True,
     ),
     StateStoreRedirect(
+        "vaibify.config.dashboardRecords", "fsDashboardStateRoot",
+        "dashboardState",
+    ),
+    StateStoreRedirect(
         "vaibify.gui.agentCouncilCredentialGate",
         "fsResolveCredentialEvidencePath",
         "agentCouncils/credentialEvidence.json",

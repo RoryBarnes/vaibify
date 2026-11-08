@@ -56,10 +56,12 @@ though it were.
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 
 from . import agentCouncilCharter
+from . import agentCouncilChatRecords
 from . import agentCouncilContext
 from . import agentCouncilDockerGateway
 from . import agentCouncilEgress
@@ -86,7 +88,8 @@ __all__ = [
     "fdictDescribeChatSession",
     "fdictOpenChatSession",
     "fdictRestChatConversation",
-    "flistCloseChatSessionsForResource",
+    "fdictSetChatSessionAside",
+    "flistSetChatSessionsAsideForResource",
     "fiReapExpiredChatSessions",
     "fsComposeChatEgressScope",
 ]
@@ -183,22 +186,22 @@ def _fsMintChatIdentifier(sKindPrefix):
 # ----- the observable view ---------------------------------------------
 
 
-def fdictDescribeChatSession(dictControllerState, sCampaignId):
+def fdictDescribeChatSession(dictControllerState, sCampaignId,
+                             sCampaignDirectory=""):
     """Describe the campaign's conversation for the panel.
 
     Always answers — a campaign with no session reports ``bOpen`` False
     rather than 404 — because the panel polls this to learn when an
     answer landed, and a poll that has to distinguish "no conversation"
-    from "the request failed" reports the second as the first.
+    from "the request failed" reports the second as the first. Given
+    the campaign's directory it also lists the closed conversations,
+    read only, and describes one set aside on disk.
     """
     dictSession = _fdictSessionsByCampaign(dictControllerState).get(
         sCampaignId)
     if dictSession is None:
-        return {"bOpen": False, "sState": "", "listMessages": [],
-                "sPendingMessageId": "", "sFailureReason": "",
-                "sChairbotParticipantId": "", "sResolvedModel": "",
-                "iMessagesRemaining": I_MAX_CHAT_MESSAGES,
-                "iIdleSecondsRemaining": 0}
+        return agentCouncilChatRecords.fdictDescribeWithoutASession(
+            sCampaignDirectory, I_MAX_CHAT_MESSAGES)
     return {
         "bOpen": True,
         "sState": dictSession["sState"],
@@ -216,6 +219,9 @@ def fdictDescribeChatSession(dictControllerState, sCampaignId):
             0, I_MAX_CHAT_MESSAGES - len(dictSession["listMessages"])),
         "iIdleSecondsRemaining": int(max(0, _ffFindSecondsUntilDeadline(
             dictSession))),
+        "bResumable": False,
+        "listArchived": agentCouncilChatRecords.flistDescribeArchived(
+            sCampaignDirectory),
     }
 
 
@@ -281,6 +287,7 @@ async def fdictOpenChatSession(dictControllerState, dictOpenRequest):
     if sCampaignId in dictSessions:
         return fdictDescribeChatSession(dictControllerState, sCampaignId)
     dictSession = _fdictCreateSessionRecord(dictOpenRequest)
+    _fnSeedSessionFromDisk(dictSession)
     # Registered BEFORE the build so a fault midway leaves a record the
     # teardown below can find; the same discipline the campaign runtime
     # uses, for the same reason.
@@ -291,11 +298,14 @@ async def fdictOpenChatSession(dictControllerState, dictOpenRequest):
         await asyncio.to_thread(_fdictTearDownChatResources, dictSession)
         dictSessions.pop(sCampaignId, None)
         raise
+    _fnPersistSession(dictSession)
     agentCouncilStore.fdictAppendCampaignEvent(
         dictSession["dictStore"], sCampaignId,
         {"sEventKind": "chairbotChatOpened", "sTurnId": "",
          "sDetail": dictSession["sSessionId"]})
-    return fdictDescribeChatSession(dictControllerState, sCampaignId)
+    return fdictDescribeChatSession(
+        dictControllerState, sCampaignId,
+        _fsSessionCampaignDirectory(dictSession))
 
 
 def _fdictCreateSessionRecord(dictOpenRequest):
@@ -329,6 +339,46 @@ def _fdictCreateSessionRecord(dictOpenRequest):
         "fOpenedMonotonic": fNow,
         "fLastActivityMonotonic": fNow,
     }
+
+
+def _fsSessionCampaignDirectory(dictSession):
+    """Return the campaign's durable directory, where its chats live."""
+    return os.path.join(
+        dictSession["dictStore"]["sDurableStoreRoot"],
+        dictSession["sCampaignId"])
+
+
+def _fnSeedSessionFromDisk(dictSession):
+    """Continue the conversation this campaign left open, if any.
+
+    A conversation set aside at shutdown or release keeps its id and
+    transcript; a question that was pending is marked interrupted and
+    not re-asked.
+    """
+    try:
+        dictSaved = agentCouncilChatRecords.fdictReadOpenConversation(
+            _fsSessionCampaignDirectory(dictSession))
+    except (KeyError, TypeError):
+        return
+    if dictSaved is None:
+        return
+    dictSession["sSessionId"] = dictSaved["sSessionId"]
+    dictSession["listMessages"] = (
+        agentCouncilChatRecords.flistMarkInterruptedQuestion(dictSaved))
+
+
+def _fnPersistSession(dictSession, sStatus=agentCouncilChatRecords.S_STATUS_OPEN):
+    """Write the conversation to disk; a failed write is logged, never raised.
+
+    Called after every state change. A write that fails must not cost
+    the researcher the answer the runner just produced.
+    """
+    try:
+        agentCouncilChatRecords.fnSaveSession(
+            _fsSessionCampaignDirectory(dictSession), dictSession, sStatus)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        logger.warning("Chairbot conversation for campaign %s not saved: %s",
+                       dictSession.get("sCampaignId"), error)
 
 
 def _fjsonReadCampaignNow(dictSession):
@@ -496,13 +546,18 @@ async def fdictAskChatQuestion(dictControllerState, sCampaignId,
     # under a message the researcher just sent.
     dictSession["sState"] = S_CHAT_STATE_ANSWERING
     dictSession["sPendingMessageId"] = dictMessage["sMessageId"]
+    # On disk as PENDING before the runner is asked, so a hub that stops
+    # mid-answer reloads it as interrupted and never re-asks it.
+    _fnPersistSession(dictSession)
     dictSession["taskAnswer"] = asyncio.create_task(
         _fnAnswerChatQuestion(dictSession))
     agentCouncilStore.fdictAppendCampaignEvent(
         dictSession["dictStore"], sCampaignId,
         {"sEventKind": "chairbotAsked", "sTurnId": "",
          "sDetail": dictMessage["sMessageId"]})
-    return fdictDescribeChatSession(dictControllerState, sCampaignId)
+    return fdictDescribeChatSession(
+        dictControllerState, sCampaignId,
+        _fsSessionCampaignDirectory(dictSession))
 
 
 def _fnRefuseUnaskableQuestion(dictSession, sQuestionText):
@@ -603,6 +658,8 @@ async def _fnAnswerChatQuestion(dictSession):
     finally:
         dictSession["sPendingMessageId"] = ""
         dictSession["fLastActivityMonotonic"] = time.monotonic()
+        if not dictSession["bClosing"]:
+            _fnPersistSession(dictSession)
 
 
 def _fsRunChatMessageInRunner(dictSession):
@@ -624,7 +681,9 @@ def _fsRunChatMessageInRunner(dictSession):
     baStdin = agentCouncilProviderRegistry.fbaComposeProviderChatStdin(
         dictSession["sProvider"],
         agentCouncilCharter.flistBuildChatQuotedMaterial(
-            dictCampaign, dictSession["listMessages"]))
+            dictCampaign, [dictMessage for dictMessage in
+                           dictSession["listMessages"]
+                           if not dictMessage.get("bInterrupted")]))
     dictExecuted = agentCouncilDockerGateway.fdictExecuteBoundedTurn(
         dictSession["dictGateway"], dictSession["sHandle"], saArgv,
         I_CHAT_OUTPUT_CAP_BYTES, F_CHAT_TURN_WALL_CLOCK_SECONDS,
@@ -668,6 +727,10 @@ async def fdictCloseChatSession(dictControllerState, sCampaignId):
     await _fnAwaitAnswerWorker(dictSession)
     if dictSettled["bSettled"]:
         _fdictSessionsByCampaign(dictControllerState).pop(sCampaignId, None)
+        # Closing is the researcher's choice to end it: the transcript
+        # is ARCHIVED, read only, never deleted.
+        _fnPersistSession(
+            dictSession, agentCouncilChatRecords.S_STATUS_ARCHIVED)
         agentCouncilStore.fdictAppendCampaignEvent(
             dictSession["dictStore"], sCampaignId,
             {"sEventKind": "chairbotChatClosed", "sTurnId": "",
@@ -756,23 +819,58 @@ def _fdictDestroyChatRunner(dictGateway, dictSession):
     return dictDestroyed
 
 
-async def flistCloseChatSessionsForResource(dictControllerState,
-                                            sResourceName):
-    """Close every conversation bound to one container; list the unsettled.
+async def fdictSetChatSessionAside(dictControllerState, sCampaignId):
+    """Destroy the runner and keep the conversation open, on disk; report.
+
+    Hub shutdown and lease release are not the researcher closing the
+    conversation, so neither archives it: the runner and its egress are
+    destroyed and settled exactly as a close settles them (a copied
+    login must not outlive the hub or the lease), the conversation is
+    written RESTING to disk, and the in-process session is dropped,
+    because its credential stager is bound to a lease that is ending.
+    The next open continues it. An unproven teardown keeps the session,
+    FAILED with the reason, exactly as a close does.
+    """
+    dictSession = _fdictSessionsByCampaign(dictControllerState).get(
+        sCampaignId)
+    if dictSession is None:
+        return {"bSettled": True, "sOutcome": "", "sReason": ""}
+    dictSession["bClosing"] = True
+    dictSettled = await asyncio.to_thread(
+        _fdictTearDownChatResources, dictSession)
+    await _fnAwaitAnswerWorker(dictSession)
+    if not dictSettled["bSettled"]:
+        dictSession["bClosing"] = False
+        dictSession["sState"] = S_CHAT_STATE_FAILED
+        dictSession["sFailureReason"] = dictSettled["sReason"]
+        return dictSettled
+    _fdictSessionsByCampaign(dictControllerState).pop(sCampaignId, None)
+    dictSession["sState"] = S_CHAT_STATE_RESTING
+    _fnPersistSession(dictSession)
+    agentCouncilStore.fdictAppendCampaignEvent(
+        dictSession["dictStore"], sCampaignId,
+        {"sEventKind": "chairbotChatResting", "sTurnId": "",
+         "sDetail": dictSession["sSessionId"]})
+    return dictSettled
+
+
+async def flistSetChatSessionsAsideForResource(dictControllerState,
+                                               sResourceName):
+    """Set aside every conversation bound to one container; list the unsettled.
 
     The release path's chat drain. A conversation cannot continue
     against a project whose lease is gone, and its runner and proxy
-    must not outlive that lease — so every session for the resource is
-    closed, and any whose resources could not be proven gone is
-    returned so the release refuses rather than handing the container
-    on.
+    must not outlive that lease -- so every session for the resource is
+    set aside (runner destroyed, conversation kept on disk), and any
+    whose resources could not be proven gone is returned so the release
+    refuses rather than handing the container on.
     """
     listUnsettledCampaignIds = []
     for sCampaignId, dictSession in list(
             _fdictSessionsByCampaign(dictControllerState).items()):
         if dictSession["sResourceName"] != sResourceName:
             continue
-        dictSettled = await fdictCloseChatSession(
+        dictSettled = await fdictSetChatSessionAside(
             dictControllerState, sCampaignId)
         if not dictSettled["bSettled"]:
             listUnsettledCampaignIds.append(sCampaignId)
@@ -858,6 +956,7 @@ async def _fdictRestChatSession(dictSession):
         await _fnAwaitAnswerWorker(dictSession)
         if dictSettled["bSettled"]:
             dictSession["sState"] = S_CHAT_STATE_RESTING
+            _fnPersistSession(dictSession)
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictSession["dictStore"], dictSession["sCampaignId"],
                 {"sEventKind": "chairbotChatResting", "sTurnId": "",

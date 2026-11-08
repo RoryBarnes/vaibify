@@ -211,8 +211,32 @@ def fdictHostWorkflowDocument():
     }
 
 
+def fnAnswerTheEntryDialog(page, sChoice="default"):
+    """Answer the dialog a click on a project opens, when it opens one.
+
+    A project click either asks how terminals and agent chats start
+    (``body[data-entry-state="asking"]``) or goes straight in: Admin >
+    Projects kept the environment's terminals live, so there is nothing
+    to ask (scriptEntryChoice.js, ruling 1). The page records which as
+    it decides, synchronously in the click, so this reads the answer
+    instead of guessing with a timeout. Tests that are not about the
+    dialog take Default, the first-entry view they were written against.
+    """
+    page.wait_for_function(
+        "() => document.body.dataset.entryState !== 'reading'",
+        timeout=20000)
+    if page.evaluate("() => document.body.dataset.entryState") != "asking":
+        return
+    page.check(
+        f'#modalEntryChoice input[name="entryChoice"][value="{sChoice}"]')
+    page.wait_for_selector(
+        "#btnEntryContinue:not([disabled])", timeout=20000)
+    page.click("#btnEntryContinue")
+
+
 def fnOpenTheSeededHostWorkflow(
     pageDashboard, serverHub, bAwaitProjectBlock=False,
+    sEntryChoice="default",
 ):
     """Acknowledge the host warning and open the seeded workflow.
 
@@ -256,6 +280,7 @@ def fnOpenTheSeededHostWorkflow(
         f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
     )
     pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
+    fnAnswerTheEntryDialog(pageDashboard, sEntryChoice)
     pageDashboard.wait_for_selector(
         f"text={S_HOST_STEP_NAME}", timeout=20000,
     )
@@ -443,6 +468,10 @@ def _fnIsolateProjectRegistry():
         # The hub's scheduled re-verify stamps its first pass a short
         # delay after start, outside any test's own redirect.
         from vaibify.reproducibility import scheduledReverify
+        # A layout save lands a second after a click, and a closing
+        # page sends its last one on pagehide: both can arrive after
+        # the test that caused them has undone its own redirect.
+        from vaibify.config import dashboardRecords
         # The hub binds its control socket at startup, before any
         # test's own redirect. Its directory comes from the system
         # temporary root, not sHome: an AF_UNIX path is capped at 104
@@ -455,6 +484,9 @@ def _fnIsolateProjectRegistry():
         ), patch.object(
             scheduledReverify, "fsReverifyStatePath",
             lambda: os.path.join(sHome, "reverifyState.json"),
+        ), patch.object(
+            dashboardRecords, "fsDashboardStateRoot",
+            lambda: os.path.join(sHome, "dashboardState"),
         ), patch.object(
             registryManager, "_S_REGISTRY_DIRECTORY", sHome,
         ), patch.object(

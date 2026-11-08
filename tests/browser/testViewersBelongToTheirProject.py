@@ -21,6 +21,7 @@ import json
 import pytest
 
 from tests.browser.conftest import (
+    fnAnswerTheEntryDialog,
     S_HOST_PROJECT_READY,
     S_HOST_STEP_NAME,
     S_HOST_WORKFLOW_NAME,
@@ -84,6 +85,7 @@ def _fnOpenTheEnvironmentsHub(page, serverHub):
 def _fnOpenTheSeededProject(page):
     """From the Projects Hub, open the seeded project's dashboard."""
     page.click(f"text={S_HOST_WORKFLOW_NAME}")
+    fnAnswerTheEntryDialog(page)
     page.wait_for_selector(f"text={S_HOST_STEP_NAME}", timeout=20000)
 
 

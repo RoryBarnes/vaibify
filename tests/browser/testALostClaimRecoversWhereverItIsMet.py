@@ -35,6 +35,7 @@ import urllib.request
 import pytest
 
 from tests.browser.conftest import (
+    fnAnswerTheEntryDialog,
     S_HOST_PROJECT_READY,
     S_HOST_STEP_NAME,
     S_HOST_WORKFLOW_NAME,
@@ -304,6 +305,7 @@ def test_a_lost_claim_on_the_project_hub_is_taken_again_by_a_refresh(
         f"#listWorkflows >> text={S_HOST_WORKFLOW_NAME}", timeout=15000)
     assert "could not be" not in _fsToastText(pageDashboard).lower()
     pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
+    fnAnswerTheEntryDialog(pageDashboard)
     pageDashboard.wait_for_selector(f"text={S_HOST_STEP_NAME}", timeout=20000)
     assert pageDashboard.listPageErrors == []
 

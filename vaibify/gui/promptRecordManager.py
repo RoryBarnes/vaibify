@@ -60,9 +60,11 @@ __all__ = [
     "S_PROMPT_RECORD_INDEX_PATH",
     "S_PROMPT_RECORD_SESSIONS_DIRECTORY",
     "S_PROVIDER_CLAUDE",
+    "S_TRANSCRIPT_LAUNCH_RULES_PROGRAM",
     "TUPLE_TRANSCRIPT_SOURCES",
     "fbSessionBelongsToProject",
     "fdictListContainerTranscripts",
+    "ftRunTranscriptProgram",
     "fdictLoadIndex",
     "fsResolveDigestKeyPath",
     "fdictSanitizeNewTranscriptLines",
@@ -111,7 +113,12 @@ TUPLE_TRANSCRIPT_SOURCES = (
      "sLaunchRule": "project-root-marker"},
 )
 
-_S_LIST_PROGRAM = """
+# The launch-directory rules, as program text: the one place that
+# decides which directory a session was launched in, shared by this
+# lister and by the saved layout's chat catalog (agentChatCatalog), so
+# Prompt Record and "Choose chats" can never disagree about which
+# sessions belong to a project.
+S_TRANSCRIPT_LAUNCH_RULES_PROGRAM = """
 import glob, json, os, sys
 listSources = json.loads(""" + repr(json.dumps(TUPLE_TRANSCRIPT_SOURCES)) + """)
 def fsFirstCwd(sPath):
@@ -164,7 +171,8 @@ def fsProjectRootMarker(sPath):
 dictRules = {'first-cwd': fsFirstCwd,
              'session-meta-cwd': fsSessionMetaCwd,
              'project-root-marker': fsProjectRootMarker}
-dictListing = {}
+"""
+_S_LIST_PROGRAM = S_TRANSCRIPT_LAUNCH_RULES_PROGRAM + """dictListing = {}
 for dictSource in listSources:
     sRoot = os.path.expanduser(dictSource['sRoot'])
     for sPath in glob.glob(os.path.join(sRoot, dictSource['sPattern']),
@@ -186,6 +194,24 @@ sys.stdout.write(json.dumps(dictListing))
 _S_LIST_SCRIPT = S_HUB_PYTHON_COMMAND + " -c " + shlex.quote(_S_LIST_PROGRAM)
 
 
+def ftRunTranscriptProgram(
+    connectionDocker, sContainerId, sProgram, listArguments=(),
+):
+    """Run one program over the agents' transcripts, where they live.
+
+    The one place vaibify does: Prompt Record's listing and the saved
+    layout's chat catalog (``agentChatCatalog``). Each program is
+    constant text built on :data:`S_TRANSCRIPT_LAUNCH_RULES_PROGRAM`,
+    which is checked here, and each argument is a value its caller
+    validated, quoted here. Both callers run it inside a mode-b carrier.
+    """
+    if not sProgram.startswith(S_TRANSCRIPT_LAUNCH_RULES_PROGRAM):
+        raise ValueError("not a program over the transcripts")
+    sCommand = S_HUB_PYTHON_COMMAND + " -c " + shlex.quote(sProgram) + "".join(
+        " " + shlex.quote(sArgument) for sArgument in listArguments)
+    return connectionDocker.ftRunInContainerStreamed(sContainerId, sCommand)
+
+
 def fdictListContainerTranscripts(connectionDocker, sContainerId):
     """Return ``{sContainerPath: {iSizeBytes, listStatKey, ...}}``.
 
@@ -193,8 +219,8 @@ def fdictListContainerTranscripts(connectionDocker, sContainerId):
     directory the agent CLI recorded the session was launched in, read
     by that provider's rule, or ``''`` when it recorded none.
     """
-    tExecResult = connectionDocker.ftRunInContainerStreamed(
-        sContainerId, _S_LIST_SCRIPT,
+    tExecResult = ftRunTranscriptProgram(
+        connectionDocker, sContainerId, _S_LIST_PROGRAM,
     )
     if tExecResult.iExitCode != 0:
         raise RuntimeError(

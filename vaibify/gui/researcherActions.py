@@ -342,6 +342,15 @@ SET_GUI_ONLY_ROUTES = {
         "a tab's lease; the CLI claims and releases per command",
     ("POST", "/api/registry/{sName}/release"):
         "a tab's lease; the CLI claims and releases per command",
+    ("PUT", "/api/dashboard-state/{sContainerId}/environment"):
+        "describes how a human views the container; no command-line "
+        "meaning",
+    ("PUT", "/api/dashboard-state/{sContainerId}/project"):
+        "describes how a human views the container; no command-line "
+        "meaning",
+    ("POST", "/api/dashboard-state/{sContainerId}/chat-catalog"):
+        "lists past agent chats for the entry dialog to resume in a "
+        "terminal pane; no command-line meaning",
     ("POST", "/api/system/docker-status/retry"):
         "the page's retry of its own Docker probe; `vaibify doctor` "
         "checks Docker from the command line",
