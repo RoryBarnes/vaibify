@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agent Council &mdash; Vaibify 0.3.1.dev4 documentation</title>
+  <title>Agent Council &mdash; Vaibify 0.3.1.dev18 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=0cf57713"></script>
+      <script src="_static/documentation_options.js?v=f09e58ee"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -51,6 +51,7 @@
 <li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
 <li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
 <li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dashboardMemory.html">Returning to Your Work</a></li>
 <li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Agent Council</a><ul>
@@ -501,8 +502,11 @@ items, assumptions, rejected alternatives and why, required
 verification, stop conditions telling an implementer when to halt and
 return to the council, noted findings, and open questions. A candidate
 never accepted says so in its own text. The Plan tab copies it to the
-clipboard or saves it as a file. The live event log per participant is
-bounded and may roll off; the structured record does not.</p>
+clipboard or saves it as a file. Every event shown in the Agent tabs
+is also kept in the campaign’s event log on disk, mode 600 and
+redacted, so the tabs reopen after vaibify restarts; the tabs show the
+newest 500 events, and <strong>Show earlier events</strong> pages back through the
+rest.</p>
 </section>
 <section id="asking-the-chairbot">
 <h2>Asking the chairbot<a class="headerlink" href="#asking-the-chairbot" title="Link to this heading"></a></h2>
@@ -517,9 +521,15 @@ objection, or answer a blocking question. It <strong>remembers only what is
 on screen</strong>: each message is a fresh run, so vaibify re-sends the
 transcript, and at the message limit it refuses rather than forgetting
 its middle. It <strong>answers from the snapshot</strong>, not the repository as it
-stands now. The conversation closes after fifteen minutes idle, and
-after two hours however active, because its runner holds a copy of the
-login.</p>
+stands now. Its runner rests after fifteen minutes idle, and after two
+hours however active, because the runner holds a copy of the login;
+the conversation stays, and your next question builds a new runner.
+The conversation is <strong>kept on disk</strong>: quitting vaibify or releasing the
+Project keeps it open, and <strong>Close conversation</strong> archives it, readable
+under <strong>Past conversations</strong>. A question vaibify stopped in the middle
+of is shown as interrupted and is asked again only when you click
+<strong>Ask again</strong>. A campaign holding a conversation is never removed by
+automatic retention.</p>
 </section>
 <section id="honest-limits">
 <h2>Honest limits<a class="headerlink" href="#honest-limits" title="Link to this heading"></a></h2>
