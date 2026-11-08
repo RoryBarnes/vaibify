@@ -1301,6 +1301,8 @@ So: **tell the researcher which package you need and why, and ask them to add it
 
 Why it works this way, since editing a file in here looks more convenient: a package installed only in this container is present in the running container AND in `requirements.lock`, and absent from the image anyone else would pull. The work then reproduces for the researcher and fails for everybody else — at the far end, where nobody can debug it.
 
+System libraries and compilers follow the same rule, with no in-container workaround: you have no `sudo` and the image deletes its apt package lists, so `apt-get install` cannot run here — and do not unpack `.deb` files or build a toolchain under your home directory, which the next rebuild discards. Two more `vaibify.yml` keys reach the image at rebuild: `systemPackages` (Ubuntu packages, for a library Ubuntu ships ready to use) and `features` (flags that each install a whole stack, including its compile step; for example, `nestedSampling` builds the MultiNest library that `pymultinest` loads and installs `pymultinest` and `ultranest` with it). A library that must be compiled belongs to a feature: listing its compiler in `systemPackages` installs the compiler and builds nothing. Name the library, say which key you believe provides it, and ask the researcher to check the "Features" table in vaibify's install guide.
+
 ### Rules
 
 - Only install packages from PyPI. Never `pip install` from arbitrary URLs.
