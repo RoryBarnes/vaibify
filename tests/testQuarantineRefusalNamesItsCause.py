@@ -138,3 +138,18 @@ def testAnUnquarantinedContainerIsStillAdmitted():
     fnAssertOperationAdmittedByIdentity(
         S_CONTAINER_NAME, sOperationId, {"sDockerExecId": "fine"},
     )
+
+
+@pytest.mark.falsification
+def testTheRefusalNamesTheCommandThatClearsIt():
+    """The reader learns who clears the quarantine, and with what.
+
+    An in-container agent reading this refusal searched its own
+    container and docs for a way to reconcile and found none, correctly:
+    reconciliation is the researcher's, on the host. Naming the command
+    tells the agent what to ask for instead of what to work around.
+
+    Kills: dropping the reconcile-command sentence from the refusal.
+    """
+    sRefusal = _fsPoisonARecordAndReturnTheRefusal()
+    assert f"vaibify reconcile {S_CONTAINER_NAME}" in sRefusal, sRefusal

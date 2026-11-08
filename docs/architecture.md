@@ -1417,7 +1417,14 @@ neither reading the code nor reasoning settles it:
   `ExitCode` afterwards, to a *different* client than the one that
   started it. This is why the durable-task launch journals the exec id
   **before** `exec_start`: the journaled id is a probeable handle, and
-  the experiment is what makes that worth relying on.
+  the experiment is what makes that worth relying on. Every command a
+  synchronous, lock-held or durable carrier admits is journaled the
+  same way (`mutationAdmission.fdictBeginJournaledCommandExec`), never
+  through the one-call `exec_run`. The carrier's own record names the
+  hub as its holder, and the hub's worker finishing, or the hub
+  exiting, says nothing about a command that worker started and gave
+  up waiting on: only the command's own record, probed against the
+  daemon, can.
 - **What is lost is the stream, not the work.** Re-attaching with
   `exec_start` on an already-started exec yields no output. A hub that
   died mid-run can learn *that* and *how* its step finished; it cannot

@@ -94,6 +94,7 @@ import threading
 from vaibify.config import operationJournal
 from vaibify.config.mutationAdmission import (
     ControlPlaneRefusalError,
+    MutationNotAdmittedError,
     S_ADMISSION_MODE_DURABLE_TASK,
     S_ADMISSION_MODE_ESTABLISHING,
     S_ADMISSION_MODE_LOCK_HELD,
@@ -456,13 +457,9 @@ def fdictCommitSynchronousMutation(
     sOperationId = operationJournal.fsPrepareOperation(
         sName, sOperationKind, sTarget,
     )
-    operationJournal.fnPromoteOperationToInFlight(
-        sName, sOperationId, dictHolderIdentity,
-    )
-    fnAssertOperationAdmittedByIdentity(
-        sName, sOperationId, dictHolderIdentity,
-    )
+    _fnPromoteAndGateBeforeAnyEffect(sName, sOperationId, dictHolderIdentity)
     if not fbLaneTupleStillCurrent(appState, dictLaneTuple):
+        _fnSettleNeverLaunchedRecord(sName, sOperationId)
         raise CommitRefusedError(
             f"Refusing to commit to container '{sName}': the owner "
             "record changed between admission and the commit point."
@@ -477,6 +474,38 @@ def fdictCommitSynchronousMutation(
         "bJournalSettled": bJournalSettled,
         "result": resultEffect,
     }
+
+
+def _fnPromoteAndGateBeforeAnyEffect(sName, sOperationId, dictIdentity):
+    """Promote a record to IN_FLIGHT and identity-gate it, or settle it.
+
+    Modes (a) and (b) call this before their effect exists, so a refusal
+    here describes an operation that never ran. Both once left the
+    record IN_FLIGHT, so every request refused by a quarantined
+    container added a phantom operation to its journal.
+    """
+    operationJournal.fnPromoteOperationToInFlight(
+        sName, sOperationId, dictIdentity,
+    )
+    try:
+        fnAssertOperationAdmittedByIdentity(
+            sName, sOperationId, dictIdentity,
+        )
+    except MutationNotAdmittedError:
+        _fnSettleNeverLaunchedRecord(sName, sOperationId)
+        raise
+
+
+def _fnSettleNeverLaunchedRecord(sName, sOperationId):
+    """Settle the record of a refused operation; never mask the refusal."""
+    try:
+        operationJournal.fnSettleOperation(sName, sOperationId)
+    except operationJournal.OperationJournalError as error:
+        logger.warning(
+            "Refused an operation on container '%s' before it ran, but "
+            "could not settle its journal record %s: %s",
+            sName, sOperationId, error,
+        )
 
 
 def _fgenericRunEffectAdmitted(sName, sContainerId, sMode, fnEffect):
@@ -646,10 +675,7 @@ async def _fdictSuperviseLockHeldWorker(
             "iHolderPid": os.getpid(),
             "iHolderProcessGroup": os.getpgrp(),
         }
-        operationJournal.fnPromoteOperationToInFlight(
-            supervisor.sName, supervisor.sOperationId, dictIdentity,
-        )
-        fnAssertOperationAdmittedByIdentity(
+        _fnPromoteAndGateBeforeAnyEffect(
             supervisor.sName, supervisor.sOperationId, dictIdentity,
         )
         return await _fdictRunAndSettleWorker(supervisor, fnWorker)

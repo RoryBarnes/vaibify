@@ -413,6 +413,54 @@ def test_self_holder_record_is_probed_without_identity_only_when_idle(
     assert dictProven["bProven"] is True
 
 
+@pytest.mark.falsification
+def test_self_held_helper_record_refusal_says_to_quit_the_hub():
+    """A helper record the live hub holds is refused with advice that works.
+
+    A helper's only proof is its holder process. When that holder is
+    the running hub, the identity the live-hub substitution drops is
+    the whole proof, and the probe used to answer "missing identity;
+    remove the residue", which no researcher can act on. The hub's
+    exit is the proof, so the refusal must say to quit it first.
+
+    Kills: removing the self-held helper branch from
+    ``reconciliation._ftReconcileRecordVerdict``.
+    """
+    sOperationId = fsPrepareOperation(
+        S_PROJECT, "helper", "post-push-verify github",
+    )
+    fnPromoteOperationToInFlight(
+        S_PROJECT, sOperationId,
+        {"iHolderPid": os.getpid(), "iHolderProcessGroup": os.getpgrp()},
+    )
+    dictRefused = fdictProveJournalRecordsSettled(
+        S_PROJECT, None, {sOperationId},
+        fbSelfHolderProvenIdle=lambda: True,
+    )
+    assert dictRefused["bProven"] is False
+    sReason = dictRefused["sRefusalReason"]
+    assert "quit vaibify" in sReason, sReason
+    assert "residue" not in sReason, sReason
+
+
+def test_a_poisoned_helper_record_clears_once_its_hub_has_exited():
+    """The advice the self-held refusal gives does clear the record.
+
+    The field shape: a post-push verify's worker raised, so its record
+    is NEEDS_RECONCILIATION, and its holder is the hub. Once the hub has
+    exited, the crash-time proof must accept it, or "quit vaibify, then
+    reconcile" would be advice that leads nowhere.
+    """
+    sOperationId = _fsJournalDeadHelperRecord()
+    fnMarkOperationNeedsReconciliation(
+        S_PROJECT, sOperationId, sNote="worker failed before settling",
+    )
+    dictProven = fdictProveJournalRecordsSettled(
+        S_PROJECT, None, {sOperationId},
+    )
+    assert dictProven["bProven"] is True, dictProven
+
+
 def test_self_holder_substitution_never_touches_a_foreign_pid_record():
     """The substitution is for the hub's OWN pid only; a dead foreign
     holder is proven by the ordinary recycle-proof probe."""

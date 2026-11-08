@@ -4448,7 +4448,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # configuration raised is relayed in the push's warning.
     # 956 -> 978 (2026-10-28): the shared 409 for a lifecycle lock that
     # another operation holds, used by every route module that takes it.
-    "routeContext.py": 978,
+    # 978 -> 991 (2026-11-07): the post-push verify carries its failure
+    # back, as the manual verify route does; raised in the worker, it
+    # quarantined the container over a verify that wrote nothing.
+    "routeContext.py": 991,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -6465,7 +6468,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1317 -> 1321 (2026-10-01): type-only imports name the annotations.
     # 1321 -> 1359 (2026-10-28): the carrier's entry asks the Quit
     # gate, and names every live item so a Quit can say what it waits for.
-    "commitCarrier.py": 1359,
+    # 1359 -> 1385 (2026-11-07): modes (a) and (b) settle the record of
+    # a request the identity gate refused before its effect existed;
+    # it stayed IN_FLIGHT, a phantom operation per refused request.
+    "commitCarrier.py": 1385,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
