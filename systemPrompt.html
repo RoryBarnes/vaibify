@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>System Prompt &mdash; Vaibify 0.3.1.dev18 documentation</title>
+  <title>System Prompt &mdash; Vaibify 0.3.1.dev20 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f09e58ee"></script>
+      <script src="_static/documentation_options.js?v=7e5d1b2d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -337,6 +337,7 @@ procedure to fix them permanently.</p>
 <p><code class="docutils literal notranslate"><span class="pre">&lt;repo&gt;/.vaibify/requirements.txt</span></code> is a GENERATED MIRROR of that list. It is rewritten from the image on every container start. Editing the mirror changes nothing that survives: the next start replaces it and reports your edit as lost. PROOF Level 3 compiles <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> from the first of <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">requirements.in</span></code> or <code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code> it finds at the repository root, and from the mirror only when none of those exists — so a dependency file you add at the repository root changes what the lock is compiled from, not what the image installs.</p>
 <p>So: <strong>tell the researcher which package you need and why, and ask them to add it to <code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code> in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> and rebuild the image.</strong> Until they do, your <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> holds for this container session only — say that plainly rather than reporting the dependency as handled.</p>
 <p>Why it works this way, since editing a file in here looks more convenient: a package installed only in this container is present in the running container AND in <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>, and absent from the image anyone else would pull. The work then reproduces for the researcher and fails for everybody else — at the far end, where nobody can debug it.</p>
+<p>System libraries and compilers follow the same rule, with no in-container workaround: you have no <code class="docutils literal notranslate"><span class="pre">sudo</span></code> and the image deletes its apt package lists, so <code class="docutils literal notranslate"><span class="pre">apt-get</span> <span class="pre">install</span></code> cannot run here — and do not unpack <code class="docutils literal notranslate"><span class="pre">.deb</span></code> files or build a toolchain under your home directory, which the next rebuild discards. Two more <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> keys reach the image at rebuild: <code class="docutils literal notranslate"><span class="pre">systemPackages</span></code> (Ubuntu packages, for a library Ubuntu ships ready to use) and <code class="docutils literal notranslate"><span class="pre">features</span></code> (flags that each install a whole stack, including its compile step; for example, <code class="docutils literal notranslate"><span class="pre">nestedSampling</span></code> builds the MultiNest library that <code class="docutils literal notranslate"><span class="pre">pymultinest</span></code> loads and installs <code class="docutils literal notranslate"><span class="pre">pymultinest</span></code> and <code class="docutils literal notranslate"><span class="pre">ultranest</span></code> with it). A library that must be compiled belongs to a feature: listing its compiler in <code class="docutils literal notranslate"><span class="pre">systemPackages</span></code> installs the compiler and builds nothing. Name the library, say which key you believe provides it, and ask the researcher to check the “Features” table in vaibify’s install guide.</p>
 </section>
 <section id="rules">
 <h4>Rules<a class="headerlink" href="#rules" title="Link to this heading"></a></h4>
