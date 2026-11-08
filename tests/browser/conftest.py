@@ -468,6 +468,10 @@ def _fnIsolateProjectRegistry():
         # The hub's scheduled re-verify stamps its first pass a short
         # delay after start, outside any test's own redirect.
         from vaibify.reproducibility import scheduledReverify
+        # A layout save lands a second after a click, and a closing
+        # page sends its last one on pagehide: both can arrive after
+        # the test that caused them has undone its own redirect.
+        from vaibify.config import dashboardRecords
         # The hub binds its control socket at startup, before any
         # test's own redirect. Its directory comes from the system
         # temporary root, not sHome: an AF_UNIX path is capped at 104
@@ -480,6 +484,9 @@ def _fnIsolateProjectRegistry():
         ), patch.object(
             scheduledReverify, "fsReverifyStatePath",
             lambda: os.path.join(sHome, "reverifyState.json"),
+        ), patch.object(
+            dashboardRecords, "fsDashboardStateRoot",
+            lambda: os.path.join(sHome, "dashboardState"),
         ), patch.object(
             registryManager, "_S_REGISTRY_DIRECTORY", sHome,
         ), patch.object(
