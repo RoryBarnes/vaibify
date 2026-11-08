@@ -76,6 +76,10 @@ def _fiWriteProjectRecordAsAnotherWindow(page, dictState):
 def _fnReloadAndOpen(page, sEntryChoice):
     """Reload the page -- a real unload -- and open the project again."""
     page.reload(wait_until="load")
+    # WebKit reports the replaced page's in-flight polls, which the
+    # reload itself cancels, as "access control checks" page errors;
+    # they belong to the discarded document, not the reloaded one.
+    page.listPageErrors.clear()
     sTile = f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]'
     page.wait_for_selector(sTile + ":not(.container-tile--locked)",
                            timeout=90000)
