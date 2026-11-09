@@ -190,3 +190,48 @@ def testTheStreamedExecAlsoRaisesRatherThanInventingAnAnswer():
         adapter.ftRunInContainerStreamed(
             "cid", "some unmodelled streamed command",
         )
+
+
+@pytest.mark.falsification
+def testTheLaneHubNeverAsksTheRealDaemonAboutEgress(monkeypatch):
+    """Kills: leaving the lane hub's egress commands on the real daemon.
+
+    The lane's hub ran its egress reconcile with the real ``docker``
+    and a throwaway registry, and removed the proxy of a developer's
+    running sealed container. Its egress commands must be refused for
+    the hub's whole life. Mutation: drop the ``_fprocessDocker`` patch
+    from ``_fcontextKeepHubHooksOffTheRealDaemon``; the reconcile then
+    reaches the stand-in for the real daemon below.
+    """
+    from tests.browser import conftest as laneConftest
+    from vaibify.docker import projectEgress
+    from vaibify.docker.egressProxy import EgressSetupError
+    from vaibify.gui import projectEgressLifecycle
+
+    listReached = []
+
+    def fnStandInForTheRealDaemon(listArguments, fTimeoutSeconds=None):
+        listReached.append(list(listArguments))
+        raise AssertionError("the lane hub reached the real daemon")
+
+    monkeypatch.setattr(projectEgress, "_fprocessDocker", fnStandInForTheRealDaemon)
+    with laneConftest._fcontextKeepHubHooksOffTheRealDaemon():
+        with pytest.raises(EgressSetupError):
+            projectEgressLifecycle.fdictReconcileProjectEgress()
+    assert listReached == []
+
+
+def testTheLaneHubHoldsEveryStateStoreRedirect(tmp_path):
+    """Every declared store lands in the lane's home while the hub lives."""
+    import importlib
+    from tests.conftest import (
+        T_REDIRECTED_STATE_STORES, fcontextRedirectEveryStateStore,
+        fsRedirectedStorePath,
+    )
+    with fcontextRedirectEveryStateStore(str(tmp_path)):
+        for tStoreRedirect in T_REDIRECTED_STATE_STORES:
+            valueStore = getattr(
+                importlib.import_module(tStoreRedirect.sModule),
+                tStoreRedirect.sAttribute)
+            sPath = valueStore() if callable(valueStore) else valueStore
+            assert sPath == fsRedirectedStorePath(str(tmp_path), tStoreRedirect)
