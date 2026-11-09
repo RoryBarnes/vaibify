@@ -56,6 +56,12 @@ dependencies = [
     # wheel is the only codec. Without it, every zstd deposit failed to
     # load on 3.9-3.13 after a full download (2026-09-26).
     "zstandard>=0.21; python_version < '3.14'",
+    # Reading each project's own dependency declaration before a build
+    # (vaibify/cli/projectDeclarations.py): `packaging` parses each
+    # requirement exactly as pip does, and pyproject.toml is TOML, which
+    # the standard library reads only from 3.11 (`tomllib`).
+    "packaging>=22.0",
+    "tomli>=1.1; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]

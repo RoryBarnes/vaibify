@@ -331,7 +331,26 @@ DICT_NAMED_AUTHORITIES = {
             "vaibify.yml values, already validated against the "
             "repository-field character set and transport allow-list, "
             "each its own argv element. GIT_TERMINAL_PROMPT=0 so a "
-            "private remote fails rather than waits for a password.",
+            "private remote fails rather than waits for a password; "
+            "GitHub is asked over HTTPS through gh's own credential "
+            "helper when gh is installed, the way the container clones.",
+        ),
+    "cli/projectDeclarations.py|<module>|process-launch|subprocess|import|0":
+        _fdictAuthority(
+            ["host-cli", "http"],
+            "Build preflight and build: reads each project's dependency "
+            "declaration from its remote at one commit -- `git init`, "
+            "`remote add`, a shallow blobless `fetch` of one branch, "
+            "`rev-parse FETCH_HEAD`, `ls-tree` and `cat-file` of one "
+            "blob -- so the image installs what each project declares. "
+            "Serves `vaibify build` and gui/buildRoutes.py. One launch "
+            "site, a fixed argv list with no shell, carrying the "
+            "hardening list, in an empty private directory that selects "
+            "no repository; the url and branch are the project's own "
+            "vaibify.yml values, each its own argv element, the url "
+            "refused when it is an option or a remote-helper address. "
+            "GIT_TERMINAL_PROMPT=0, and GitHub is asked through gh's "
+            "own credential helper, so no token passes through vaibify.",
         ),
     "cli/commandStart.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(

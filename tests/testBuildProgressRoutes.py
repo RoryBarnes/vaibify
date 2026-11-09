@@ -367,6 +367,57 @@ def test_a_build_naming_a_branch_the_remote_lacks_is_refused_before_it_starts(
 
 
 @pytest.mark.falsification
+def test_the_projects_own_repository_is_read_before_anything_is_stopped(
+    fixtureClient,
+):
+    """The build adds the project's own repository to the clone list, so
+    the route's checks must see it too, or an unreadable declaration in
+    it is found only after the Rebuild flow has stopped the container.
+
+    Kills: running the configuration checks against the configured list
+    alone.
+    """
+    from types import SimpleNamespace
+    from vaibify.cli import projectDeclarations
+
+    sOwnUrl = "https://host.example/g/study"
+
+    def flistRead(listRepositories):
+        if any(d.get("url") == sOwnUrl for d in listRepositories):
+            raise projectDeclarations.ProjectDeclarationError(
+                "study's requirements.txt, line 2: '-e .' is a pip option")
+        return []
+    listBuilds = []
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: listBuilds.append(aArgs),
+    )
+    listPatches[1] = patch(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        return_value=SimpleNamespace(listRepositories=[]),
+    )
+    listPatches += [
+        patch("vaibify.cli.commandBuild._fsGitRemoteUrl", return_value=sOwnUrl),
+        patch("vaibify.cli.commandBuild._fsGitBranch", return_value="main"),
+        patch.object(
+            projectDeclarations, "flistReadProjectDeclarations", flistRead),
+    ]
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        response = fixtureClient.post(
+            "/api/containers/proj/build?bPreflightOnly=true")
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "'-e .' is a pip option" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == (
+        buildRoutes.S_REFUSAL_UNREADABLE_PROJECT_DECLARATION)
+    assert listBuilds == []
+
+
+@pytest.mark.falsification
 def test_a_preflight_only_request_answers_the_refusals_and_builds_nothing(
     fixtureClient,
 ):
