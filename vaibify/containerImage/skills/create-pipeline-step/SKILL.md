@@ -160,13 +160,14 @@ Project entry rules:
 - Step labels are per-type sequential (`A09` is the 9th automated
   step, not `listSteps[9]`) — always report `sLabel` verbatim.
 - Missing Python packages: `pip install` lasts for this container
-  session only, and you cannot make it permanent. The one declaration
-  is `pythonPackages` in the project's `vaibify.yml`, which the
-  researcher edits and which takes effect when the image is rebuilt.
-  `<repo>/.vaibify/requirements.txt` is a generated mirror rewritten
-  on every container start, so editing it changes nothing. Name the
-  package, a version lower bound and why, and ask the researcher to
-  add it.
+  session only. To make one permanent, add it with a version lower
+  bound to the project's own dependency file at the repository root
+  (the first of `pyproject.toml`, `requirements.in`,
+  `requirements.txt`; create `requirements.txt` if none exists),
+  commit and push, and ask the researcher to Rebuild: the build reads
+  that file from the remote. `<repo>/.vaibify/requirements.txt` is a
+  generated mirror rewritten on every container start, so editing it
+  changes nothing.
 
 The full authoring reference (naming, worked examples, colliding
 basenames, CI enforcement) is `vaibify/docs/scriptAuthoring.md`,

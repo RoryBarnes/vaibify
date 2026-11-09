@@ -492,3 +492,28 @@ def testNoCandidateAsksNothing():
     assert fpreflightProjectDeclarations(
         _fconfigWith([LIST_REPOSITORIES[0] | {"installMethod": "c_and_pip"}]),
         fnRead=fnRead) is None
+
+
+def testTheBuildsOwnOutputSaysWhichCopyARerunUses(monkeypatch, tmp_path):
+    """The dashboard logs a preflight warning without showing it, so the
+    build window must carry the note itself."""
+    from vaibify.cli import commandBuild
+    from vaibify.docker import imageBuilder
+    listLines = []
+    monkeypatch.setattr(imageBuilder, "fnEmitBuildLine", listLines.append)
+    monkeypatch.setattr(
+        commandBuild, "fconfigForBuildContext",
+        lambda config, sProjectDirectory=None: config)
+    monkeypatch.setattr(
+        projectDeclarations, "flistReadProjectDeclarations",
+        lambda listRepositories, *aArgs, **kwargs: [
+            _fdictDeclaration(["PlotKit>=1"]) | {"sBranch": "main"}])
+    commandBuild.fnStageProjectDeclarations(
+        _fconfigWith(LIST_REPOSITORIES), str(tmp_path))
+    assert listLines == [
+        "[vaib] project study: requirements.txt at aaaaaaaaaaaa, 1 requirement(s)\n",
+        "[vaib] note: plotkit (study declares it): the image installs this "
+        "from the package index, and the container's start installs your "
+        "listed clone over it. The shadow rerun and reproduce.sh use the "
+        "image's copy.\n",
+    ]

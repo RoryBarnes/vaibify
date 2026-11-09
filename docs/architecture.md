@@ -4108,6 +4108,72 @@ without a daemon and the part that touches the daemon is one place.
 Both records hold no secret: the cookie lives only in the mounted
 directory, the proxy's allowlist only in the sidecar's argv.
 
+**An egress identity is released only on the daemon's word.** The
+reconcile once released every identity its own project registry did
+not list. A hub with a different registry -- a second hub, a test hub,
+the browser lane run on a researcher's machine -- then removed a
+running sealed project's proxy, and the container lost the network
+with nothing in any log. The registry cannot answer whether a
+container uses a network; the daemon can (`docker ps -a --filter
+network=...`, which also counts a stopped container and still matches
+by name once the network is gone). So an identity is released only
+when the daemon answers that nothing but the proxy is attached, an
+unanswered daemon releases nothing, and every removal is logged with
+its reason.
+
+**A missing proxy is restored as it was launched.** The launch records
+its exact run arguments and the proxy's address in
+`~/.vaibify/egress/<uuid>/launch.json` (mode 600, no secret). When a
+running sealed container's proxy is gone, the reconcile replays THAT
+record, never today's `vaibify.yml`, so an allowlist edited since cannot
+widen a running container's egress. The restore runs under the
+container's lifecycle lock, re-checks under it that the container still
+runs and is attached, and refuses, removing what it made, when the
+proxy comes back at another address, since the container's proxy
+variables name the old one. No record means "restart the container".
+
+## Each project's dependencies reach the image
+
+A container can hold several projects, and each declares what it needs
+in its own repository. Until 2026-11 the image installed only
+`pythonPackages`, so a project's own requirement reached a container
+only when its start installed it. That is invisible from inside a
+running container and fatal for a reproducer: the Level 3 shadow and
+`reproduce.sh` run the image with the entrypoint overridden.
+
+- **The build reads each declaration itself, from the remote.**
+  `vaibify/cli/projectDeclarations.py` takes every listed repository
+  whose tree has `.vaibify/` (never a `pip_no_deps` or `c_and_pip`
+  one), fetches its branch shallow and blobless, and reads the first of
+  the lock's own inputs (`dependencyPinning.T_LOCK_INPUT_CANDIDATES`
+  without the mirror), so the image and the lock compile from one file.
+  The commit recorded is the one that fetch brought, read at build time
+  rather than carried from the preflight, so the record names exactly
+  the bytes installed even when a push lands between the two. Only
+  requirement lines are accepted.
+- **Everything installs in one resolution.** The `projectDependencies`
+  stage, the last environment overlay and below every agent, runs ONE
+  `pip install` over the image's list, every feature's list and every
+  project's, then `pip check`. One after another, a later list would
+  replace a version an earlier one needed without a word.
+- **The finished environment is checked as a reproducer runs it.**
+  `imageBuilder.fnRequireEnvironmentSatisfiesDeclarations` runs the
+  image's own `checkDeclaredRequirements.py` in the agent-free
+  environment image `fsResolveEnvironmentImageId` names, with no
+  network and the entrypoint overridden, and moves the final tag only
+  once every declared requirement is satisfied by version, extra and
+  marker.
+- **The start names what the image predates.** The entrypoint asks the
+  same checker about each project's working copy, against the image's
+  own packages, and the warning's code says where the edit lives:
+  uncommitted, unpushed, or pushed and not yet built.
+
+The mirror in each repository's `.vaibify/requirements.txt` lists all
+three sources in sections. The Level 3 comparison of `pythonPackages`
+against the mirror reads only the first section, the one
+`pythonPackages` built; the others are compared by the configuration
+fingerprint and by the checks above.
+
 ## JavaScript frontend
 
 The frontend lives under `vaibify/gui/static/` and uses the IIFE

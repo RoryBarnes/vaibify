@@ -523,15 +523,22 @@ def fnStageProjectDeclarations(config, sDockerDir, sProjectDirectory=None):
     packages and must not need the author's remotes.
     """
     from vaibify.docker.imageBuilder import fnEmitBuildLine
-    from .projectDeclarations import flistStageProjectDeclarations
+    from .projectDeclarations import (
+        flistStageProjectDeclarations, fsDescribeNamesAlsoListedAsRepositories,
+    )
     configContext = fconfigForBuildContext(config, sProjectDirectory)
-    for dictDeclaration in flistStageProjectDeclarations(
-            configContext.listRepositories, sDockerDir):
+    listDeclarations = flistStageProjectDeclarations(
+        configContext.listRepositories, sDockerDir)
+    for dictDeclaration in listDeclarations:
         sFile = dictDeclaration["sFile"] or "no declaration file"
         fnEmitBuildLine(
             f"[vaib] project {dictDeclaration['sRepository']}: {sFile} at "
             f"{dictDeclaration['sCommit'][:12]}, "
             f"{len(dictDeclaration['listRequirements'])} requirement(s)\n")
+    sNote = fsDescribeNamesAlsoListedAsRepositories(
+        configContext.listRepositories, listDeclarations)
+    if sNote:
+        fnEmitBuildLine(f"[vaib] note: {sNote}\n")
 
 
 def fnWriteSystemPackages(config, sDockerDir):

@@ -79,6 +79,7 @@ __all__ = [
     "flistParseRequirementsText",
     "flistReadProjectDeclarations",
     "fpreflightProjectDeclarations",
+    "fsDescribeNamesAlsoListedAsRepositories",
     "fsProjectRequirementsDigest",
 ]
 
@@ -442,13 +443,14 @@ def _fpreflightUnknownNames(config, listDeclarations, fbNameExists):
     )
 
 
-def _fpreflightNamesAlsoListedAsRepositories(listRepositories, listDeclarations):
-    """Warn where a declared package is also a repository the container installs at start.
+def fsDescribeNamesAlsoListedAsRepositories(listRepositories, listDeclarations):
+    """Return the sentence for declared packages that are also listed clones, or "".
 
     The image installs the declared package from the index; the
     container's start then installs the clone over it. The shadow rerun
     and ``reproduce.sh`` bypass the start, so they run the image's copy.
-    Neither is chosen silently: the researcher is told.
+    Neither is chosen silently: the preflight warns and the build says
+    so in its own output, which both lanes show.
     """
     dictRepositoryByName = {
         fsNormalizePackageName(dictRepository.get("name") or ""): dictRepository
@@ -462,12 +464,20 @@ def _fpreflightNamesAlsoListedAsRepositories(listRepositories, listDeclarations)
                 listNotes.append(
                     f"{sName} ({dictDeclaration['sRepository']} declares it)")
     if not listNotes:
+        return ""
+    return (
+        f"{', '.join(sorted(set(listNotes)))}: the image installs this "
+        "from the package index, and the container's start installs "
+        "your listed clone over it. The shadow rerun and reproduce.sh "
+        "use the image's copy.")
+
+
+def _fpreflightNamesAlsoListedAsRepositories(listRepositories, listDeclarations):
+    sMessage = fsDescribeNamesAlsoListedAsRepositories(
+        listRepositories, listDeclarations)
+    if not sMessage:
         return None
     return PreflightResult(
         sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_WARN, sScope=S_SCOPE_PROJECT,
-        sMessage=(
-            f"{', '.join(sorted(set(listNotes)))}: the image installs this "
-            "from the package index, and the container's start installs "
-            "your listed clone over it. The shadow rerun and reproduce.sh "
-            "use the image's copy."),
+        sMessage=sMessage,
     )

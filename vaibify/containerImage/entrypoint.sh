@@ -1555,15 +1555,15 @@ procedure to fix them permanently.
 
 ### Persisting the Dependency
 
-The immediate `pip install` is ephemeral, and **you cannot make it permanent from inside this container.**
+The immediate `pip install` is ephemeral: it holds for this container session only.
 
-Dependencies are declared in exactly ONE place: `pythonPackages` in the project's `vaibify.yml`. That file lives on the researcher's host, it is what the container image is built from, and you have no access to it.
+**To make a dependency permanent, declare it in the project's own dependency file**, at the repository root: the first of `pyproject.toml` (its `[project] dependencies`), `requirements.in` or `requirements.txt` that exists, or a new `requirements.txt` if none does. Commit and push it, then ask the researcher to Rebuild. The build reads every project's file from its remote, at the commit the configured branch names, installs all of them into the image together, and checks the result in the image a reproducer runs; PROOF Level 3 compiles `requirements.lock` from the same file. Write requirement lines only (`name`, `name>=1.2`, `name[extra]`): an option line, a URL, a path, `-e` or `-r` refuses the build, naming the line. Until the rebuild, every container start names the package as declared and not in the image, and says whether the change still needs committing, pushing or only a Rebuild; say plainly that the dependency is pending until then, rather than reporting it as handled.
 
-`<repo>/.vaibify/requirements.txt` is a GENERATED MIRROR of that list. It is rewritten from the image on every container start. Editing the mirror changes nothing that survives: the next start replaces it and reports your edit as lost. PROOF Level 3 compiles `requirements.lock` from the first of `pyproject.toml`, `requirements.in` or `requirements.txt` it finds at the repository root, and from the mirror only when none of those exists — so a dependency file you add at the repository root changes what the lock is compiled from, not what the image installs.
+`pythonPackages` in the environment's `vaibify.yml` is the other place a package can be declared: the environment's own list, for what every project in this container needs. That file lives on the researcher's host and you have no access to it; ask the researcher when a package belongs there.
 
-So: **tell the researcher which package you need and why, and ask them to add it to `pythonPackages` in `vaibify.yml` and rebuild the image.** Until they do, your `pip install` holds for this container session only — say that plainly rather than reporting the dependency as handled.
+`<repo>/.vaibify/requirements.txt` is a GENERATED MIRROR of everything the image installed, rewritten on every container start. Editing it changes nothing that survives: the next start replaces it and reports your edit as lost.
 
-Why it works this way, since editing a file in here looks more convenient: a package installed only in this container is present in the running container AND in `requirements.lock`, and absent from the image anyone else would pull. The work then reproduces for the researcher and fails for everybody else — at the far end, where nobody can debug it.
+Why it works this way, since a `pip install` in here looks like enough: a package installed only in this container is present for you and absent from the image anyone else would pull, and from the image the Level 3 rerun uses. The work then reproduces for the researcher and fails for everybody else — at the far end, where nobody can debug it.
 
 System libraries and compilers follow the same rule, with no in-container workaround: you have no `sudo` and the image deletes its apt package lists, so `apt-get install` cannot run here — and do not unpack `.deb` files or build a toolchain under your home directory, which the next rebuild discards. Two more `vaibify.yml` keys reach the image at rebuild: `systemPackages` (Ubuntu packages, for a library Ubuntu ships ready to use) and `features` (flags that each install a whole stack, including its compile step; for example, `nestedSampling` builds the MultiNest library that `pymultinest` loads and installs `pymultinest` and `ultranest` with it). A library that must be compiled belongs to a feature: listing its compiler in `systemPackages` installs the compiler and builds nothing. Name the library, say which key you believe provides it, and ask the researcher to check the "Features" table in vaibify's install guide.
 
@@ -1573,7 +1573,7 @@ System libraries and compilers follow the same rule, with no in-container workar
 - Always include a version lower bound (e.g., `>=1.0`).
 - Before adding a package, check for version conflicts: `pip install --dry-run <package>`
 - Do not add packages that duplicate functionality already available in the container.
-- Distinguish **code dependencies** (packages — declared in `pythonPackages` in `vaibify.yml`) from **data
+- Distinguish **code dependencies** (packages — declared in the project's own dependency file, or `pythonPackages` in `vaibify.yml`) from **data
   dependencies** (files from other steps — belong in `{step:<sStepId>.<stem>}` references).
 
 ## Important
