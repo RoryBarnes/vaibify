@@ -22883,6 +22883,16 @@ LIST_FALSIFICATIONS = [
         new='',
         iExpectedOccurrences=2,
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testARebuildAnnouncesItsPreflight.py::'
+            'testTheRebuildPreflightIsAnnouncedWhileItIsUnanswered'
+        ),
+        # the page sits unchanged while the preflight looks names up
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        VaibifyApp.fnShowToast(_S_BUILD_PREFLIGHT_ANNOUNCEMENT, "info");\n',
+        new='',
+    ),
     # --- 2026-09-21: the wizard audit ---
     Falsification(
         nodeid=(

@@ -2651,13 +2651,23 @@ var VaibifyContainerManager = (function () {
         }
     }
 
+    var _S_BUILD_PREFLIGHT_ANNOUNCEMENT =
+        "Checking vaibify.yml before anything is stopped: package " +
+        "names, repository branches and the base image are looked up " +
+        "online, which can take several seconds.";
+
     async function _fbBuildPreflightPasses(sName) {
         /* A Rebuild stops the container (a docker rm) before it builds,
            and a build refused AFTER that stop left the researcher with
            no container and no build. The route answers its refusals
            without building when asked, so they are asked first; only a
            refusal that names itself blocks -- anything else is left for
-           the build itself to report as it always did. */
+           the build itself to report as it always did. The checks look
+           package names and repository branches up online, which took
+           10-15 s on a real project with nothing on screen to say a
+           click had registered; so the wait is announced first. */
+        fnSetTilePending(sName);
+        VaibifyApp.fnShowToast(_S_BUILD_PREFLIGHT_ANNOUNCEMENT, "info");
         try {
             await VaibifyApi.fdictPostRaw(
                 "/api/containers/" + encodeURIComponent(sName) +
@@ -2667,6 +2677,7 @@ var VaibifyContainerManager = (function () {
             if (_fbRefusalIsNotABuild(error) || _fbRefusalNamesTheSwitch(error)) {
                 VaibifyApp.fnShowToast(
                     VaibifyDiagnosis.fsExplainError(error), "error");
+                fnLoadContainers();
                 return false;
             }
             return true;
