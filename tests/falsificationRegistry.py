@@ -32340,6 +32340,19 @@ LIST_FALSIFICATIONS = [
             '--ServerApp.token=\\"$(cat /run/vaibify/jupyter-token)\\""]'
         ),
     ),
+    # --- 2026-11-08: every installing overlay assumed it began as root.
+    # One entry for the parametrized family; with the fix stashed, each
+    # of the seven installing overlays failed its own case and every
+    # agent overlay passed.
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileHardening.py::'
+            'test_overlay_installs_system_wide_only_as_root'
+        ),
+        source='vaibify/containerImage/overlays/nestedSampling.dockerfile',
+        old='USER root\n\n# gfortran',
+        new='# gfortran',
+    ),
     # --- 2026-10-19: the in-container guide yields to the researcher.
     Falsification(
         nodeid=(
