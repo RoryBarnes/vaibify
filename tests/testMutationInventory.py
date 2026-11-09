@@ -479,7 +479,13 @@ I_UNCLASSIFIED_ROW_BUDGET = 259
 # creates a link where nothing exists (follow-up-after-210 plan, A7).
 # Classified at birth; the guards behind it are kill-confirmed
 # (tests/testSeedLinks.py).
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 229
+# 229 -> 230 (2026-11-09): the build's check of the pinned environment
+# (imageBuilder.fdictCheckDeclaredRequirementsInImage), a throwaway
+# `docker run --rm --network none --entrypoint ""` of the image the
+# build just made, inside the build's lifecycle lock, touching no
+# project container. Classified at birth; the entrypoint override is
+# kill-confirmed (tests/testEnvironmentSatisfiesDeclarationsLive.py).
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 230
 
 
 # Every acquisition of a declared capability that still has no reviewed

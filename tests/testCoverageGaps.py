@@ -872,8 +872,9 @@ def test_fnTagFinalImage_tags(mockRun):
     assert "proj:latest" in saCommand
 
 
+@patch("vaibify.docker.imageBuilder.fnRequireEnvironmentSatisfiesDeclarations")
 @patch("vaibify.docker.imageBuilder._fnRunDockerBuild")
-def test_fnBuildImage_full(mockRun):
+def test_fnBuildImage_full(mockRun, mockRequireSatisfied):
     from vaibify.docker.imageBuilder import fnBuildImage
     config = _fConfigFull()
     config.features.bJupyter = True

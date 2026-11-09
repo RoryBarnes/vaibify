@@ -40981,4 +40981,16 @@ LIST_FALSIFICATIONS = [
         old='            /etc/vaibify/projectRequirements/*.txt; do \\\n',
         new='            ; do \\\n',
     ),
+    Falsification(
+        nodeid='tests/testEnvironmentSatisfiesDeclarationsLive.py::testAPackageOnlyTheStartInstallsFailsTheBuild',
+        source='vaibify/docker/imageBuilder.py',
+        old='        ["docker", "run", "--rm", "--network", "none", "--entrypoint", "",\n',
+        new='        ["docker", "run", "--rm", "--network", "none",\n',
+    ),
+    Falsification(
+        nodeid='tests/testCheckDeclaredRequirements.py::testATightenedVersionIsUnsatisfiedThoughTheNameIsInstalled',
+        source='vaibify/containerImage/checkDeclaredRequirements.py',
+        old='    if not Requirement(sLine).specifier.contains(sVersion, prereleases=True):\n',
+        new='    if False:\n',
+    ),
 ]

@@ -472,6 +472,7 @@ _T_BUILD_DECISIVE_MARKERS = (
     "permission denied", "connection refused", "timed out",
     "requires buildkit", "failed to parse platform",
     "has requirement", "which is not installed",
+    "is not satisfied in the environment image",
 )
 
 
@@ -563,6 +564,27 @@ def _fsExplainConflictingDeclarations(sStderrTail):
         "or pythonPackages in vaibify.yml), then rebuild.")
 
 
+_REGEX_UNSATISFIED = re.compile(
+    r"^vaibify: ('[^'\n]+' \([^)\n]+\)) is not satisfied in the environment "
+    r"image: ([^\n]+) installed$", re.MULTILINE)
+
+
+def _fsExplainUnsatisfiedEnvironment(sStderrTail):
+    """Name each declared requirement the finished environment does not meet."""
+    listMisses = [
+        f"{sRequirement} has {sInstalled}"
+        for sRequirement, sInstalled in _REGEX_UNSATISFIED.findall(
+            sStderrTail or "")
+    ]
+    return (
+        "The image was built, but its environment does not satisfy what was "
+        "declared, checked as the shadow rerun and reproduce.sh run it: "
+        + "; ".join(listMisses) + ". A later install in the build replaced "
+        "a version a declaration asked for. Loosen that declaration, or pin "
+        "the package where the later install comes from, then rebuild; "
+        "the container still has the previous image.")
+
+
 def _fbLegacyBuilderMetBuildKitSyntax(sLower):
     """Return True for the legacy builder's two refusals of BuildKit syntax.
 
@@ -620,6 +642,9 @@ def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
             ),
             "sCommand": "",
         }
+    if "is not satisfied in the environment image" in sLower:
+        return {"sHint": _fsExplainUnsatisfiedEnvironment(sStderrTail),
+                "sCommand": ""}
     if "conflicting dependencies" in sLower or "resolutionimpossible" in sLower:
         return {"sHint": _fsExplainConflictingDeclarations(sStderrTail),
                 "sCommand": ""}
