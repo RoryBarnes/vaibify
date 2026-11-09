@@ -38630,6 +38630,12 @@ LIST_FALSIFICATIONS = [
         new='        <(fnListImageRequirementNames) \\\n',
     ),
     Falsification(
+        nodeid='tests/testBrowserLaneContract.py::testTheLaneHubNeverAsksTheRealDaemonAboutEgress',
+        source='tests/browser/conftest.py',
+        old='        projectEgress, "_fprocessDocker", _fnRefuseEgressDockerCall,\n    ), patch.object(\n',
+        new='',
+    ),
+    Falsification(
         nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndWebAndExcludesThePair',
         source='vaibify/gui/static/scriptWorkflowManager.js',
         old='        dictData.sNetworkMode = "web";\n',

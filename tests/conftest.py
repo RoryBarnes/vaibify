@@ -11,6 +11,7 @@ overwrite, or delete the researcher's real stored credentials).
 """
 
 import atexit
+import contextlib
 import fnmatch
 import importlib
 import logging
@@ -483,6 +484,27 @@ def _fnRedirectStateStore(monkeypatch, sHome, tStoreRedirect):
     monkeypatch.setattr(moduleStore, tStoreRedirect.sAttribute, sPath)
 
 
+@contextlib.contextmanager
+def fcontextRedirectEveryStateStore(sHome):
+    """Hold every declared store redirect open for the life of the context.
+
+    The autouse fixture below redirects per TEST. A hub kept open across
+    a whole module (the browser lane's) runs its startup hooks, its
+    first reaper pass, the gaps between tests and its shutdown outside
+    any test, so it needs the redirects for its own lifetime: without
+    them its keep-alive reaper signalled the researcher's real
+    caffeinate, and its recoveries read the real rename and conversion
+    journals against a registry that did not know their projects.
+    """
+    monkeypatchStores = pytest.MonkeyPatch()
+    try:
+        for tStoreRedirect in T_REDIRECTED_STATE_STORES:
+            _fnRedirectStateStore(monkeypatchStores, sHome, tStoreRedirect)
+        yield
+    finally:
+        monkeypatchStores.undo()
+
+
 @pytest.fixture(autouse=True)
 def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     """Keep every test out of the researcher's real ~/.vaibify state.
@@ -767,6 +789,34 @@ def fnKeepCouncilStartupOffTheRealDaemon(request, monkeypatch):
     from vaibify.gui import appFactory
     monkeypatch.setattr(
         appFactory, "_fdockerCreateCouncilClientOrNone", lambda: None)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def fnKeepEgressOffTheRealDaemon(request, monkeypatch):
+    """A non-live test's hub must not run egress commands on a real daemon.
+
+    The hub's egress reconcile shells out to ``docker`` itself, so every
+    test that boots a hub with a TestClient ran it against the machine's
+    daemon; a browser-lane hub doing the same removed a developer's
+    running proxy (2026-11-08). Every egress command is refused here
+    unless the test is a live one; a test of the module itself replaces
+    the runner with its own scripted daemon, which takes precedence.
+    """
+    if any(
+        request.node.get_closest_marker(sMarker) is not None
+        for sMarker in ("docker", "docker_live", "dockerProbeUnderTest")
+    ):
+        yield
+        return
+    from vaibify.docker import egressProxy, projectEgress
+
+    def fnRefuseEgressDockerCall(listArguments, fTimeoutSeconds=None):
+        raise egressProxy.EgressSetupError(
+            "a non-live test runs no egress command on a real daemon: "
+            + " ".join(listArguments[:2]))
+
+    monkeypatch.setattr(projectEgress, "_fprocessDocker", fnRefuseEgressDockerCall)
     yield
 
 
