@@ -28,6 +28,8 @@ file and line, because none of them can be installed into an image the
 way the researcher's file implies.
 """
 
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -64,14 +66,20 @@ else:
 __all__ = [
     "ProjectDeclarationError",
     "S_PREFLIGHT_NAME",
+    "S_PROJECT_REQUIREMENTS_DIRECTORY",
+    "S_PROJECT_REQUIREMENTS_IMAGE_LABEL",
+    "S_PROJECT_REQUIREMENTS_INDEX",
     "T_DECLARATION_FILES",
     "T_UNREAD_INSTALL_METHODS",
+    "fbContextStagesProjectRequirements",
     "fdictReadProjectDeclaration",
+    "flistStageProjectDeclarations",
     "flistCandidateRepositories",
     "flistParsePyprojectDependencies",
     "flistParseRequirementsText",
     "flistReadProjectDeclarations",
     "fpreflightProjectDeclarations",
+    "fsProjectRequirementsDigest",
 ]
 
 
@@ -82,6 +90,13 @@ T_DECLARATION_FILES = tuple(
     if sCandidate != S_VAIBIFY_REQUIREMENTS_PATH
 )
 _S_PROJECT_MARKER_DIRECTORY = ".vaibify"
+# Where the build context stages the declarations, and the index beside
+# them; the projectDependencies stage copies the directory to
+# /etc/vaibify/projectRequirements/, where the container's start reads it.
+S_PROJECT_REQUIREMENTS_DIRECTORY = "project-requirements"
+S_PROJECT_REQUIREMENTS_INDEX = "index.json"
+S_PROJECT_REQUIREMENTS_IMAGE_LABEL = "vaibify-project-requirements-sha256"
+_REGEX_STAGED_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _REGEX_COMMENT = re.compile(r"(^|\s)#.*$")
 _REGEX_COMMIT = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
 
@@ -294,6 +309,67 @@ def _fsParseOneRequirement(sText, sWhere):
             f"{sWhere}: '{sText}' names a URL. An image installs from the "
             "package index, so name the package and its version instead.")
     return str(Requirement(sText))
+
+
+def flistStageProjectDeclarations(listRepositories, sDockerDir):
+    """Read every project's declaration and stage it in the build context.
+
+    Each project with something declared gets
+    ``project-requirements/<repository>.txt``, whose first line names
+    the file and commit; ``index.json`` records every project read,
+    declaring or not, with its commit. Returns the declarations.
+    """
+    listDeclarations = flistReadProjectDeclarations(listRepositories)
+    pathDirectory = os.path.join(sDockerDir, S_PROJECT_REQUIREMENTS_DIRECTORY)
+    os.makedirs(pathDirectory, exist_ok=True)
+    for dictDeclaration in listDeclarations:
+        sRepository = dictDeclaration["sRepository"]
+        if not _REGEX_STAGED_NAME.match(sRepository):
+            raise ProjectDeclarationError(
+                f"the repository name '{sRepository}' cannot name a file; "
+                "give it a plain name under repositories in vaibify.yml")
+        if dictDeclaration["listRequirements"]:
+            _fnWriteText(
+                os.path.join(pathDirectory, sRepository + ".txt"),
+                _fsStagedRequirementsText(dictDeclaration))
+    _fnWriteText(
+        os.path.join(pathDirectory, S_PROJECT_REQUIREMENTS_INDEX),
+        json.dumps(listDeclarations, indent=2, sort_keys=True) + "\n")
+    return listDeclarations
+
+
+def _fsStagedRequirementsText(dictDeclaration):
+    return (
+        f"# {dictDeclaration['sRepository']} {dictDeclaration['sFile']} at "
+        f"{dictDeclaration['sCommit']} (branch {dictDeclaration['sBranch']})\n"
+        + "".join(f"{sLine}\n" for sLine in dictDeclaration["listRequirements"])
+    )
+
+
+def _fnWriteText(sPath, sContent):
+    with open(sPath, "w", encoding="utf-8") as fileHandle:
+        fileHandle.write(sContent)
+
+
+def fbContextStagesProjectRequirements(sDockerDir):
+    """Return True when a build context stages at least one project requirement."""
+    try:
+        with open(os.path.join(
+                sDockerDir, S_PROJECT_REQUIREMENTS_DIRECTORY,
+                S_PROJECT_REQUIREMENTS_INDEX), encoding="utf-8") as fileHandle:
+            listDeclarations = json.load(fileHandle)
+    except FileNotFoundError:
+        return False
+    return any(dictDeclaration.get("listRequirements")
+               for dictDeclaration in listDeclarations)
+
+
+def fsProjectRequirementsDigest(sDockerDir):
+    """Return the SHA-256 of the staged index, which names every commit and line."""
+    with open(os.path.join(
+            sDockerDir, S_PROJECT_REQUIREMENTS_DIRECTORY,
+            S_PROJECT_REQUIREMENTS_INDEX), "rb") as fileHandle:
+        return hashlib.sha256(fileHandle.read()).hexdigest()
 
 
 def fpreflightProjectDeclarations(config, fnRead=None, fbNameExists=None):

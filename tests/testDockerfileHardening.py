@@ -281,8 +281,16 @@ def _flistUnrecordedPipInstalls(sContent, sOverlayName):
     return listUnrecorded
 
 
+# The projects' stage installs every record at once, so it has no list of
+# its own to read; its single joint install is held by the test below.
+_T_FEATURE_OVERLAY_NAMES = tuple(
+    sName for sName in imageBuilder.T_BASE_OVERLAY_NAMES
+    if sName != imageBuilder.S_PROJECT_DEPENDENCIES_OVERLAY
+)
+
+
 @pytest.mark.falsification
-@pytest.mark.parametrize("sOverlayName", imageBuilder.T_BASE_OVERLAY_NAMES)
+@pytest.mark.parametrize("sOverlayName", _T_FEATURE_OVERLAY_NAMES)
 def test_environment_overlay_installs_python_packages_from_its_record(sOverlayName):
     """A feature's packages were installed and recorded nowhere, so the
     startup check called pymultinest "no longer installed" in a
@@ -297,3 +305,22 @@ def test_environment_overlay_installs_python_packages_from_its_record(sOverlayNa
     with open(_fsEnvironmentOverlayPath(sOverlayName), "r") as fileHandle:
         sContent = fileHandle.read()
     assert _flistUnrecordedPipInstalls(sContent, sOverlayName) == []
+
+
+def test_the_projects_stage_installs_every_record_in_one_resolution():
+    """Installed one after another, a later list silently replaces a
+    version an earlier one needed; resolved together, a conflict stops
+    the build. The stage must read the image's list, every feature's and
+    every project's in its single ``pip install``, then ``pip check``."""
+    with open(_fsEnvironmentOverlayPath(
+            imageBuilder.S_PROJECT_DEPENDENCIES_OVERLAY), "r") as fileHandle:
+        sContent = fileHandle.read()
+    listInstructions = [sInstruction for sInstruction in _flistInstructions(sContent)
+                        if "pip install" in sInstruction]
+    assert len(listInstructions) == 1
+    sInstruction = listInstructions[0]
+    assert sInstruction.count("pip install") == 1
+    for sSource in ("saSources=(/etc/vaibify/requirements.txt)",
+                    "/etc/vaibify/requirements.d/*.txt",
+                    "/etc/vaibify/projectRequirements/*.txt", "&& pip check"):
+        assert sSource in sInstruction, sSource

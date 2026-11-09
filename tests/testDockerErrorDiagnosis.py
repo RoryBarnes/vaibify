@@ -15,6 +15,7 @@ from vaibify.docker.dockerContext import (
     S_RUNTIME_LINUX_ROOTLESS, S_RUNTIME_UNKNOWN,
 )
 from vaibify.docker.dockerErrorDiagnosis import (
+    fdictDiagnoseBuildFailure,
     fdictDiagnoseContainerOperationError, fdictDiagnoseDockerError,
     flistDecisiveBuildLines, fsExplainBuildFailure,
     fsExplainContainerOperationFailure,
@@ -733,3 +734,54 @@ def testTheLegacyBuildersRefusalOfBuildKitSyntaxNamesBuildx(sStderrTail):
     sSentence = fsExplainBuildFailure("projectAlpha", "", sStderrTail)
     assert "needs docker buildx" in sSentence
     assert "vaibify setup-docker" in sSentence
+
+
+S_CONFLICT_TAIL = (
+    "#8 0.768 ERROR: Cannot install six<1.16 and six>=1.16 because these "
+    "package versions have conflicting dependencies.\n"
+    "#8 0.769 ERROR: ResolutionImpossible: for help visit https://pip.pypa.io\n"
+    "#8 0.824 vaibify: 'six>=1.16' is declared by project alpha\n"
+    "#8 0.825 vaibify: 'six<1.16' is declared by project beta\n"
+    "------\n"
+    " >>>     | while read -r sRequested; do \\\n"
+    " >>>                 echo \"vaibify: '${sRequested}' is declared by "
+    "${sSource}\"; \\\n"
+    "ERROR: failed to solve: process \"/bin/bash -o pipefail -c ... echo "
+    "\\\"vaibify: '${sRequested}' is declared by ${sSource}\\\"; ...\" did "
+    "not complete successfully: exit code: 1\n"
+)
+
+
+@pytest.mark.falsification
+def test_a_conflict_names_each_declarer_and_never_the_echoed_source():
+    """pip names the two requirements but not their files; the projects'
+    stage prints which source declared each. BuildKit then echoes the
+    failing step's source, which holds the same sentence with its shell
+    variables unexpanded, and that echo must not read as a declarer.
+
+    Kills: matching the sentence anywhere in the tail.
+    """
+    dictDiagnosis = fdictDiagnoseBuildFailure(S_CONFLICT_TAIL, "fillet")
+    assert dictDiagnosis["sHint"] == (
+        "Two of the lists this image installs together ask for versions of "
+        "one package that no single release satisfies: 'six>=1.16' is "
+        "declared by project alpha; 'six<1.16' is declared by project beta. "
+        "Loosen one of them (a project's own file, then push; or "
+        "pythonPackages in vaibify.yml), then rebuild.")
+
+
+def test_an_inconsistent_installed_set_is_named_as_pip_checks_finding():
+    dictDiagnosis = fdictDiagnoseBuildFailure(
+        "#9 1.2 toolbox 1.0 has requirement six>=1.17, but you have six 1.16.0.\n"
+        "#9 1.3 ERROR: process did not complete successfully: exit code: 1\n",
+        "fillet")
+    assert dictDiagnosis["sHint"].startswith("pip check found")
+
+
+def test_a_missing_package_in_the_projects_stage_names_both_declarations():
+    dictDiagnosis = fdictDiagnoseBuildFailure(
+        "#8 0.5 ERROR: No matching distribution found for toolbox\n"
+        "ERROR: failed to solve: process \"/bin/bash -o pipefail -c chmod -R "
+        "a+rX /etc/vaibify/projectRequirements ...\" did not complete\n",
+        "fillet")
+    assert "a project's own dependency file" in dictDiagnosis["sHint"]

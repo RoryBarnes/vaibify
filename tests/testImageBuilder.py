@@ -86,7 +86,12 @@ def test_flistDetermineOverlays_all_features():
         "opencode", "cline", "openhands", "pi",
     ]
     assert listOverlays == listExpected
-    assert listOverlays == _LIST_OVERLAY_ORDER
+    # Every overlay but the projects' stage, which no feature selects:
+    # the build adds it when a project declares a requirement.
+    assert listOverlays == [
+        sName for sName in _LIST_OVERLAY_ORDER
+        if sName != "projectDependencies"
+    ]
 
 
 def test_flistDetermineOverlays_partial_features():

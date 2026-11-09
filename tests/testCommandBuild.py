@@ -248,6 +248,9 @@ def testAFailedBuildRetainsItsContextAndPrunesTheOlderOnes(
         commandBuild, "fnPrepareBuildContext",
         lambda config, sStagedDir, sProjectDirectory=None: None)
     monkeypatch.setattr(
+        commandBuild, "fnStageProjectDeclarations",
+        lambda config, sStagedDir, sProjectDirectory=None: None)
+    monkeypatch.setattr(
         commandBuild, "_ftReadPinnedEnvironment", lambda: ())
     monkeypatch.setattr(
         commandBuild, "_fbResolveNoCache", lambda config, bNoCache: False)

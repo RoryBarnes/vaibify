@@ -70,6 +70,7 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache, sProjectDirectory=None):
         tPinnedBefore = _ftReadPinnedEnvironment()
         try:
             fnPrepareBuildContext(config, sStagedDir, sProjectDirectory)
+            fnStageProjectDeclarations(config, sStagedDir, sProjectDirectory)
             bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
             fnWarnIfBaseImageFloating(config)
             fnBuildImage(config, sStagedDir, bNoCache=bEffectiveNoCache)
@@ -509,6 +510,28 @@ def fconfigForBuildContext(config, sProjectDirectory=None):
     configContext = copy.deepcopy(config)
     fnIncludeProjectRepo(configContext, sProjectDirectory)
     return configContext
+
+
+def fnStageProjectDeclarations(config, sDockerDir, sProjectDirectory=None):
+    """Stage every project's own declaration, and say what was read.
+
+    Read again here rather than carried from the preflight, so the
+    image records exactly the commit whose bytes it installed even if
+    a push landed between the two. Kept out of
+    ``fnPrepareBuildContext``, which the pinned-image lane also calls to
+    stack agents onto an author's image: that lane installs no project
+    packages and must not need the author's remotes.
+    """
+    from vaibify.docker.imageBuilder import fnEmitBuildLine
+    from .projectDeclarations import flistStageProjectDeclarations
+    configContext = fconfigForBuildContext(config, sProjectDirectory)
+    for dictDeclaration in flistStageProjectDeclarations(
+            configContext.listRepositories, sDockerDir):
+        sFile = dictDeclaration["sFile"] or "no declaration file"
+        fnEmitBuildLine(
+            f"[vaib] project {dictDeclaration['sRepository']}: {sFile} at "
+            f"{dictDeclaration['sCommit'][:12]}, "
+            f"{len(dictDeclaration['listRequirements'])} requirement(s)\n")
 
 
 def fnWriteSystemPackages(config, sDockerDir):

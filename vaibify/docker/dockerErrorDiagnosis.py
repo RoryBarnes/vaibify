@@ -471,6 +471,7 @@ _T_BUILD_DECISIVE_MARKERS = (
     "did not complete successfully", "returned a non-zero code",
     "permission denied", "connection refused", "timed out",
     "requires buildkit", "failed to parse platform",
+    "has requirement", "which is not installed",
 )
 
 
@@ -517,11 +518,49 @@ def _fsExplainMissingDistribution(sStderrTail):
             "not exist on the package index. Fix it, then rebuild."
         )
     sRequirement = (matchName.group(1) or matchName.group(2)).strip("'\"")
+    if "/etc/vaibify/projectRequirements" in (sStderrTail or ""):
+        return (
+            f"'{sRequirement}' does not exist on the package index, or no "
+            "release of it matches. It is declared by pythonPackages in "
+            "vaibify.yml or by a project's own dependency file; fix it "
+            "there (and push a project's file), then rebuild."
+        )
     return (
         f"'{sRequirement}' under pythonPackages in vaibify.yml does not "
         "exist on the package index, or no release of it matches. Fix "
         "the name or version in vaibify.yml, then rebuild."
     )
+
+
+# A line the stage PRINTED, after BuildKit's "#8 0.824 " prefix. BuildKit
+# also echoes the failing step's source, which holds this sentence with
+# its shell variables unexpanded; anchoring the line and refusing "$"
+# keeps the echo out.
+_REGEX_DECLARED_BY = re.compile(
+    r"^(?:#\d+\s+(?:\d+\.\d+\s+)?)?vaibify: ('[^'$]+' is declared by [^$\n\"]+?)\s*$",
+    re.MULTILINE,
+)
+
+
+def _fsExplainConflictingDeclarations(sStderrTail):
+    """Name which sources asked for the versions no single release satisfies.
+
+    pip names the two requirements but never the file each came from;
+    the projects' stage prints that after pip refuses.
+    """
+    listDeclarers = []
+    for sDeclarer in _REGEX_DECLARED_BY.findall(sStderrTail or ""):
+        sDeclarer = sDeclarer.strip()
+        if sDeclarer not in listDeclarers:
+            listDeclarers.append(sDeclarer)
+    sSentence = (
+        "Two of the lists this image installs together ask for versions "
+        "of one package that no single release satisfies")
+    if listDeclarers:
+        sSentence += ": " + "; ".join(listDeclarers)
+    return (
+        sSentence + ". Loosen one of them (a project's own file, then push; "
+        "or pythonPackages in vaibify.yml), then rebuild.")
 
 
 def _fbLegacyBuilderMetBuildKitSyntax(sLower):
@@ -579,6 +618,18 @@ def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
                 "package Ubuntu's archive knows. Fix the name, then "
                 "rebuild."
             ),
+            "sCommand": "",
+        }
+    if "conflicting dependencies" in sLower or "resolutionimpossible" in sLower:
+        return {"sHint": _fsExplainConflictingDeclarations(sStderrTail),
+                "sCommand": ""}
+    if "has requirement" in sLower or "which is not installed" in sLower:
+        return {
+            "sHint": (
+                "pip check found the installed packages inconsistent: one "
+                "needs a version of another that is not the one installed. "
+                "The build output names both; loosen the declaration that "
+                "pins the older one, then rebuild."),
             "sCommand": "",
         }
     if "no matching distribution" in sLower or "could not find a version" in sLower:

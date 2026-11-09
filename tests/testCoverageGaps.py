@@ -112,14 +112,16 @@ def test_init_version_exists():
        return_value="/docker")
 @patch("vaibify.cli.commandBuild.fnPruneDanglingImages")
 @patch("vaibify.cli.commandBuild.fnPrepareBuildContext")
+@patch("vaibify.cli.commandBuild.fnStageProjectDeclarations")
 @patch("vaibify.docker.imageBuilder.fnBuildImage")
 def test_fnBuildFromConfig_calls_chain(
-    mockBuild, mockPrepare, mockPrune, mockStage
+    mockBuild, mockDeclarations, mockPrepare, mockPrune, mockStage
 ):
     from vaibify.cli.commandBuild import fnBuildFromConfig
     config = _fConfigFull()
     fnBuildFromConfig(config, "/docker", False)
     mockPrepare.assert_called_once()
+    mockDeclarations.assert_called_once()
     mockBuild.assert_called_once()
     mockPrune.assert_called_once()
 

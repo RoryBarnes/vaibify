@@ -40969,4 +40969,16 @@ LIST_FALSIFICATIONS = [
             '            f"A project\'s dependency declaration could not be read: "\n'
         ),
     ),
+    Falsification(
+        nodeid='tests/testDockerErrorDiagnosis.py::test_a_conflict_names_each_declarer_and_never_the_echoed_source',
+        source='vaibify/docker/dockerErrorDiagnosis.py',
+        old='    r"^(?:#\\d+\\s+(?:\\d+\\.\\d+\\s+)?)?vaibify: (\'[^\'$]+\' is declared by [^$\\n\\"]+?)\\s*$",\n',
+        new='    r"vaibify: (\'[^\']+\' is declared by [^\\n]+)",\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectDependenciesStageLive.py::testEveryProjectsDeclaredVersionIsTheOneInstalled',
+        source='vaibify/containerImage/overlays/projectDependencies.dockerfile',
+        old='            /etc/vaibify/projectRequirements/*.txt; do \\\n',
+        new='            ; do \\\n',
+    ),
 ]
