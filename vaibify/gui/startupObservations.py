@@ -131,8 +131,11 @@ DICT_OBSERVATION_MEANINGS = {
         "The container log names which file and which line.",
     ),
     "requirements-dropped": (
-        "a requirements file was skipped entirely",
-        "The container log names which file and why.",
+        "packages a repository's .vaibify/requirements.txt declared are "
+        "not installed in this image; that file is now a generated copy "
+        "of the image's own list",
+        "Add them to pythonPackages in vaibify.yml and Rebuild; the "
+        "warning names each one.",
     ),
     "agent-update-deferred": (
         "an agent could not be updated because networking is disabled",

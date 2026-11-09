@@ -38616,6 +38616,19 @@ LIST_FALSIFICATIONS = [
         old='    if [ "${VAIBIFY_NETWORK_MODE:-}" = "web" ] \\\n',
         new='    if [ "${VAIBIFY_NETWORK_MODE:-}" = "never" ] \\\n',
     ),
+    # --- 2026-11-09: a feature's packages are recorded; "dropped" means not installed. ---
+    Falsification(
+        nodeid='tests/testDockerfileHardening.py::test_environment_overlay_installs_python_packages_from_its_record',
+        source='vaibify/containerImage/overlays/nestedSampling.dockerfile',
+        old='    && pip install --no-cache-dir -r /etc/vaibify/requirements.d/nestedSampling.txt\n',
+        new='    && pip install --no-cache-dir ultranest pymultinest\n',
+    ),
+    Falsification(
+        nodeid='tests/testRequirementsDroppedAgainstWhatIsInstalled.py::testAnInstalledPackageNoListNamesIsNotDropped',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='        <({ fnListImageRequirementNames; fnListInstalledDistributionNames; } | sort -u) \\\n',
+        new='        <(fnListImageRequirementNames) \\\n',
+    ),
     Falsification(
         nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndWebAndExcludesThePair',
         source='vaibify/gui/static/scriptWorkflowManager.js',
