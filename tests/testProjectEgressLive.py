@@ -109,7 +109,7 @@ def dictLive():
     except egressProxy.EgressSetupError as error:
         serverHub.shutdown()
         yield {"errorEgress": error, "sUuid": sUuid}
-        projectEgress.fnReleaseProjectEgressQuietly(sUuid)
+        projectEgress.fnReleaseProjectEgressQuietly(sUuid, "live test teardown")
         return
     try:
         clientDocker.images.get(S_CLIENT_IMAGE)
@@ -126,7 +126,7 @@ def dictLive():
                "clientDocker": clientDocker, "dictEgress": dictEgress}
     finally:
         containerClient.remove(force=True)
-        projectEgress.fnReleaseProjectEgressQuietly(sUuid)
+        projectEgress.fnReleaseProjectEgressQuietly(sUuid, "live test teardown")
         serverHub.shutdown()
 
 
@@ -215,3 +215,41 @@ def testTheDaemonsLabeledEgressIsDiscovered(dictLive):
     """
     _fnRequireTheSeal(dictLive)
     assert dictLive["sUuid"] in projectEgress.flistDiscoverProjectEgressUuids()
+
+
+@pytest.mark.falsification
+def testAnEgressWhoseNetworkCarriesAContainerIsKept(dictLive):
+    """A proxy is released only on the daemon's word that nothing uses it.
+
+    A test hub with a throwaway registry released the proxy of a
+    researcher's RUNNING container, because absence from its registry
+    was read as absence from the daemon. The release now asks the daemon
+    which containers are attached to the sealed network, and that
+    question has to be spelled the way the real daemon answers it.
+
+    Kills: filtering ``docker ps`` by ``name=`` instead of ``network=``,
+    which matches nothing, reads as "unused", and releases the proxy
+    from under the fixture's running client container.
+    """
+    _fnRequireTheSeal(dictLive)
+    assert projectEgress.fbEgressIsInUse(dictLive["sUuid"])
+    projectEgress.fnReleaseProjectEgressIfUnused(dictLive["sUuid"], "live test")
+    assert projectEgress.fsProxyState(dictLive["sUuid"]) == "running"
+
+
+def testAnEgressNothingUsesIsReleased():
+    """The other half: a labeled network with nothing attached is an orphan."""
+    fnRequireDaemonReachable()
+    import subprocess
+    sUuid = secrets.token_hex(16)
+    sNetworkName = projectEgress.fsNetworkName(sUuid)
+    subprocess.run(
+        ["docker", "network", "create", "--label",
+         f"{projectEgress.S_LABEL_KEY}={sUuid}", sNetworkName],
+        capture_output=True, check=True)
+    try:
+        assert not projectEgress.fbEgressIsInUse(sUuid)
+        projectEgress.fnReleaseProjectEgressIfUnused(sUuid, "live test")
+        assert sUuid not in projectEgress.flistDiscoverProjectEgressUuids()
+    finally:
+        subprocess.run(["docker", "network", "rm", sNetworkName], capture_output=True)

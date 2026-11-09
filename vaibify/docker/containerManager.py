@@ -1659,7 +1659,9 @@ def fnRemoveStopped(sProjectName):
         logger.warning("secret-file release after removal failed",
                        exc_info=True)
     fnReleaseAuthorizationQuietly(sProjectName)
-    projectEgress.fnReleaseProjectEgressQuietly(_fsProjectUuidOrEmpty(sProjectName))
+    projectEgress.fnReleaseProjectEgressIfUnused(
+        _fsProjectUuidOrEmpty(sProjectName),
+        f"container {sProjectName!r} was removed")
 
 
 def fbContainerIsRunning(sProjectName):

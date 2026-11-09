@@ -37,6 +37,7 @@ __all__ = [
     "S_PROXY_STATE_ABSENT",
     "S_PROXY_STATE_DOWN",
     "S_PROXY_STATE_RUNNING",
+    "fbEgressIsInUse",
     "fdictDescribeProjectEgress",
     "fdictPrepareProjectEgress",
     "fdictReconcileProjectEgress",
@@ -44,6 +45,7 @@ __all__ = [
     "flistNetworkCreateArguments",
     "flistProxyRunArguments",
     "flistReadRefusedDestinations",
+    "fnReleaseProjectEgressIfUnused",
     "fnReleaseProjectEgressQuietly",
     "fsNetworkName",
     "fsProxyName",
@@ -281,7 +283,7 @@ def fdictPrepareProjectEgress(config, sProjectUuid, iHubPort):
     sNetworkName = fsNetworkName(sProjectUuid)
     sProxyName = fsProxyName(sProjectUuid)
     _fnEnsureSealedNetwork(sNetworkName, sProjectUuid)
-    _fprocessDocker(["rm", "-f", sProxyName])
+    _fnRemoveProxyLogged(sProxyName, "replaced by a fresh launch")
     sScriptPath = _fsWriteProxyScript(sProjectUuid)
     sSubnet = _fsReadNetworkSubnet(sNetworkName)
     _fsDockerOrRaise(
@@ -298,14 +300,26 @@ def fdictPrepareProjectEgress(config, sProjectUuid, iHubPort):
             "sProxyAddress": _fsReadProxyAddress(sProxyName, sNetworkName),
         }
     except EgressSetupError:
-        _fprocessDocker(["rm", "-f", sProxyName])
+        _fnRemoveProxyLogged(sProxyName, "it did not come up")
         raise
 
 
-def fnReleaseProjectEgressQuietly(sProjectUuid):
-    """Remove the project's proxy, network and script; a failure is logged."""
+def _fnRemoveProxyLogged(sProxyName, sReason):
+    """Remove a proxy container, logging the removal when one existed."""
+    processResult = _fprocessDocker(["rm", "-f", sProxyName])
+    if processResult.returncode == 0 and processResult.stdout.strip():
+        logger.info("network proxy %s removed: %s", sProxyName, sReason)
+
+
+def fnReleaseProjectEgressQuietly(sProjectUuid, sReason):
+    """Remove the project's proxy, network and script; a failure is logged.
+
+    Every release is logged with its reason. One that left no trace
+    took a running project's proxy and took a day to attribute.
+    """
     if not _RE_PROJECT_UUID.match(sProjectUuid or ""):
         return
+    logger.info("project egress released for %s: %s", sProjectUuid, sReason)
     try:
         _fprocessDocker(["rm", "-f", fsProxyName(sProjectUuid)])
         _fprocessDocker(["network", "rm", fsNetworkName(sProjectUuid)])
@@ -338,14 +352,58 @@ def flistDiscoverProjectEgressUuids():
     return sorted(setUuids)
 
 
-def fdictReconcileProjectEgress(fbProjectContainerExists):
-    """Release the egress of every project whose container the daemon says is gone."""
+def fbEgressIsInUse(sProjectUuid):
+    """Return True when the daemon reports a container besides the proxy on the network.
+
+    The daemon's answer is the only evidence. A project registry is
+    not: a hub whose registry lacked a project once released the proxy
+    of that project's RUNNING container, because absence from a
+    registry was read as absence from the daemon. ``--filter network=``
+    matches a stopped container too, and still matches by name once the
+    network itself is gone. A daemon that does not answer raises, so
+    nothing is released on silence.
+    """
+    processResult = _fprocessDocker(
+        ["ps", "-a", "--filter", f"network={fsNetworkName(sProjectUuid)}",
+         "--format", "{{.Names}}"])
+    if processResult.returncode != 0:
+        raise EgressSetupError(f"docker ps failed: {processResult.stderr}")
+    sProxyName = fsProxyName(sProjectUuid)
+    return any(sName.strip() and sName.strip() != sProxyName
+               for sName in processResult.stdout.splitlines())
+
+
+def fnReleaseProjectEgressIfUnused(sProjectUuid, sReason):
+    """Release the identity's egress only once the daemon says nothing uses it.
+
+    A removal that failed, or a second container on the network, keeps
+    the proxy; a daemon that does not answer keeps it too, logged.
+    """
+    if not _RE_PROJECT_UUID.match(sProjectUuid or ""):
+        return
+    try:
+        bInUse = fbEgressIsInUse(sProjectUuid)
+    except EgressSetupError:
+        logger.warning("project egress kept for %s: the daemon did not "
+                       "say whether a container uses it", sProjectUuid,
+                       exc_info=True)
+        return
+    if bInUse:
+        logger.info("project egress kept for %s: a container is still "
+                    "attached to its network", sProjectUuid)
+        return
+    fnReleaseProjectEgressQuietly(sProjectUuid, sReason)
+
+
+def fdictReconcileProjectEgress():
+    """Release the egress of every identity no container uses; return the outcomes."""
     dictOutcomes = {}
     for sProjectUuid in flistDiscoverProjectEgressUuids():
-        if fbProjectContainerExists(sProjectUuid):
+        if fbEgressIsInUse(sProjectUuid):
             dictOutcomes[sProjectUuid] = "kept"
             continue
-        fnReleaseProjectEgressQuietly(sProjectUuid)
+        fnReleaseProjectEgressQuietly(
+            sProjectUuid, "no container is attached to its network")
         dictOutcomes[sProjectUuid] = "released"
     return dictOutcomes
 

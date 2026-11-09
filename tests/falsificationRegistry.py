@@ -38570,6 +38570,26 @@ LIST_FALSIFICATIONS = [
         new='''         "--format", f'{{{{index .Labels "{S_LABEL_KEY}"}}}}'],\n''',
         iExpectedOccurrences=2,
     ),
+    # --- 2026-11-09: only the daemon's attachment answer releases egress. ---
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testTheReconcileReleasesOnlyIdentitiesNoContainerUses',
+        source='vaibify/docker/projectEgress.py',
+        old='        if fbEgressIsInUse(sProjectUuid):\n',
+        new='        if not sProjectUuid:\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testAnUnansweredDaemonReleasesNothing',
+        source='vaibify/docker/projectEgress.py',
+        old='    if processResult.returncode != 0:\n        raise EgressSetupError(f"docker ps failed: {processResult.stderr}")\n    sProxyName = fsProxyName(sProjectUuid)\n',
+        new='    if False:\n        raise EgressSetupError(f"docker ps failed: {processResult.stderr}")\n    sProxyName = fsProxyName(sProjectUuid)\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgressLive.py::testAnEgressWhoseNetworkCarriesAContainerIsKept',
+        # a container-name filter matches nothing and reads as "unused"
+        source='vaibify/docker/projectEgress.py',
+        old='        ["ps", "-a", "--filter", f"network={fsNetworkName(sProjectUuid)}",\n',
+        new='        ["ps", "-a", "--filter", f"name={fsNetworkName(sProjectUuid)}",\n',
+    ),
     Falsification(
         nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndWebAndExcludesThePair',
         source='vaibify/gui/static/scriptWorkflowManager.js',
