@@ -4720,6 +4720,24 @@ LIST_FALSIFICATIONS = [
     raise ContainerLockedError(sProjectName, 0, 0)''',
         new='''    return _ffileOpenLockFileNoFollow(sPath)''',
     ),
+    # --- 2026-11-08: a dead hub's helper records stayed unprovable
+    # forever once a later process was issued the hub's PID and led a
+    # process group with it ---
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_reconcile_clears_a_record_whose_group_number_was_reissued',
+        source='vaibify/config/operationJournal.py',
+        old='    if _fbProcessGroupNumberWasReissued(\n',
+        new='    if False and _fbProcessGroupNumberWasReissued(\n',
+    ),
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_reconcile_refuses_a_group_led_by_a_process_older_than_the_record',
+        source='vaibify/config/operationJournal.py',
+        old=(
+            '    return not fbStartClockIsConsistentWithClaim('
+            'datetimeStart, sInFlightIso)\n'
+        ),
+        new='    return True\n',
+    ),
     Falsification(
         nodeid='tests/testReconciliationMutationCoverage.py::test_a_stale_reconciliation_cannot_clear_a_successor_record',
         source='vaibify/config/reconciliation.py',
