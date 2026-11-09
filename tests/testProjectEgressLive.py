@@ -199,3 +199,19 @@ def testTheRefusalsAreReadBackForTheDashboard(dictLive):
     listRefused = projectEgress.flistReadRefusedDestinations(dictLive["sUuid"])
     assert any(dictEntry["sHost"] == "example.com" for dictEntry in listRefused)
     assert projectEgress.fsProxyState(dictLive["sUuid"]) == "running"
+
+
+@pytest.mark.falsification
+def testTheDaemonsLabeledEgressIsDiscovered(dictLive):
+    """The hub's startup sweep releases the egress of every project whose
+    container is gone, and it finds them by asking the daemon for the
+    label. The question was spelled so ``docker ps`` refused it, so the
+    sweep failed on every daemon and released nothing, and no test ran
+    the real command. This one does, against the proxy and network the
+    fixture made.
+
+    Kills: formatting the label with ``index .Labels``, which ``docker
+    ps`` cannot apply to its comma-joined label string.
+    """
+    _fnRequireTheSeal(dictLive)
+    assert dictLive["sUuid"] in projectEgress.flistDiscoverProjectEgressUuids()

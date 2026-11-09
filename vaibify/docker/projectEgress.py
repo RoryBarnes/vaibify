@@ -316,13 +316,18 @@ def fnReleaseProjectEgressQuietly(sProjectUuid):
 
 
 def flistDiscoverProjectEgressUuids():
-    """Return every project identity a labeled proxy or network on the daemon names."""
+    """Return every project identity a labeled proxy or network on the daemon names.
+
+    ``.Label`` rather than ``index .Labels``: ``docker ps`` formats
+    ``.Labels`` as one comma-joined string, which ``index`` refuses, so
+    that spelling failed every discovery on every daemon.
+    """
     setUuids = set()
     for listCommand in (
         ["ps", "-a", "--filter", f"label={S_LABEL_KEY}",
-         "--format", f'{{{{index .Labels "{S_LABEL_KEY}"}}}}'],
+         "--format", f'{{{{.Label "{S_LABEL_KEY}"}}}}'],
         ["network", "ls", "--filter", f"label={S_LABEL_KEY}",
-         "--format", f'{{{{index .Labels "{S_LABEL_KEY}"}}}}'],
+         "--format", f'{{{{.Label "{S_LABEL_KEY}"}}}}'],
     ):
         processResult = _fprocessDocker(listCommand)
         if processResult.returncode != 0:

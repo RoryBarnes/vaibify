@@ -38530,6 +38530,14 @@ LIST_FALSIFICATIONS = [
         new='        pass\n',
     ),
     Falsification(
+        nodeid='tests/testProjectEgressLive.py::testTheDaemonsLabeledEgressIsDiscovered',
+        # `docker ps` refuses `index` on its comma-joined label string
+        source='vaibify/docker/projectEgress.py',
+        old='''         "--format", f'{{{{.Label "{S_LABEL_KEY}"}}}}'],\n''',
+        new='''         "--format", f'{{{{index .Labels "{S_LABEL_KEY}"}}}}'],\n''',
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
         nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndWebAndExcludesThePair',
         source='vaibify/gui/static/scriptWorkflowManager.js',
         old='        dictData.sNetworkMode = "web";\n',
