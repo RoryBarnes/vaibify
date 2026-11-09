@@ -256,3 +256,54 @@ def testOnlyAWebModeProxyMayTunnelToAnyPublicHost():
     assert "--any-public-host" not in flistRunArguments("allowlist")
     assert "Engine 28.0.0" in projectEgress.S_ENGINE_REQUIREMENT
     assert "networkMode: open" in projectEgress.S_ENGINE_REQUIREMENT
+
+
+def testALaunchRecordsTheExactRunArguments(docker):
+    projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
+    dictRecord = projectEgress._fdictReadLaunchRecord(S_UUID)
+    assert dictRecord["listRunArguments"] == docker.flistOf("run")[0]
+    assert dictRecord["sProxyAddress"] == "172.30.0.2"
+    sRecordPath = projectEgress._fsLaunchRecordPath(S_UUID)
+    assert os.stat(sRecordPath).st_mode & 0o777 == 0o600
+
+
+def testARestoreReplaysTheLaunchNotTheConfiguration(docker):
+    """The policy a container was launched under is what comes back.
+
+    The allowlist below is changed after the launch; the restored proxy
+    must still carry the launched one, because the container it serves
+    was started under it and its policy is not changed by recovery.
+    """
+    configLaunched = _fconfig()
+    projectEgress.fdictPrepareProjectEgress(configLaunched, S_UUID, 8050)
+    configLaunched.listAllowedHosts = ["somewhere-else.example.org"]
+    sAddress = projectEgress.fsRestoreProjectProxy(S_UUID)
+    listRuns = docker.flistOf("run")
+    assert sAddress == "172.30.0.2"
+    assert listRuns[1] == listRuns[0]
+    assert "somewhere-else.example.org" not in " ".join(listRuns[1])
+
+
+@pytest.mark.falsification
+def testARestoreThatComesBackElsewhereIsRefusedAndRemoved(docker):
+    """Kills: accepting a restored proxy at an address the container does not use.
+
+    The container's proxy variables are fixed at creation, so a proxy
+    at any other address leaves it exactly as offline as before while
+    the dashboard reads "running". Mutation: the address check
+    ``if sAddress != dictRecord.get("sProxyAddress"):`` becomes
+    ``if False:``.
+    """
+    projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
+    docker.dictAnswers["inspect --format {{(index .NetworkSettings.Networks"] = (
+        0, "172.30.0.9\n")
+    docker.dictAnswers["rm -f"] = (0, S_PROXY + "\n")
+    with pytest.raises(egressProxy.EgressSetupError, match="restart the container"):
+        projectEgress.fsRestoreProjectProxy(S_UUID)
+    assert docker.listCommands[-1] == ["rm", "-f", S_PROXY]
+
+
+def testARestoreWithoutALaunchRecordIsRefused(docker):
+    with pytest.raises(egressProxy.EgressSetupError, match="restart the container"):
+        projectEgress.fsRestoreProjectProxy(S_UUID)
+    assert docker.flistOf("run") == []

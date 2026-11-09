@@ -41,6 +41,7 @@ __all__ = [
     "fdictDescribeProjectEgress",
     "fdictPrepareProjectEgress",
     "fdictReconcileProjectEgress",
+    "flistContainersUsingEgress",
     "flistDiscoverProjectEgressUuids",
     "flistNetworkCreateArguments",
     "flistProxyRunArguments",
@@ -50,6 +51,7 @@ __all__ = [
     "fsNetworkName",
     "fsProxyName",
     "fsProxyState",
+    "fsRestoreProjectProxy",
 ]
 
 import json
@@ -71,6 +73,7 @@ from .egressProxy import EgressSetupError
 logger = logging.getLogger(__name__)
 
 S_LABEL_KEY = "vaibify-project-egress"
+S_LAUNCH_RECORD_BASENAME = "launch.json"
 S_NETWORK_PREFIX = "vaibifyProjectEgress"
 S_PROXY_PREFIX = "vaibifyProjectProxy"
 S_HUB_HOST = "host.docker.internal"
@@ -286,22 +289,92 @@ def fdictPrepareProjectEgress(config, sProjectUuid, iHubPort):
     _fnRemoveProxyLogged(sProxyName, "replaced by a fresh launch")
     sScriptPath = _fsWriteProxyScript(sProjectUuid)
     sSubnet = _fsReadNetworkSubnet(sNetworkName)
-    _fsDockerOrRaise(
-        flistProxyRunArguments(
-            config, sProjectUuid, sNetworkName, sScriptPath, sSubnet, iHubPort),
-        "could not start the network proxy",
-    )
+    listRunArguments = flistProxyRunArguments(
+        config, sProjectUuid, sNetworkName, sScriptPath, sSubnet, iHubPort)
+    sProxyAddress = _fsStartProxyAndReadAddress(
+        listRunArguments, sProxyName, sNetworkName)
+    _fnWriteLaunchRecord(sProjectUuid, listRunArguments, sProxyAddress)
+    return {
+        "sNetworkName": sNetworkName, "sProxyName": sProxyName,
+        "sProxyAddress": sProxyAddress,
+    }
+
+
+def _fsStartProxyAndReadAddress(listRunArguments, sProxyName, sNetworkName):
+    """Run the sidecar, attach it to the bridge, await it; return its sealed address."""
+    _fsDockerOrRaise(listRunArguments, "could not start the network proxy")
     try:
         _fsDockerOrRaise(["network", "connect", "bridge", sProxyName],
                          "could not attach the network proxy to the bridge")
         _fnAwaitProxyReady(sProxyName)
-        return {
-            "sNetworkName": sNetworkName, "sProxyName": sProxyName,
-            "sProxyAddress": _fsReadProxyAddress(sProxyName, sNetworkName),
-        }
+        return _fsReadProxyAddress(sProxyName, sNetworkName)
     except EgressSetupError:
         _fnRemoveProxyLogged(sProxyName, "it did not come up")
         raise
+
+
+def _fsLaunchRecordPath(sProjectUuid):
+    return os.path.join(_fsEgressRoot(), sProjectUuid, S_LAUNCH_RECORD_BASENAME)
+
+
+def _fnWriteLaunchRecord(sProjectUuid, listRunArguments, sProxyAddress):
+    """Record exactly how the proxy was launched, so a restore can replay it.
+
+    The arguments carry the whole policy the container was launched
+    under -- mode, allowlist, forwards, hub destination -- and a restore
+    replays them rather than recomputing them from ``vaibify.yml``,
+    which may have changed since. They name no credential.
+    """
+    baRecord = json.dumps({
+        "listRunArguments": listRunArguments, "sProxyAddress": sProxyAddress,
+    }, indent=1).encode("utf-8")
+    fnWriteFileDurably(_fsLaunchRecordPath(sProjectUuid), baRecord)
+
+
+def _fdictReadLaunchRecord(sProjectUuid):
+    """Return the recorded launch, or raise when there is none to replay."""
+    try:
+        with open(_fsLaunchRecordPath(sProjectUuid), encoding="utf-8") as fileRecord:
+            dictRecord = json.load(fileRecord)
+    except (OSError, ValueError) as error:
+        raise EgressSetupError(
+            "no record of how this project's proxy was launched survives, so "
+            "it cannot be restored as it was; restart the container") from error
+    if not isinstance(dictRecord.get("listRunArguments"), list):
+        raise EgressSetupError("the proxy's launch record is malformed; restart the container")
+    return dictRecord
+
+
+def fsRestoreProjectProxy(sProjectUuid):
+    """Recreate a missing or stopped proxy exactly as it was launched; return its address.
+
+    Replays the recorded ``docker run`` arguments, never a fresh reading
+    of the configuration. The container's proxy variables were fixed
+    when it was created, so the proxy must come back at the address it
+    had: a sealed network has no user-set subnet, so the daemon will not
+    pin one (measured on Engine 28.4), and the address is checked after
+    the fact. A proxy that comes back anywhere else is removed and the
+    restore refused, naming the restart that fixes it.
+    """
+    dictRecord = _fdictReadLaunchRecord(sProjectUuid)
+    sProxyName = fsProxyName(sProjectUuid)
+    sNetworkName = fsNetworkName(sProjectUuid)
+    _fsWriteProxyScript(sProjectUuid)
+    _fnRemoveProxyLogged(sProxyName, "replaced by a restore")
+    sAddress = _fsStartProxyAndReadAddress(
+        dictRecord["listRunArguments"], sProxyName, sNetworkName)
+    if sAddress != dictRecord.get("sProxyAddress"):
+        _fnRemoveProxyLogged(sProxyName, "it came back at the wrong address")
+        raise EgressSetupError(
+            f"the restored proxy came up at {sAddress}, but the container "
+            f"expects {dictRecord.get('sProxyAddress')}; restart the container")
+    logger.info("network proxy %s restored at %s", sProxyName, sAddress)
+    return sAddress
+
+
+def flistContainersUsingEgress(sProjectUuid):
+    """Return the names of the RUNNING containers, besides the proxy, on the network."""
+    return _flistContainersOnTheNetwork(sProjectUuid, bRunningOnly=True)
 
 
 def _fnRemoveProxyLogged(sProxyName, sReason):
@@ -363,14 +436,21 @@ def fbEgressIsInUse(sProjectUuid):
     network itself is gone. A daemon that does not answer raises, so
     nothing is released on silence.
     """
+    return bool(_flistContainersOnTheNetwork(sProjectUuid, bRunningOnly=False))
+
+
+def _flistContainersOnTheNetwork(sProjectUuid, bRunningOnly):
+    """Return the names of the containers, besides the proxy, on the identity's network."""
+    listFilters = ["--filter", f"network={fsNetworkName(sProjectUuid)}"]
+    if bRunningOnly:
+        listFilters += ["--filter", "status=running"]
     processResult = _fprocessDocker(
-        ["ps", "-a", "--filter", f"network={fsNetworkName(sProjectUuid)}",
-         "--format", "{{.Names}}"])
+        ["ps", "-a"] + listFilters + ["--format", "{{.Names}}"])
     if processResult.returncode != 0:
         raise EgressSetupError(f"docker ps failed: {processResult.stderr}")
     sProxyName = fsProxyName(sProjectUuid)
-    return any(sName.strip() and sName.strip() != sProxyName
-               for sName in processResult.stdout.splitlines())
+    return [sName.strip() for sName in processResult.stdout.splitlines()
+            if sName.strip() and sName.strip() != sProxyName]
 
 
 def fnReleaseProjectEgressIfUnused(sProjectUuid, sReason):

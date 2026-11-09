@@ -106,6 +106,7 @@ def dictLive():
     # kill-confirmation does not count as the test catching the mutation.
     try:
         dictEgress = projectEgress.fdictPrepareProjectEgress(config, sUuid, iHubPort)
+        sEgressRoot = projectEgress._fsEgressRoot()
     except egressProxy.EgressSetupError as error:
         serverHub.shutdown()
         yield {"errorEgress": error, "sUuid": sUuid}
@@ -123,7 +124,8 @@ def dictLive():
     )
     try:
         yield {"container": containerClient, "iHubPort": iHubPort, "sUuid": sUuid,
-               "clientDocker": clientDocker, "dictEgress": dictEgress}
+               "clientDocker": clientDocker, "dictEgress": dictEgress,
+               "sEgressRoot": sEgressRoot}
     finally:
         containerClient.remove(force=True)
         projectEgress.fnReleaseProjectEgressQuietly(sUuid, "live test teardown")
@@ -253,3 +255,24 @@ def testAnEgressNothingUsesIsReleased():
         assert sUuid not in projectEgress.flistDiscoverProjectEgressUuids()
     finally:
         subprocess.run(["docker", "network", "rm", sNetworkName], capture_output=True)
+
+
+def testAMissingProxyIsRestoredAndTheContainerTunnelsAgain(dictLive, monkeypatch):
+    """The restore against a real daemon: the proxy comes back where the
+    container looks for it, and an allowed host tunnels again, while
+    the client container keeps running throughout. The egress folder is
+    the one the module's launch wrote, which a per-test home redirect
+    would otherwise hide.
+    """
+    import subprocess
+    from vaibify.gui import projectEgressLifecycle
+    _fnRequireTheSeal(dictLive)
+    monkeypatch.setattr(projectEgress, "_fsEgressRoot", lambda: dictLive["sEgressRoot"])
+    sUuid = dictLive["sUuid"]
+    subprocess.run(["docker", "rm", "-f", projectEgress.fsProxyName(sUuid)],
+                   capture_output=True, check=True)
+    assert projectEgress.fsProxyState(sUuid) == "absent"
+    assert not _fsProbe(dictLive, "pypi.org:443:proxy").startswith("HTTP/1.1 200")
+    assert projectEgressLifecycle.fsRestoreProxyIfMissing(sUuid) == "restored"
+    assert projectEgress.fsProxyState(sUuid) == "running"
+    assert _fsProbe(dictLive, "pypi.org:443:proxy").startswith("HTTP/1.1 200")

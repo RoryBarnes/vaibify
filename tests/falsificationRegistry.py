@@ -38587,8 +38587,21 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testProjectEgressLive.py::testAnEgressWhoseNetworkCarriesAContainerIsKept',
         # a container-name filter matches nothing and reads as "unused"
         source='vaibify/docker/projectEgress.py',
-        old='        ["ps", "-a", "--filter", f"network={fsNetworkName(sProjectUuid)}",\n',
-        new='        ["ps", "-a", "--filter", f"name={fsNetworkName(sProjectUuid)}",\n',
+        old='    listFilters = ["--filter", f"network={fsNetworkName(sProjectUuid)}"]\n',
+        new='    listFilters = ["--filter", f"name={fsNetworkName(sProjectUuid)}"]\n',
+    ),
+    # --- 2026-11-09: a running sealed container's lost proxy is restored as launched. ---
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testARestoreThatComesBackElsewhereIsRefusedAndRemoved',
+        source='vaibify/docker/projectEgress.py',
+        old='    if sAddress != dictRecord.get("sProxyAddress"):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgressLifecycle.py::testARestoreDefersToAHeldLifecycleLock',
+        source='vaibify/gui/projectEgressLifecycle.py',
+        old='        with fcontextHoldLifecycleLock(sContainerName, "reconnected to its network"):\n',
+        new='        if True:\n',
     ),
     Falsification(
         nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndWebAndExcludesThePair',
