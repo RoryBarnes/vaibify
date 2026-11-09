@@ -109,3 +109,45 @@ def testTheInventoryIsTheShadowRerunsOwnProgram():
     sBody = sEntrypoint.split("fnListInstalledDistributionNames() {\n", 1)[1]
     sCopied = sBody.split(" 2>/dev/null", 1)[0].strip()
     assert sCopied == shadowRerun.S_ENUMERATE_PACKAGES_COMMAND
+
+
+def testTheMirrorCarriesEachProjectsDeclarationUnderItsName(tmp_path):
+    pathProjects = tmp_path / "projectRequirements"
+    pathProjects.mkdir()
+    (pathProjects / "study.txt").write_text(
+        "# study requirements.txt at " + "a" * 40 + " (branch main)\n"
+        "daft-pgm>=0.1.4\n")
+    sOutput = _fsRunEntrypointFunction(
+        tmp_path, f"S_PROJECT_REQUIREMENTS_DIRECTORY={pathProjects}\n"
+        "fnRenderRequirementsMirror", [])
+    assert "# declared by project study\n# study requirements.txt at " in sOutput
+    assert "daft-pgm>=0.1.4" in sOutput
+
+
+@pytest.mark.falsification
+def testTheVerificationComparesPythonPackagesWithTheMirrorsOwnSection(tmp_path):
+    """Kills: comparing pythonPackages with the whole mirror.
+
+    The mirror also lists each feature's and each project's packages,
+    which pythonPackages never names; read whole, every one of them is
+    "in the image but not declared" and the verification is refused.
+    The mirror is the real entrypoint's. Mutation: the section cut in
+    ``fsImageListOfMirror`` is dropped.
+    """
+    from vaibify.reproducibility.declaredPackages import (
+        fdictComparePackageDeclarations,
+    )
+    pathProjects = tmp_path / "projectRequirements"
+    pathProjects.mkdir()
+    (pathProjects / "study.txt").write_text("# study\ndaft-pgm>=0.1.4\n")
+    sMirror = _fsRunEntrypointFunction(
+        tmp_path, f"S_PROJECT_REQUIREMENTS_DIRECTORY={pathProjects}\n"
+        "fnRenderRequirementsMirror", [])
+    sMirror = sMirror.split("WARNING-LINE:")[0]
+    assert fdictComparePackageDeclarations(["numpy>=1.24", "scipy"], sMirror) == {
+        "bChecked": True, "bMatches": True,
+        "listMissingFromImage": [], "listExtraInImage": [],
+    }
+    assert fdictComparePackageDeclarations(
+        ["numpy>=1.24", "scipy", "astropy"], sMirror,
+    )["listMissingFromImage"] == ["astropy"]

@@ -134,8 +134,29 @@ DICT_OBSERVATION_MEANINGS = {
         "packages a repository's .vaibify/requirements.txt declared are "
         "not installed in this image; that file is now a generated copy "
         "of the image's own list",
-        "Add them to pythonPackages in vaibify.yml and Rebuild; the "
+        "Add them to the project's own requirements.txt (or "
+        "pythonPackages in vaibify.yml), push it, and Rebuild; the "
         "warning names each one.",
+    ),
+    # The image installs each project's declaration as it stood on the
+    # project's remote at build time; these name an edit made since,
+    # by where it lives, because that decides the remedy.
+    "project-requirements-uncommitted": (
+        "a project's dependency file declares packages the image does not "
+        "hold, and the change is not committed",
+        "Commit and push the file, then Rebuild; the warning names each "
+        "requirement.",
+    ),
+    "project-requirements-unpushed": (
+        "a project's dependency file declares packages the image does not "
+        "hold, and the commit that changed it is not pushed",
+        "Push the commit, then Rebuild: the build reads each project's "
+        "file from its remote.",
+    ),
+    "project-requirements-unbuilt": (
+        "a project's dependency file declares packages the image does not "
+        "hold; the change is pushed and the image predates it",
+        "Rebuild.",
     ),
     "agent-update-deferred": (
         "an agent could not be updated because networking is disabled",

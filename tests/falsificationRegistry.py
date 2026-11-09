@@ -40993,4 +40993,16 @@ LIST_FALSIFICATIONS = [
         old='    if not Requirement(sLine).specifier.contains(sVersion, prereleases=True):\n',
         new='    if False:\n',
     ),
+    Falsification(
+        nodeid='tests/testProjectDeclarationsCheckedAtStart.py::testACommitNotYetPushedSaysPushFirst',
+        source='vaibify/containerImage/entrypoint.sh',
+        old="        printf 'unpushed'\n",
+        new="        printf 'published'\n",
+    ),
+    Falsification(
+        nodeid='tests/testRequirementsDroppedAgainstWhatIsInstalled.py::testTheVerificationComparesPythonPackagesWithTheMirrorsOwnSection',
+        source='vaibify/reproducibility/declaredPackages.py',
+        old='        if sLine.startswith(_T_MIRROR_SECTION_HEADINGS):\n            break\n',
+        new='        if False:\n            break\n',
+    ),
 ]

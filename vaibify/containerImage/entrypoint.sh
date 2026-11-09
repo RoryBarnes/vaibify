@@ -855,6 +855,17 @@ S_IMAGE_REQUIREMENTS="/etc/vaibify/requirements.txt"
 # here and installs FROM it, so the record cannot drift from the image.
 S_FEATURE_REQUIREMENTS_DIRECTORY="/etc/vaibify/requirements.d"
 
+# Each project's own declaration, as the build read it from the
+# project's remote: one <repository>.txt per project that declares
+# something, whose first line names the file and the commit, beside an
+# index.json of every project read. Written by the projectDependencies
+# stage; absent from an image no project declared anything for.
+S_PROJECT_REQUIREMENTS_DIRECTORY="/etc/vaibify/projectRequirements"
+
+# The program the build ran in the pinned environment, shipped by the
+# base image: asked here about each project's working copy.
+S_DECLARATION_CHECKER="/usr/local/lib/vaibify/checkDeclaredRequirements.py"
+
 # ---------------------------------------------------------------------------
 # fnMirrorRepoRequirements: write the image's package list into each repo
 #
@@ -929,8 +940,9 @@ fnReportDroppedRequirements() {
     echo "[vaib]   WARNING: ${sRepoName}: these packages were declared ONLY in"
     echo "[vaib]            .vaibify/requirements.txt and are not in this image:"
     echo "[vaib]              ${sDropped}"
-    echo "[vaib]            They are no longer installed. Add them to"
-    echo "[vaib]            pythonPackages in vaibify.yml and rebuild the image."
+    echo "[vaib]            They are no longer installed. Add them to the"
+    echo "[vaib]            project's own requirements.txt (or pythonPackages"
+    echo "[vaib]            in vaibify.yml), push it, and rebuild the image."
     fnAppendStartupWarning "${sRepoName}" "requirements-dropped" \
         "declared only in the repo file, absent from the image, no longer installed: ${sDropped}"
 }
@@ -959,13 +971,14 @@ fnRenderRequirementsMirror() {
     echo "#"
     echo "# This mirrors the Python packages installed into this"
     echo "# container image: the pythonPackages list in the project's"
-    echo "# vaibify.yml, and the packages each enabled feature installs."
-    echo "# Editing it changes nothing that survives: the image is built"
-    echo "# from vaibify.yml, and this file is rewritten from the image"
-    echo "# on every container start."
+    echo "# vaibify.yml, the packages each enabled feature installs, and"
+    echo "# each project's own declaration at the commit the image was"
+    echo "# built from. Editing it changes nothing that survives: this"
+    echo "# file is rewritten from the image on every container start."
     echo "#"
-    echo "# To add a dependency: add it to pythonPackages in vaibify.yml"
-    echo "# on the host, then rebuild the image."
+    echo "# To add a dependency: add it to the project's own"
+    echo "# requirements.txt (or pyproject.toml), push it, and rebuild the"
+    echo "# image; or add it to pythonPackages in vaibify.yml and rebuild."
     cat "${S_IMAGE_REQUIREMENTS}"
     local sFeatureList
     for sFeatureList in "${S_FEATURE_REQUIREMENTS_DIRECTORY}"/*.txt; do
@@ -973,13 +986,20 @@ fnRenderRequirementsMirror() {
         echo "# installed by the $(basename "${sFeatureList}" .txt) feature"
         cat "${sFeatureList}"
     done
+    local sProjectList
+    for sProjectList in "${S_PROJECT_REQUIREMENTS_DIRECTORY}"/*.txt; do
+        [ -f "${sProjectList}" ] || continue
+        echo "# declared by project $(basename "${sProjectList}" .txt)"
+        cat "${sProjectList}"
+    done
 }
 
 # Every package name this image's lists record, normalized and sorted.
 fnListImageRequirementNames() {
     local sList
     for sList in "${S_IMAGE_REQUIREMENTS}" \
-            "${S_FEATURE_REQUIREMENTS_DIRECTORY}"/*.txt; do
+            "${S_FEATURE_REQUIREMENTS_DIRECTORY}"/*.txt \
+            "${S_PROJECT_REQUIREMENTS_DIRECTORY}"/*.txt; do
         [ -f "${sList}" ] && fnListRequirementNames "${sList}"
     done | sort -u
 }
@@ -999,6 +1019,99 @@ for distribution in metadata.distributions():
     if sName and sVersion:
         print(sName + "==" + sVersion)' 2>/dev/null \
         | sed -e 's/==.*//' | tr 'A-Z' 'a-z' | tr '_' '-' | sort -u
+}
+
+# ---------------------------------------------------------------------------
+# fnCheckProjectDeclarations: name what each project declares and the
+# image does not hold
+#
+# The build installs each project's declaration as it stood on the
+# project's remote. An edit made since is in the working copy and not in
+# the image, so it works for nobody who pulls the image -- and for the
+# shadow rerun and reproduce.sh, which use it with this start bypassed.
+# The question is satisfaction, asked of the image's own packages
+# (python3 -I leaves out what this start installed into the user's site):
+# a tightened version or an added extra counts, not only a new name.
+#
+# Where the change lives decides the remedy, so each case is its own
+# code: not yet committed, committed but not pushed, or pushed but not
+# yet built. An image older than the checker says nothing.
+# ---------------------------------------------------------------------------
+fnCheckProjectDeclarations() {
+    [ -f "${S_DECLARATION_CHECKER}" ] || return 0
+    local sRepoVaibify
+    for sRepoVaibify in "${WORKSPACE}"/*/.vaibify; do
+        [ -d "${sRepoVaibify}" ] || continue
+        fnCheckOneProjectDeclaration "$(dirname "${sRepoVaibify}")"
+    done
+}
+
+fnCheckOneProjectDeclaration() {
+    local sRepoPath="$1"
+    local sRepoName sFile sUnsatisfied sCode sRemedy
+    sRepoName=$(basename "${sRepoPath}")
+    sFile=$(fsFirstDeclarationFile "${sRepoPath}")
+    [ -n "${sFile}" ] || return 0
+    sUnsatisfied=$(python3 -I "${S_DECLARATION_CHECKER}" \
+            "project ${sRepoName}=${sRepoPath}/${sFile}" 2>/dev/null \
+        | python3 -I -c 'import json, sys
+try:
+    listMisses = json.loads(sys.stdin.read() or "{}").get("listUnsatisfied", [])
+except ValueError:
+    listMisses = []
+print(", ".join(d["sRequirement"] + " (" + d["sInstalled"] + " installed)"
+                for d in listMisses))')
+    [ -n "${sUnsatisfied}" ] || return 0
+    case "$(fsWhereTheDeclarationChanged "${sRepoPath}" "${sFile}")" in
+        uncommitted)
+            sCode="project-requirements-uncommitted"
+            sRemedy="commit and push ${sFile}, then Rebuild" ;;
+        unpushed)
+            sCode="project-requirements-unpushed"
+            sRemedy="push the commit that changed ${sFile}, then Rebuild" ;;
+        *)
+            sCode="project-requirements-unbuilt"
+            sRemedy="Rebuild, which reads ${sFile} from the remote" ;;
+    esac
+    echo "[vaib]   WARNING: ${sRepoName}: ${sFile} declares what this image does"
+    echo "[vaib]            not hold: ${sUnsatisfied}. To fix: ${sRemedy}."
+    fnAppendStartupWarning "${sRepoName}" "${sCode}" \
+        "${sFile} declares what the image does not hold: ${sUnsatisfied}; ${sRemedy}"
+}
+
+# The first of the lock's own inputs at the repository root, the file the
+# build reads (projectDeclarations.T_DECLARATION_FILES), or nothing.
+fsFirstDeclarationFile() {
+    local sFile
+    for sFile in pyproject.toml requirements.in requirements.txt; do
+        if [ -f "$1/${sFile}" ]; then
+            printf '%s' "${sFile}"
+            return 0
+        fi
+    done
+}
+
+# uncommitted, unpushed or published: where a declaration's current text
+# lives. The start has already fetched the remote, so its branch is fresh.
+fsWhereTheDeclarationChanged() {
+    local sRepoPath="$1"
+    local sFile="$2"
+    local sUpstream
+    if ! git -C "${sRepoPath}" ls-files --error-unmatch -- "${sFile}" \
+            > /dev/null 2>&1 \
+        || ! git -C "${sRepoPath}" diff --quiet HEAD -- "${sFile}" 2>/dev/null; then
+        printf 'uncommitted'
+        return 0
+    fi
+    sUpstream=$(git -C "${sRepoPath}" rev-parse --abbrev-ref \
+        --symbolic-full-name '@{u}' 2>/dev/null)
+    if [ -z "${sUpstream}" ] \
+        || [ "$(git -C "${sRepoPath}" rev-parse "HEAD:${sFile}" 2>/dev/null)" \
+            != "$(git -C "${sRepoPath}" rev-parse "${sUpstream}:${sFile}" 2>/dev/null)" ]; then
+        printf 'unpushed'
+        return 0
+    fi
+    printf 'published'
 }
 
 # ---------------------------------------------------------------------------
@@ -1920,6 +2033,7 @@ fnRunWorkspacePhase() {
     fnSourceBinariesInBashrc
     fnInstallAllRepos
     fnMirrorRepoRequirements
+    fnCheckProjectDeclarations
     fnPrintSummary
 }
 

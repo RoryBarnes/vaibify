@@ -31,6 +31,7 @@ __all__ = [
     "fdictComparePackageDeclarations",
     "fdictParsePinnedVersions",
     "flistParseRequirementNames",
+    "fsImageListOfMirror",
 ]
 
 
@@ -100,6 +101,27 @@ def fdictParsePinnedVersions(sText):
     return dictPinned
 
 
+# The mirror's sections after the image's own list, headed as the
+# entrypoint heads them (fnRenderRequirementsMirror). Only the first
+# section is built from pythonPackages, the declaration compared here: a
+# feature's list follows from vaibify.yml's features, which the
+# configuration fingerprint compares, and a project's from the project's
+# own file, which the container's start and the lock check compare.
+# Read whole, every feature's and project's package read as "in the
+# image but not declared" and refused the verification.
+_T_MIRROR_SECTION_HEADINGS = ("# installed by the ", "# declared by project ")
+
+
+def fsImageListOfMirror(sMirrorText):
+    """Return the mirror's first section: the list pythonPackages built."""
+    listLines = []
+    for sLine in (sMirrorText or "").splitlines():
+        if sLine.startswith(_T_MIRROR_SECTION_HEADINGS):
+            break
+        listLines.append(sLine)
+    return "\n".join(listLines)
+
+
 def fdictComparePackageDeclarations(listDeclared, sImageText):
     """Return how the declared package set differs from the image's.
 
@@ -116,7 +138,7 @@ def fdictComparePackageDeclarations(listDeclared, sImageText):
             "listMissingFromImage": [], "listExtraInImage": [],
         }
     listDeclaredNames = flistParseRequirementNames("\n".join(listDeclared))
-    listImageNames = flistParseRequirementNames(sImageText)
+    listImageNames = flistParseRequirementNames(fsImageListOfMirror(sImageText))
     setImage = set(listImageNames)
     setDeclared = set(listDeclaredNames)
     listMissing = [s for s in listDeclaredNames if s not in setImage]
