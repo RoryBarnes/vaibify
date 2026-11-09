@@ -38603,6 +38603,19 @@ LIST_FALSIFICATIONS = [
         old='        with fcontextHoldLifecycleLock(sContainerName, "reconnected to its network"):\n',
         new='        if True:\n',
     ),
+    # --- 2026-11-09: a sealed container's startup check asks its proxy. ---
+    Falsification(
+        nodeid='tests/testEntrypointEgressObservation.py::testANonPublicDestinationIsNotCalledAnAllowlistMatter',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='elif "non-public" in sReason:\n',
+        new='elif False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testEntrypointEgressObservation.py::testAReachableHostRaisesNoWarningInASealedMode',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='    if [ "${VAIBIFY_NETWORK_MODE:-}" = "web" ] \\\n',
+        new='    if [ "${VAIBIFY_NETWORK_MODE:-}" = "never" ] \\\n',
+    ),
     Falsification(
         nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndWebAndExcludesThePair',
         source='vaibify/gui/static/scriptWorkflowManager.js',

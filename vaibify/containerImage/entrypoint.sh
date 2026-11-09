@@ -145,6 +145,11 @@ fnObserveNameResolution() {
         fnRecordStartupObservation "dns-not-applicable" "${sHostname}" "info"
         return 0
     fi
+    if [ "${VAIBIFY_NETWORK_MODE:-}" = "web" ] \
+            || [ "${VAIBIFY_NETWORK_MODE:-}" = "allowlist" ]; then
+        fnObserveEgressThroughProxy "${sHostname}"
+        return 0
+    fi
     # BOUNDED, and the bound is the point. `getent hosts` against a
     # resolver that accepts the query and never answers blocks for the
     # C library's own retry schedule -- tens of seconds -- and this runs
@@ -165,6 +170,115 @@ fnObserveNameResolution() {
     echo "[vaib] Warning: could not resolve ${sHostname} from inside this container."
     fnAppendStartupWarning "${sHostname}" "dns-resolution-failed" \
         "the container could not resolve a host this project depends on"
+}
+
+# ---------------------------------------------------------------------------
+# fnObserveEgressThroughProxy: Ask the network proxy for a host this project
+# depends on. Arguments: sHostname
+#
+# A sealed container (web or allowlist mode) resolves no name itself: the
+# proxy resolves names for it, so a name lookup here fails on EVERY start and
+# says nothing. The proxy is asked instead, with the CONNECT the container's
+# own tools send, and its refusal is read back verbatim (`vaibify-egress:
+# <reason>`), because the proxy already tells apart a host off the allowlist,
+# a name that resolves to a non-public address, an upstream it could not dial
+# and a full tunnel table. A tunnel it opens is then given a TLS handshake.
+# Every socket wait is bounded, so the probe needs no `timeout` binary.
+# ---------------------------------------------------------------------------
+fnObserveEgressThroughProxy() {
+    local sHostname="$1"
+    local sProxy="${HTTPS_PROXY:-${https_proxy:-}}"
+    local sAnswer sCode sDetail
+    sAnswer=$(VAIB_PROXY="${sProxy}" VAIB_HOST="${sHostname}" \
+        python3 -I - 2>/dev/null << 'PYEOF'
+import os, socket, ssl
+sProxy = os.environ.get("VAIB_PROXY", "").split("//", 1)[-1].strip("/")
+sHost = os.environ["VAIB_HOST"]
+sProxyHost, _, sProxyPort = sProxy.rpartition(":")
+def answer(sCode, sDetail=""):
+    print(sCode + "\t" + " ".join(sDetail.split()))
+try:
+    socketProxy = socket.create_connection((sProxyHost, int(sProxyPort)), timeout=3)
+except (OSError, ValueError) as error:
+    answer("egress-proxy-unreachable", type(error).__name__)
+    raise SystemExit(0)
+try:
+    socketProxy.sendall(("CONNECT %s:443 HTTP/1.1\r\nHost: %s:443\r\n\r\n"
+                         % (sHost, sHost)).encode("ascii"))
+    baReply = b""
+    while b"\r\n\r\n" not in baReply and len(baReply) < 65536:
+        baChunk = socketProxy.recv(4096)
+        if not baChunk:
+            break
+        baReply += baChunk
+except OSError as error:
+    answer("egress-proxy-unreachable", "no answer: " + type(error).__name__)
+    raise SystemExit(0)
+sHead, _, sBody = baReply.decode("latin-1").partition("\r\n\r\n")
+listStatus = sHead.split("\r\n", 1)[0].split(" ", 2)
+sStatus = listStatus[1] if len(listStatus) > 1 else ""
+if sStatus == "200":
+    try:
+        ssl.create_default_context().wrap_socket(
+            socketProxy, server_hostname=sHost).close()
+        answer("egress-reachable")
+    except (OSError, ssl.SSLError) as error:
+        answer("egress-tls-failed", type(error).__name__ + ": " + str(error)[:160])
+    raise SystemExit(0)
+if len(sBody) < 200 and b"Content-Length" in baReply:
+    try:
+        socketProxy.settimeout(1)
+        sBody += socketProxy.recv(4096).decode("latin-1")
+    except OSError:
+        pass
+sReason = sBody.split("vaibify-egress:", 1)[-1].strip() if "vaibify-egress:" in sBody else sHead.split("\r\n", 1)[0]
+if not sStatus:
+    answer("egress-proxy-unreachable", "no answer")
+elif "not on allowlist" in sReason:
+    answer("egress-not-allowlisted", sReason)
+elif "non-public" in sReason:
+    answer("egress-non-public-destination", sReason)
+elif sStatus == "503":
+    answer("egress-proxy-saturated", sReason)
+elif sStatus == "502":
+    answer("egress-upstream-unreachable", sReason)
+else:
+    answer("egress-refused", sStatus + " " + sReason)
+PYEOF
+    )
+    sCode="${sAnswer%%$'\t'*}"
+    sDetail="${sAnswer#*$'\t'}"
+    [ "${sDetail}" = "${sAnswer}" ] && sDetail=""
+    case "${sCode}" in
+        egress-reachable)
+            fnRecordStartupObservation "egress-reachable" "${sHostname}" "ok"
+            return 0 ;;
+        egress-proxy-unreachable)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy did not answer (${sDetail:-no proxy configured}), so nothing in this container reaches the network" ;;
+        egress-not-allowlisted)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy refused it (${sDetail}); add it to allowedHosts in vaibify.yml" ;;
+        egress-non-public-destination)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy refused it because the name resolves to a non-public address" ;;
+        egress-proxy-saturated)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy has too many connections open (${sDetail})" ;;
+        egress-upstream-unreachable)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy could not reach it (${sDetail})" ;;
+        egress-tls-failed)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy reached it, but the secure connection failed (${sDetail})" ;;
+        egress-refused)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy refused it (${sDetail})" ;;
+        *)
+            fnAppendStartupWarning "${sHostname}" "egress-not-checked" \
+                "the network check through the proxy could not run" ;;
+    esac
+    echo "[vaib] Warning: ${sHostname} is not reachable through the network proxy (${sCode})."
 }
 
 # ---------------------------------------------------------------------------
