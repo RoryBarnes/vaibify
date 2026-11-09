@@ -1055,9 +1055,7 @@ var VaibifyContainerManager = (function () {
             }
             return;
         }
-        if (!bRunning) {
-            await fnStartContainer(sName);
-        }
+        if (!bRunning && !(await fbStartContainer(sName))) return;
         var bClaimed = await fbClaimContainer(sName);
         if (!bClaimed) {
             await fnLoadContainers();
@@ -1380,7 +1378,7 @@ var VaibifyContainerManager = (function () {
     }
 
     async function fnHandleContainerAction(sName, sAction) {
-        if (sAction === "start") await fnStartContainer(sName);
+        if (sAction === "start") await fbStartContainer(sName);
         else if (sAction === "cancel-start")
             await fnCancelStartContainer(sName);
         else if (sAction === "stop") await fnStopContainer(sName);
@@ -1826,7 +1824,7 @@ var VaibifyContainerManager = (function () {
             if (bNoCache) sUrl += "?bNoCache=true";
             await VaibifyApi.fdictPostRaw(sUrl);
             VaibifyApp.fnShowToast("Build complete", "success");
-            await fnStartContainer(sName);
+            await fbStartContainer(sName);
             bBuiltAndRunning = true;
         } catch (error) {
             /* A DROPPED CONNECTION IS NOT A FAILED BUILD. The
@@ -1918,7 +1916,7 @@ var VaibifyContainerManager = (function () {
             await VaibifyApi.fdictPostRaw(sUrl);
             VaibifyApp.fnShowToast(
                 "Obtained the author’s pinned image", "success");
-            await fnStartContainer(sName);
+            await fbStartContainer(sName);
             bObtainedAndRunning = true;
         } catch (error) {
             var sAction = (error.dictDetail && error.dictDetail.sAction) || "";
@@ -2148,7 +2146,7 @@ var VaibifyContainerManager = (function () {
             VaibifyApp.fnShowToast(
                 bObtaining ? "Obtained the author’s pinned image"
                     : "Build complete", "success");
-            await fnStartContainer(sName);
+            await fbStartContainer(sName);
             return true;
         }
         _fnShowBuildFailureModal(
@@ -2268,7 +2266,14 @@ var VaibifyContainerManager = (function () {
         }
     }
 
-    async function fnStartContainer(sName) {
+    async function fbStartContainer(sName) {
+        /* Returns whether the container is now RUNNING. A start that
+           hands the researcher a question instead (trust this image,
+           approve the network, build it first, release it elsewhere)
+           answers false and has already put the question on screen; so
+           has a failed one. Opening a container used to carry on past
+           either and claim a container that did not exist, and the
+           researcher was told to refresh the list. */
         fnSetTilePending(sName);
         _fnRememberPendingStart(sName);
         try {
@@ -2279,17 +2284,20 @@ var VaibifyContainerManager = (function () {
             if (await _fnFollowStartToItsOutcome(sName, dictStart)) {
                 await _fnCopyPendingFilesIntoContainer(sName);
                 await _fnReleaseClaimUnlessInside(sName);
+                return true;
             }
+            return false;
         } catch (error) {
             _fnForgetPendingStart();
             if (_fbOfferReleaseOfHeldContainer(
-                    error, sName, fnStartContainer)) {
-                return;
+                    error, sName, fbStartContainer)) {
+                return false;
             }
-            if (_fbOfferBuildOfUnbuiltImage(error, sName)) return;
-            if (_fbOfferImageTrust(error, sName)) return;
-            if (_fbOfferReachApproval(error, sName)) return;
+            if (_fbOfferBuildOfUnbuiltImage(error, sName)) return false;
+            if (_fbOfferImageTrust(error, sName)) return false;
+            if (_fbOfferReachApproval(error, sName)) return false;
             VaibifyDiagnosis.fnReportFailureFromError(error);
+            return false;
         } finally {
             fnLoadContainers();
         }
@@ -2361,7 +2369,7 @@ var VaibifyContainerManager = (function () {
             fnLoadContainers();
             return;
         }
-        fnStartContainer(sName);
+        fbStartContainer(sName);
     }
 
     function _fnContinueAfterImageTrust(sName, dictRecord) {
@@ -2372,7 +2380,7 @@ var VaibifyContainerManager = (function () {
             fnLoadContainers();
             return;
         }
-        fnStartContainer(sName);
+        fbStartContainer(sName);
     }
 
     async function _fnOfferOtherChoicesWhenRestrictedFailed(sName) {
@@ -2731,7 +2739,7 @@ var VaibifyContainerManager = (function () {
             async function () {
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Restart"))) return;
-                await fnStartContainer(sName);
+                await fbStartContainer(sName);
             },
             _fdictAskWhatRecreateDiscards(sName, {
                 sDetails:
@@ -3844,7 +3852,7 @@ var VaibifyContainerManager = (function () {
         fbGetSelectedContainerIsProject: fbGetSelectedContainerIsProject,
         fnReleaseClaim: fnReleaseClaim,
         fdictReleaseClaimOutcome: fdictReleaseClaimOutcome,
-        fnStartContainer: fnStartContainer,
+        fbStartContainer: fbStartContainer,
         fnCancelStartContainer: fnCancelStartContainer,
         fnResumeInterruptedStart: fnResumeInterruptedStart,
         fnBuildContainer: fnBuildContainer,

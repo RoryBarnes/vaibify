@@ -22893,6 +22893,16 @@ LIST_FALSIFICATIONS = [
         old='        VaibifyApp.fnShowToast(_S_BUILD_PREFLIGHT_ANNOUNCEMENT, "info");\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::'
+            'testOpeningAStoppedTileStopsAtTheQuestionAndClaimsNothing'
+        ),
+        # the open flow claims past a start that started nothing
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!bRunning && !(await fbStartContainer(sName))) return;\n',
+        new='        if (!bRunning) await fbStartContainer(sName);\n',
+    ),
     # --- 2026-09-21: the wizard audit ---
     Falsification(
         nodeid=(
@@ -34541,7 +34551,7 @@ LIST_FALSIFICATIONS = [
         old='        await VaibifyContainerManager.fnLoadContainers();\n',
         new=(
             '        await VaibifyContainerManager.fnLoadContainers();\n'
-            '        await VaibifyContainerManager.fnStartContainer(sNewName);\n'
+            '        await VaibifyContainerManager.fbStartContainer(sNewName);\n'
         ),
     ),
     # --- 2026-10-15: a running L3 rerun streams its output to the PROOF
@@ -39969,7 +39979,7 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/browser/testTheReachApprovalModalAsksBeforeAWideningStart.py::testTheModalShowsTheServersWordsAndApproveRetriesTheStart',
         # The frontend ignoring the confirm-reach refusal.
         source='vaibify/gui/static/scriptContainerManager.js',
-        old='            if (_fbOfferReachApproval(error, sName)) return;\n',
+        old='            if (_fbOfferReachApproval(error, sName)) return false;\n',
         new='',
     ),
     Falsification(

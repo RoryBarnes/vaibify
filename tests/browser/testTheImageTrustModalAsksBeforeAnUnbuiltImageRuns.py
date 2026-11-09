@@ -332,3 +332,43 @@ def testAFailedRestrictedStartIsShownAndOffersTheOtherChoices(
         f"{S_MODAL} .image-trust-notice").inner_text()
     assert pageDashboard.locator(
         f"{S_TILE} .status-dot.status-running").count() == 0
+
+
+@pytest.mark.falsification
+def testOpeningAStoppedTileStopsAtTheQuestionAndClaimsNothing(
+    pageDashboard, serverHub,
+):
+    """Opening a stopped container starts it first. A start answered
+    with this question has started nothing, so the open must end at the
+    question: it used to carry on, claim a container that did not exist,
+    and tell the researcher its id was "not in the environment list yet".
+
+    Kills: the open flow ignoring the start's answer, under which a
+    claim is sent while the question is on screen.
+    """
+    def fnListTheTileAsStopped(routeListing):
+        responseListing = routeListing.fetch()
+        dictBody = responseListing.json()
+        for dictTile in dictBody.get("listContainers", []):
+            if dictTile.get("sName") == S_CONTAINER_NAME:
+                dictTile.update(sStatus="stopped", sContainerId="")
+        routeListing.fulfill(
+            response=responseListing, body=json.dumps(dictBody),
+            headers={"content-type": "application/json"})
+
+    listClaims = []
+    pageDashboard.route("**/api/registry", fnListTheTileAsStopped)
+    pageDashboard.route(
+        f"**/api/registry/{S_CONTAINER_NAME}/claim",
+        lambda routeIntercepted: (
+            listClaims.append(1), routeIntercepted.continue_()))
+    fnRefuseStartWithThePrompt(pageDashboard, fdictPrompt(), [])
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+    pageDashboard.wait_for_selector(
+        f"{S_TILE} .status-dot.status-stopped", timeout=15000)
+    pageDashboard.click(f"{S_TILE} .container-tile-main")
+    pageDashboard.wait_for_selector(S_MODAL, timeout=10000)
+    pageDashboard.wait_for_timeout(1000)
+    assert listClaims == [], "a claim was sent for a container never started"
+    assert "is claimed, but" not in pageDashboard.locator("body").inner_text()
+    pageDashboard.unroute_all(behavior="ignoreErrors")

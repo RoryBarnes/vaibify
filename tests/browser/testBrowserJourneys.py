@@ -665,7 +665,7 @@ def testStartReportsItsRealOutcomeAndNotTheAcceptedRequest(
             # Deliberately NOT awaited: the start is in flight for as
             # long as the held executor says, and `evaluate` resolves a
             # returned promise, which would block until it finished.
-            "() => { VaibifyContainerManager.fnStartContainer('%s'); }"
+            "() => { VaibifyContainerManager.fbStartContainer('%s'); }"
             % S_CONTAINER_NAME
         )
         pageDashboard.locator(
@@ -987,7 +987,7 @@ def testReloadDuringAStartPicksTheOutcomeBackUp(
     try:
         fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
         pageDashboard.evaluate(
-            "() => { VaibifyContainerManager.fnStartContainer('%s'); }"
+            "() => { VaibifyContainerManager.fbStartContainer('%s'); }"
             % S_CONTAINER_NAME
         )
         pageDashboard.locator(
@@ -1087,7 +1087,7 @@ def testAStartSurvivesATransientStatusPollFailure(
         fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
         pageDashboard.route("**/start-status", _fnAbortFirstStatusPoll)
         pageDashboard.evaluate(
-            "() => { VaibifyContainerManager.fnStartContainer('%s'); }"
+            "() => { VaibifyContainerManager.fbStartContainer('%s'); }"
             % S_CONTAINER_NAME
         )
         pageDashboard.locator(
