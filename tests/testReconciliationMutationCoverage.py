@@ -16,6 +16,7 @@ force-abandon lifecycle landed with slice 5 in
 surface is unit-tested in ``testPoisonRecord.py``.
 """
 
+import datetime
 import json
 import multiprocessing
 import os
@@ -30,6 +31,7 @@ from vaibify.cli import commandReconcile
 from vaibify.config import containerLock, operationJournal
 from vaibify.config.operationJournal import (
     fdictReadJournalOutcome,
+    fnMarkOperationNeedsReconciliation,
     fnPromoteOperationToInFlight,
     fsComputeJournalFileSha256,
     fsJournalPathFor,
@@ -352,3 +354,112 @@ def test_break_glass_clears_only_the_malformed_record_it_names():
     )
     assert listStopped == [S_PROJECT]
     assert not os.path.exists(sJournalPath)
+
+
+# ---------------------------------------------------------------------
+# A recycled process-group number (the 2026-11 field quarantine).
+# ---------------------------------------------------------------------
+
+def _fprocessStartSleeperInOwnGroup():
+    """Start a live process that leads its own process group."""
+    return subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        start_new_session=True,
+    )
+
+
+def _fsJournalQuarantinedHelper(
+    monkeypatch, iHolderPid, iHolderProcessGroup, sInFlightIso,
+):
+    """Journal a NEEDS_RECONCILIATION helper gone in flight at sInFlightIso."""
+    with monkeypatch.context() as monkeypatchClock:
+        monkeypatchClock.setattr(
+            operationJournal, "fsNowClaimIso", lambda: sInFlightIso,
+        )
+        sOperationId = fsPrepareOperation(S_PROJECT, "helper", "git-badges")
+        fnPromoteOperationToInFlight(
+            S_PROJECT, sOperationId,
+            {
+                "iHolderPid": iHolderPid,
+                "iHolderProcessGroup": iHolderProcessGroup,
+            },
+        )
+    fnMarkOperationNeedsReconciliation(
+        S_PROJECT, sOperationId, sNote="worker failed before settling",
+    )
+    return sOperationId
+
+
+def test_reconcile_clears_a_record_whose_group_number_was_reissued(
+    capsys, monkeypatch,
+):
+    """A dead hub's records clear once its PID and group number are reused.
+
+    The field shape: a hub held helper records under its own PID, which
+    was also their process group. The hub exited, and a later process
+    (there, a container runtime's daemon) was given the same number and
+    leads its own group with it. POSIX forbids issuing a PID while a
+    process group with that ID exists, so a group leader that started
+    after the record went in flight proves the recorded group ended.
+    The expected verdict, cleared, follows from that rule and from the
+    timing this test constructs, not from the code under test.
+
+    Kills: in operationJournal._fdictProbeHelperOperation, disable the
+    reissued-group branch, so the record is refused forever as
+    "process group ... still has live members".
+    """
+    processLater = _fprocessStartSleeperInOwnGroup()
+    try:
+        sAnHourBefore = (
+            datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(hours=1)
+        ).isoformat()
+        _fsJournalQuarantinedHelper(
+            monkeypatch, processLater.pid, processLater.pid, sAnHourBefore,
+        )
+        os.killpg(processLater.pid, 0)
+        monkeypatch.setattr(
+            commandReconcile, "_fconnectionCreateDockerQuietly",
+            FakeDockerConnectionExecSettled,
+        )
+        iExitCode = commandReconcile.fiRunReconcileCommand(S_PROJECT, True)
+        assert iExitCode == 0, capsys.readouterr().err
+        assert not os.path.exists(fsJournalPathFor(S_PROJECT))
+    finally:
+        processLater.kill()
+        processLater.wait()
+
+
+def test_reconcile_refuses_a_group_led_by_a_process_older_than_the_record(
+    capsys, monkeypatch,
+):
+    """A group whose leader predates the record may be the original group.
+
+    The holder is dead, but the recorded group number belongs to a
+    live process that started BEFORE the record went in flight, so
+    nothing proves the recorded group ended: its members may still be
+    writing. The reissue proof must not apply, and the record stays
+    quarantined.
+
+    Kills: in operationJournal._fbProcessGroupNumberWasReissued, return
+    True whenever the start clock is readable, ignoring when the process
+    started, so any live group number reads as reissued.
+    """
+    processEarlier = _fprocessStartSleeperInOwnGroup()
+    try:
+        iDeadPid = _fiSpawnExitedProcessInOwnGroup()
+        _fsJournalQuarantinedHelper(
+            monkeypatch, iDeadPid, processEarlier.pid,
+            datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        )
+        monkeypatch.setattr(
+            commandReconcile, "_fconnectionCreateDockerQuietly",
+            FakeDockerConnectionExecSettled,
+        )
+        iExitCode = commandReconcile.fiRunReconcileCommand(S_PROJECT, True)
+        assert iExitCode != 0
+        assert "still has live members" in capsys.readouterr().err
+        assert os.path.exists(fsJournalPathFor(S_PROJECT))
+    finally:
+        processEarlier.kill()
+        processEarlier.wait()

@@ -7,6 +7,10 @@ FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# The base image ends as the unprivileged container user; installing
+# system-wide needs root, and the last line hands the image back.
+USER root
+
 # Install R from CRAN repository. Download the keyring over HTTPS,
 # emit an actionable diagnostic on failure — same template as the
 # deadsnakes block in docker/Dockerfile.
@@ -67,3 +71,5 @@ RUN if ! Rscript -e "install.packages('IRkernel', repos='https://cran.rstudio.co
         echo "" >&2; \
         exit 1; \
     fi
+
+USER ${CONTAINER_USER}

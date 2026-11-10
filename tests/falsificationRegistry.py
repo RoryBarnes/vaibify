@@ -4720,6 +4720,24 @@ LIST_FALSIFICATIONS = [
     raise ContainerLockedError(sProjectName, 0, 0)''',
         new='''    return _ffileOpenLockFileNoFollow(sPath)''',
     ),
+    # --- 2026-11-08: a dead hub's helper records stayed unprovable
+    # forever once a later process was issued the hub's PID and led a
+    # process group with it ---
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_reconcile_clears_a_record_whose_group_number_was_reissued',
+        source='vaibify/config/operationJournal.py',
+        old='    if _fbProcessGroupNumberWasReissued(\n',
+        new='    if False and _fbProcessGroupNumberWasReissued(\n',
+    ),
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_reconcile_refuses_a_group_led_by_a_process_older_than_the_record',
+        source='vaibify/config/operationJournal.py',
+        old=(
+            '    return not fbStartClockIsConsistentWithClaim('
+            'datetimeStart, sInFlightIso)\n'
+        ),
+        new='    return True\n',
+    ),
     Falsification(
         nodeid='tests/testReconciliationMutationCoverage.py::test_a_stale_reconciliation_cannot_clear_a_successor_record',
         source='vaibify/config/reconciliation.py',
@@ -22865,6 +22883,26 @@ LIST_FALSIFICATIONS = [
         new='',
         iExpectedOccurrences=2,
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testARebuildAnnouncesItsPreflight.py::'
+            'testTheRebuildPreflightIsAnnouncedWhileItIsUnanswered'
+        ),
+        # the page sits unchanged while the preflight looks names up
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        VaibifyApp.fnShowToast(_S_BUILD_PREFLIGHT_ANNOUNCEMENT, "info");\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::'
+            'testOpeningAStoppedTileStopsAtTheQuestionAndClaimsNothing'
+        ),
+        # the open flow claims past a start that started nothing
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!bRunning && !(await fbStartContainer(sName))) return;\n',
+        new='        if (!bRunning) await fbStartContainer(sName);\n',
+    ),
     # --- 2026-09-21: the wizard audit ---
     Falsification(
         nodeid=(
@@ -32302,6 +32340,19 @@ LIST_FALSIFICATIONS = [
             '--ServerApp.token=\\"$(cat /run/vaibify/jupyter-token)\\""]'
         ),
     ),
+    # --- 2026-11-08: every installing overlay assumed it began as root.
+    # One entry for the parametrized family; with the fix stashed, each
+    # of the seven installing overlays failed its own case and every
+    # agent overlay passed.
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileHardening.py::'
+            'test_overlay_installs_system_wide_only_as_root'
+        ),
+        source='vaibify/containerImage/overlays/nestedSampling.dockerfile',
+        old='USER root\n\n# gfortran',
+        new='# gfortran',
+    ),
     # --- 2026-10-19: the in-container guide yields to the researcher.
     Falsification(
         nodeid=(
@@ -34513,7 +34564,7 @@ LIST_FALSIFICATIONS = [
         old='        await VaibifyContainerManager.fnLoadContainers();\n',
         new=(
             '        await VaibifyContainerManager.fnLoadContainers();\n'
-            '        await VaibifyContainerManager.fnStartContainer(sNewName);\n'
+            '        await VaibifyContainerManager.fbStartContainer(sNewName);\n'
         ),
     ),
     # --- 2026-10-15: a running L3 rerun streams its output to the PROOF
@@ -38512,6 +38563,40 @@ LIST_FALSIFICATIONS = [
         new='        pass\n',
     ),
     Falsification(
+        nodeid='tests/testProjectEgressLive.py::testTheDaemonsLabeledEgressIsDiscovered',
+        # `docker ps` refuses `index` on its comma-joined label string
+        source='vaibify/docker/projectEgress.py',
+        old='''         "--format", f'{{{{.Label "{S_LABEL_KEY}"}}}}'],\n''',
+        new='''         "--format", f'{{{{index .Labels "{S_LABEL_KEY}"}}}}'],\n''',
+        iExpectedOccurrences=2,
+    ),
+    # --- 2026-11-09: only the daemon's attachment answer releases egress. ---
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testTheReconcileReleasesOnlyIdentitiesNoContainerUses',
+        source='vaibify/docker/projectEgress.py',
+        old='        if fbEgressIsInUse(sProjectUuid):\n',
+        new='        if not sProjectUuid:\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testAnUnansweredDaemonReleasesNothing',
+        source='vaibify/docker/projectEgress.py',
+        old='    if processResult.returncode != 0:\n        raise EgressSetupError(f"docker ps failed: {processResult.stderr}")\n    sProxyName = fsProxyName(sProjectUuid)\n',
+        new='    if False:\n        raise EgressSetupError(f"docker ps failed: {processResult.stderr}")\n    sProxyName = fsProxyName(sProjectUuid)\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgressLive.py::testAnEgressWhoseNetworkCarriesAContainerIsKept',
+        # a container-name filter matches nothing and reads as "unused"
+        source='vaibify/docker/projectEgress.py',
+        old='        ["ps", "-a", "--filter", f"network={fsNetworkName(sProjectUuid)}",\n',
+        new='        ["ps", "-a", "--filter", f"name={fsNetworkName(sProjectUuid)}",\n',
+    ),
+    Falsification(
+        nodeid='tests/testBrowserLaneContract.py::testTheLaneHubNeverAsksTheRealDaemonAboutEgress',
+        source='tests/browser/conftest.py',
+        old='        projectEgress, "_fprocessDocker", _fnRefuseEgressDockerCall,\n    ), patch.object(\n',
+        new='',
+    ),
+    Falsification(
         nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndWebAndExcludesThePair',
         source='vaibify/gui/static/scriptWorkflowManager.js',
         old='        dictData.sNetworkMode = "web";\n',
@@ -39933,7 +40018,7 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/browser/testTheReachApprovalModalAsksBeforeAWideningStart.py::testTheModalShowsTheServersWordsAndApproveRetriesTheStart',
         # The frontend ignoring the confirm-reach refusal.
         source='vaibify/gui/static/scriptContainerManager.js',
-        old='            if (_fbOfferReachApproval(error, sName)) return;\n',
+        old='            if (_fbOfferReachApproval(error, sName)) return false;\n',
         new='',
     ),
     Falsification(

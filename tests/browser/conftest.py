@@ -413,9 +413,10 @@ def _fnIsolateProjectRegistry():
     # guard) but inside a gitignored subdir (so a killed run's leftover
     # can never be committed) — see PATH_BROWSER_LANE_TMP_ROOT.
     PATH_BROWSER_LANE_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    from tests.conftest import fcontextRedirectEveryStateStore
     with tempfile.TemporaryDirectory(
         dir=str(PATH_BROWSER_LANE_TMP_ROOT),
-    ) as sHome:
+    ) as sHome, fcontextRedirectEveryStateStore(sHome):
         sRegistry = os.path.join(sHome, "registry.json")
         sReadyDirectory = os.path.join(sHome, S_HOST_PROJECT_READY)
         os.makedirs(sReadyDirectory, exist_ok=True)
@@ -515,6 +516,43 @@ def _fnIsolateProjectRegistry():
             yield sHome
 
 
+def _fnRefuseEgressDockerCall(listArguments, fTimeoutSeconds=None):
+    """The lane models no egress daemon, so every egress command is refused."""
+    from vaibify.docker.egressProxy import EgressSetupError
+    raise EgressSetupError(
+        "the browser lane models no Docker daemon for project egress: "
+        + " ".join(listArguments[:2]))
+
+
+@contextlib.contextmanager
+def _fcontextKeepHubHooksOffTheRealDaemon():
+    """Keep the hub's own daemon clients away from the developer's daemon.
+
+    The fake adapter stands in for ``pipelineServer``'s connection only.
+    Several startup hooks and reapers build their OWN Docker access, and
+    on a developer machine they acted on real resources: the egress
+    reconcile removed a running project's proxy (2026-11-08, reproduced
+    with a decoy), and the council reconcile destroys every council
+    runner whose peer lock it cannot see, which in a re-rooted lock
+    directory is all of them. Each is refused or emptied here for the
+    hub's whole life, not per test, because the hooks run at startup,
+    between tests and at shutdown. The X server check is answered
+    "absent" so the lane never runs ``xhost`` against the real display.
+    """
+    from vaibify.docker import projectEgress
+    from vaibify.gui import appFactory, serverLifespan, x11Lifecycle
+    with patch.object(
+        appFactory, "_fdockerCreateCouncilClientOrNone", lambda: None,
+    ), patch.object(
+        projectEgress, "_fprocessDocker", _fnRefuseEgressDockerCall,
+    ), patch.object(
+        x11Lifecycle, "fbXServerAvailable", lambda: False,
+    ), patch.object(
+        serverLifespan, "_fdictReclaimOnce", lambda: {},
+    ):
+        yield
+
+
 # Module scope, NOT session scope. These fixtures hold `patch.object`
 # on pipelineServer and registryManager open across the yield; at
 # session scope those patches stay live while every other test module
@@ -537,7 +575,7 @@ def serverHub():
     with socketListening, _fnIsolateProjectRegistry() as sHome, patch.object(
         pipelineServer, "_fconnectionCreateDocker",
         lambda *args, **kwargs: adapterDocker,
-    ):
+    ), _fcontextKeepHubHooksOffTheRealDaemon():
         app = fappCreateHubApplication(iExpectedPort=iPort)
         # The council's durable store root is derived from $HOME, which
         # this lane does NOT override — so without this the test hub
