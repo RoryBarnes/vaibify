@@ -40984,8 +40984,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testEnvironmentSatisfiesDeclarationsLive.py::testAPackageOnlyTheStartInstallsFailsTheBuild',
         source='vaibify/docker/imageBuilder.py',
-        old='        ["docker", "run", "--rm", "--network", "none", "--entrypoint", "",\n',
-        new='        ["docker", "run", "--rm", "--network", "none",\n',
+        old='"--network", "none", "--entrypoint", "",\n',
+        new='"--network", "none",\n',
     ),
     Falsification(
         nodeid='tests/testCheckDeclaredRequirements.py::testATightenedVersionIsUnsatisfiedThoughTheNameIsInstalled',
