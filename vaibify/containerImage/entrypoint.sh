@@ -307,6 +307,18 @@ fnWriteReadinessMarker() {
 }
 
 # ---------------------------------------------------------------------------
+# fnReportStartupStep: Name the step this start is on, for the dashboard
+# Arguments: sStep
+# The dashboard keeps a researcher out until the start is done, so it
+# shows what the start is doing instead; each write also dates the
+# progress, which is how a start with no new step for a long time is
+# called stuck. Workspace phase only: the marker belongs to the user.
+# ---------------------------------------------------------------------------
+fnReportStartupStep() {
+    fnWriteReadinessMarker "booting" "$1"
+}
+
+# ---------------------------------------------------------------------------
 # fsRedactCredentials: Strip credentials embedded in HTTP(S) URLs
 # Arguments: sInput
 # Returns (stdout): sInput with `https://user:token@host` rewritten to
@@ -643,6 +655,8 @@ fnSyncAllRepos() {
 
     local iCount=${#saRepoNames[@]}
     for (( i=0; i<iCount; i++ )); do
+        fnReportStartupStep \
+            "Updating ${saRepoNames[$i]} ($((i + 1)) of ${iCount} repositories)"
         fnCloneOrPull "${saRepoNames[$i]}" "${saRepoUrls[$i]}" "${saRepoBranches[$i]}"
     done
 
@@ -738,6 +752,7 @@ fnBuildBinaries() {
     local bBuiltAny=false
     for (( i=0; i<iCount; i++ )); do
         if [ "${saRepoMethods[$i]}" = "c_and_pip" ]; then
+            fnReportStartupStep "Compiling ${saRepoNames[$i]}"
             if fnBuildSingleBinary "${saRepoNames[$i]}" \
                 "${WORKSPACE}/${saRepoNames[$i]}"; then
                 bBuiltAny=true
@@ -833,6 +848,8 @@ fnInstallAllRepos() {
     local iCount=${#saRepoNames[@]}
     for (( i=0; i<iCount; i++ )); do
         if [ -d "${WORKSPACE}/${saRepoNames[$i]}" ]; then
+            fnReportStartupStep \
+                "Installing ${saRepoNames[$i]} ($((i + 1)) of ${iCount} repositories)"
             fnInstallRepo "${saRepoNames[$i]}" "${saRepoMethods[$i]}"
         fi
     done
@@ -1996,8 +2013,10 @@ fnRunWorkspacePhase() {
     fnInstallAgentSkills
     fnPersistGitConfig
     fnParseReposConf
+    fnReportStartupStep "Checking the network"
     fnObserveFirstRepositoryHost
     fnSyncAllRepos
+    fnReportStartupStep "Updating the coding agents"
     if command -v claude > /dev/null 2>&1; then
         fnConfigureClaudeTheme
         fnConfigureClaudeAutoUpdate
@@ -2032,6 +2051,7 @@ fnRunWorkspacePhase() {
     fnBuildBinaries
     fnSourceBinariesInBashrc
     fnInstallAllRepos
+    fnReportStartupStep "Checking each project's dependencies"
     fnMirrorRepoRequirements
     fnCheckProjectDeclarations
     fnPrintSummary

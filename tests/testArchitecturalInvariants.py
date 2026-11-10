@@ -5462,7 +5462,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 858 -> 859 (2026-11-02): the Network row covers both sealed modes, web and allowlist (web network mode plan, A5).
     # 859 -> 874 (2026-11-03): GET /api/system/about, the version both hubs' help shows (follow-up-after-210 plan, A2, A8).
     # 874 -> 913 (2026-11-04): the Network row reports a file that names no mode as unstated, never open, and carries the container's assessed network state and whether the file agrees (ruling D1 revised; merged with main, re-measured).
-    "routes/systemRoutes.py": 913,
+    # 913 -> 987 (2026-11-09): the readiness probe dates the marker against the container's own start and reports the step and its age, so no dashboard opens before the start is done. The readiness probe is now the candidate seam if this file grows again.
+    "routes/systemRoutes.py": 987,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record

@@ -1072,19 +1072,17 @@ var VaibifyContainerManager = (function () {
             return;
         }
         _fnShowInitializingOverlay();
-        var dictReadiness = await _fdictWaitForContainerReady(sTargetId);
+        var dictWait = await _fdictWaitForContainerReady(sTargetId);
         _fnHideInitializingOverlay();
-        _fnSurfaceReadinessOutcome(dictReadiness, sTargetId);
-        if (!dictReadiness || !dictReadiness.bReady) {
-            var sStatus = dictReadiness ? dictReadiness.sStatus : "";
-            if (sStatus !== "failed" && sStatus !== "stalled") {
-                VaibifyApp.fnShowToast(
-                    "Container '" + sName + "' is running but did not " +
-                    "report ready within two minutes. Connecting " +
-                    "anyway; if the dashboard stays empty, choose " +
-                    "Restart from its \u22ee menu.", "warning");
-            }
+        if (!dictWait.dictReadiness) {
+            /* The researcher left the wait: the container keeps
+               starting, and the claim taken to open it goes. */
+            await fnReleaseClaim(sName);
+            await fnLoadContainers();
+            if (dictWait.sThen === "restart") await fnRestartContainer(sName);
+            return;
         }
+        _fnSurfaceReadinessOutcome(dictWait.dictReadiness, sTargetId);
         fnConnectToContainer(sTargetId);
     }
 
@@ -3023,33 +3021,94 @@ var VaibifyContainerManager = (function () {
         }
     }
 
+    /* The dashboard opens only once the container's start is done, so
+       the terminal is ready the moment the researcher arrives. There is
+       no time limit: the wait used to give up after two minutes and
+       open a dashboard whose terminal could not start, and a large
+       project's start takes longer than that. A start with no new step
+       for a long time is CALLED stuck, which offers Restart and still
+       keeps the researcher out. An image that reports no steps is
+       judged on its whole start, more generously. A failed start opens
+       the dashboard, where the failure is shown and diagnosed. */
+    var _I_STUCK_AFTER_SILENT_SECONDS = 600;
+    var _I_STUCK_AFTER_SECONDS_WITHOUT_STEPS = 900;
+    var _I_READINESS_POLL_MS = 2000;
+    var _dictStartupWait = null;
+
     async function _fdictWaitForContainerReady(sContainerId) {
-        var iMaxAttempts = 60;
-        var iIntervalMs = 2000;
-        var dictLast = null;
-        for (var iAttempt = 0; iAttempt < iMaxAttempts; iAttempt++) {
+        /* Returns {dictReadiness, sThen}: the ready answer, or null
+           with what the researcher chose instead ("back", "restart"). */
+        var dictWait = {bLeft: false, sThen: ""};
+        _dictStartupWait = dictWait;
+        _fnRenderStartupProgress(null);
+        while (!dictWait.bLeft) {
+            var dictResult = null;
             try {
-                var dictResult = await VaibifyApi.fdictGet(
+                dictResult = await VaibifyApi.fdictGet(
                     "/api/containers/"
                     + encodeURIComponent(sContainerId) + "/ready"
                 );
-                dictLast = dictResult;
-                var sStatus = dictResult.sStatus || "";
-                if (sStatus === "stalled") return dictResult;
-                if (sStatus === "failed") return dictResult;
-                if (dictResult.bReady) return dictResult;
             } catch (error) {
-                /* container may not be fully started yet */
+                dictResult = null;
             }
+            if (dictWait.bLeft) break;
+            if (dictResult && dictResult.bReady) {
+                return {dictReadiness: dictResult, sThen: ""};
+            }
+            if (dictResult) _fnRenderStartupProgress(dictResult);
             await new Promise(function (fnResolve) {
-                setTimeout(fnResolve, iIntervalMs);
+                setTimeout(fnResolve, _I_READINESS_POLL_MS);
             });
         }
-        return dictLast || {
-            bReady: false, sStatus: "timeout",
-            sReason: "Container did not become ready in time.",
-            saWarnings: [], iWarningCount: 0,
-        };
+        return {dictReadiness: null, sThen: dictWait.sThen};
+    }
+
+    function fnLeaveStartupWait(sThen) {
+        if (!_dictStartupWait) return;
+        _dictStartupWait.bLeft = true;
+        _dictStartupWait.sThen = sThen || "back";
+    }
+
+    function _fnRenderStartupProgress(dictReadiness) {
+        var dictAnswer = dictReadiness || {};
+        document.getElementById("initializingStep").textContent =
+            dictAnswer.sStep || "Starting\u2026";
+        document.getElementById("initializingElapsed").textContent =
+            _fsDescribeStartupElapsed(dictAnswer.iSecondsSinceStart);
+        var sStuck = _fsDescribeStuckStart(dictAnswer);
+        var elStuck = document.getElementById("initializingStuck");
+        elStuck.textContent = sStuck;
+        elStuck.style.display = sStuck ? "" : "none";
+        document.getElementById("btnInitializingRestart").style.display =
+            sStuck ? "" : "none";
+    }
+
+    function _fsDescribeStartupElapsed(iSeconds) {
+        if (typeof iSeconds !== "number" || iSeconds < 0) return "";
+        var iMinutes = Math.floor(iSeconds / 60);
+        return (iMinutes ? iMinutes + " min " : "") + (iSeconds % 60) +
+            " s since the container started";
+    }
+
+    function _fsDescribeStuckStart(dictAnswer) {
+        if (dictAnswer.sStatus === "stalled") {
+            return "The container is running but does not answer, so the " +
+                "terminal could not start. Restart it, or go back to " +
+                "the Project Hub.";
+        }
+        if (dictAnswer.sStatus === "error") {
+            return "The hub could not ask the container how its start " +
+                "is going (" + (dictAnswer.sReason || "no reason given") +
+                "). Restart it, or go back to the Project Hub.";
+        }
+        var iSilent = dictAnswer.iSecondsSinceProgress;
+        var iLimit = dictAnswer.sStep ? _I_STUCK_AFTER_SILENT_SECONDS
+            : _I_STUCK_AFTER_SECONDS_WITHOUT_STEPS;
+        if (typeof iSilent !== "number" || iSilent < iLimit) return "";
+        return "Nothing new for " + Math.floor(iSilent / 60) +
+            " minutes, so the start may be stuck. Restart it, or go " +
+            "back to the Project Hub; 'docker logs' on the container " +
+            "shows what it last printed.";
     }
 
     function _fnSurfaceReadinessOutcome(dictReadiness, sContainerId) {
@@ -3537,6 +3596,12 @@ var VaibifyContainerManager = (function () {
     }
 
     function fnBindContainerLandingEvents() {
+        document.getElementById("btnInitializingBack").addEventListener(
+            "click", function () { fnLeaveStartupWait("back"); }
+        );
+        document.getElementById("btnInitializingRestart").addEventListener(
+            "click", function () { fnLeaveStartupWait("restart"); }
+        );
         document.getElementById("btnRefreshContainers").addEventListener(
             "click", function () {
                 fnLoadContainers();

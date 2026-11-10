@@ -41005,4 +41005,16 @@ LIST_FALSIFICATIONS = [
         old='        if sLine.startswith(_T_MIRROR_SECTION_HEADINGS):\n            break\n',
         new='        if False:\n            break\n',
     ),
+    Falsification(
+        nodeid='tests/testReadinessRoute.py::test_a_marker_the_previous_run_left_reads_as_booting',
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='    return bool(iMarker and iStart and iMarker < iStart)\n',
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheDashboardWaitsForTheStart.py::testTheDashboardStaysClosedUntilTheStartIsDoneAndSaysWhy',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            if (dictResult && dictResult.bReady) {\n',
+        new='            if (dictResult) {\n',
+    ),
 ]

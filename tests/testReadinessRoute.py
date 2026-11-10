@@ -14,6 +14,8 @@ cause four very different UI states:
 """
 
 import json
+
+import pytest
 import time
 
 from vaibify.gui.routes import systemRoutes
@@ -283,3 +285,64 @@ def test_probe_docker_exception_returns_error():
     assert dictResult["bReady"] is False
     assert dictResult["sStatus"] == "error"
     assert "daemon unreachable" in dictResult["sReason"]
+
+
+def _fsTimedMarkerPayload(iNow, iMarker, iStart, sJsonBody):
+    """The probe's output once it dates the marker against the container's start."""
+    return f"MARKER_PRESENT {iNow} {iMarker} {iStart}\n{sJsonBody}"
+
+
+@pytest.mark.falsification
+def test_a_marker_the_previous_run_left_reads_as_booting():
+    """The marker lives in the persistent volume, so a restarted container
+    finds the last run's "ok" until its startup reaches the workspace
+    phase. Read as current, it let a researcher into a container that had
+    only just started.
+
+    Kills: trusting a marker written before this container started.
+    """
+    connectionDocker = _MockDockerConnection((0, _fsTimedMarkerPayload(
+        2000, 900, 1000, json.dumps({"sStatus": "ok", "sReason": ""}))))
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc")
+    assert (dictResult["bReady"], dictResult["sStatus"]) == (False, "booting")
+    assert dictResult["iSecondsSinceStart"] == 1000
+    assert dictResult["iSecondsSinceProgress"] == 1000
+
+
+def test_this_runs_marker_is_believed():
+    connectionDocker = _MockDockerConnection((0, _fsTimedMarkerPayload(
+        2000, 1500, 1000, json.dumps({"sStatus": "ok", "sReason": ""}))))
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc")
+    assert (dictResult["bReady"], dictResult["sStatus"]) == (True, "ok")
+
+
+def test_a_booting_marker_reports_its_step_and_how_long_since_it():
+    connectionDocker = _MockDockerConnection((0, _fsTimedMarkerPayload(
+        2000, 1900, 1000, json.dumps({
+            "sStatus": "booting", "sReason": "Installing vplot (3 of 9)"}))))
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc")
+    assert dictResult["bReady"] is False
+    assert (dictResult["sStep"], dictResult["iSecondsSinceStart"],
+            dictResult["iSecondsSinceProgress"]) == (
+        "Installing vplot (3 of 9)", 1000, 100)
+
+
+def test_a_probe_that_reports_no_times_dates_nothing():
+    """An older probe's output carries no times: nothing is called stale."""
+    connectionDocker = _MockDockerConnection((0, _fsMarkerPayload(
+        json.dumps({"sStatus": "booting", "sReason": "Syncing repositories"}))))
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc")
+    assert (dictResult["sStep"], dictResult["iSecondsSinceProgress"]) == (
+        "Syncing repositories", None)
+
+
+def test_nothing_written_yet_counts_from_the_containers_start():
+    connectionDocker = _MockDockerConnection((0, "NOTHING 1300 1000\n"))
+    dictResult = systemRoutes._fdictProbeContainerReadiness(
+        connectionDocker, "abc")
+    assert (dictResult["sStatus"], dictResult["iSecondsSinceStart"]) == (
+        "booting", 300)
