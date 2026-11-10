@@ -16,8 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir \
-        psycopg2-binary \
-        sqlalchemy
+# Installed FROM its record, so the mirror, the lock and the startup
+# check see exactly what this overlay put in the image.
+RUN mkdir -p /etc/vaibify/requirements.d \
+    && printf '%s\n' psycopg2-binary sqlalchemy \
+        > /etc/vaibify/requirements.d/database.txt \
+    && pip install --no-cache-dir -r /etc/vaibify/requirements.d/database.txt
 
 USER ${CONTAINER_USER}

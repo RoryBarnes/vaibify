@@ -92,6 +92,9 @@ def testAFullBuildChainsEveryOverlayOnThePreviousTag(monkeypatch, capsys):
 
     fnReplaceSubprocess(monkeypatch, fnRun)
     listBuilds = flistRecordDockerBuilds(monkeypatch)
+    monkeypatch.setattr(
+        imageBuilder, "fnRequireEnvironmentSatisfiesDeclarations",
+        lambda sBuiltReference: None)
     configProject = fconfigFromYamlDict({
         "projectName": S_PROJECT_NAME,
         "features": {"claude": True, "gemini": True},

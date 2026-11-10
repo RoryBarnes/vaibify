@@ -1,5 +1,6 @@
 """Build Docker images with deterministic overlay ordering."""
 
+import json
 import re
 import shutil
 import subprocess
@@ -99,6 +100,7 @@ _LIST_OVERLAY_ORDER = [
     "database",
     "dvc",
     "nestedSampling",
+    "projectDependencies",
     "node",
     "uv",
     "claude",
@@ -118,6 +120,7 @@ _DICT_OVERLAY_DOCKERFILE_MAP = {
     "database": "overlays/database.dockerfile",
     "dvc": "overlays/dvc.dockerfile",
     "nestedSampling": "overlays/nestedSampling.dockerfile",
+    "projectDependencies": "overlays/projectDependencies.dockerfile",
     "gpu": "overlays/gpu.dockerfile",
     "claude": "Dockerfile.claude",
     "codex": "Dockerfile.codex",
@@ -160,7 +163,11 @@ DICT_AGENT_COMMANDS["antigravity"] = "agy"
 
 T_BASE_OVERLAY_NAMES = (
     "gpu", "jupyter", "rlang", "julia", "database", "dvc", "nestedSampling",
+    "projectDependencies",
 )
+# The one base overlay no feature flag selects: the build adds it when
+# the context it staged declares a project requirement.
+S_PROJECT_DEPENDENCIES_OVERLAY = "projectDependencies"
 T_PREREQUISITE_OVERLAY_NAMES = ("node", "uv")
 
 _GPU_BASE_IMAGE = "nvidia/cuda:12.2.0-devel-ubuntu22.04"
@@ -203,8 +210,14 @@ def fnBuildImage(config, sDockerDir, bNoCache=False):
     that installs an agent or an agent's prerequisite also names that
     agent-free stage's image ID, which is how the envelope finds it.
     """
+    from vaibify.cli.projectDeclarations import (
+        fbContextStagesProjectRequirements,
+    )
     sProjectName = config.sProjectName
     listOverlays = flistDetermineOverlays(config)
+    if fbContextStagesProjectRequirements(sDockerDir):
+        listOverlays = _flistSortByCanonicalOrder(
+            listOverlays + [S_PROJECT_DEPENDENCIES_OVERLAY])
     fnBuildBase(
         config, sDockerDir, bNoCache,
         sRecipeFingerprint=_fsComputeChainFingerprint(sDockerDir, []),
@@ -227,10 +240,99 @@ def fnBuildImage(config, sDockerDir, bNoCache=False):
             ),
             listOverlays=listStageOverlays,
             sEnvironmentImageId=sEnvironmentImageId,
+            listExtraLabelArguments=_flistOverlayOwnLabelArguments(
+                sOverlayName, sDockerDir),
         )
         sPreviousTag = sOverlayName
+    fnRequireEnvironmentSatisfiesDeclarations(
+        f"{sProjectName}:{sPreviousTag}")
     _fnTagFinalImage(sProjectName, sPreviousTag)
     _fnPruneDanglingImages()
+
+
+# Shipped into every base image (Dockerfile); the container's start runs
+# the same program on each project's working copy.
+S_DECLARED_REQUIREMENTS_CHECKER = (
+    "/usr/local/lib/vaibify/checkDeclaredRequirements.py")
+
+
+def fnRequireEnvironmentSatisfiesDeclarations(sBuiltReference):
+    """Refuse a build whose pinned environment does not satisfy what it declares.
+
+    Asked of the agent-free environment the Level 3 envelope pins, the
+    image ``fsResolveEnvironmentImageId`` names, with the container's
+    start bypassed exactly as the shadow rerun and ``reproduce.sh`` run
+    it: a package that only a start would install is one they never
+    see. Every list the image installed is checked -- pythonPackages,
+    each feature's, each project's -- by version, extra and marker, and
+    the final tag is moved only once it passes, so the container keeps
+    the previous image when it does not.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        fsResolveEnvironmentImageId,
+    )
+    sEnvironmentImageId = fsResolveEnvironmentImageId(
+        fsReadImageId(sBuiltReference))
+    dictReport = fdictCheckDeclaredRequirementsInImage(sEnvironmentImageId)
+    for dictUnchecked in dictReport["listUnchecked"]:
+        fnEmitBuildLine(
+            f"[vaib] not checked ({dictUnchecked['sSource']}): "
+            f"{dictUnchecked['sRequirement']} -- {dictUnchecked['sReason']}\n")
+    if dictReport["listUnsatisfied"]:
+        sStderrTail = "".join(
+            f"vaibify: '{dictUnsatisfied['sRequirement']}' "
+            f"({dictUnsatisfied['sSource']}) is not satisfied in the "
+            f"environment image: {dictUnsatisfied['sInstalled']} installed\n"
+            for dictUnsatisfied in dictReport["listUnsatisfied"])
+        raise _ferrorBuildFailed(
+            ["check", "declared requirements", sEnvironmentImageId], 1,
+            sStderrTail)
+    fnEmitBuildLine(
+        "[vaib] every declared requirement is satisfied in the environment "
+        "image, checked with the container's start bypassed\n")
+
+
+def fdictCheckDeclaredRequirementsInImage(sImageId):
+    """Return the in-image checker's report for one image, or raise.
+
+    No network, no entrypoint: the image's own Python and its installed
+    packages answer, as the image would for a reproducer.
+    """
+    processResult = subprocess.run(
+        ["docker", "run", "--rm", "--network", "none", "--entrypoint", "",
+         sImageId, "python3", "-I", S_DECLARED_REQUIREMENTS_CHECKER],
+        capture_output=True, text=True, encoding="utf-8", timeout=600,
+    )
+    try:
+        dictReport = json.loads(
+            (processResult.stdout or "").strip().splitlines()[-1])
+    except (IndexError, ValueError):
+        dictReport = {}
+    if processResult.returncode not in (0, 1) or not isinstance(
+            dictReport.get("listUnsatisfied"), list):
+        sReason = dictReport.get("sError") or (
+            processResult.stderr or "").strip()[:300]
+        raise RuntimeError(
+            "could not check the environment image's declared "
+            f"requirements: {sReason}")
+    return dictReport
+
+
+def _flistOverlayOwnLabelArguments(sOverlayName, sDockerDir):
+    """Return the labels one overlay stamps about what IT installed.
+
+    The projects' stage records the digest of the declarations it was
+    built from, since the recipe fingerprint covers only the Dockerfile
+    texts and never what they ``COPY``.
+    """
+    from vaibify.cli.projectDeclarations import (
+        S_PROJECT_REQUIREMENTS_IMAGE_LABEL, fsProjectRequirementsDigest,
+    )
+    if sOverlayName != S_PROJECT_DEPENDENCIES_OVERLAY:
+        return []
+    return ["--label", (
+        f"{S_PROJECT_REQUIREMENTS_IMAGE_LABEL}="
+        f"{fsProjectRequirementsDigest(sDockerDir)}")]
 
 
 def fbOverlayBelongsToEnvironment(sOverlayName):
@@ -630,7 +732,7 @@ def _flistBuildArgPairs(config, sBaseImage):
 def fnApplyOverlay(
     sProjectName, sOverlayName, sDockerDir, sFromTag,
     bNoCache=False, sRecipeFingerprint="", listOverlays=None,
-    sEnvironmentImageId="",
+    sEnvironmentImageId="", listExtraLabelArguments=(),
 ):
     """Build a single overlay Dockerfile on top of the previous tag.
 
@@ -657,6 +759,7 @@ def fnApplyOverlay(
     saCommand += _flistRecipeLabelArguments(
         sRecipeFingerprint, listOverlays, sEnvironmentImageId,
     )
+    saCommand += list(listExtraLabelArguments)
     _fnRunDockerBuild(saCommand)
 
 

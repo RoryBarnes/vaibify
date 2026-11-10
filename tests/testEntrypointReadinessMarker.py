@@ -347,3 +347,31 @@ def test_pip_install_failure_appends_warning(tmp_path):
         "demoRepo: pip-install" in sWarning
         for sWarning in dictMarker["saWarnings"]
     )
+
+
+def test_each_startup_step_is_reported_as_booting_with_its_name(tmp_path):
+    """The dashboard keeps a researcher out until the start is done and
+    shows the step instead, so every step must reach the marker as a
+    booting status the readiness route reads, never as "ok"."""
+    sWorkspace = str(tmp_path)
+    os.makedirs(os.path.join(sWorkspace, ".vaibify"), exist_ok=True)
+    resultProc = _fsRunHelperScript(
+        sWorkspace, 'fnReportStartupStep "Installing vplot (3 of 9 repositories)"\n')
+    assert resultProc.returncode == 0, resultProc.stderr
+    dictMarker = _fdictReadMarker(sWorkspace)
+    assert (dictMarker["sStatus"], dictMarker["sReason"]) == (
+        "booting", "Installing vplot (3 of 9 repositories)")
+
+
+def test_every_slow_phase_of_the_workspace_start_reports_a_step():
+    """The repository sync, the compile, the installs and the agent
+    updates each take minutes on a large project; one without a step
+    reads as stuck while it works."""
+    with open(_S_ENTRYPOINT, encoding="utf-8") as fileHandle:
+        sText = fileHandle.read()
+    for sFunction in ("fnSyncAllRepos", "fnBuildBinaries", "fnInstallAllRepos"):
+        sBody = sText.split(f"\n{sFunction}() {{\n", 1)[1].split("\n}\n", 1)[0]
+        assert "fnReportStartupStep" in sBody, sFunction
+    sPhase = sText.split("\nfnRunWorkspacePhase() {\n", 1)[1].split("\n}\n", 1)[0]
+    assert sPhase.index('fnReportStartupStep "Updating the coding agents"') \
+        < sPhase.index("command -v claude")

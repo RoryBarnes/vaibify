@@ -697,6 +697,11 @@ def fnKeepBuildPreflightProbesOffTheDaemonAndTheNetwork(monkeypatch):
             "bBranchExists": True, "sDefaultBranch": "main",
         },
     )
+    from vaibify.cli import projectDeclarations
+    monkeypatch.setattr(
+        projectDeclarations, "flistReadProjectDeclarations",
+        lambda listRepositories, *aArgs, **kwargs: [],
+    )
 
 
 @pytest.fixture(autouse=True)

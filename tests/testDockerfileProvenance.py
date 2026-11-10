@@ -181,6 +181,8 @@ def test_the_builder_labels_every_build_with_the_chain_fingerprint(
     ), patch.object(
         imageBuilder, "flistDetermineOverlays", return_value=[],
     ), patch.object(
+        imageBuilder, "fnRequireEnvironmentSatisfiesDeclarations",
+    ), patch.object(
         imageBuilder, "_fnPruneDanglingImages",
     ):
         imageBuilder.fnBuildImage(config, str(tmp_path))
@@ -250,6 +252,8 @@ def test_each_stage_is_labelled_with_what_it_holds(tmp_path):
     ), patch.object(
         imageBuilder, "fsReadImageId",
         side_effect=lambda sRef: listInspected.append(sRef) or "sha256:env",
+    ), patch.object(
+        imageBuilder, "fnRequireEnvironmentSatisfiesDeclarations",
     ), patch.object(imageBuilder, "_fnPruneDanglingImages"):
         imageBuilder.fnBuildImage(config, str(tmp_path))
     listStages = [

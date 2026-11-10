@@ -276,3 +276,27 @@ def test_the_probe_does_not_inherit_a_repository_or_injected_config(
     assert dictEnvironment["GIT_CONFIG_GLOBAL"] == (
         "/the/researchers/own/config")
     assert dictEnvironment["GIT_TERMINAL_PROMPT"] == "0"
+
+
+@pytest.mark.parametrize("sGh, sAsked, bHelper", [
+    ("/usr/bin/gh", "https://github.com/owner/repo.git", True),
+    (None, "git@github.com:owner/repo.git", False),
+])
+def test_github_is_asked_the_way_the_container_clones_it(
+    monkeypatch, sGh, sAsked, bHelper,
+):
+    """The container rewrites GitHub SSH to HTTPS and signs in through
+    gh; with gh on this machine the probe asks the same way, so a hub
+    started without an SSH agent still reads a private repository."""
+    import shutil
+    monkeypatch.setattr(shutil, "which", lambda sName: sGh)
+    listCalls = []
+    fdictProbeRepositoryBranch(
+        "git@github.com:owner/repo.git", "main", _fnRecordingRun(listCalls))
+    listCommand = listCalls[0][0]
+    assert listCommand[listCommand.index("--") + 1] == sAsked
+    assert ("credential.helper=!gh auth git-credential" in listCommand) \
+        is bHelper
+    if bHelper:
+        assert listCommand.index("credential.helper=") < listCommand.index(
+            "credential.helper=!gh auth git-credential")

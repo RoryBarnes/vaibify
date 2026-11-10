@@ -148,6 +148,50 @@ command a root-phase `chown` or sub-script resolves to. The
 `profile.d` file. In-container agents are taught the
 `{step:<sStepId>.<stem>}` token form, never the deprecated `{StepNN.x}`.
 
+## Every declared package is in the image, and the image says so
+
+An image installs three kinds of list, each recorded under
+`/etc/vaibify/<record>` in the image: `pythonPackages` as the image's
+own list, each feature's as `requirements.d/<feature>.txt`, and each
+project's own declaration as `projectRequirements/<repository>.txt`,
+beside an index of every project read. `docs/architecture.md`, "Each
+project's dependencies reach the image", has the model. Six things not
+to undo:
+
+- **A feature installs FROM its record.** Each overlay that
+  pip-installs writes its list to `requirements.d` and installs with
+  `-r` from that file, so the record and the image cannot disagree. An
+  overlay naming packages on the `pip install` line is what made the
+  startup check call installed packages "no longer installed"
+  (`test_environment_overlay_installs_python_packages_from_its_record`).
+- **The build reads each project's declaration itself, from the
+  remote, at the commit its fetch brought** -- never the preflight's
+  answer, never the mirror. The pinned-image lane, which stacks only
+  agents, reads no remotes (`fnStageProjectDeclarations` is kept out of
+  `fnPrepareBuildContext` for it).
+- **One resolution.** The `projectDependencies` stage installs every
+  list in a single `pip install`, then `pip check`; split, a later
+  list silently replaces a version an earlier one needed
+  (`tests/testProjectDependenciesStageLive.py`). Its failure lines name
+  each declarer, and the diagnosis reads only lines the step PRINTED:
+  BuildKit echoes the step's source, which holds the same sentence with
+  its variables unexpanded.
+- **The environment is checked with its start bypassed.** The build's
+  last step runs `checkDeclaredRequirements.py` in the agent-free image
+  with `--entrypoint ""` and `--network none`, and moves `:latest` only
+  once it passes (`tests/testEnvironmentSatisfiesDeclarationsLive.py`).
+  A check in a started container would see what the start installed,
+  which the shadow rerun and `reproduce.sh` never do.
+- **The checker is the image's, and `packaging` is vaibify's.** The
+  base image ships the checker and installs `packaging` beside
+  `requests`; the start runs the same program on each working copy
+  with `python3 -I`, so the image's packages answer, not what the start
+  put in the user's site.
+- **The mirror is sectioned, and Level 3 compares only its first
+  section** with `pythonPackages` (`declaredPackages.fsImageListOfMirror`).
+  Read whole, every feature's and project's package is "in the image but
+  not declared" and the verification is refused.
+
 ## A container may host several coding agents
 
 Container agents are overlays selected by feature flags, one per name

@@ -112,14 +112,16 @@ def test_init_version_exists():
        return_value="/docker")
 @patch("vaibify.cli.commandBuild.fnPruneDanglingImages")
 @patch("vaibify.cli.commandBuild.fnPrepareBuildContext")
+@patch("vaibify.cli.commandBuild.fnStageProjectDeclarations")
 @patch("vaibify.docker.imageBuilder.fnBuildImage")
 def test_fnBuildFromConfig_calls_chain(
-    mockBuild, mockPrepare, mockPrune, mockStage
+    mockBuild, mockDeclarations, mockPrepare, mockPrune, mockStage
 ):
     from vaibify.cli.commandBuild import fnBuildFromConfig
     config = _fConfigFull()
     fnBuildFromConfig(config, "/docker", False)
     mockPrepare.assert_called_once()
+    mockDeclarations.assert_called_once()
     mockBuild.assert_called_once()
     mockPrune.assert_called_once()
 
@@ -870,8 +872,9 @@ def test_fnTagFinalImage_tags(mockRun):
     assert "proj:latest" in saCommand
 
 
+@patch("vaibify.docker.imageBuilder.fnRequireEnvironmentSatisfiesDeclarations")
 @patch("vaibify.docker.imageBuilder._fnRunDockerBuild")
-def test_fnBuildImage_full(mockRun):
+def test_fnBuildImage_full(mockRun, mockRequireSatisfied):
     from vaibify.docker.imageBuilder import fnBuildImage
     config = _fConfigFull()
     config.features.bJupyter = True

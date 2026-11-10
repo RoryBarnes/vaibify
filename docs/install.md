@@ -208,8 +208,58 @@ not as a second machine: the machine is created once, by the first
 
 Python is vaibify's default analysis language, so every image also
 carries `numpy`, `scipy`, `matplotlib` and `pytest`: the tests vaibify
-generates use them. List any other Python packages under
-`pythonPackages`.
+generates use them. A package one project needs belongs in that
+project's own dependency file (see
+[Project dependencies](#project-dependencies)); list a package every
+project in the container needs under `pythonPackages`.
+
+### Project dependencies
+
+A container can hold several projects, and each declares the Python
+packages it needs in its own repository, in the first of these files
+at the repository root: `pyproject.toml` (its `[project]
+dependencies`), `requirements.in`, `requirements.txt`. That is the
+same file PROOF Level 3 compiles `requirements.lock` from, so the
+image and the lock are built from one declaration.
+
+A project, here, is a repository listed in `vaibify.yml` (or the
+environment's own repository) whose tree has a `.vaibify/` folder. A
+`pip_no_deps` or `c_and_pip` repository is installed without its
+dependencies on purpose and is never read.
+
+Each build reads every project's file **from its remote**, at the
+commit its configured branch names, and records that commit in the
+image. An edit reaches the image only once it is committed and
+pushed, so push first, then Rebuild. The build then:
+
+- installs `pythonPackages`, each enabled feature's packages and every
+  project's declared packages in **one** pip resolution, then runs
+  `pip check`. Two projects asking for versions no single release
+  satisfies stop the build, and the message names which project
+  declared which side.
+- checks every declared requirement, by version, extra and marker, in
+  the image a Level 3 rerun uses, with the container's start bypassed.
+  A requirement the finished image does not satisfy fails the build,
+  and the container keeps its previous image.
+
+The file may hold requirement lines only: `name`, `name>=1.2`,
+`name[extra]`, with an optional marker. An option line (`-r`, `-c`,
+`-e`, `--index-url`), a URL or a local path refuses the build, naming
+the file and line, because none of them can be installed into an
+image the way the file implies.
+
+When a container starts, it compares each project's working copy of
+that file with what the image holds. A requirement the image does not
+satisfy is reported with the remedy for where the change lives: not
+yet committed (commit and push, then Rebuild), committed but not
+pushed (push, then Rebuild), or pushed after the image was built
+(Rebuild).
+
+A package that is also a listed repository (a library you develop
+beside the project) is installed into the image from the package
+index; the container's start then installs your clone over it. The
+Level 3 rerun and `reproduce.sh` run the image's copy, and the build
+says so when it happens.
 
 ## Shell helpers
 
@@ -344,7 +394,7 @@ List fields:
 |-----|------------|---------|
 | `repositories` | `name`, `url`, `branch`, `installMethod` (default `pip_editable`), optional `destination` | Repositories cloned into the workspace, in order. See [container.conf](#containerconf) for install methods |
 | `systemPackages` | string | APT packages. A list you supply **replaces** the defaults (`gcc`, `make`, `git`, `curl`, `ca-certificates`, `gnupg`, `gosu`, `time`), so include the ones you still need |
-| `pythonPackages` | string | pip packages, installed beside the analysis stack every image carries (`numpy`, `scipy`, `matplotlib`, `pytest`). Naming a stack package here sets its version bound |
+| `pythonPackages` | string | pip packages every project in the container needs, installed beside the analysis stack every image carries (`numpy`, `scipy`, `matplotlib`, `pytest`). Naming a stack package here sets its version bound. A package one project needs belongs in its own dependency file ([Project dependencies](#project-dependencies)) |
 | `condaPackages` | string | **Refused.** A non-empty list fails validation because the build has no conda install step; use `pythonPackages` |
 | `binaries` | `name`, `path` | Executables already in the container; each `name` becomes an environment variable holding `path`, and its directory joins PATH |
 | `ports` | `container`, optional `host` (defaults to `container`), optional `lanExpose` | Ports forwarded from the container, bound to `127.0.0.1` unless `lanExpose: true` |
@@ -461,10 +511,15 @@ on a build:
 | `systemPackages` | Launchpad, for the release `baseImage` names | Ubuntu publishes no such package |
 | `pythonPackages` | pypi.org's simple index | the index has no such project |
 | `repositories[].branch` | `git ls-remote` on the remote | the remote has no such branch |
+| each project's dependency file | the remote, at the commit its branch names; then pypi.org | the file cannot be read, a line is not a requirement, or the index has no such project |
 
 An index or remote that cannot be reached, a `pipInstallFlags` that
 names another index, and a `baseImage` vaibify cannot identify are
-reported as "not checked", and the build proceeds.
+reported as "not checked", and the build proceeds. A project's
+dependency file is the exception: the build itself must read it, so a
+remote that cannot be reached refuses the build. For a private GitHub
+repository, sign in on this machine with `gh auth login`; vaibify asks
+GitHub through `gh`'s credential helper, the way the container clones.
 
 ### Environment variables
 

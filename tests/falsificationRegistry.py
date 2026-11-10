@@ -27945,16 +27945,16 @@ LIST_FALSIFICATIONS = [
             'tests/testRepositoryPreflight.py::test_the_probe_carries_the_hardening_list'
         ),
         source='vaibify/cli/repositoryPreflight.py',
-        old='                ["git", *LIST_GIT_HARDENING_CONFIG, "ls-remote", "--symref",\n',
-        new='                ["git", "ls-remote", "--symref",\n',
+        old='                ["git", *LIST_GIT_HARDENING_CONFIG, *listCredentialConfig,\n',
+        new='                ["git", *listCredentialConfig,\n',
     ),
     Falsification(
         nodeid=(
             'tests/testRepositoryPreflight.py::test_the_address_follows_the_option_terminator'
         ),
         source='vaibify/cli/repositoryPreflight.py',
-        old='                 "--", sUrl, "HEAD", f"refs/heads/{sBranch}"],\n',
-        new='                 sUrl, "HEAD", f"refs/heads/{sBranch}"],\n',
+        old='                 "--", sAskedUrl, "HEAD", f"refs/heads/{sBranch}"],\n',
+        new='                 sAskedUrl, "HEAD", f"refs/heads/{sBranch}"],\n',
     ),
     Falsification(
         nodeid=(
@@ -38587,8 +38587,47 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testProjectEgressLive.py::testAnEgressWhoseNetworkCarriesAContainerIsKept',
         # a container-name filter matches nothing and reads as "unused"
         source='vaibify/docker/projectEgress.py',
-        old='        ["ps", "-a", "--filter", f"network={fsNetworkName(sProjectUuid)}",\n',
-        new='        ["ps", "-a", "--filter", f"name={fsNetworkName(sProjectUuid)}",\n',
+        old='    listFilters = ["--filter", f"network={fsNetworkName(sProjectUuid)}"]\n',
+        new='    listFilters = ["--filter", f"name={fsNetworkName(sProjectUuid)}"]\n',
+    ),
+    # --- 2026-11-09: a running sealed container's lost proxy is restored as launched. ---
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testARestoreThatComesBackElsewhereIsRefusedAndRemoved',
+        source='vaibify/docker/projectEgress.py',
+        old='    if sAddress != dictRecord.get("sProxyAddress"):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgressLifecycle.py::testARestoreDefersToAHeldLifecycleLock',
+        source='vaibify/gui/projectEgressLifecycle.py',
+        old='        with fcontextHoldLifecycleLock(sContainerName, "reconnected to its network"):\n',
+        new='        if True:\n',
+    ),
+    # --- 2026-11-09: a sealed container's startup check asks its proxy. ---
+    Falsification(
+        nodeid='tests/testEntrypointEgressObservation.py::testANonPublicDestinationIsNotCalledAnAllowlistMatter',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='elif "non-public" in sReason:\n',
+        new='elif False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testEntrypointEgressObservation.py::testAReachableHostRaisesNoWarningInASealedMode',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='    if [ "${VAIBIFY_NETWORK_MODE:-}" = "web" ] \\\n',
+        new='    if [ "${VAIBIFY_NETWORK_MODE:-}" = "never" ] \\\n',
+    ),
+    # --- 2026-11-09: a feature's packages are recorded; "dropped" means not installed. ---
+    Falsification(
+        nodeid='tests/testDockerfileHardening.py::test_environment_overlay_installs_python_packages_from_its_record',
+        source='vaibify/containerImage/overlays/nestedSampling.dockerfile',
+        old='    && pip install --no-cache-dir -r /etc/vaibify/requirements.d/nestedSampling.txt\n',
+        new='    && pip install --no-cache-dir ultranest pymultinest\n',
+    ),
+    Falsification(
+        nodeid='tests/testRequirementsDroppedAgainstWhatIsInstalled.py::testAnInstalledPackageNoListNamesIsNotDropped',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='        <({ fnListImageRequirementNames; fnListInstalledDistributionNames; } | sort -u) \\\n',
+        new='        <(fnListImageRequirementNames) \\\n',
     ),
     Falsification(
         nodeid='tests/testBrowserLaneContract.py::testTheLaneHubNeverAsksTheRealDaemonAboutEgress',
@@ -40874,5 +40913,108 @@ LIST_FALSIFICATIONS = [
             '            raise\n'
         ),
         new='        except Exception:\n            raise\n',
+    ),
+    Falsification(
+        nodeid='tests/testBuildProgressRoutes.py::test_the_projects_own_repository_is_read_before_anything_is_stopped',
+        source='vaibify/gui/buildRoutes.py',
+        old=(
+            '    configProject = fconfigForBuildContext(\n'
+            '        configProject, os.path.dirname(dictProject["sConfigPath"]))\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testProjectDeclarations.py::testATreeWithoutVaibifyIsNotAProject',
+        source='vaibify/cli/projectDeclarations.py',
+        old='        if dictRootEntries.get(_S_PROJECT_MARKER_DIRECTORY, ("", "", ""))[1] != "tree":\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectDeclarations.py::testTheFirstFileInTheLocksOrderIsTheOneRead',
+        source='vaibify/cli/projectDeclarations.py',
+        old='    for sFile in T_DECLARATION_FILES:\n',
+        new='    for sFile in reversed(T_DECLARATION_FILES):\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectDeclarations.py::testEveryGitCallCarriesTheHardeningList',
+        source='vaibify/cli/projectDeclarations.py',
+        old='            ["git", *LIST_GIT_HARDENING_CONFIG, *listArguments],\n',
+        new='            ["git", *listArguments],\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectDeclarations.py::testARequirementNamingAUrlIsRefused',
+        source='vaibify/cli/projectDeclarations.py',
+        old='    if sUrl:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectDeclarations.py::testARepositoryInstalledWithoutItsDependenciesIsNeverRead',
+        source='vaibify/cli/projectDeclarations.py',
+        old='T_UNREAD_INSTALL_METHODS = ("pip_no_deps", "c_and_pip")\n',
+        new='T_UNREAD_INSTALL_METHODS = ()\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectDeclarations.py::testADeclarationThatCannotBeReadRefusesTheBuild',
+        source='vaibify/cli/projectDeclarations.py',
+        old=(
+            '    return PreflightResult(\n'
+            '        sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_FAIL, sScope=S_SCOPE_PROJECT,\n'
+            '        sMessage=(\n'
+            '            f"A project\'s dependency declaration could not be read: "\n'
+        ),
+        new=(
+            '    return PreflightResult(\n'
+            '        sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_NOT_CHECKED, sScope=S_SCOPE_PROJECT,\n'
+            '        sMessage=(\n'
+            '            f"A project\'s dependency declaration could not be read: "\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testDockerErrorDiagnosis.py::test_a_conflict_names_each_declarer_and_never_the_echoed_source',
+        source='vaibify/docker/dockerErrorDiagnosis.py',
+        old='    r"^(?:#\\d+\\s+(?:\\d+\\.\\d+\\s+)?)?vaibify: (\'[^\'$]+\' is declared by [^$\\n\\"]+?)\\s*$",\n',
+        new='    r"vaibify: (\'[^\']+\' is declared by [^\\n]+)",\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectDependenciesStageLive.py::testEveryProjectsDeclaredVersionIsTheOneInstalled',
+        source='vaibify/containerImage/overlays/projectDependencies.dockerfile',
+        old='            /etc/vaibify/projectRequirements/*.txt; do \\\n',
+        new='            ; do \\\n',
+    ),
+    Falsification(
+        nodeid='tests/testEnvironmentSatisfiesDeclarationsLive.py::testAPackageOnlyTheStartInstallsFailsTheBuild',
+        source='vaibify/docker/imageBuilder.py',
+        old='"--network", "none", "--entrypoint", "",\n',
+        new='"--network", "none",\n',
+    ),
+    Falsification(
+        nodeid='tests/testCheckDeclaredRequirements.py::testATightenedVersionIsUnsatisfiedThoughTheNameIsInstalled',
+        source='vaibify/containerImage/checkDeclaredRequirements.py',
+        old='    if not Requirement(sLine).specifier.contains(sVersion, prereleases=True):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectDeclarationsCheckedAtStart.py::testACommitNotYetPushedSaysPushFirst',
+        source='vaibify/containerImage/entrypoint.sh',
+        old="        printf 'unpushed'\n",
+        new="        printf 'published'\n",
+    ),
+    Falsification(
+        nodeid='tests/testRequirementsDroppedAgainstWhatIsInstalled.py::testTheVerificationComparesPythonPackagesWithTheMirrorsOwnSection',
+        source='vaibify/reproducibility/declaredPackages.py',
+        old='        if sLine.startswith(_T_MIRROR_SECTION_HEADINGS):\n            break\n',
+        new='        if False:\n            break\n',
+    ),
+    Falsification(
+        nodeid='tests/testReadinessRoute.py::test_a_marker_the_previous_run_left_reads_as_booting',
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='    return bool(iMarker and iStart and iMarker < iStart)\n',
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheDashboardWaitsForTheStart.py::testTheDashboardStaysClosedUntilTheStartIsDoneAndSaysWhy',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            if (dictResult && dictResult.bReady) {\n',
+        new='            if (dictResult) {\n',
     ),
 ]

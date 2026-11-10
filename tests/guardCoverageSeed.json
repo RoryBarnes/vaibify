@@ -84,7 +84,6 @@
 "vaibify/gui/agentCouncilRunner.py::_fnValidateSandboxIsolation",
 "vaibify/gui/agentCouncilStore.py::_fsValidateChangeManifest",
 "vaibify/gui/attributionLog.py::fbAnyEventWithinWindow",
-"vaibify/gui/buildRoutes.py::_fnRefuseUnbuildableConfiguration",
 "vaibify/gui/buildRoutes.py::_fnRefuseWhenDaemonDiskIsFull",
 "vaibify/gui/buildRoutes.py::_fnRefuseWhileABuildIsLive",
 "vaibify/gui/commitCarrier.py::_fgenericRunEffectAdmitted",

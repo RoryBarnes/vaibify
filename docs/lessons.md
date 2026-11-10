@@ -718,3 +718,20 @@ correct approach.
   form: a test double that answers "nothing is in use" turns any sweep
   it feeds into a deletion, so a test that runs a real sweep must also
   redirect what that sweep can reach.
+- **A test hub removed a running project's network proxy.** The
+  browser lane's hub gave itself a throwaway project registry but kept
+  the real `$HOME` and the real `docker`, and its startup reconcile
+  released every egress identity its registry did not list. Run once
+  on a researcher's machine, it removed the proxy of a sealed project
+  that was running beside it, and its folder under `~/.vaibify/egress`,
+  and the container quietly lost the network. A decoy network and
+  folder, removed by a single browser test, confirmed the cause. The
+  reconcile had been harmless for months only because its discovery
+  query failed on every daemon; fixing the query armed it. Two fixes
+  followed: a release now needs the daemon's answer that nothing is
+  attached, and the lane's hub redirects every state store and refuses
+  the egress module's `docker` calls. It is the secret-file sweep above
+  again, on another resource. The general form: a hook that decides "unused" from a record it owns,
+  rather than from the resource itself, deletes whatever another
+  process is using, and a test hub that runs it reaches the
+  researcher's machine through anything it did not redirect.

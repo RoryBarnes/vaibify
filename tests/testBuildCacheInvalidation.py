@@ -109,6 +109,8 @@ def test_build_from_config_forces_no_cache_on_drift(tmp_path):
         ), patch(
             "vaibify.cli.commandBuild.fnPrepareBuildContext",
         ), patch(
+            "vaibify.cli.commandBuild.fnStageProjectDeclarations",
+        ), patch(
             "vaibify.cli.commandBuild.fnPruneDanglingImages",
         ), patch(
             "vaibify.docker.imageBuilder.fnBuildImage", side_effect=fakeBuild,
@@ -133,6 +135,8 @@ def test_build_from_config_does_not_force_when_first_build(tmp_path):
             return_value="/dk",
         ), patch(
             "vaibify.cli.commandBuild.fnPrepareBuildContext",
+        ), patch(
+            "vaibify.cli.commandBuild.fnStageProjectDeclarations",
         ), patch(
             "vaibify.cli.commandBuild.fnPruneDanglingImages",
         ), patch(

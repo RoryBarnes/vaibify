@@ -147,6 +147,7 @@ S_REFUSAL_DAEMON_DISK_FULL = "daemon-disk-full"
 S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH = "unknown-repository-branch"
 S_REFUSAL_UNKNOWN_SYSTEM_PACKAGE = "unknown-system-package"
 S_REFUSAL_UNUSABLE_CONFIGURATION = "unusable-configuration"
+S_REFUSAL_UNREADABLE_PROJECT_DECLARATION = "unreadable-project-declaration"
 
 
 def _flistConfigurationPreflights():
@@ -161,6 +162,7 @@ def _flistConfigurationPreflights():
     """
     from vaibify.cli.baseImagePreflight import fpreflightBaseImage
     from vaibify.cli.configFieldPreflight import fpreflightConfigurationFields
+    from vaibify.cli.projectDeclarations import fpreflightProjectDeclarations
     from vaibify.cli.pythonPackagePreflight import (
         fpreflightPythonPackageNames,
     )
@@ -172,6 +174,8 @@ def _flistConfigurationPreflights():
         (fpreflightSystemPackageNames, S_REFUSAL_UNKNOWN_SYSTEM_PACKAGE),
         (fpreflightPythonPackageNames, S_REFUSAL_UNKNOWN_PYTHON_PACKAGE),
         (fpreflightRepositoryBranches, S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH),
+        (fpreflightProjectDeclarations,
+         S_REFUSAL_UNREADABLE_PROJECT_DECLARATION),
     ]
 
 
@@ -208,11 +212,14 @@ def _fnRefuseUnbuildableConfiguration(dictProject):
     progress record the researcher watches; these checks have nothing
     to say about a file they cannot read.
     """
+    from vaibify.cli.commandBuild import fconfigForBuildContext
     from vaibify.cli.configLoader import fconfigLoadFromPath
     try:
         configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
     except Exception:
         return
+    configProject = fconfigForBuildContext(
+        configProject, os.path.dirname(dictProject["sConfigPath"]))
     for fnPreflight, sRefusal in _flistConfigurationPreflights():
         _fnRefuseOnFailedPreflight(fnPreflight(configProject), sRefusal)
 

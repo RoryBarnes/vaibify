@@ -86,7 +86,12 @@ def test_flistDetermineOverlays_all_features():
         "opencode", "cline", "openhands", "pi",
     ]
     assert listOverlays == listExpected
-    assert listOverlays == _LIST_OVERLAY_ORDER
+    # Every overlay but the projects' stage, which no feature selects:
+    # the build adds it when a project declares a requirement.
+    assert listOverlays == [
+        sName for sName in _LIST_OVERLAY_ORDER
+        if sName != "projectDependencies"
+    ]
 
 
 def test_flistDetermineOverlays_partial_features():
@@ -277,6 +282,9 @@ def test_fnBuildImage_prunes_dangling_layers_post_build(monkeypatch):
     monkeypatch.setattr(imageBuilder, "fnBuildBase", lambda *a, **k: None)
     monkeypatch.setattr(imageBuilder, "fnApplyOverlay", lambda *a, **k: None)
     monkeypatch.setattr(imageBuilder, "_fnTagFinalImage", lambda *a, **k: None)
+    monkeypatch.setattr(
+        imageBuilder, "fnRequireEnvironmentSatisfiesDeclarations",
+        lambda sBuiltReference: None)
     monkeypatch.setattr(imageBuilder.subprocess, "run", _fnFakeRun)
 
     imageBuilder.fnBuildImage(MockConfig(), "/dockerdir", bNoCache=False)
@@ -304,6 +312,9 @@ def test_fnBuildImage_prune_failure_is_swallowed(monkeypatch):
     monkeypatch.setattr(imageBuilder, "fnBuildBase", lambda *a, **k: None)
     monkeypatch.setattr(imageBuilder, "fnApplyOverlay", lambda *a, **k: None)
     monkeypatch.setattr(imageBuilder, "_fnTagFinalImage", lambda *a, **k: None)
+    monkeypatch.setattr(
+        imageBuilder, "fnRequireEnvironmentSatisfiesDeclarations",
+        lambda sBuiltReference: None)
     monkeypatch.setattr(imageBuilder.subprocess, "run", _fnRaiseTimeout)
 
     imageBuilder.fnBuildImage(MockConfig(), "/dockerdir", bNoCache=False)

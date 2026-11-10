@@ -24,6 +24,7 @@ from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
 from .daemonDiskPreflight import fpreflightDaemonFreeDisk
 from .baseImagePreflight import fpreflightBaseImage
 from .configFieldPreflight import fpreflightConfigurationFields
+from .projectDeclarations import fpreflightProjectDeclarations
 from .pythonPackagePreflight import fpreflightPythonPackageNames
 from .repositoryPreflight import fpreflightRepositoryBranches
 from .systemPackagePreflight import fpreflightSystemPackageNames
@@ -69,6 +70,7 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache, sProjectDirectory=None):
         tPinnedBefore = _ftReadPinnedEnvironment()
         try:
             fnPrepareBuildContext(config, sStagedDir, sProjectDirectory)
+            fnStageProjectDeclarations(config, sStagedDir, sProjectDirectory)
             bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
             fnWarnIfBaseImageFloating(config)
             fnBuildImage(config, sStagedDir, bNoCache=bEffectiveNoCache)
@@ -478,12 +480,10 @@ def fnPrepareBuildContext(config, sDockerDir, sProjectDirectory=None):
     stamps next, so the stamp never matched the file and every freshly
     built container announced it predated its own ``vaibify.yml``.
     """
-    import copy
     from vaibify.config.containerConfig import (
         fnGenerateContainerConf,
     )
-    configContext = copy.deepcopy(config)
-    fnIncludeProjectRepo(configContext, sProjectDirectory)
+    configContext = fconfigForBuildContext(config, sProjectDirectory)
     fnGenerateContainerConf(
         configContext, os.path.join(sDockerDir, "container.conf")
     )
@@ -496,6 +496,49 @@ def fnPrepareBuildContext(config, sDockerDir, sProjectDirectory=None):
 
 
 _RE_APT_PACKAGE_NAME = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
+
+
+def fconfigForBuildContext(config, sProjectDirectory=None):
+    """Return a copy of ``config`` listing every repository the build clones.
+
+    That is the configured list plus the project's own repository, which
+    the build adds. Both lanes run their configuration checks against
+    this copy, so a check that reads repositories reads the same ones
+    the build will, before the dashboard has stopped anything.
+    """
+    import copy
+    configContext = copy.deepcopy(config)
+    fnIncludeProjectRepo(configContext, sProjectDirectory)
+    return configContext
+
+
+def fnStageProjectDeclarations(config, sDockerDir, sProjectDirectory=None):
+    """Stage every project's own declaration, and say what was read.
+
+    Read again here rather than carried from the preflight, so the
+    image records exactly the commit whose bytes it installed even if
+    a push landed between the two. Kept out of
+    ``fnPrepareBuildContext``, which the pinned-image lane also calls to
+    stack agents onto an author's image: that lane installs no project
+    packages and must not need the author's remotes.
+    """
+    from vaibify.docker.imageBuilder import fnEmitBuildLine
+    from .projectDeclarations import (
+        flistStageProjectDeclarations, fsDescribeNamesAlsoListedAsRepositories,
+    )
+    configContext = fconfigForBuildContext(config, sProjectDirectory)
+    listDeclarations = flistStageProjectDeclarations(
+        configContext.listRepositories, sDockerDir)
+    for dictDeclaration in listDeclarations:
+        sFile = dictDeclaration["sFile"] or "no declaration file"
+        fnEmitBuildLine(
+            f"[vaib] project {dictDeclaration['sRepository']}: {sFile} at "
+            f"{dictDeclaration['sCommit'][:12]}, "
+            f"{len(dictDeclaration['listRequirements'])} requirement(s)\n")
+    sNote = fsDescribeNamesAlsoListedAsRepositories(
+        configContext.listRepositories, listDeclarations)
+    if sNote:
+        fnEmitBuildLine(f"[vaib] note: {sNote}\n")
 
 
 def fnWriteSystemPackages(config, sDockerDir):
@@ -1175,6 +1218,7 @@ T_CONFIGURATION_PREFLIGHTS = (
     fpreflightSystemPackageNames,
     fpreflightPythonPackageNames,
     fpreflightRepositoryBranches,
+    fpreflightProjectDeclarations,
 )
 
 
@@ -1229,14 +1273,14 @@ def fnBuildCommand(bNoCache, sProjectName):
     """Build the Vaibify Docker image from vaibify.yml."""
     config = fconfigResolveProject(sProjectName)
     sDockerDir = fsDockerDir()
-    _fnEnforceBuildPreflight(config)
-    click.echo(f"Building image {config.sProjectName}:latest ...")
     # `-p <name>` resolves a project from ANYWHERE, so the directory
     # must come from the same resolution the config did -- not from
     # the working directory, which names a different project's repo.
     sProjectDirectory = os.path.dirname(
         fsResolveProjectConfigPath(sProjectName),
     )
+    _fnEnforceBuildPreflight(fconfigForBuildContext(config, sProjectDirectory))
+    click.echo(f"Building image {config.sProjectName}:latest ...")
     try:
         fnBuildFromConfig(
             config, sDockerDir, bNoCache, sProjectDirectory,

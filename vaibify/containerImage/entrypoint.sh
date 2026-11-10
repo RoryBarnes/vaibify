@@ -145,6 +145,11 @@ fnObserveNameResolution() {
         fnRecordStartupObservation "dns-not-applicable" "${sHostname}" "info"
         return 0
     fi
+    if [ "${VAIBIFY_NETWORK_MODE:-}" = "web" ] \
+            || [ "${VAIBIFY_NETWORK_MODE:-}" = "allowlist" ]; then
+        fnObserveEgressThroughProxy "${sHostname}"
+        return 0
+    fi
     # BOUNDED, and the bound is the point. `getent hosts` against a
     # resolver that accepts the query and never answers blocks for the
     # C library's own retry schedule -- tens of seconds -- and this runs
@@ -165,6 +170,115 @@ fnObserveNameResolution() {
     echo "[vaib] Warning: could not resolve ${sHostname} from inside this container."
     fnAppendStartupWarning "${sHostname}" "dns-resolution-failed" \
         "the container could not resolve a host this project depends on"
+}
+
+# ---------------------------------------------------------------------------
+# fnObserveEgressThroughProxy: Ask the network proxy for a host this project
+# depends on. Arguments: sHostname
+#
+# A sealed container (web or allowlist mode) resolves no name itself: the
+# proxy resolves names for it, so a name lookup here fails on EVERY start and
+# says nothing. The proxy is asked instead, with the CONNECT the container's
+# own tools send, and its refusal is read back verbatim (`vaibify-egress:
+# <reason>`), because the proxy already tells apart a host off the allowlist,
+# a name that resolves to a non-public address, an upstream it could not dial
+# and a full tunnel table. A tunnel it opens is then given a TLS handshake.
+# Every socket wait is bounded, so the probe needs no `timeout` binary.
+# ---------------------------------------------------------------------------
+fnObserveEgressThroughProxy() {
+    local sHostname="$1"
+    local sProxy="${HTTPS_PROXY:-${https_proxy:-}}"
+    local sAnswer sCode sDetail
+    sAnswer=$(VAIB_PROXY="${sProxy}" VAIB_HOST="${sHostname}" \
+        python3 -I - 2>/dev/null << 'PYEOF'
+import os, socket, ssl
+sProxy = os.environ.get("VAIB_PROXY", "").split("//", 1)[-1].strip("/")
+sHost = os.environ["VAIB_HOST"]
+sProxyHost, _, sProxyPort = sProxy.rpartition(":")
+def answer(sCode, sDetail=""):
+    print(sCode + "\t" + " ".join(sDetail.split()))
+try:
+    socketProxy = socket.create_connection((sProxyHost, int(sProxyPort)), timeout=3)
+except (OSError, ValueError) as error:
+    answer("egress-proxy-unreachable", type(error).__name__)
+    raise SystemExit(0)
+try:
+    socketProxy.sendall(("CONNECT %s:443 HTTP/1.1\r\nHost: %s:443\r\n\r\n"
+                         % (sHost, sHost)).encode("ascii"))
+    baReply = b""
+    while b"\r\n\r\n" not in baReply and len(baReply) < 65536:
+        baChunk = socketProxy.recv(4096)
+        if not baChunk:
+            break
+        baReply += baChunk
+except OSError as error:
+    answer("egress-proxy-unreachable", "no answer: " + type(error).__name__)
+    raise SystemExit(0)
+sHead, _, sBody = baReply.decode("latin-1").partition("\r\n\r\n")
+listStatus = sHead.split("\r\n", 1)[0].split(" ", 2)
+sStatus = listStatus[1] if len(listStatus) > 1 else ""
+if sStatus == "200":
+    try:
+        ssl.create_default_context().wrap_socket(
+            socketProxy, server_hostname=sHost).close()
+        answer("egress-reachable")
+    except (OSError, ssl.SSLError) as error:
+        answer("egress-tls-failed", type(error).__name__ + ": " + str(error)[:160])
+    raise SystemExit(0)
+if len(sBody) < 200 and b"Content-Length" in baReply:
+    try:
+        socketProxy.settimeout(1)
+        sBody += socketProxy.recv(4096).decode("latin-1")
+    except OSError:
+        pass
+sReason = sBody.split("vaibify-egress:", 1)[-1].strip() if "vaibify-egress:" in sBody else sHead.split("\r\n", 1)[0]
+if not sStatus:
+    answer("egress-proxy-unreachable", "no answer")
+elif "not on allowlist" in sReason:
+    answer("egress-not-allowlisted", sReason)
+elif "non-public" in sReason:
+    answer("egress-non-public-destination", sReason)
+elif sStatus == "503":
+    answer("egress-proxy-saturated", sReason)
+elif sStatus == "502":
+    answer("egress-upstream-unreachable", sReason)
+else:
+    answer("egress-refused", sStatus + " " + sReason)
+PYEOF
+    )
+    sCode="${sAnswer%%$'\t'*}"
+    sDetail="${sAnswer#*$'\t'}"
+    [ "${sDetail}" = "${sAnswer}" ] && sDetail=""
+    case "${sCode}" in
+        egress-reachable)
+            fnRecordStartupObservation "egress-reachable" "${sHostname}" "ok"
+            return 0 ;;
+        egress-proxy-unreachable)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy did not answer (${sDetail:-no proxy configured}), so nothing in this container reaches the network" ;;
+        egress-not-allowlisted)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy refused it (${sDetail}); add it to allowedHosts in vaibify.yml" ;;
+        egress-non-public-destination)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy refused it because the name resolves to a non-public address" ;;
+        egress-proxy-saturated)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy has too many connections open (${sDetail})" ;;
+        egress-upstream-unreachable)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy could not reach it (${sDetail})" ;;
+        egress-tls-failed)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy reached it, but the secure connection failed (${sDetail})" ;;
+        egress-refused)
+            fnAppendStartupWarning "${sHostname}" "${sCode}" \
+                "the network proxy refused it (${sDetail})" ;;
+        *)
+            fnAppendStartupWarning "${sHostname}" "egress-not-checked" \
+                "the network check through the proxy could not run" ;;
+    esac
+    echo "[vaib] Warning: ${sHostname} is not reachable through the network proxy (${sCode})."
 }
 
 # ---------------------------------------------------------------------------
@@ -190,6 +304,18 @@ fnWriteReadinessMarker() {
         "${sStatusEscaped}" "${sReasonEscaped}" "${sWarnings}" \
         "${sObservations}" "${S_ENTRYPOINT_VERSION}" \
         > "${sMarker}"
+}
+
+# ---------------------------------------------------------------------------
+# fnReportStartupStep: Name the step this start is on, for the dashboard
+# Arguments: sStep
+# The dashboard keeps a researcher out until the start is done, so it
+# shows what the start is doing instead; each write also dates the
+# progress, which is how a start with no new step for a long time is
+# called stuck. Workspace phase only: the marker belongs to the user.
+# ---------------------------------------------------------------------------
+fnReportStartupStep() {
+    fnWriteReadinessMarker "booting" "$1"
 }
 
 # ---------------------------------------------------------------------------
@@ -529,6 +655,8 @@ fnSyncAllRepos() {
 
     local iCount=${#saRepoNames[@]}
     for (( i=0; i<iCount; i++ )); do
+        fnReportStartupStep \
+            "Updating ${saRepoNames[$i]} ($((i + 1)) of ${iCount} repositories)"
         fnCloneOrPull "${saRepoNames[$i]}" "${saRepoUrls[$i]}" "${saRepoBranches[$i]}"
     done
 
@@ -624,6 +752,7 @@ fnBuildBinaries() {
     local bBuiltAny=false
     for (( i=0; i<iCount; i++ )); do
         if [ "${saRepoMethods[$i]}" = "c_and_pip" ]; then
+            fnReportStartupStep "Compiling ${saRepoNames[$i]}"
             if fnBuildSingleBinary "${saRepoNames[$i]}" \
                 "${WORKSPACE}/${saRepoNames[$i]}"; then
                 bBuiltAny=true
@@ -719,6 +848,8 @@ fnInstallAllRepos() {
     local iCount=${#saRepoNames[@]}
     for (( i=0; i<iCount; i++ )); do
         if [ -d "${WORKSPACE}/${saRepoNames[$i]}" ]; then
+            fnReportStartupStep \
+                "Installing ${saRepoNames[$i]} ($((i + 1)) of ${iCount} repositories)"
             fnInstallRepo "${saRepoNames[$i]}" "${saRepoMethods[$i]}"
         fi
     done
@@ -736,6 +867,21 @@ fnInstallAllRepos() {
 # legacy path below.
 # ---------------------------------------------------------------------------
 S_IMAGE_REQUIREMENTS="/etc/vaibify/requirements.txt"
+
+# Each feature overlay that pip-installs writes the list it installs
+# here and installs FROM it, so the record cannot drift from the image.
+S_FEATURE_REQUIREMENTS_DIRECTORY="/etc/vaibify/requirements.d"
+
+# Each project's own declaration, as the build read it from the
+# project's remote: one <repository>.txt per project that declares
+# something, whose first line names the file and the commit, beside an
+# index.json of every project read. Written by the projectDependencies
+# stage; absent from an image no project declared anything for.
+S_PROJECT_REQUIREMENTS_DIRECTORY="/etc/vaibify/projectRequirements"
+
+# The program the build ran in the pinned environment, shipped by the
+# base image: asked here about each project's working copy.
+S_DECLARATION_CHECKER="/usr/local/lib/vaibify/checkDeclaredRequirements.py"
 
 # ---------------------------------------------------------------------------
 # fnMirrorRepoRequirements: write the image's package list into each repo
@@ -803,7 +949,7 @@ fnReportDroppedRequirements() {
     local sDropped
     sDropped=$(comm -23 \
         <(fnListRequirementNames "${sTarget}") \
-        <(fnListRequirementNames "${S_IMAGE_REQUIREMENTS}") \
+        <({ fnListImageRequirementNames; fnListInstalledDistributionNames; } | sort -u) \
         | tr '\n' ' ')
     if [ -z "${sDropped// /}" ]; then
         return 0
@@ -811,8 +957,9 @@ fnReportDroppedRequirements() {
     echo "[vaib]   WARNING: ${sRepoName}: these packages were declared ONLY in"
     echo "[vaib]            .vaibify/requirements.txt and are not in this image:"
     echo "[vaib]              ${sDropped}"
-    echo "[vaib]            They are no longer installed. Add them to"
-    echo "[vaib]            pythonPackages in vaibify.yml and rebuild the image."
+    echo "[vaib]            They are no longer installed. Add them to the"
+    echo "[vaib]            project's own requirements.txt (or pythonPackages"
+    echo "[vaib]            in vaibify.yml), push it, and rebuild the image."
     fnAppendStartupWarning "${sRepoName}" "requirements-dropped" \
         "declared only in the repo file, absent from the image, no longer installed: ${sDropped}"
 }
@@ -839,15 +986,149 @@ fnListRequirementNames() {
 fnRenderRequirementsMirror() {
     echo "# GENERATED BY VAIBIFY -- do not edit."
     echo "#"
-    echo "# This mirrors the pythonPackages list in the project's"
-    echo "# vaibify.yml, as installed into this container image. Editing"
-    echo "# it changes nothing that survives: the image is built from"
-    echo "# vaibify.yml, and this file is rewritten from the image on"
-    echo "# every container start."
+    echo "# This mirrors the Python packages installed into this"
+    echo "# container image: the pythonPackages list in the project's"
+    echo "# vaibify.yml, the packages each enabled feature installs, and"
+    echo "# each project's own declaration at the commit the image was"
+    echo "# built from. Editing it changes nothing that survives: this"
+    echo "# file is rewritten from the image on every container start."
     echo "#"
-    echo "# To add a dependency: add it to pythonPackages in vaibify.yml"
-    echo "# on the host, then rebuild the image."
+    echo "# To add a dependency: add it to the project's own"
+    echo "# requirements.txt (or pyproject.toml), push it, and rebuild the"
+    echo "# image; or add it to pythonPackages in vaibify.yml and rebuild."
     cat "${S_IMAGE_REQUIREMENTS}"
+    local sFeatureList
+    for sFeatureList in "${S_FEATURE_REQUIREMENTS_DIRECTORY}"/*.txt; do
+        [ -f "${sFeatureList}" ] || continue
+        echo "# installed by the $(basename "${sFeatureList}" .txt) feature"
+        cat "${sFeatureList}"
+    done
+    local sProjectList
+    for sProjectList in "${S_PROJECT_REQUIREMENTS_DIRECTORY}"/*.txt; do
+        [ -f "${sProjectList}" ] || continue
+        echo "# declared by project $(basename "${sProjectList}" .txt)"
+        cat "${sProjectList}"
+    done
+}
+
+# Every package name this image's lists record, normalized and sorted.
+fnListImageRequirementNames() {
+    local sList
+    for sList in "${S_IMAGE_REQUIREMENTS}" \
+            "${S_FEATURE_REQUIREMENTS_DIRECTORY}"/*.txt \
+            "${S_PROJECT_REQUIREMENTS_DIRECTORY}"/*.txt; do
+        [ -f "${sList}" ] && fnListRequirementNames "${sList}"
+    done | sort -u
+}
+
+# Every installed distribution's name, normalized and sorted. The
+# program is the shadow rerun's own inventory
+# (shadowRerun.S_ENUMERATE_PACKAGES_COMMAND), copied because a script
+# baked into the image cannot import it; a test holds the two to the
+# same text. ``importlib.metadata`` rather than ``pip list``, which
+# hides installed argparse, python and wsgiref and so would report a
+# package that is there as gone.
+fnListInstalledDistributionNames() {
+    python3 -c 'import importlib.metadata as metadata
+for distribution in metadata.distributions():
+    sName = distribution.metadata["Name"]
+    sVersion = distribution.metadata["Version"]
+    if sName and sVersion:
+        print(sName + "==" + sVersion)' 2>/dev/null \
+        | sed -e 's/==.*//' | tr 'A-Z' 'a-z' | tr '_' '-' | sort -u
+}
+
+# ---------------------------------------------------------------------------
+# fnCheckProjectDeclarations: name what each project declares and the
+# image does not hold
+#
+# The build installs each project's declaration as it stood on the
+# project's remote. An edit made since is in the working copy and not in
+# the image, so it works for nobody who pulls the image -- and for the
+# shadow rerun and reproduce.sh, which use it with this start bypassed.
+# The question is satisfaction, asked of the image's own packages
+# (python3 -I leaves out what this start installed into the user's site):
+# a tightened version or an added extra counts, not only a new name.
+#
+# Where the change lives decides the remedy, so each case is its own
+# code: not yet committed, committed but not pushed, or pushed but not
+# yet built. An image older than the checker says nothing.
+# ---------------------------------------------------------------------------
+fnCheckProjectDeclarations() {
+    [ -f "${S_DECLARATION_CHECKER}" ] || return 0
+    local sRepoVaibify
+    for sRepoVaibify in "${WORKSPACE}"/*/.vaibify; do
+        [ -d "${sRepoVaibify}" ] || continue
+        fnCheckOneProjectDeclaration "$(dirname "${sRepoVaibify}")"
+    done
+}
+
+fnCheckOneProjectDeclaration() {
+    local sRepoPath="$1"
+    local sRepoName sFile sUnsatisfied sCode sRemedy
+    sRepoName=$(basename "${sRepoPath}")
+    sFile=$(fsFirstDeclarationFile "${sRepoPath}")
+    [ -n "${sFile}" ] || return 0
+    sUnsatisfied=$(python3 -I "${S_DECLARATION_CHECKER}" \
+            "project ${sRepoName}=${sRepoPath}/${sFile}" 2>/dev/null \
+        | python3 -I -c 'import json, sys
+try:
+    listMisses = json.loads(sys.stdin.read() or "{}").get("listUnsatisfied", [])
+except ValueError:
+    listMisses = []
+print(", ".join(d["sRequirement"] + " (" + d["sInstalled"] + " installed)"
+                for d in listMisses))')
+    [ -n "${sUnsatisfied}" ] || return 0
+    case "$(fsWhereTheDeclarationChanged "${sRepoPath}" "${sFile}")" in
+        uncommitted)
+            sCode="project-requirements-uncommitted"
+            sRemedy="commit and push ${sFile}, then Rebuild" ;;
+        unpushed)
+            sCode="project-requirements-unpushed"
+            sRemedy="push the commit that changed ${sFile}, then Rebuild" ;;
+        *)
+            sCode="project-requirements-unbuilt"
+            sRemedy="Rebuild, which reads ${sFile} from the remote" ;;
+    esac
+    echo "[vaib]   WARNING: ${sRepoName}: ${sFile} declares what this image does"
+    echo "[vaib]            not hold: ${sUnsatisfied}. To fix: ${sRemedy}."
+    fnAppendStartupWarning "${sRepoName}" "${sCode}" \
+        "${sFile} declares what the image does not hold: ${sUnsatisfied}; ${sRemedy}"
+}
+
+# The first of the lock's own inputs at the repository root, the file the
+# build reads (projectDeclarations.T_DECLARATION_FILES), or nothing.
+fsFirstDeclarationFile() {
+    local sFile
+    for sFile in pyproject.toml requirements.in requirements.txt; do
+        if [ -f "$1/${sFile}" ]; then
+            printf '%s' "${sFile}"
+            return 0
+        fi
+    done
+}
+
+# uncommitted, unpushed or published: where a declaration's current text
+# lives. The start has already fetched the remote, so its branch is fresh.
+fsWhereTheDeclarationChanged() {
+    local sRepoPath="$1"
+    local sFile="$2"
+    local sUpstream
+    if ! git -C "${sRepoPath}" ls-files --error-unmatch -- "${sFile}" \
+            > /dev/null 2>&1 \
+        || ! git -C "${sRepoPath}" diff --quiet HEAD -- "${sFile}" 2>/dev/null; then
+        printf 'uncommitted'
+        return 0
+    fi
+    sUpstream=$(git -C "${sRepoPath}" rev-parse --abbrev-ref \
+        --symbolic-full-name '@{u}' 2>/dev/null)
+    if [ -z "${sUpstream}" ] \
+        || [ "$(git -C "${sRepoPath}" rev-parse "HEAD:${sFile}" 2>/dev/null)" \
+            != "$(git -C "${sRepoPath}" rev-parse "${sUpstream}:${sFile}" 2>/dev/null)" ]; then
+        printf 'unpushed'
+        return 0
+    fi
+    printf 'published'
 }
 
 # ---------------------------------------------------------------------------
@@ -1291,15 +1572,15 @@ procedure to fix them permanently.
 
 ### Persisting the Dependency
 
-The immediate `pip install` is ephemeral, and **you cannot make it permanent from inside this container.**
+The immediate `pip install` is ephemeral: it holds for this container session only.
 
-Dependencies are declared in exactly ONE place: `pythonPackages` in the project's `vaibify.yml`. That file lives on the researcher's host, it is what the container image is built from, and you have no access to it.
+**To make a dependency permanent, declare it in the project's own dependency file**, at the repository root: the first of `pyproject.toml` (its `[project] dependencies`), `requirements.in` or `requirements.txt` that exists, or a new `requirements.txt` if none does. Commit and push it, then ask the researcher to Rebuild. The build reads every project's file from its remote, at the commit the configured branch names, installs all of them into the image together, and checks the result in the image a reproducer runs; PROOF Level 3 compiles `requirements.lock` from the same file. Write requirement lines only (`name`, `name>=1.2`, `name[extra]`): an option line, a URL, a path, `-e` or `-r` refuses the build, naming the line. Until the rebuild, every container start names the package as declared and not in the image, and says whether the change still needs committing, pushing or only a Rebuild; say plainly that the dependency is pending until then, rather than reporting it as handled.
 
-`<repo>/.vaibify/requirements.txt` is a GENERATED MIRROR of that list. It is rewritten from the image on every container start. Editing the mirror changes nothing that survives: the next start replaces it and reports your edit as lost. PROOF Level 3 compiles `requirements.lock` from the first of `pyproject.toml`, `requirements.in` or `requirements.txt` it finds at the repository root, and from the mirror only when none of those exists — so a dependency file you add at the repository root changes what the lock is compiled from, not what the image installs.
+`pythonPackages` in the environment's `vaibify.yml` is the other place a package can be declared: the environment's own list, for what every project in this container needs. That file lives on the researcher's host and you have no access to it; ask the researcher when a package belongs there.
 
-So: **tell the researcher which package you need and why, and ask them to add it to `pythonPackages` in `vaibify.yml` and rebuild the image.** Until they do, your `pip install` holds for this container session only — say that plainly rather than reporting the dependency as handled.
+`<repo>/.vaibify/requirements.txt` is a GENERATED MIRROR of everything the image installed, rewritten on every container start. Editing it changes nothing that survives: the next start replaces it and reports your edit as lost.
 
-Why it works this way, since editing a file in here looks more convenient: a package installed only in this container is present in the running container AND in `requirements.lock`, and absent from the image anyone else would pull. The work then reproduces for the researcher and fails for everybody else — at the far end, where nobody can debug it.
+Why it works this way, since a `pip install` in here looks like enough: a package installed only in this container is present for you and absent from the image anyone else would pull, and from the image the Level 3 rerun uses. The work then reproduces for the researcher and fails for everybody else — at the far end, where nobody can debug it.
 
 System libraries and compilers follow the same rule, with no in-container workaround: you have no `sudo` and the image deletes its apt package lists, so `apt-get install` cannot run here — and do not unpack `.deb` files or build a toolchain under your home directory, which the next rebuild discards. Two more `vaibify.yml` keys reach the image at rebuild: `systemPackages` (Ubuntu packages, for a library Ubuntu ships ready to use) and `features` (flags that each install a whole stack, including its compile step; for example, `nestedSampling` builds the MultiNest library that `pymultinest` loads and installs `pymultinest` and `ultranest` with it). A library that must be compiled belongs to a feature: listing its compiler in `systemPackages` installs the compiler and builds nothing. Name the library, say which key you believe provides it, and ask the researcher to check the "Features" table in vaibify's install guide.
 
@@ -1309,7 +1590,7 @@ System libraries and compilers follow the same rule, with no in-container workar
 - Always include a version lower bound (e.g., `>=1.0`).
 - Before adding a package, check for version conflicts: `pip install --dry-run <package>`
 - Do not add packages that duplicate functionality already available in the container.
-- Distinguish **code dependencies** (packages — declared in `pythonPackages` in `vaibify.yml`) from **data
+- Distinguish **code dependencies** (packages — declared in the project's own dependency file, or `pythonPackages` in `vaibify.yml`) from **data
   dependencies** (files from other steps — belong in `{step:<sStepId>.<stem>}` references).
 
 ## Important
@@ -1732,8 +2013,10 @@ fnRunWorkspacePhase() {
     fnInstallAgentSkills
     fnPersistGitConfig
     fnParseReposConf
+    fnReportStartupStep "Checking the network"
     fnObserveFirstRepositoryHost
     fnSyncAllRepos
+    fnReportStartupStep "Updating the coding agents"
     if command -v claude > /dev/null 2>&1; then
         fnConfigureClaudeTheme
         fnConfigureClaudeAutoUpdate
@@ -1768,7 +2051,9 @@ fnRunWorkspacePhase() {
     fnBuildBinaries
     fnSourceBinariesInBashrc
     fnInstallAllRepos
+    fnReportStartupStep "Checking each project's dependencies"
     fnMirrorRepoRequirements
+    fnCheckProjectDeclarations
     fnPrintSummary
 }
 

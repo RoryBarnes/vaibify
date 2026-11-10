@@ -13,8 +13,11 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # system-wide needs root, and the last line hands the image back.
 USER root
 
-RUN pip install --no-cache-dir \
-        cupy-cuda12x \
-        nvidia-cuda-runtime-cu12
+# Installed FROM its record, so the mirror, the lock and the startup
+# check see exactly what this overlay put in the image.
+RUN mkdir -p /etc/vaibify/requirements.d \
+    && printf '%s\n' cupy-cuda12x nvidia-cuda-runtime-cu12 \
+        > /etc/vaibify/requirements.d/gpu.txt \
+    && pip install --no-cache-dir -r /etc/vaibify/requirements.d/gpu.txt
 
 USER ${CONTAINER_USER}

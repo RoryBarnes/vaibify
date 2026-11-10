@@ -195,6 +195,8 @@ def testThePinIsReadBeforeTheBuildRewritesIt():
     ), mock.patch.object(
         commandBuild, "fnPrepareBuildContext",
     ), mock.patch.object(
+        commandBuild, "fnStageProjectDeclarations",
+    ), mock.patch.object(
         commandBuild, "fnDiscardBuildContext",
     ), mock.patch.object(
         commandBuild, "fnWarnIfBaseImageFloating",

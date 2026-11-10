@@ -12,6 +12,8 @@ import re
 
 import pytest
 
+from vaibify.docker import imageBuilder
+
 
 _S_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _S_DOCKERFILE = os.path.join(
@@ -256,3 +258,69 @@ def test_overlay_hands_the_image_back_to_the_container_user(sOverlayPath):
                      if sInstruction.startswith("USER ")]
     assert not listUsers or listUsers[-1] == (
         "USER " + _S_CONTAINER_USER_DIRECTIVE)
+
+
+def _fsEnvironmentOverlayPath(sOverlayName):
+    return os.path.join(
+        os.path.dirname(_S_DOCKERFILE),
+        imageBuilder._DICT_OVERLAY_DOCKERFILE_MAP[sOverlayName])
+
+
+def _flistUnrecordedPipInstalls(sContent, sOverlayName):
+    """Return each pip install that names a package rather than its own record."""
+    sRecord = f"/etc/vaibify/requirements.d/{sOverlayName}.txt"
+    listUnrecorded = []
+    for sInstruction in _flistInstructions(sContent):
+        for sInstall in re.findall(r"pip install([^&;|]*)", sInstruction):
+            listTokens = sInstall.split()
+            listPackages = [sToken for iIndex, sToken in enumerate(listTokens)
+                            if not sToken.startswith("-")
+                            and not (iIndex and listTokens[iIndex - 1] == "-r")]
+            if listPackages or sRecord not in listTokens:
+                listUnrecorded.append(sInstruction)
+    return listUnrecorded
+
+
+# The projects' stage installs every record at once, so it has no list of
+# its own to read; its single joint install is held by the test below.
+_T_FEATURE_OVERLAY_NAMES = tuple(
+    sName for sName in imageBuilder.T_BASE_OVERLAY_NAMES
+    if sName != imageBuilder.S_PROJECT_DEPENDENCIES_OVERLAY
+)
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sOverlayName", _T_FEATURE_OVERLAY_NAMES)
+def test_environment_overlay_installs_python_packages_from_its_record(sOverlayName):
+    """A feature's packages were installed and recorded nowhere, so the
+    startup check called pymultinest "no longer installed" in a
+    container that had it, and every lock compiled from the mirror left
+    it out. Each environment overlay now writes its list to
+    ``/etc/vaibify/requirements.d/<name>.txt`` and installs from that
+    file, so the record and the install cannot disagree.
+
+    Kills: the nested-sampling overlay installing ``ultranest
+    pymultinest`` by name again.
+    """
+    with open(_fsEnvironmentOverlayPath(sOverlayName), "r") as fileHandle:
+        sContent = fileHandle.read()
+    assert _flistUnrecordedPipInstalls(sContent, sOverlayName) == []
+
+
+def test_the_projects_stage_installs_every_record_in_one_resolution():
+    """Installed one after another, a later list silently replaces a
+    version an earlier one needed; resolved together, a conflict stops
+    the build. The stage must read the image's list, every feature's and
+    every project's in its single ``pip install``, then ``pip check``."""
+    with open(_fsEnvironmentOverlayPath(
+            imageBuilder.S_PROJECT_DEPENDENCIES_OVERLAY), "r") as fileHandle:
+        sContent = fileHandle.read()
+    listInstructions = [sInstruction for sInstruction in _flistInstructions(sContent)
+                        if "pip install" in sInstruction]
+    assert len(listInstructions) == 1
+    sInstruction = listInstructions[0]
+    assert sInstruction.count("pip install") == 1
+    for sSource in ("saSources=(/etc/vaibify/requirements.txt)",
+                    "/etc/vaibify/requirements.d/*.txt",
+                    "/etc/vaibify/projectRequirements/*.txt", "&& pip check"):
+        assert sSource in sInstruction, sSource

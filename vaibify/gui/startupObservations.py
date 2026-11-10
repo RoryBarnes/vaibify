@@ -47,6 +47,57 @@ DICT_OBSERVATION_MEANINGS = {
         "resolved",
         "",
     ),
+    # A sealed container (web or allowlist) resolves no name itself, so
+    # it is asked through its proxy, whose own refusal reasons each
+    # carry a different remedy.
+    "egress-reachable": (
+        "the container reached a host this project depends on through "
+        "its network proxy",
+        "",
+    ),
+    "egress-proxy-unreachable": (
+        "the container's network proxy did not answer, so nothing in "
+        "the container reached the network",
+        "The hub restores a missing proxy on its next sweep; if the "
+        "Network row still says the proxy is down, restart the "
+        "container.",
+    ),
+    "egress-not-allowlisted": (
+        "the network proxy refused a host this project depends on: it "
+        "is not on the allowlist",
+        "Add the host to allowedHosts in vaibify.yml, or use the Allow "
+        "host action on the Network row.",
+    ),
+    "egress-non-public-destination": (
+        "the network proxy refused a host because its name resolves to "
+        "a non-public address",
+        "This is the seal working: a sealed project reaches only public "
+        "addresses. A host on this computer or the local network needs "
+        "networkMode: open.",
+    ),
+    "egress-proxy-saturated": (
+        "the network proxy had too many connections open",
+        "Usually transient; the next start checks again.",
+    ),
+    "egress-upstream-unreachable": (
+        "the network proxy could not reach a host this project depends "
+        "on",
+        "Check this machine's connection, then restart the container.",
+    ),
+    "egress-tls-failed": (
+        "the network proxy reached a host, but the secure connection to "
+        "it failed",
+        "The container log names the TLS error; a network that inspects "
+        "TLS traffic is the usual cause.",
+    ),
+    "egress-refused": (
+        "the network proxy refused a host this project depends on",
+        "The container log quotes the proxy's reason.",
+    ),
+    "egress-not-checked": (
+        "the network check through the proxy could not run",
+        "",
+    ),
     "clone-auth": (
         "a repository clone needed credentials the container did not "
         "have",
@@ -80,8 +131,32 @@ DICT_OBSERVATION_MEANINGS = {
         "The container log names which file and which line.",
     ),
     "requirements-dropped": (
-        "a requirements file was skipped entirely",
-        "The container log names which file and why.",
+        "packages a repository's .vaibify/requirements.txt declared are "
+        "not installed in this image; that file is now a generated copy "
+        "of the image's own list",
+        "Add them to the project's own requirements.txt (or "
+        "pythonPackages in vaibify.yml), push it, and Rebuild; the "
+        "warning names each one.",
+    ),
+    # The image installs each project's declaration as it stood on the
+    # project's remote at build time; these name an edit made since,
+    # by where it lives, because that decides the remedy.
+    "project-requirements-uncommitted": (
+        "a project's dependency file declares packages the image does not "
+        "hold, and the change is not committed",
+        "Commit and push the file, then Rebuild; the warning names each "
+        "requirement.",
+    ),
+    "project-requirements-unpushed": (
+        "a project's dependency file declares packages the image does not "
+        "hold, and the commit that changed it is not pushed",
+        "Push the commit, then Rebuild: the build reads each project's "
+        "file from its remote.",
+    ),
+    "project-requirements-unbuilt": (
+        "a project's dependency file declares packages the image does not "
+        "hold; the change is pushed and the image predates it",
+        "Rebuild.",
     ),
     "agent-update-deferred": (
         "an agent could not be updated because networking is disabled",

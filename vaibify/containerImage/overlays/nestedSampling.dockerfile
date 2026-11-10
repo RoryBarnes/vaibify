@@ -60,6 +60,11 @@ RUN mkdir -p /tmp/MultiNest \
     && ldconfig \
     && rm -rf /tmp/MultiNest
 
-RUN pip install --no-cache-dir ultranest pymultinest
+# Installed FROM its record, so the mirror, the lock and the startup
+# check see exactly what this overlay put in the image.
+RUN mkdir -p /etc/vaibify/requirements.d \
+    && printf '%s\n' ultranest pymultinest \
+        > /etc/vaibify/requirements.d/nestedSampling.txt \
+    && pip install --no-cache-dir -r /etc/vaibify/requirements.d/nestedSampling.txt
 
 USER ${CONTAINER_USER}

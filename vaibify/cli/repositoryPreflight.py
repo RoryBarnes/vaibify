@@ -13,10 +13,12 @@ network miss is not evidence about a branch.
 
 import os
 import re
+import shutil
 import subprocess
 
 from vaibify.reproducibility.gitHardening import (
-    LIST_GIT_HARDENING_CONFIG, fcontextOpenHermeticGitInvocation,
+    LIST_GIT_CREDENTIAL_ISOLATION_CONFIG, LIST_GIT_HARDENING_CONFIG,
+    fcontextOpenHermeticGitInvocation,
 )
 
 from .preflightResult import (
@@ -38,6 +40,7 @@ __all__ = [
     "fsDefaultBranchOfRemote",
     "fsInstallMethodForRepository",
     "fsRepositoryNameFromUrl",
+    "ftGitTransportFor",
 ]
 
 
@@ -160,6 +163,35 @@ def _fdictParseLsRemote(sStdout, sBranch):
     return {"bBranchExists": bBranchExists, "sDefaultBranch": sDefaultBranch}
 
 
+_REGEX_GITHUB_SSH_URL = re.compile(r"^git@github\.com:([^/\s]+/[^\s]+)$")
+# The reset comes first, so no helper from the researcher's global
+# config (a keychain entry, say) answers in gh's place.
+_LIST_GH_CREDENTIAL_CONFIG = [
+    *LIST_GIT_CREDENTIAL_ISOLATION_CONFIG,
+    "-c", "credential.helper=!gh auth git-credential",
+]
+
+
+def ftGitTransportFor(sUrl):
+    """Return ``(sUrl, listConfig)`` that ask a remote the way the container clones it.
+
+    The container rewrites ``git@github.com:`` to HTTPS and signs in
+    with the researcher's ``gh`` credential. The host does the same
+    whenever ``gh`` is installed, so a hub started without an SSH agent
+    can still read a private GitHub repository, and no token passes
+    through an environment variable or a file vaibify writes: git asks
+    gh's own credential helper. Without ``gh``, and for every other
+    host, the URL is asked as written with the host's own git setup.
+    """
+    if not shutil.which("gh"):
+        return sUrl, []
+    matchSsh = _REGEX_GITHUB_SSH_URL.match(sUrl or "")
+    sAskedUrl = f"https://github.com/{matchSsh.group(1)}" if matchSsh else sUrl
+    if sAskedUrl.startswith("https://github.com/"):
+        return sAskedUrl, list(_LIST_GH_CREDENTIAL_CONFIG)
+    return sUrl, []
+
+
 _REGEX_REMOTE_HELPER_URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*::")
 
 
@@ -194,13 +226,15 @@ def fdictProbeRepositoryBranch(sUrl, sBranch, fnRun=subprocess.run):
     config names an ssh command, a proxy or a rewrite.
     """
     _fnRequireOrdinaryRemoteUrl(sUrl)
+    sAskedUrl, listCredentialConfig = ftGitTransportFor(sUrl)
     with fcontextOpenHermeticGitInvocation(
         dict(os.environ, GIT_TERMINAL_PROMPT="0"),
     ) as (sWorkingDirectory, dictEnvironment):
         try:
             processLsRemote = fnRun(
-                ["git", *LIST_GIT_HARDENING_CONFIG, "ls-remote", "--symref",
-                 "--", sUrl, "HEAD", f"refs/heads/{sBranch}"],
+                ["git", *LIST_GIT_HARDENING_CONFIG, *listCredentialConfig,
+                 "ls-remote", "--symref",
+                 "--", sAskedUrl, "HEAD", f"refs/heads/{sBranch}"],
                 capture_output=True, text=True,
                 timeout=F_REMOTE_TIMEOUT_SECONDS, env=dictEnvironment,
                 cwd=sWorkingDirectory,
@@ -284,6 +318,7 @@ def fpreflightRepositoryBranches(config, fnProbe=None):
         ),
         sRemediation=(
             "Set branch: under repositories in vaibify.yml to a branch the "
-            "remote has, then build again."
+            "remote has (for the project's own repository, push the branch "
+            "it is on), then build again."
         ),
     )

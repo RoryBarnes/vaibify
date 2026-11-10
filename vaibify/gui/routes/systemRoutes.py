@@ -102,8 +102,20 @@ def _ftReadReadinessMarker(connectionDocker, sContainerId):
         sContainerId, sCommand,
     )
     if iExitCode != 0:
-        return ("missing", "")
+        return ("missing", "", {})
     return _ftParseProbeOutput(sOutput)
+
+
+# PID 1's start, in seconds since the epoch, by the container's own
+# clock: its start in clock ticks after boot (field 22 of /proc/1/stat,
+# the 20th once the parenthesised command name is cut away) plus the
+# boot time. "0" when it cannot be read, which dates nothing.
+_S_CONTAINER_START_SHELL = (
+    "$(awk -v iTick=\"$(getconf CLK_TCK 2>/dev/null || echo 100)\" "
+    "-v iBoot=\"$(awk '/^btime/ {print $2}' /proc/stat 2>/dev/null)\" "
+    "'{sub(/^.*\\) /, \"\"); print int(iBoot + $20 / iTick)}' "
+    "/proc/1/stat 2>/dev/null || echo 0)"
+)
 
 
 def _fsBuildReadinessProbeCommand():
@@ -111,9 +123,13 @@ def _fsBuildReadinessProbeCommand():
 
     Output shape (one of):
 
-    - ``MARKER_PRESENT\\n<json-body>``
+    - ``MARKER_PRESENT <now> <marker-mtime> <container-start>\\n<json-body>``
     - ``DIR_ONLY <age-seconds>``
-    - ``NOTHING``
+    - ``NOTHING <now> <container-start>``
+
+    Every time is read inside the container, so they share one clock;
+    the marker's own time is what tells this run's marker from the one
+    the previous run left in the persistent volume.
 
     The directory age is computed from ``stat -c %Y`` versus
     ``date +%s``; both are coreutils on every supported container
@@ -123,29 +139,81 @@ def _fsBuildReadinessProbeCommand():
     """
     return (
         f"if [ -f {_S_READY_MARKER_PATH} ]; then "
-        f"echo MARKER_PRESENT; cat {_S_READY_MARKER_PATH}; "
+        f"echo \"MARKER_PRESENT $(date +%s) "
+        f"$(stat -c %Y {_S_READY_MARKER_PATH} 2>/dev/null || echo 0) "
+        f"{_S_CONTAINER_START_SHELL}\"; cat {_S_READY_MARKER_PATH}; "
         f"elif [ -d {_S_VAIBIFY_DIR_PATH} ]; then "
         f"iAge=$(( $(date +%s) - "
         f"$(stat -c %Y {_S_VAIBIFY_DIR_PATH} 2>/dev/null "
         f"|| echo 0) )); "
         f"echo \"DIR_ONLY $iAge\"; "
-        f"else echo NOTHING; fi"
+        f"else echo \"NOTHING $(date +%s) {_S_CONTAINER_START_SHELL}\"; fi"
     )
 
 
 def _ftParseProbeOutput(sOutput):
-    """Translate the probe command's output into ``(sStatus, sBody)``."""
+    """Translate the probe's output into ``(sStatus, sBody, dictTimes)``.
+
+    ``dictTimes`` holds ``iNow``, ``iMarker`` and ``iStart`` as read in
+    the container, each 0 when the probe did not report it (an older
+    probe's output reports none).
+    """
     sStripped = (sOutput or "").lstrip()
     if not sStripped:
-        return ("present", "")
-    if sStripped.startswith("MARKER_PRESENT"):
-        sBody = sStripped[len("MARKER_PRESENT"):].lstrip("\n")
-        return ("present", sBody)
+        return ("present", "", {})
+    sHeader, _, sBody = sStripped.partition("\n")
+    if sHeader.startswith("MARKER_PRESENT"):
+        return ("present", sBody, _fdictParseProbeTimes(
+            sHeader, ("iNow", "iMarker", "iStart")))
     if sStripped.startswith("DIR_ONLY"):
-        return _ftParseDirOnlyLine(sStripped)
-    if sStripped.startswith("NOTHING"):
-        return ("missing", "")
-    return ("present", sOutput)
+        return _ftParseDirOnlyLine(sStripped) + ({},)
+    if sHeader.startswith("NOTHING"):
+        return ("missing", "", _fdictParseProbeTimes(
+            sHeader, ("iNow", "iStart")))
+    return ("present", sOutput, {})
+
+
+def _fdictParseProbeTimes(sHeader, tNames):
+    """Return the header's integer times by name; an unreadable one is 0."""
+    dictTimes = {}
+    for sName, sValue in zip(tNames, sHeader.split()[1:]):
+        try:
+            dictTimes[sName] = int(sValue)
+        except ValueError:
+            dictTimes[sName] = 0
+    return dictTimes
+
+
+def _fbMarkerPredatesThisStart(dictTimes):
+    """Return True when the marker was written before this container started.
+
+    The marker lives in the persistent workspace volume, so a restarted
+    container finds the previous run's "ok" until its startup script
+    reaches the workspace phase; read as current, it let a researcher
+    into a container that had only just begun to start.
+    """
+    iMarker = dictTimes.get("iMarker", 0)
+    iStart = dictTimes.get("iStart", 0)
+    return bool(iMarker and iStart and iMarker < iStart)
+
+
+def _fdictProgressFields(dictTimes, sStep):
+    """Return the step a booting container reports and how long it has taken.
+
+    ``iSecondsSinceProgress`` counts from the marker's last write, which
+    every step makes, or from the container's start when this run has
+    written none; None when the probe could not tell.
+    """
+    iNow = dictTimes.get("iNow", 0)
+    iStart = dictTimes.get("iStart", 0)
+    iMarker = dictTimes.get("iMarker", 0)
+    iLastProgress = iMarker if iMarker and iMarker >= iStart else iStart
+    return {
+        "sStep": sStep,
+        "iSecondsSinceStart": (iNow - iStart) if iNow and iStart else None,
+        "iSecondsSinceProgress": (
+            (iNow - iLastProgress) if iNow and iLastProgress else None),
+    }
 
 
 def _ftParseDirOnlyLine(sStripped):
@@ -291,14 +359,15 @@ def _fdictStalledResponse():
     }
 
 
-def _fdictBootingResponse():
-    """Return the response payload for a missing readiness marker."""
+def _fdictBootingResponse(dictTimes=None):
+    """Return the payload for a container whose startup has written nothing yet."""
     return {
         "bReady": False,
         "sStatus": "booting",
         "sReason": "",
         "saWarnings": [],
         "iWarningCount": 0,
+        **_fdictProgressFields(dictTimes or {}, ""),
     }
 
 
@@ -309,16 +378,21 @@ def _fdictProbeWithTimeout(connectionDocker, sContainerId):
             _ftReadReadinessMarker, connectionDocker, sContainerId,
         )
         try:
-            sStatus, sRaw = future.result(
+            sStatus, sRaw, dictTimes = future.result(
                 timeout=_F_READY_PROBE_TIMEOUT_SECONDS,
             )
         except concurrent.futures.TimeoutError:
             return _fdictStalledResponse()
-    if sStatus == "missing":
-        return _fdictBootingResponse()
+    if sStatus == "missing" or _fbMarkerPredatesThisStart(dictTimes):
+        return _fdictBootingResponse(dictTimes)
     if sStatus == "stale-image":
         return _fdictStaleImageResponse()
-    return _fdictBuildReadyResponse(_fdictParseReadinessMarker(sRaw))
+    dictMarker = _fdictParseReadinessMarker(sRaw)
+    dictResponse = _fdictBuildReadyResponse(dictMarker)
+    if dictResponse["sStatus"] == "booting":
+        dictResponse.update(_fdictProgressFields(
+            dictTimes, dictMarker.get("sReason") or ""))
+    return dictResponse
 
 
 def _fdictProbeContainerReadiness(connectionDocker, sContainerId):
