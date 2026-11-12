@@ -32337,6 +32337,15 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testEntrypointShellCommandGuidance.py::'
+            'testTheGuideTeachesDeletionsTheCheckerCanRead'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        old='## Shell commands\n\nClaude Code keeps a few checks even when it is started with\n`--dangerously-skip-permissions`, and each one stops the work until the\nresearcher answers it. Every one of them fires on a deletion whose\ntarget cannot be read from the command text, so write deletions the\nchecker can read. The same habits make a command safer under any agent:\n\n- Name what `rm` removes by a literal absolute path:\n  `rm -rf /workspace/<repository>/runs/trial3`, never\n  `cd runs && rm -rf trial*`. A relative wildcard after a `cd`, a\n  target built from `$(...)` or backticks, and a target that starts\n  with a variable all prompt.\n- If a variable is unavoidable, guard it, `"${sRunDir:?}"`, so an empty\n  value stops the shell instead of reaching `/`.\n- Never remove the working directory, one of its parents, `/workspace`,\n  or the home directory.\n- Prefer not deleting at all: write each run to a fresh output\n  directory, and keep logs with `mv`.\n- After a `cd`, chain with `&&`, never `;`, so a failed `cd` stops\n  everything after it. Better still, use absolute paths and skip the\n  `cd`.\n- Split a long sequence into separate commands: stop the processes,\n  confirm they stopped, then clean up.\n\nThese checks are a safety net. Never rewrite a deletion as\n`find -delete`, `shutil.rmtree` or a script file just to get past one;\nmake the target readable instead.\n\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testCoverageDockerImageBuilder.py::'
             'testAStackChainsItsStagesAndOmitsAnAbsentPlatform'
         ),
