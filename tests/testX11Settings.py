@@ -19,6 +19,32 @@ from vaibify.gui.registryRoutes import fnRegisterRegistryRoutes
 S_PROJECT_NAME = "x11-settings"
 
 
+class _PatchedRegistry:
+    """Patch the registry lookup to one entry, and its approval write to nothing.
+
+    The settings and allow-host routes record the researcher's approval
+    of the file they wrote (ruling D2); here the registry is a stub, so
+    the write is stubbed with it. The recording itself is asserted in
+    tests/testReachApprovalGuardsTheLaunch.py against a real registry.
+    """
+
+    def __init__(self, sLookupTarget, return_value):
+        self.listPatches = [
+            patch(sLookupTarget, return_value=return_value),
+            patch("vaibify.config.registryManager.fnRecordReachApproval",
+                  lambda sName, dictRecord: None),
+        ]
+
+    def __enter__(self):
+        for patchOne in self.listPatches:
+            patchOne.__enter__()
+        return self
+
+    def __exit__(self, *tExceptionInfo):
+        for patchOne in reversed(self.listPatches):
+            patchOne.__exit__(*tExceptionInfo)
+
+
 def _fclientForConfig(tmp_path, sExtraYaml=""):
     pathProject = tmp_path / S_PROJECT_NAME
     os.makedirs(str(pathProject), exist_ok=True)
@@ -28,7 +54,7 @@ def _fclientForConfig(tmp_path, sExtraYaml=""):
     app = FastAPI()
     fnRegisterRegistryRoutes(
         app, {"require": lambda *aArgs: None, "docker": None})
-    patchProject = patch(
+    patchProject = _PatchedRegistry(
         "vaibify.config.registryManager.fdictGetProject",
         return_value={
             "sName": S_PROJECT_NAME, "sDirectory": str(pathProject),
@@ -51,7 +77,8 @@ def test_the_settings_payload_reports_the_opt_in_and_the_isolation(tmp_path):
 @pytest.mark.falsification
 def test_turning_the_opt_in_on_persists_and_asks_for_a_recreate(tmp_path):
     """Kills: a settings save that drops the X11 forwarding choice."""
-    clientHttp, sConfigPath, patchProject = _fclientForConfig(tmp_path)
+    clientHttp, sConfigPath, patchProject = _fclientForConfig(
+        tmp_path, "networkMode: open\n")
     with patchProject:
         responseSave = clientHttp.post(
             f"/api/containers/{S_PROJECT_NAME}/settings",

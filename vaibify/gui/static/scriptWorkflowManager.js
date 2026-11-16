@@ -98,6 +98,8 @@ var VaibifyWorkflowManager = (function () {
         return (
             '<div class="container-card project-card" data-path="' +
             VaibifyUtilities.fnEscapeHtml(dictWf.sPath) +
+            '" data-repo-path="' +
+            VaibifyUtilities.fnEscapeHtml(dictWf.sProjectRepoPath || "") +
             '" data-size-bytes="' + iSize + '">' +
             '<span class="name">' +
             VaibifyUtilities.fnEscapeHtml(dictWf.sName) +
@@ -127,7 +129,12 @@ var VaibifyWorkflowManager = (function () {
                         ".name").textContent;
                     var iSize = parseInt(
                         el.dataset.sizeBytes || "0", 10);
-                    fnSelectWorkflow(sId, sPath, sName, iSize);
+                    /* A researcher's click asks how terminals and
+                       agent chats start (scriptEntryChoice.js). */
+                    VaibifyEntryChoice.fnEnterProject(sId, {
+                        sPath: sPath, sName: sName, iSizeBytes: iSize,
+                        sRepoPath: el.dataset.repoPath || "",
+                    });
                 });
                 _fnBindProjectCardMenu(el, sId);
             }
@@ -1598,6 +1605,7 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _fnWizardStepNext() {
+        if (_bOpenModeQuestionPending) return;
         _fnSaveCurrentStepData();
         if (!_fbValidateWizardStep(_fiWizardPageAt(_iWizardStep))) {
             return;
@@ -2626,7 +2634,7 @@ var VaibifyWorkflowManager = (function () {
     ];
 
     function _fsRenderNetworkModeRow() {
-        var sMode = _dictWizardData.sNetworkMode || "open";
+        var sMode = _dictWizardData.sNetworkMode || "web";
         var bBlocked = _dictWizardData.bX11Forwarding === true;
         return '<label class="wizard-toggle-row" title="What the ' +
             'container may reach. Web, allowlist and isolated seal it ' +
@@ -2644,7 +2652,7 @@ var VaibifyWorkflowManager = (function () {
 
     function _fsRenderX11ForwardingRow() {
         var bChecked = _dictWizardData.bX11Forwarding === true;
-        var bBlocked = (_dictWizardData.sNetworkMode || "open") !== "open";
+        var bBlocked = (_dictWizardData.sNetworkMode || "web") !== "open";
         return '<label class="wizard-toggle-row" title="Lets ' +
             'graphical programs in the container open windows on ' +
             'your screen. A connected program can draw on it, so it ' +
@@ -2660,16 +2668,56 @@ var VaibifyWorkflowManager = (function () {
     function _fnWireX11AndIsolationExclusion() {
         /* Ruling D4: a display channel and a sealed network exclude
            each other. Choosing X11 forces the mode open and locks it;
-           choosing a sealing mode locks X11 off. */
+           choosing a sealing mode locks X11 off. Choosing open, by
+           either control, asks first: Cancel puts the controls back as
+           they were, and Next does not submit while the question is
+           open. */
         var elMode = document.getElementById("wizardNetworkMode");
         var elForwarding = document.getElementById("wizardX11Forwarding");
         if (!elMode || !elForwarding) return;
+        var sSettledMode = elMode.value;
         elMode.addEventListener("change", function () {
+            if (elMode.value === "open" && sSettledMode !== "open") {
+                _fnAskBeforeOpenMode(function () {
+                    sSettledMode = "open";
+                    elForwarding.disabled = false;
+                }, function () {
+                    elMode.value = sSettledMode;
+                    elForwarding.disabled = sSettledMode !== "open";
+                });
+                return;
+            }
+            sSettledMode = elMode.value;
             elForwarding.disabled = elMode.value !== "open";
         });
         elForwarding.addEventListener("change", function () {
+            if (elForwarding.checked && sSettledMode !== "open") {
+                _fnAskBeforeOpenMode(function () {
+                    sSettledMode = "open";
+                    elMode.value = "open";
+                    elMode.disabled = true;
+                }, function () {
+                    elForwarding.checked = false;
+                    elMode.value = sSettledMode;
+                    elMode.disabled = false;
+                });
+                return;
+            }
             if (elForwarding.checked) elMode.value = "open";
             elMode.disabled = elForwarding.checked;
+        });
+    }
+
+    var _bOpenModeQuestionPending = false;
+
+    function _fnAskBeforeOpenMode(fnOnConfirm, fnOnCancel) {
+        _bOpenModeQuestionPending = true;
+        VaibifyModals.fnConfirmOpenNetworkMode(function () {
+            _bOpenModeQuestionPending = false;
+            fnOnConfirm();
+        }, function () {
+            _bOpenModeQuestionPending = false;
+            fnOnCancel();
         });
     }
 
@@ -3020,7 +3068,7 @@ var VaibifyWorkflowManager = (function () {
             ? _fsSummaryRow("Prevent macOS sleep",
                 _dictWizardData.bNeverSleep ? "Yes" : "No") : "";
         return sNeverSleep + _fsSummaryRow(
-            "Network mode", _dictWizardData.sNetworkMode || "open") +
+            "Network mode", _dictWizardData.sNetworkMode || "web") +
             _fsSummaryRow("X11 display forwarding",
                 _dictWizardData.bX11Forwarding ? "Yes" : "No") +
             _fsSummaryResourceLimitLines();

@@ -74,6 +74,7 @@ def _fConfigFull():
         listSystemPackages=["gcc"],
         listPythonPackages=["numpy"],
         sPipInstallFlags="--no-deps",
+        sNetworkMode="web",
         listBinaries=[],
         listRepositories=[{"url": "https://github.com/a/b"}],
         features=features,

@@ -43,7 +43,7 @@ __all__ = [
 
 import logging
 
-from vaibify.config import containerLock, registryManager
+from vaibify.config import containerLock, dashboardRecords, registryManager
 from vaibify.config.keepAliveManager import fnStopKeepAlive
 from vaibify.docker import (
     containerManager, imageBuilder, volumeManager, x11Authorizations,
@@ -204,9 +204,25 @@ def _flistRemoveHostResidue(sName):
         logger.error("Delete: could not read the registry for the "
                      "residue cross-check; leaving host residue alone.")
         return []
-    return hostResidue.flistRemoveResidueForProject(
+    listRemoved = hostResidue.flistRemoveResidueForProject(
         sName, listRegisteredNames,
     )
+    return listRemoved + _flistRemoveDashboardRecords(sName)
+
+
+def _flistRemoveDashboardRecords(sName):
+    """Remove how the dashboard was last arranged for this environment.
+
+    Residue too, never a failure: the layout describes a container that
+    no longer exists, and a leftover one is unused rather than wrong.
+    """
+    try:
+        bRemoved = dashboardRecords.fbRemoveEnvironmentRecords(sName)
+    except OSError as error:
+        logger.error("Delete: could not remove the dashboard layout "
+                     "records of %s: %s", sName, error)
+        return []
+    return ["dashboard layout records"] if bRemoved else []
 
 
 def _fbRemoveRegistryEntry(sName, listFailures):

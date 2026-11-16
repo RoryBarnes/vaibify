@@ -471,7 +471,8 @@ def testUninspectableContainerIsUnassessed(monkeypatch):
     ]
 
 
-def testDetachedContainerFailsAttachmentAndFalseIsolationWarns(monkeypatch):
+def testDetachedContainerFailsAttachmentAndFalseIsolationFails(monkeypatch):
+    """A flag the attachments contradict is a failure, by its evidence (2026-11-04)."""
     fnPinInspect(monkeypatch, fjsonBridgeInspect(
         NetworkSettings={"Networks": {}},
         Config={"Env": ["VAIBIFY_NETWORK_ISOLATED=true"]},
@@ -482,10 +483,11 @@ def testDetachedContainerFailsAttachmentAndFalseIsolationWarns(monkeypatch):
     )
     dictByName = {r.sName: r for r in listResults}
     assert dictByName["network-attachment"].sLevel == S_LEVEL_FAIL
-    assert dictByName["network-isolation"].sLevel == S_LEVEL_WARN
-    assert "claims isolation but does not have it" in (
+    assert dictByName["network-isolation"].sLevel == S_LEVEL_FAIL
+    assert "does not match what it was created to have" in (
         dictByName["network-isolation"].sMessage
     )
+    assert "isolation flag is set" in dictByName["network-isolation"].sMessage
     assert "(nameservers:" not in (
         dictByName["resolver-configuration"].sMessage
     )

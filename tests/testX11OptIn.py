@@ -21,6 +21,10 @@ from vaibify.docker import containerManager, x11Authorizations, x11Forwarding
 from vaibify.host import x11Authority
 
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 def _fconfigForLaunch(bX11Forwarding=False, bNetworkIsolation=False):
     features = SimpleNamespace(
         bGpu=False, bClaude=False, bCodex=False, bGemini=False,
@@ -32,6 +36,7 @@ def _fconfigForLaunch(bX11Forwarding=False, bNetworkIsolation=False):
         sContainerUser="researcher", listPorts=[], listBindMounts=[],
         listSecrets=[], features=features,
         bNetworkIsolation=bNetworkIsolation, bX11Forwarding=bX11Forwarding,
+        sNetworkMode="isolated" if bNetworkIsolation else "open",
     )
 
 

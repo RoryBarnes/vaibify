@@ -16,15 +16,19 @@ phase settles; Phase 3 supplies the durable local app-data writer, and
 
 import copy
 import json
+import logging
 import os
 import time
 import re
 
+from . import agentCouncilEventLog
 from .agentCouncilCampaign import (
     S_STATE_ARCHIVED,
     S_STATE_FAILED,
     S_STATE_INTERRUPTED,
 )
+
+logger = logging.getLogger("vaibify")
 
 __all__ = [
     "CouncilEventRing",
@@ -43,6 +47,7 @@ __all__ = [
     "fdictAppendCampaignEvent",
     "fdictRecordCampaignEvidence",
     "fdictCollectCampaignEvents",
+    "fdictCollectEarlierCampaignEvents",
     "fsAcceptCampaignPlanLocally",
     "fbDeleteStoredCampaign",
     "fdictReloadDurableCampaigns",
@@ -185,6 +190,21 @@ class CouncilEventRing:
     @property
     def bEvictionHasOccurred(self):
         return self.iEvictedEventCount > 0
+
+    def fnSeedFromLog(self, listEvents, iLastSequence):
+        """Refill the window from the durable log after a restart.
+
+        Numbering continues after the log's last event, and events the
+        log holds before the seeded window count as evicted, so the
+        Agent tabs say earlier output exists and can page back to it.
+        """
+        for dictEvent in listEvents:
+            iEventBytes = _fiMeasureSerializedBytes(dictEvent)
+            self.listRetainedEvents.append((iEventBytes, dict(dictEvent)))
+            self.iRetainedTotalBytes += iEventBytes
+        self._fnEvictWhileOverBounds()
+        self.iNextSequence = iLastSequence + 1
+        self.iEvictedEventCount = max(0, self.iLowestRetainedSequence - 1)
 
 
 class CouncilEvidenceLedger:
@@ -615,8 +635,8 @@ def _fdictBuildEntry(dictStore, dictCampaign, dictProvenance=None):
     evidence ledger's recorded entries and the turn counter survive a
     hub restart (design section 7.5), so a claim recorded before the
     restart stays citable and an id minted after it can never collide
-    with one minted before. The ephemeral event ring alone starts
-    empty — it was never durable.
+    with one minted before. The event ring starts empty here; the
+    reload path refills it from the campaign's durable event log.
     """
     dictBounds = dictStore["dictBounds"]
     dictEntry = {
@@ -632,6 +652,8 @@ def _fdictBuildEntry(dictStore, dictCampaign, dictProvenance=None):
         "ledgerEvidence": CouncilEvidenceLedger(
             dictBounds["iLedgerEntryBytes"], dictBounds["iLedgerTotalBytes"]),
         "checkpointDurable": DurableCampaignCheckpoint(
+            _fsCampaignDirectory(dictStore, dictCampaign["sCampaignId"])),
+        "sEventLogPath": agentCouncilEventLog.fsEventLogPath(
             _fsCampaignDirectory(dictStore, dictCampaign["sCampaignId"])),
     }
     if dictProvenance and dictProvenance.get("dictLedgerState"):
@@ -854,11 +876,35 @@ def fnCheckpointStoredCampaign(dictStore, sCampaignId, dictCampaign):
 
 
 def fdictAppendCampaignEvent(dictStore, sCampaignId, dictEvent):
-    """Append one display event to a campaign's ephemeral ring."""
+    """Append one display event to the ring and the durable event log.
+
+    The log is what the Agent tabs reopen from after a restart. A log
+    that cannot be written is logged, never raised: the event still
+    reaches the poll, and failing the turn over a display record would
+    trade the work for its history.
+    """
     dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
     if dictEntry is None:
         raise ValueError(f"no stored campaign {sCampaignId!r} for an event")
-    return dictEntry["ringEvents"].fdictAppendEvent(dictEvent)
+    dictStamped = dictEntry["ringEvents"].fdictAppendEvent(dictEvent)
+    try:
+        agentCouncilEventLog.fnAppendEventToLog(
+            dictEntry["sEventLogPath"],
+            fjsonRedactCredentialsInRecord(dictStamped))
+    except OSError as error:
+        logger.warning("Council event log for %s not written: %s",
+                       sCampaignId, error)
+    return dictStamped
+
+
+def fdictCollectEarlierCampaignEvents(dictStore, sCampaignId, iBeforeOffset,
+                                      iMaximumEvents):
+    """Page back through a campaign's durable event log; None when unknown."""
+    dictEntry = _fdictRequireEntry(dictStore, sCampaignId)
+    if dictEntry is None:
+        return None
+    return agentCouncilEventLog.fdictReadEarlierEvents(
+        dictEntry["sEventLogPath"], iBeforeOffset, iMaximumEvents)
 
 
 def fdictRecordCampaignEvidence(dictStore, sCampaignId, dictEvidenceEntry):
@@ -990,7 +1036,16 @@ def _fnEvictBeyondRetention(dictStore):
 
 
 def _fbCampaignMayBeEvicted(dictStore, sCampaignId):
-    """Return True when the stored campaign has settled without a plan."""
+    """Return True when the stored campaign has settled without a plan.
+
+    A campaign holding a chairbot conversation is never evicted: the
+    researcher ruled those conversations worth keeping, and retention
+    deletes without asking.
+    """
+    from . import agentCouncilChatRecords
+    if agentCouncilChatRecords.fbCampaignHoldsConversation(
+            _fsCampaignDirectory(dictStore, sCampaignId)):
+        return False
     dictEntry = dictStore["dictEntriesById"].get(sCampaignId)
     if dictEntry is None:
         return True
@@ -1027,9 +1082,10 @@ def fdictReloadDurableCampaigns(dictStore):
     are discoverable after a crash (design section 7.5): each
     ``<campaign-id>/campaign.json`` is loaded back into a store entry so
     the researcher sees the campaign again, recovered from disk rather
-    than silently reappearing. The ephemeral event ring is not restored —
-    it was never durable — so the UI states console history is gone while
-    the structured record survives.
+    than silently reappearing. The event ring is refilled from the
+    campaign's durable event log (``agentCouncilEventLog``), its
+    numbering continuing where the log ends, so the Agent tabs reopen
+    after a restart and page back into the log for older output.
     """
     sRoot = dictStore["sDurableStoreRoot"]
     if not os.path.isdir(sRoot):
@@ -1055,10 +1111,24 @@ def fdictReloadDurableCampaigns(dictStore):
         dictEntry["bProvenanceUnavailable"] = dictProvenance is None and any(
             (dictRound or {}).get("dictTurnsByPhase")
             for dictRound in jsonRecord.get("listRounds") or [])
+        _fnSeedRingFromLog(dictStore, dictEntry)
         dictStore["dictEntriesById"][sCampaignId] = dictEntry
         dictStore["listInsertionOrder"].append(sCampaignId)
         iReloaded += 1
     return {"iReloaded": iReloaded}
+
+
+def _fnSeedRingFromLog(dictStore, dictEntry):
+    """Recover the log (a torn tail is cut) and refill the ring from it."""
+    sPath = dictEntry["sEventLogPath"]
+    try:
+        iLastSequence = agentCouncilEventLog.fiRecoverEventLog(sPath)
+        listTail = agentCouncilEventLog.flistReadTailEvents(
+            sPath, dictStore["dictBounds"]["iEventCountBound"])
+    except OSError as error:
+        logger.warning("Council event log %s unreadable: %s", sPath, error)
+        return
+    dictEntry["ringEvents"].fnSeedFromLog(listTail, iLastSequence)
 
 
 def _fjsonLoadDurableRecord(dictStore, sCampaignId):

@@ -48,6 +48,11 @@ import socket
 from urllib.parse import urlsplit
 
 from vaibify.docker.containerManager import fjsonInspectContainer
+from vaibify.docker.networkAssessment import (
+    S_NETWORK_STATE_DISAGREEMENT, S_NETWORK_STATE_ISOLATED,
+    S_NETWORK_STATE_OPEN, S_NETWORK_STATE_SEALED, S_NETWORK_STATE_UNKNOWN,
+    T_BUILT_IN_NETWORK_MODES, fdictAssessContainerNetwork, ftDescribeIsolation,
+)
 from vaibify.reproducibility.credentialRedactor import fsRedactUrlCredentials
 
 from .preflightResult import (
@@ -59,7 +64,7 @@ from .preflightResult import (
 __all__ = [
     "flistDiagnoseContainerNetwork", "fsClassifyResolverConfiguration",
     "fsReadContainerResolvConf",
-    "fsClassifyDnsPair", "ftDescribeIsolation", "fbDescribesSealedNetworkMode",
+    "fsClassifyDnsPair", "ftDescribeIsolation",
     "fdictResolveProbeTarget",
     "S_RESOLVER_EXPLICIT_DNS", "S_RESOLVER_EMBEDDED_RESOLVER",
     "S_RESOLVER_DEFAULT_BRIDGE", "S_RESOLVER_UNKNOWN",
@@ -78,13 +83,7 @@ S_DNS_CONTAINER_FAULT = "container-resolver-fault"
 S_DNS_HOST_FAULT_NOT_IMPAIRING = "host-fault-not-impairing-this-container"
 S_DNS_BOTH_FAIL = "host-or-upstream-failure"
 
-_S_ISOLATION_ENVIRONMENT_FLAG = "VAIBIFY_NETWORK_ISOLATED=true"
-# The flag a sealed-mode container is created with, one per sealed mode.
-_T_SEALED_ENVIRONMENT_FLAGS = (
-    "VAIBIFY_NETWORK_MODE=allowlist", "VAIBIFY_NETWORK_MODE=web",
-)
 _S_EMBEDDED_RESOLVER_ADDRESS = "127.0.0.11"
-_T_BUILT_IN_NETWORK_MODES = ("bridge", "default", "host", "none")
 _F_PROBE_TIMEOUT_SECONDS = 2.0
 
 _T_PROXY_VARIABLE_NAMES = (
@@ -96,36 +95,6 @@ _T_PROXY_VARIABLE_NAMES = (
 # -----------------------------------------------------------------------
 # Stage 1 -- static state, decided from the specification alone.
 # -----------------------------------------------------------------------
-
-
-def ftDescribeIsolation(jsonInspect):
-    """Return ``(bIsolated, sEvidence)`` for a container's networking.
-
-    Isolation is a SUCCESSFUL assessment, not a check that does not
-    apply: a project that asked for ``--network none`` got what it
-    asked for. The caller emits one informational result and then
-    emits no downstream network results at all -- running them would
-    produce a wall of failures describing a working configuration.
-    """
-    dictHostConfig = jsonInspect.get("HostConfig") or {}
-    sNetworkMode = str(dictHostConfig.get("NetworkMode") or "")
-    listEnvironment = (jsonInspect.get("Config") or {}).get("Env") or []
-    bFlagged = _S_ISOLATION_ENVIRONMENT_FLAG in listEnvironment
-    if sNetworkMode == "none":
-        if bFlagged:
-            return (True, "vaibify created it with `--network none`")
-        return (
-            True,
-            "its NetworkMode is `none`, though vaibify's own isolation "
-            "flag is absent from its environment",
-        )
-    if bFlagged:
-        return (
-            False,
-            "vaibify's isolation flag is set in its environment but "
-            f"its NetworkMode is `{sNetworkMode}`",
-        )
-    return (False, "")
 
 
 def fsClassifyResolverConfiguration(jsonInspect, sResolvConf):
@@ -146,7 +115,7 @@ def fsClassifyResolverConfiguration(jsonInspect, sResolvConf):
     sNetworkMode = str(dictHostConfig.get("NetworkMode") or "")
     if _S_EMBEDDED_RESOLVER_ADDRESS in (sResolvConf or ""):
         return S_RESOLVER_EMBEDDED_RESOLVER
-    if sNetworkMode and sNetworkMode not in _T_BUILT_IN_NETWORK_MODES:
+    if sNetworkMode and sNetworkMode not in T_BUILT_IN_NETWORK_MODES:
         return S_RESOLVER_EMBEDDED_RESOLVER
     if sNetworkMode in ("bridge", "default"):
         return S_RESOLVER_DEFAULT_BRIDGE
@@ -268,28 +237,70 @@ def _fpreflightIsolation(sEvidence):
     )
 
 
-def fbDescribesSealedNetworkMode(jsonInspect):
-    """True when vaibify created the container in a sealed (web or allowlist) mode."""
-    listEnvironment = (jsonInspect.get("Config") or {}).get("Env") or []
-    return any(sFlag in listEnvironment for sFlag in _T_SEALED_ENVIRONMENT_FLAGS)
-
-
-def _fpreflightSealedNetworkMode():
+def _fpreflightSealedNetworkMode(sEvidence):
     """Return the informational result for a container sealed behind its proxy."""
     return PreflightResult(
         sName="network-isolation", sLevel=S_LEVEL_INFO,
         sScope=S_SCOPE_CONTAINER,
         sMessage=(
             "this container reaches the network only through its "
-            "proxy (networkMode: web or allowlist); its own resolver "
-            "is black-holed by design, so the DNS and direct-dial checks "
-            "do not apply. The dashboard's Network row lists what the proxy "
-            "refused."
+            "proxy (networkMode: web or allowlist; " + sEvidence + "); "
+            "its own resolver is black-holed by design, so the DNS and "
+            "direct-dial checks do not apply. The dashboard's Network row "
+            "lists what the proxy refused."
         ),
         sMechanism=(
-            "Looks for vaibify's own VAIBIFY_NETWORK_MODE=web or "
-            "VAIBIFY_NETWORK_MODE=allowlist flag in the created "
-            "environment, which is runtime truth."
+            "Reads the network assessment: vaibify's own "
+            "VAIBIFY_NETWORK_MODE=web or =allowlist flag in the created "
+            "environment, AND exactly one attachment, to a network that is "
+            "not built in, reporting no gateway. The flag alone is a claim; "
+            "the attachment is what the container has."
+        ),
+    )
+
+
+def _fpreflightOpenExposure(sEvidence):
+    """Return the warning for a container on an unrestricted network."""
+    return PreflightResult(
+        sName="network-exposure", sLevel=S_LEVEL_WARN,
+        sScope=S_SCOPE_CONTAINER,
+        sMessage=(
+            "this container is on an open network (" + sEvidence + "): "
+            "anything running in it, an AI agent included, may be able to "
+            "reach services on this computer (loopback-only ones included "
+            "on macOS under Colima) and on your network."
+        ),
+        sRemediation=(
+            "Set networkMode: web in vaibify.yml (the public internet "
+            "through vaibify's proxy, nothing on this computer) and "
+            "recreate the container; keep open only if the container must "
+            "talk to a service running here."
+        ),
+        sMechanism=(
+            "Reads the network assessment: no sealed flag and an "
+            "attachment with a gateway, or the default bridge or host "
+            "network."
+        ),
+    )
+
+
+def _fpreflightNetworkDisagreement(sEvidence):
+    """Return the failure for a flag the attachments contradict."""
+    return PreflightResult(
+        sName="network-isolation", sLevel=S_LEVEL_FAIL,
+        sScope=S_SCOPE_CONTAINER,
+        sMessage=(
+            "this container's network does not match what it was created "
+            "to have: " + sEvidence + "."
+        ),
+        sRemediation=(
+            "Recreate the container so its runtime state matches the "
+            "network mode the project asked for."
+        ),
+        sMechanism=(
+            "Reads the network assessment: vaibify's own isolation or "
+            "sealed flag in the created environment, compared with the "
+            "attachments the daemon reports."
         ),
     )
 
@@ -839,10 +850,14 @@ def flistDiagnoseContainerNetwork(
 ):
     """Walk the network decision graph for one running container.
 
-    Stops after stage 1 for an intentionally isolated container, and
-    emits exactly one informational result for it -- the whole point
-    of treating "not applicable" as a successful assessment rather
-    than as a state.
+    Stops after stage 1 for an intentionally isolated or sealed
+    container, and emits exactly one informational result for it -- the
+    whole point of treating "not applicable" as a successful assessment
+    rather than as a state. An open container is warned about what open
+    exposes; a container whose attachments contradict the flag it was
+    created with fails by that evidence. All of it branches on
+    :func:`fdictAssessContainerNetwork`, the one reading the dashboard's
+    Network row shares.
     """
     jsonInspect = fjsonInspectContainer(sContainerName)
     if not jsonInspect:
@@ -854,25 +869,17 @@ def flistDiagnoseContainerNetwork(
                 "of its network state could be read."
             ),
         )]
-    bIsolated, sEvidence = ftDescribeIsolation(jsonInspect)
-    if bIsolated:
+    dictAssessment = fdictAssessContainerNetwork(jsonInspect)
+    sState, sEvidence = dictAssessment["sState"], dictAssessment["sEvidence"]
+    if sState == S_NETWORK_STATE_ISOLATED:
         return [_fpreflightIsolation(sEvidence)]
-    if fbDescribesSealedNetworkMode(jsonInspect):
-        return [_fpreflightSealedNetworkMode()]
+    if sState == S_NETWORK_STATE_SEALED:
+        return [_fpreflightSealedNetworkMode(sEvidence)]
     listResults = _flistReportAttachments(jsonInspect)
-    if sEvidence:
-        listResults.append(PreflightResult(
-            sName="network-isolation", sLevel=S_LEVEL_WARN,
-            sScope=S_SCOPE_CONTAINER,
-            sMessage=(
-                "this container claims isolation but does not have "
-                "it: " + sEvidence + "."
-            ),
-            sRemediation=(
-                "Recreate the container so its runtime state matches "
-                "the isolation the project asked for."
-            ),
-        ))
+    if sState == S_NETWORK_STATE_DISAGREEMENT:
+        listResults.append(_fpreflightNetworkDisagreement(sEvidence))
+    if sState == S_NETWORK_STATE_OPEN:
+        listResults.append(_fpreflightOpenExposure(sEvidence))
     sResolvConf = fsReadContainerResolvConf(
         connectionDocker, sContainerName,
     )

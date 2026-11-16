@@ -211,7 +211,7 @@ LIST_RESEARCHER_ACTIONS = [
         "/api/containers/{sName}/settings",
         "Change the container's settings, e.g. CPU and memory limits. "
         "Args: any of {iCpuLimit, fMemoryLimitGigabytes, bNeverSleep, "
-        "bX11Forwarding, sNetworkMode: open|allowlist|isolated, "
+        "bX11Forwarding, sNetworkMode: web|allowlist|isolated|open, "
         "b<Agent>AutoUpdate}."),
     _fdictHubEntry(
         "allow-network-host", "container", "POST",
@@ -314,6 +314,8 @@ DICT_ROUTE_TO_HOST_COMMAND = {
     ("POST", "/api/registry/{sName}/reconcile"): "reconcile",
     # `vaibify start --image-trust` records the same trust grant.
     ("POST", "/api/registry/{sName}/image-trust"): "start",
+    # `vaibify start --approve-reach` records the same approval.
+    ("POST", "/api/registry/{sName}/reach-approval"): "start",
     # `vaibify open` mints and redeems the transfer capability.
     ("POST", "/api/transfer"): "open",
     # The dashboard's new-project form; `vaibify init` scaffolds one.
@@ -340,6 +342,15 @@ SET_GUI_ONLY_ROUTES = {
         "a tab's lease; the CLI claims and releases per command",
     ("POST", "/api/registry/{sName}/release"):
         "a tab's lease; the CLI claims and releases per command",
+    ("PUT", "/api/dashboard-state/{sContainerId}/environment"):
+        "describes how a human views the container; no command-line "
+        "meaning",
+    ("PUT", "/api/dashboard-state/{sContainerId}/project"):
+        "describes how a human views the container; no command-line "
+        "meaning",
+    ("POST", "/api/dashboard-state/{sContainerId}/chat-catalog"):
+        "lists past agent chats for the entry dialog to resume in a "
+        "terminal pane; no command-line meaning",
     ("POST", "/api/system/docker-status/retry"):
         "the page's retry of its own Docker probe; `vaibify doctor` "
         "checks Docker from the command line",

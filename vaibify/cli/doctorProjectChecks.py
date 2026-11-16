@@ -26,6 +26,7 @@ from .preflightResult import (
 
 __all__ = [
     "flistCheckJournalQuarantine", "flistCheckEnvelopeCurrency",
+    "flistCheckNetworkModeStated", "flistCheckReachApproval",
     "flistCheckWorkspaceOwnership", "fsDiscoverProjectRepoPath",
     "flistReportStartupObservations",
 ]
@@ -568,3 +569,81 @@ def _fpreflightStartupObservations(listDescribed):
             for dictObservation in listConcerning
         ),
     )
+
+
+def flistCheckNetworkModeStated(config):
+    """Report whether vaibify.yml names a network mode (ruling D1)."""
+    from vaibify.config.projectConfig import (
+        S_NETWORK_MODE_UNSTATED, fsDescribeUnstatedNetworkMode,
+    )
+    from vaibify.docker.containerManager import fsNetworkModeOf
+    sMode = fsNetworkModeOf(config)
+    if sMode == S_NETWORK_MODE_UNSTATED:
+        return [PreflightResult(
+            sName="network-mode-stated", sLevel=S_LEVEL_FAIL,
+            sScope=S_SCOPE_PROJECT,
+            sMessage=fsDescribeUnstatedNetworkMode(config.sProjectName),
+            sRemediation=(
+                "Add one line to vaibify.yml: networkMode: web, allowlist, "
+                "isolated or open."),
+            sMechanism=(
+                "Reads networkMode from the project's vaibify.yml, with the "
+                "old networkIsolation: true read as isolated; its false "
+                "names no mode."),
+        )]
+    return [PreflightResult(
+        sName="network-mode-stated", sLevel=S_LEVEL_OK, sScope=S_SCOPE_PROJECT,
+        sMessage=f"vaibify.yml names networkMode: {sMode}.",
+    )]
+
+
+def _fsDescribeUnapprovedFields(dictPrompt):
+    """Return which widening fields the record does not cover, as words."""
+    if not dictPrompt["dictCurrentAnswer"]:
+        return "never approved on this computer"
+    listChanged = [
+        sBullet.split(":")[0] for sBullet in dictPrompt["listBullets"]
+        if "approved on" not in sBullet or "changed since" in sBullet]
+    return "changed since it was approved: " + ", ".join(listChanged)
+
+
+def flistCheckReachApproval(config):
+    """Report whether this host holds approval for the file's reach-widening settings.
+
+    The same judgement the launch makes (``fdictBuildReachPromptIfUnapproved``),
+    so doctor cannot say approved where the start would ask.
+    """
+    from vaibify.config.reachApproval import fbConfigurationWidensReach
+    from vaibify.docker.containerManager import fdictBuildReachPromptIfUnapproved
+    if not fbConfigurationWidensReach(config):
+        return [PreflightResult(
+            sName="reach-approval", sLevel=S_LEVEL_OK, sScope=S_SCOPE_PROJECT,
+            sMessage=(
+                "vaibify.yml asks for nothing that widens what the "
+                "container reaches (no open network mode, X11 forwarding, "
+                "bind mount or allowed host), so no approval is needed."),
+        )]
+    dictPrompt = fdictBuildReachPromptIfUnapproved(config)
+    if dictPrompt is None:
+        return [PreflightResult(
+            sName="reach-approval", sLevel=S_LEVEL_OK, sScope=S_SCOPE_PROJECT,
+            sMessage=(
+                "the settings in vaibify.yml that widen what the container "
+                "reaches were approved on this computer."),
+        )]
+    return [PreflightResult(
+        sName="reach-approval", sLevel=S_LEVEL_WARN, sScope=S_SCOPE_PROJECT,
+        sMessage=(
+            "vaibify.yml asks for settings that widen what the container "
+            f"reaches, {_fsDescribeUnapprovedFields(dictPrompt)}; the next "
+            "start will ask for your approval."),
+        sRemediation=(
+            "Read the settings, then approve them with `vaibify start "
+            "--approve-reach` or in the dashboard when the start asks; or "
+            "change vaibify.yml."),
+        sMechanism=(
+            "Compares a fingerprint of networkMode, x11Forwarding, "
+            "bindMounts and allowedHosts in vaibify.yml with the approval "
+            "record this host's registry holds for the project; the launch "
+            "makes the same comparison."),
+    )]

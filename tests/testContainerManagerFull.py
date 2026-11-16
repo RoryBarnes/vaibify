@@ -10,6 +10,10 @@ from unittest.mock import patch, MagicMock
 from vaibify.docker import containerManager
 
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 @pytest.fixture(autouse=True)
 def fixtureImageBuiltByVaibify(monkeypatch):
     """These tests assemble arguments; the image-trust guard has its own."""
@@ -50,6 +54,7 @@ def _fConfigMinimal():
         listSecrets=[],
         features=features,
         bNetworkIsolation=False,
+        sNetworkMode="open",
     )
 
 

@@ -31,6 +31,7 @@ New users should start with the QuickStart.
    proofLadder
    aiUse
    environmentsAndProjects
+   dashboardMemory
    externalResources
    reproducibility
    agentCouncil

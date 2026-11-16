@@ -2125,10 +2125,10 @@ async def fdictDrainControllerForResource(dictControllerState, sResourceName):
     a fresh council", and no proxy or network may outlive the lease.
     A drive that slipped live between the busy check and this drain
     still gets the cooperative stop as the last belt. The
-    ask-the-chairbot conversations bound to the resource are closed
-    first, on the same terms and for the same reason — an idle
-    conversation is not busy enough to refuse a release, but its runner
-    and proxy must not outlive the lease either.
+    ask-the-chairbot conversations bound to the resource are set aside
+    first -- runner destroyed on the same terms, conversation kept open
+    on disk -- because an idle conversation is not busy enough to refuse
+    a release, but its runner and proxy must not outlive the lease.
 
     Returns ``{bAllSettled, listUnsettledCampaignIds}``. ``bAllSettled``
     False means at least one campaign's egress boundary could not be
@@ -2141,7 +2141,7 @@ async def fdictDrainControllerForResource(dictControllerState, sResourceName):
     """
     from . import agentCouncilChat
     listUnsettledCampaignIds = list(
-        await agentCouncilChat.flistCloseChatSessionsForResource(
+        await agentCouncilChat.flistSetChatSessionsAsideForResource(
             dictControllerState, sResourceName))
     for sCampaignId, dictRuntime in list(
             dictControllerState["dictCampaignRuntime"].items()):
@@ -2248,15 +2248,19 @@ async def fnAwaitControllerSettleOnShutdown(dictControllerState,
     staged host credential are released here regardless of whether its
     drive made the deadline, so a hub shutdown never strands a
     mode-600 token copy or a council network on the researcher's
-    machine. Every open ask-the-chairbot conversation is closed for the
-    same reason and with the same honesty: its runner holds a copied
-    login, so a hub that exits leaving one running has widened the
-    credential window past its own lifetime.
+    machine. Every open ask-the-chairbot conversation's runner is
+    destroyed for the same reason and with the same honesty -- it holds
+    a copied login, so a hub that exits leaving one running has widened
+    the credential window past its own lifetime -- but the conversation
+    is set aside open on disk, not closed: a shutdown is not the
+    researcher ending it.
     """
     from . import agentCouncilChat
     for sCampaignId in list(dictControllerState.get(
             agentCouncilChat.S_CHAT_SESSIONS_KEY, {})):
-        await agentCouncilChat.fdictCloseChatSession(
+        # Set aside, never closed: a shutdown is not the researcher
+        # ending the conversation, so it stays open on disk.
+        await agentCouncilChat.fdictSetChatSessionAside(
             dictControllerState, sCampaignId)
     listLiveDriveTasks = [
         dictRuntime["taskDrive"]

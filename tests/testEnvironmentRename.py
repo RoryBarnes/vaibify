@@ -169,6 +169,10 @@ def _fnRedirectHostState(monkeypatch, sHome):
                         os.path.join(sHome, "registry.json"))
     monkeypatch.setattr(registryManager, "_S_LOCK_PATH",
                         os.path.join(sHome, "registry.lock"))
+    from vaibify.config import dashboardRecords
+    sDashboardState = os.path.join(sHome, "dashboardState")
+    monkeypatch.setattr(
+        dashboardRecords, "fsDashboardStateRoot", lambda: sDashboardState)
     sOrigins = os.path.join(sHome, "imageOrigins")
     monkeypatch.setattr(imageOrigins, "fsOriginsDirectory", lambda: (
         os.makedirs(sOrigins, exist_ok=True) or sOrigins))

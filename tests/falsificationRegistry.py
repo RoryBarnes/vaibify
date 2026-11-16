@@ -1071,20 +1071,8 @@ LIST_FALSIFICATIONS = [
         old="""        mutationAdmission.fnAssertContainerCommandAdmitted(
             sContainerId, "ftRunInContainerStreamed",
         )
-        container = self.fcontainerGetById(sContainerId)
-        if sUser is None:
-            sUser = _fsResolveExecUser(container, sLane)
-        dictKwargs = self._fdictBuildExecKwargs(
-            sCommand, sWorkdir, sUser,
-            _fdictResolveLaneEnvironment(container, sLane),
-        )""",
-        new="""        container = self.fcontainerGetById(sContainerId)
-        if sUser is None:
-            sUser = _fsResolveExecUser(container, sLane)
-        dictKwargs = self._fdictBuildExecKwargs(
-            sCommand, sWorkdir, sUser,
-            _fdictResolveLaneEnvironment(container, sLane),
-        )""",
+        if mutationAdmission.fadmissionFindCommandJournaling(sContainerId):""",
+        new="""        if mutationAdmission.fadmissionFindCommandJournaling(sContainerId):""",
     ),
 
     Falsification(
@@ -4731,6 +4719,24 @@ LIST_FALSIFICATIONS = [
             return fileHandle
     raise ContainerLockedError(sProjectName, 0, 0)''',
         new='''    return _ffileOpenLockFileNoFollow(sPath)''',
+    ),
+    # --- 2026-11-08: a dead hub's helper records stayed unprovable
+    # forever once a later process was issued the hub's PID and led a
+    # process group with it ---
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_reconcile_clears_a_record_whose_group_number_was_reissued',
+        source='vaibify/config/operationJournal.py',
+        old='    if _fbProcessGroupNumberWasReissued(\n',
+        new='    if False and _fbProcessGroupNumberWasReissued(\n',
+    ),
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_reconcile_refuses_a_group_led_by_a_process_older_than_the_record',
+        source='vaibify/config/operationJournal.py',
+        old=(
+            '    return not fbStartClockIsConsistentWithClaim('
+            'datetimeStart, sInFlightIso)\n'
+        ),
+        new='    return True\n',
     ),
     Falsification(
         nodeid='tests/testReconciliationMutationCoverage.py::test_a_stale_reconciliation_cannot_clear_a_successor_record',
@@ -12294,7 +12300,10 @@ LIST_FALSIFICATIONS = [
             'may commit "\n'
             '        "until it is reconciled. That operation is where the '
             'original "\n'
-            '        "failure is, not here."\n'
+            '        "failure is, not here. The researcher clears it by '
+            'running "\n'
+            '        f"\'vaibify reconcile {sContainerName}\' on the '
+            'host."\n'
             '    )\n'
         ),
         new=(
@@ -12316,9 +12325,10 @@ LIST_FALSIFICATIONS = [
         old=(
             '        "until it is reconciled. That operation is where the '
             'original "\n'
-            '        "failure is, not here."\n'
+            '        "failure is, not here. The researcher clears it by '
+            'running "\n'
         ),
-        new='        "until it is reconciled."\n',
+        new='        "until it is reconciled. The researcher clears it by running "\n',
     ),
     Falsification(
         nodeid=(
@@ -16216,7 +16226,7 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/agentCouncilController.py',
         old=(
             '    listUnsettledCampaignIds = list(\n'
-            '        await agentCouncilChat.flistCloseChatSessionsForResource(\n'
+            '        await agentCouncilChat.flistSetChatSessionsAsideForResource(\n'
             '            dictControllerState, sResourceName))'
         ),
         new='    listUnsettledCampaignIds = []',
@@ -16411,9 +16421,9 @@ LIST_FALSIFICATIONS = [
             '        councilRouteGuards.fjsonRequireCampaign(\n'
             '            councilRouteGuards.fdictCampaignStore(requestHttp), sCampaignId,\n'
             '            sName, sProjectRepoPath)\n'
-            '        return agentCouncilChat.fdictDescribeChatSession('
+            '        dictStore = councilRouteGuards.fdictCampaignStore(requestHttp)\n'
         ),
-        new='        return agentCouncilChat.fdictDescribeChatSession(',
+        new='        dictStore = councilRouteGuards.fdictCampaignStore(requestHttp)\n',
     ),
     Falsification(
         nodeid=(
@@ -19546,11 +19556,11 @@ LIST_FALSIFICATIONS = [
         # continues the walk past a deliberately sealed container, so a
         # working configuration produces a wall of failures
         old=(
-            '    if bIsolated:\n'
+            '    if sState == S_NETWORK_STATE_ISOLATED:\n'
             '        return [_fpreflightIsolation(sEvidence)]'
         ),
         new=(
-            '    if bIsolated:\n'
+            '    if sState == S_NETWORK_STATE_ISOLATED:\n'
             '        listResults = [_fpreflightIsolation(sEvidence)]'
         ),
     ),
@@ -22872,6 +22882,26 @@ LIST_FALSIFICATIONS = [
         old='                if (!(await _fbBuildPreflightPasses(sName))) return;\n',
         new='',
         iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testARebuildAnnouncesItsPreflight.py::'
+            'testTheRebuildPreflightIsAnnouncedWhileItIsUnanswered'
+        ),
+        # the page sits unchanged while the preflight looks names up
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        VaibifyApp.fnShowToast(_S_BUILD_PREFLIGHT_ANNOUNCEMENT, "info");\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::'
+            'testOpeningAStoppedTileStopsAtTheQuestionAndClaimsNothing'
+        ),
+        # the open flow claims past a start that started nothing
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!bRunning && !(await fbStartContainer(sName))) return;\n',
+        new='        if (!bRunning) await fbStartContainer(sName);\n',
     ),
     # --- 2026-09-21: the wizard audit ---
     Falsification(
@@ -31771,19 +31801,19 @@ LIST_FALSIFICATIONS = [
     # --- 2026-10-08: a terminal's prompt resets the input modes a killed program left on ---
     Falsification(
         nodeid='tests/testTerminalPromptResetLive.py::testTheResetRunsLastAfterTheResearchersArrayHooks',
-        source='vaibify/gui/terminalContainment.py',
+        source='vaibify/config/terminalRcfile.py',
         old='    \'if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]];\'\n    " then\\n"\n    "    PROMPT_COMMAND+=(fnVaibifyResetInputModes)\\n"\n    "else\\n"\n',
         new='    "if false; then\\n"\n    "    :\\n"\n    "else\\n"\n',
     ),
     Falsification(
         nodeid='tests/testTerminalPromptResetLive.py::testTheResetHandsOnTheStatusItWasGiven',
-        source='vaibify/gui/terminalContainment.py',
+        source='vaibify/config/terminalRcfile.py',
         old='    \'    return "$iStatus"\\n\'\n',
         new='    "    return 0\\n"\n',
     ),
     Falsification(
         nodeid='tests/testTerminalPromptResetLive.py::testTheRcfileAndItsDirectoryAreGoneOnceTheShellStarts',
-        source='vaibify/gui/terminalContainment.py',
+        source='vaibify/config/terminalRcfile.py',
         old='    \'rm -f -- "${BASH_SOURCE[0]}" && rmdir -- "${BASH_SOURCE[0]%/*}"\\n\'\n',
         new='    ": the rcfile is kept\\n"\n',
     ),
@@ -32309,6 +32339,19 @@ LIST_FALSIFICATIONS = [
             '--ip=127.0.0.1 --port=8888 --no-browser '
             '--ServerApp.token=\\"$(cat /run/vaibify/jupyter-token)\\""]'
         ),
+    ),
+    # --- 2026-11-08: every installing overlay assumed it began as root.
+    # One entry for the parametrized family; with the fix stashed, each
+    # of the seven installing overlays failed its own case and every
+    # agent overlay passed.
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileHardening.py::'
+            'test_overlay_installs_system_wide_only_as_root'
+        ),
+        source='vaibify/containerImage/overlays/nestedSampling.dockerfile',
+        old='USER root\n\n# gfortran',
+        new='# gfortran',
     ),
     # --- 2026-10-19: the in-container guide yields to the researcher.
     Falsification(
@@ -34530,7 +34573,7 @@ LIST_FALSIFICATIONS = [
         old='        await VaibifyContainerManager.fnLoadContainers();\n',
         new=(
             '        await VaibifyContainerManager.fnLoadContainers();\n'
-            '        await VaibifyContainerManager.fnStartContainer(sNewName);\n'
+            '        await VaibifyContainerManager.fbStartContainer(sNewName);\n'
         ),
     ),
     # --- 2026-10-15: a running L3 rerun streams its output to the PROOF
@@ -36066,8 +36109,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/reproducibility/rerunProcedure.py',
         # the host name is recorded with the capabilities
-        old='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n    }\n',
-        new='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sHostName": os.uname().nodename,\n    }\n',
+        old='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sProcessorFamily": "",\n    }\n',
+        new='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sProcessorFamily": "",\n        "sHostName": os.uname().nodename,\n    }\n',
     ),
     Falsification(
         nodeid=(
@@ -36884,7 +36927,7 @@ LIST_FALSIFICATIONS = [
         # the dashboard terminal's exec omits the switch
         old=(
             '            listCommand=["/bin/sh", "-c", sWrapperScript],\n'
-            '            dictEnvironment=fdictBuildAgentTerminalEnvironment(),\n'
+            '            dictEnvironment=self._fdictTerminalEnvironment(),\n'
         ),
         new='            listCommand=["/bin/sh", "-c", sWrapperScript],\n',
     ),
@@ -36898,7 +36941,7 @@ LIST_FALSIFICATIONS = [
         # reachable daemon, or the test skips and survives vacuously
         old=(
             '            listCommand=["/bin/sh", "-c", sWrapperScript],\n'
-            '            dictEnvironment=fdictBuildAgentTerminalEnvironment(),\n'
+            '            dictEnvironment=self._fdictTerminalEnvironment(),\n'
         ),
         new='            listCommand=["/bin/sh", "-c", sWrapperScript],\n',
     ),
@@ -36910,8 +36953,9 @@ LIST_FALSIFICATIONS = [
         source='vaibify/host/hostConnection.py',
         # the host terminal's PTY inherits the hub's environment alone
         old=(
-            '                env=_fdictComposeLaunchEnvironment(\n'
-            '                    fdictBuildAgentTerminalEnvironment()),\n'
+            '                env=_fdictComposeLaunchEnvironment(dict(\n'
+            '                    fdictBuildAgentTerminalEnvironment(),\n'
+            '                    **(dictEnvironmentOverlay or {}))),\n'
         ),
         new='',
     ),
@@ -38528,6 +38572,40 @@ LIST_FALSIFICATIONS = [
         new='        pass\n',
     ),
     Falsification(
+        nodeid='tests/testProjectEgressLive.py::testTheDaemonsLabeledEgressIsDiscovered',
+        # `docker ps` refuses `index` on its comma-joined label string
+        source='vaibify/docker/projectEgress.py',
+        old='''         "--format", f'{{{{.Label "{S_LABEL_KEY}"}}}}'],\n''',
+        new='''         "--format", f'{{{{index .Labels "{S_LABEL_KEY}"}}}}'],\n''',
+        iExpectedOccurrences=2,
+    ),
+    # --- 2026-11-09: only the daemon's attachment answer releases egress. ---
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testTheReconcileReleasesOnlyIdentitiesNoContainerUses',
+        source='vaibify/docker/projectEgress.py',
+        old='        if fbEgressIsInUse(sProjectUuid):\n',
+        new='        if not sProjectUuid:\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testAnUnansweredDaemonReleasesNothing',
+        source='vaibify/docker/projectEgress.py',
+        old='    if processResult.returncode != 0:\n        raise EgressSetupError(f"docker ps failed: {processResult.stderr}")\n    sProxyName = fsProxyName(sProjectUuid)\n',
+        new='    if False:\n        raise EgressSetupError(f"docker ps failed: {processResult.stderr}")\n    sProxyName = fsProxyName(sProjectUuid)\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgressLive.py::testAnEgressWhoseNetworkCarriesAContainerIsKept',
+        # a container-name filter matches nothing and reads as "unused"
+        source='vaibify/docker/projectEgress.py',
+        old='        ["ps", "-a", "--filter", f"network={fsNetworkName(sProjectUuid)}",\n',
+        new='        ["ps", "-a", "--filter", f"name={fsNetworkName(sProjectUuid)}",\n',
+    ),
+    Falsification(
+        nodeid='tests/testBrowserLaneContract.py::testTheLaneHubNeverAsksTheRealDaemonAboutEgress',
+        source='tests/browser/conftest.py',
+        old='        projectEgress, "_fprocessDocker", _fnRefuseEgressDockerCall,\n    ), patch.object(\n',
+        new='',
+    ),
+    Falsification(
         nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardOffersX11OffAndWebAndExcludesThePair',
         source='vaibify/gui/static/scriptWorkflowManager.js',
         old='        dictData.sNetworkMode = "web";\n',
@@ -39880,11 +39958,237 @@ LIST_FALSIFICATIONS = [
         new='    if sMode != "allowlist":\n        return\n    if not dictEgress',
     ),
     Falsification(
-        nodeid='tests/testNetworkMode.py::testAKeylessLegacyFileStillLoadsOpen',
-        # The configuration's own default becoming web.
+        nodeid='tests/testDoctorNetworkGraph.py::test_the_sealed_flag_with_a_gateway_is_a_disagreement_never_sealed',
+        # The assessment trusting the sealed flag alone: no attachment check.
+        source='vaibify/docker/networkAssessment.py',
+        old='        sContradiction = _fsDescribeSealedContradiction(dictNetworks)\n',
+        new='        sContradiction = ""\n',
+    ),
+    Falsification(
+        nodeid='tests/testDoctorNetworkGraph.py::test_an_open_container_under_an_unstated_or_web_file_is_shown_open',
+        # The Network row answering the container's state from the file's mode.
+        source='vaibify/gui/routes/systemRoutes.py',
+        old=(
+            '        dictAssessment = fdictAssessContainerNetwork(\n'
+            '            fjsonInspectContainer(sContainerId))\n'
+        ),
+        new=(
+            '        dictAssessment = {"sState": {"web": "sealed", "allowlist": "sealed",\n'
+            '                                     "open": "open", "isolated": "isolated"}.get(\n'
+            '                                         sFileMode, "unknown"), "sEvidence": ""}\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testEveryLaunchFunctionRefusesAnUnstatedModeBeforeAnyArgumentIsBuilt',
+        # The run-argument builder no longer asking for a stated mode
+        # before it builds anything (ruling D1 revised, 2026-11-04).
+        source='vaibify/docker/containerManager.py',
+        old='    _fnRequireStatedNetworkMode(config)\n    _fnRequireReachApproval(config)\n',
+        new='    _fnRequireReachApproval(config)\n',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testEveryLaunchFunctionRefusesAnUnapprovedWideningConfiguration',
+        # The run-argument builder no longer asking for the host-held
+        # approval of a reach-widening configuration (ruling D2, 2026-11-04).
+        source='vaibify/docker/containerManager.py',
+        old='    _fnRequireReachApproval(config)\n    bRestricted = ',
+        new='    bRestricted = ',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testTheStartRouteAsksForApprovalBeforeReservingAnything',
+        # Dropping the courtesy half: the start would reserve and journal a
+        # start the launch guard then refuses.
+        source='vaibify/gui/startReservation.py',
+        old=(
+            '    dictReachRefusal = await asyncio.to_thread(\n'
+            '        _fdictRefusalForUnapprovedReach, sName)\n'
+            '    if dictReachRefusal:\n'
+            '        return (409, dictReachRefusal)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testTheApprovalRouteRefusesAStaleFingerprintAndRecordsTheCurrentOne',
+        # Approving blind: a file changed after the question was shown is
+        # approved as if it were the one shown.
+        source='vaibify/gui/routes/reachApprovalRoutes.py',
+        old='        if request.sReachFingerprint != reachApproval.fsComputeReachFingerprint(config):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalGuardsTheLaunch.py::testTheFingerprintIsTheCanonicalJsonOfTheFourFields',
+        # Hashing a different field set: a change to one of the four
+        # would no longer be a new question.
+        source='vaibify/config/reachApproval.py',
+        old='    "sNetworkMode", "bX11Forwarding", "listBindMounts", "listAllowedHosts",\n',
+        new='    "sNetworkMode", "bX11Forwarding", "listBindMounts",\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheReachApprovalModalAsksBeforeAWideningStart.py::testTheModalShowsTheServersWordsAndApproveRetriesTheStart',
+        # The frontend ignoring the confirm-reach refusal.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            if (_fbOfferReachApproval(error, sName)) return false;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheReachApprovalModalAsksBeforeAWideningStart.py::testAHostilePromptRendersAsText',
+        # The modal's body interpolated unescaped.
+        source='vaibify/gui/static/scriptModals.js',
+        old=(
+            "            '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +\n"
+            "            '<p style=\"white-space:pre-wrap;margin-bottom:16px\">' +\n"
+            "            fnEscapeHtml(sMessage) + '</p>' +\n"
+            "            _fsBuildPendingSentence(dictDetails) +\n"
+        ),
+        new=(
+            "            '<h2>' + sTitle + '</h2>' +\n"
+            "            '<p style=\"white-space:pre-wrap;margin-bottom:16px\">' +\n"
+            "            sMessage + '</p>' +\n"
+            "            _fsBuildPendingSentence(dictDetails) +\n"
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testChoosingOpenInTheWizardAsksFirstAndCancelPutsTheControlBack',
+        # The wizard's cancel handler leaving the select on open.
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old=(
+            '                    elMode.value = sSettledMode;\n'
+            '                    elForwarding.disabled = sSettledMode !== "open";\n'
+        ),
+        new=(
+            '                    elForwarding.disabled = sSettledMode !== "open";\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testChoosingOpenInTheSettingsDialogAsksFirstAndSaveWaits',
+        # A settings save that submits while the open-mode question is open.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                if (_bOpenModeQuestionPending) return;\n                var bNeverSleep = document.getElementById(\n',
+        new='                var bNeverSleep = document.getElementById(\n',
+    ),
+    Falsification(
+        nodeid='tests/testStepLevelStates.py::testANeverRunDeclarationStepReadsNotApplicableAtLevelOne',
+        # The old precedence: the inactivity override ahead of the
+        # empty-requirement check, so a never-run declaration step reads
+        # not-started at Level 1 and holds the Steps banner at partial.
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if iTotal == 0:\n'
+            '        return "not-applicable"\n'
+            '    if sInactivityState:\n'
+            '        return sInactivityState\n'
+        ),
+        new=(
+            '    if sInactivityState:\n'
+            '        return sInactivityState\n'
+            '    if iTotal == 0:\n'
+            '        return "not-applicable"\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheStepsBannerSkipsANeverRunDeclaration.py::testTheBannerReadsAttainedAndTheDeclarationRowNotApplicable',
+        # The banner's summarizer counting a not-applicable cell as an
+        # applicable, unassessed one.
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='            if (sState === "not-applicable") continue;\n            iApplicable++;\n',
+        new='            iApplicable++;\n',
+    ),
+    Falsification(
+        nodeid='tests/testExecutionProfiles.py::testAnArm64ProcessorRecordsTheFloorAsNotApplicableAndIsNotWarnedAbout',
+        # An arm64 processor read as one whose capabilities could not be
+        # read, which warns before every run.
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='        return {"sFloorState": S_FLOOR_NOT_APPLICABLE,\n',
+        new='        return {"sFloorState": S_FLOOR_NOT_APPLIED,\n',
+    ),
+    Falsification(
+        nodeid='tests/testExecutionProfiles.py::testAnAppleSiliconMacHostReadsItsKernelThroughSysctlAndIsNotWarnedAbout',
+        # Reading every kernel from /proc/cpuinfo, so a Mac host reads as
+        # unreadable and warns before every run.
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    if (sKernelName or os.uname().sysname) == S_DARWIN_KERNEL_NAME:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testExecutionProfiles.py::testAnIntelMacHostReadsItsLevelFromDarwinsOwnSpellings',
+        # Comparing Darwin's feature names against Linux's without the
+        # translation, which grades a Haswell-class Mac below x86-64-v2.
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old=(
+            'DICT_DARWIN_FLAG_SPELLINGS = {\n'
+            '    "sse3": "pni", "sse4.1": "sse4_1", "sse4.2": "sse4_2", "avx1.0": "avx",\n'
+            '    "lahf": "lahf_lm", "lzcnt": "abm",\n'
+            '}\n'
+        ),
+        new='DICT_DARWIN_FLAG_SPELLINGS = {}\n',
+    ),
+    Falsification(
+        nodeid='tests/testPreRunWarningsReachTheRunLog.py::testAPreRunWarningReachesThePageAndTheRunLogAlike',
+        # The runner emitting a pre-run warning through the raw status
+        # callback, past the logging one, so the run log never has it.
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '    for sWarning in listPreflightWarnings:\n'
+            '        await fnLogging({\n'
+        ),
+        new=(
+            '    for sWarning in listPreflightWarnings:\n'
+            '        await fnStatusCallback({\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPreRunWarningsReachTheRunLog.py::testTheLogExtractorWritesTheWarningInThePagesWords',
+        # The log extractor knowing no pre-run warning event.
+        source='vaibify/gui/pipelineLogger.py',
+        old='        return S_LOG_WARNING_PREFIX + dictEvent.get("sMessage", "")\n',
+        new='        return None\n',
+    ),
+    Falsification(
+        nodeid='tests/testRegistryRoutes.py::testGetRegistryMarksATabsOwnInFlightStartAsItsOwn',
+        # Attributing a held record by its lease only, so a tab's own
+        # in-flight start reads as another browser session's.
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    return bool(\n'
+            '        sCallerSessionId\n'
+            '        and getattr(recordOwner, "sBrowserSessionId", "") == sCallerSessionId)\n'
+        ),
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAStartInFlightIsHeldByThisTab.py::testATileThisTabIsStartingWearsTheHeldChipAndIsNotLocked',
+        # The same mutation, seen on the tile.
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '        bHeldByCaller = recordOwner is not None and _fbCallerHoldsRecord(\n'
+            '            recordOwner, sCallerLease, sCallerSessionId)\n'
+        ),
+        new=(
+            '        bHeldByCaller = recordOwner is not None and _fbCallerHoldsRecord(\n'
+            '            recordOwner, sCallerLease, "")\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheNetworkRowShowsOnlyWhatNeedsAttention.py::testANormalSealedOrIsolatedProjectShowsNoRow',
+        # Drawing the row for every readiness answer that carries a network.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!_fbNetworkNeedsAttention(dictNetwork)) {\n',
+        new='        if (!dictNetwork) {\n',
+    ),
+    Falsification(
+        nodeid='tests/testReachApprovalCommandLine.py::testWithoutATerminalAnUnapprovedConfigurationStopsAndNamesTheFlag',
+        # Approving by default when there is nobody to ask.
+        source='vaibify/cli/reachApprovalPrompt.py',
+        old='    if not (sys.stdin.isatty() and sys.stdout.isatty()):\n        click.echo(\n',
+        new='    if False:\n        click.echo(\n',
+    ),
+    Falsification(
+        nodeid='tests/testNetworkMode.py::testAKeylessLegacyFileIsUnstatedAndCannotStart',
+        # Deriving open again for a file that names no mode (the silent
+        # default ruling D1's 2026-11-04 revision removed).
         source='vaibify/config/projectConfig.py',
-        old='    sNetworkMode: str = S_NETWORK_MODE_OPEN\n',
-        new='    sNetworkMode: str = S_NETWORK_MODE_WEB\n',
+        old='    sNetworkMode: str = S_NETWORK_MODE_UNSTATED\n',
+        new='    sNetworkMode: str = S_NETWORK_MODE_OPEN\n',
     ),
     Falsification(
         nodeid='tests/testNetworkMode.py::testEveryNewProjectPathWritesWeb',
@@ -39902,12 +40206,12 @@ LIST_FALSIFICATIONS = [
         # Admin > Projects showing the hub with the project still open.
         source='vaibify/gui/static/scriptApplication.js',
         old=(
-            '        if (!sContainerId) return;\n'
+            '        if (_dictSessionState.sContainerId !== sContainerId) return;\n'
             '        _fnCloseOpenProject();\n'
             '        VaibifyContainerManager.fnConnectToContainer(sContainerId);\n'
         ),
         new=(
-            '        if (!sContainerId) return;\n'
+            '        if (_dictSessionState.sContainerId !== sContainerId) return;\n'
             '        VaibifyContainerManager.fnConnectToContainer(sContainerId);\n'
         ),
     ),
@@ -40133,5 +40437,451 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptFigureViewer.js',
         old='        elChild.style.margin = "0 auto";\n',
         new='        elContent.style.justifyContent = "center";\n',
+    ),
+    # --- 2026-11-04: a project record nobody has created yet carries no
+    # notice, and its review says what confirming allows ---
+    Falsification(
+        nodeid='tests/testBindingConfirmation.py::testANewRecordsReviewSaysWhatItAllowsAndComparesNothing',
+        # The comparison decided by the kind of binding again.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    bHasTarget = _fbEntryHasTarget(dictProjectTarget, dictConfirmed, dictReviewTarget)\n',
+        new='    bHasTarget = sRecordKind != remoteBindings.S_RECORD_KIND_ENVIRONMENT\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemoteBindingDialogIsTheServers.py::'
+            'testANewRecordsDialogSaysWhatItAllowsAndComparesNoRecord'
+        ),
+        # The same kind-based decision, as the dialog renders it.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    bHasTarget = _fbEntryHasTarget(dictProjectTarget, dictConfirmed, dictReviewTarget)\n',
+        new='    bHasTarget = sRecordKind != remoteBindings.S_RECORD_KIND_ENVIRONMENT\n',
+    ),
+    Falsification(
+        nodeid='tests/testBindingConfirmation.py::testNothingConfirmedOnThisComputerCarriesNoNotice',
+        # Noticing an entry only because nobody confirmed it here.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old=(
+            '        if not bAutoArchived:\n'
+            '            return ""\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testBindingConfirmation.py::testAutoArchiveStillNoticesWhatItWouldSendTo',
+        # Silencing every unconfirmed entry, Auto Archive's included.
+        source='vaibify/gui/routes/bindingRoutes.py',
+        old='    return bool(dictWorkflow.get("bAutoArchive")) and (\n',
+        new='    return False and (\n',
+    ),
+    # --- 2026-11-04: a test file the step runs is never announced as
+    # new, and an unfinished listing is no answer ---
+    Falsification(
+        nodeid='tests/testATestFileTheStepRunsIsNeverNew.py::testATestFileTheStepRunsIsNeverNew',
+        # The test commands read under a key no step carries.
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='    for sCmd in flistResolveTestCommands(dictStep):\n',
+        new=(
+            '    for sCmd in dictStep.get("dictTests", {}).get(\n'
+            '            "integrity", {}).get("saCommands", []):\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testATestFileTheStepRunsIsNeverNew.py::testAnUnfinishedListingIsNoAnswer',
+        # An unfinished listing answered with an empty map.
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        ) if dictTestInfo.get("bTestFilesListed") else None,\n',
+        new='        ),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnUnfinishedListingIsNotTheBaseline.py::'
+            'testAnUnfinishedListingIsNotTheBaseline'
+        ),
+        # The page handing an unfinished answer to its test-file check.
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        if (dictStatus.dictTestFileChanges) {\n',
+        new='        if (true) {\n',
+    ),
+    # --- 2026-11-07: the saved dashboard layout is revisioned, keyed
+    # per project file, holds layout only, and is the researcher's ---
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testAStaleBaseRevisionIsRefusedAndChangesNothing',
+        # The base-revision comparison dropped.
+        source='vaibify/config/dashboardRecords.py',
+        old='        if iBaseRevision != iStoredRevision:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testTwoConcurrentWritesAtOneBaseYieldExactlyOneSuccess',
+        # The compare-and-write no longer under the record's lock.
+        source='vaibify/config/dashboardRecords.py',
+        old='    with fcontextHoldRecordLock(sPath + ".lock"):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testTwoProjectFilesInOneRepositoryKeepSeparateRecords',
+        # The project record keyed by the repository alone.
+        source='vaibify/config/dashboardRecords.py',
+        old='        json.dumps([sProjectRepoPath, sWorkflowKey]).encode("utf-8"),\n',
+        new='        json.dumps([sProjectRepoPath]).encode("utf-8"),\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testARecordCannotHoldAStatusField',
+        # The per-scope field allow-list dropped.
+        source='vaibify/config/dashboardRecords.py',
+        old='    setUnknown = set(dictState) - DICT_FIELDS_BY_SCOPE[sScope]\n',
+        new='    setUnknown = set()\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testTheAgentLaneIsRefusedOnEveryRoute',
+        # The environment PUT no longer refusing the agent lane itself.
+        source='vaibify/gui/routes/dashboardStateRoutes.py',
+        old=(
+            '        requestHttp: Request,\n'
+            '    ):\n'
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        sName = _fsEnvironmentName(dictCtx, sContainerId)\n'
+            '        return await _fdictWriteOrRefuse(\n'
+        ),
+        new=(
+            '        requestHttp: Request,\n'
+            '    ):\n'
+            '        sName = _fsEnvironmentName(dictCtx, sContainerId)\n'
+            '        return await _fdictWriteOrRefuse(\n'
+        ),
+    ),
+    # --- 2026-11-07: a terminal's agent chat is read back honestly ---
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testAnEndedChatIsNotRevived',
+        # The exit line ignored.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='            if dictChat is not None:\n                dictChat["bEnded"] = True\n',
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testASwitchInsideClaudeReplacesTheLaunchId',
+        # The switch signal ignored.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='        dictChat["sSessionId"] = sSessionId\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testAPlantedNonUuidIdIsNeverOffered',
+        # The launch session id no longer checked as a UUID.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='    if dictChat["sSessionId"] and not fbIsSessionId(dictChat["sSessionId"]):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testAWorkingDirectoryOutsideTheWorkspaceIsRefused',
+        # The working-directory confinement dropped.
+        source='vaibify/gui/agentChatLifecycle.py',
+        old='    if not _fbPathInside(dictChat["sCwd"], sWorkspaceRoot):\n',
+        new='    if not isinstance(dictChat["sCwd"], str):\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testTheExtendedRcfileStillDeletesItselfAndResetsLast',
+        # The agent wrappers installed after the reset hook.
+        source='vaibify/config/terminalRcfile.py',
+        old=(
+            '    _S_SELF_DELETE_AND_BASHRC + S_AGENT_CHAT_WRAPPERS\n'
+            '    + _S_INPUT_MODE_RESET_HOOK\n'
+        ),
+        new=(
+            '    _S_SELF_DELETE_AND_BASHRC + _S_INPUT_MODE_RESET_HOOK\n'
+            '    + S_AGENT_CHAT_WRAPPERS\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testHostTerminalRcfile.py::testAHostShellHasTheWrappersAndTheResetHook',
+        # The host shell launched as a plain bash -i again.
+        source='vaibify/host/hostConnection.py',
+        old='    "    listArgv = [\'/bin/bash\', \'--rcfile\', sRcPath, \'-i\']\\n"\n',
+        new='',
+    ),
+    # --- 2026-11-07: a saved chat resumes from a fixed table, with
+    # honest permissions ---
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testStandardModeStripsTheBypassAndAddsTheExplicitStandard',
+        # Standard mode emitting the kept flags without the standard pair.
+        source='vaibify/gui/agentChatResume.py',
+        old='    return _flistTokens(listOthers) + list(DICT_STANDARD_FLAGS[sProvider])\n',
+        new='    return _flistTokens(listOthers)\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testAnArgvBypassAndAConfigBypassBothTriggerTheGate',
+        # Claude's config default no longer counted.
+        source='vaibify/gui/agentChatResume.py',
+        old=(
+            '        "config": not bDanger and not sFlagMode\n'
+            '        and sConfigMode == "bypassPermissions",\n'
+        ),
+        new='        "config": False,\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testAChatWithNoIdIsNeverGivenAResumeCommand',
+        # The session-id check dropped from the command builder.
+        source='vaibify/gui/agentChatResume.py',
+        old='    if not fbIsSessionId(sSessionId):\n        raise ValueError("a chat with no session id is never resumed")\n',
+        new='    if False:\n        raise ValueError("a chat with no session id is never resumed")\n',
+    ),
+    # --- 2026-11-07: the dashboard remembers its layout, in order ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLayoutIsRemembered.py::'
+            'test_a_save_that_lost_the_race_is_discarded_and_the_next_change_saves'
+        ),
+        # The refused snapshot retried on the adopted revision.
+        source='vaibify/gui/static/scriptDashboardMemory.js',
+        old='            delete dictSaver.dictStoredJsonByKey[dictItem.sKey];\n',
+        new=(
+            '            delete dictSaver.dictStoredJsonByKey[dictItem.sKey];\n'
+            '            dictSaver.dictQueued = dictItem;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLayoutIsRemembered.py::'
+            'test_admin_projects_keeps_the_terminals_and_restores_the_projects_view'
+        ),
+        # The dialog asked even with the terminals live.
+        source='vaibify/gui/static/scriptEntryChoice.js',
+        old='        if (VaibifyTerminal.fbHasOpenPanes()) {\n',
+        new='        if (false) {\n',
+    ),
+    # --- 2026-11-07: the council's conversations and event log survive
+    # the hub ---
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testAShutdownLeavesTheConversationOpenOnDisk',
+        # Hub shutdown closing (archiving) conversations again.
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '        await agentCouncilChat.fdictSetChatSessionAside(\n'
+            '            dictControllerState, sCampaignId)\n'
+        ),
+        new=(
+            '        await agentCouncilChat.fdictCloseChatSession(\n'
+            '            dictControllerState, sCampaignId)\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testAPendingQuestionIsNeverReAsked',
+        # The question no longer written before the runner is asked.
+        source='vaibify/gui/agentCouncilChat.py',
+        old=(
+            '    _fnPersistSession(dictSession)\n'
+            '    dictSession["taskAnswer"] = asyncio.create_task(\n'
+        ),
+        new='    dictSession["taskAnswer"] = asyncio.create_task(\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testTheSequenceContinuesAcrossARestart',
+        # The reload no longer refilling the ring from the log.
+        source='vaibify/gui/agentCouncilStore.py',
+        old='    dictEntry["ringEvents"].fnSeedFromLog(listTail, iLastSequence)\n',
+        new='    del listTail, iLastSequence\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testATornLastLineIsTruncatedAndRecovered',
+        # A torn final line left in place.
+        source='vaibify/gui/agentCouncilEventLog.py',
+        old='            fileLog.truncate(iStart)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilDurableHistory.py::testRetentionSparesACampaignHoldingAConversation',
+        # Retention no longer sparing chat-bearing campaigns.
+        source='vaibify/gui/agentCouncilStore.py',
+        old=(
+            '    if agentCouncilChatRecords.fbCampaignHoldsConversation(\n'
+            '            _fsCampaignDirectory(dictStore, sCampaignId)):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilRetentionBoundaryIsInTheConsole.py::'
+            'testEarlierEventsAreReadBackFromTheDurableLog'
+        ),
+        # Events no longer appended to the durable log.
+        source='vaibify/gui/agentCouncilStore.py',
+        old=(
+            '        agentCouncilEventLog.fnAppendEventToLog(\n'
+            '            dictEntry["sEventLogPath"],\n'
+            '            fjsonRedactCredentialsInRecord(dictStamped))\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatLifecycle.py::testASwitchInsideTheCliIsWhatGetsResumed',
+        # The Claude wrapper no longer supplying the switch hook.
+        source='vaibify/config/terminalRcfile.py',
+        old='    if [ "$bHook" = 1 ] && [ -n "${VAIBIFY_TERMINAL_LIFECYCLE:-}" ] \\\n',
+        new='    if false && [ -n "${VAIBIFY_TERMINAL_LIFECYCLE:-}" ] \\\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testAProjectRepositoryThatIsNotNormalizedIsNeverAKey',
+        # The store's repository-path check no longer refusing.
+        source='vaibify/config/dashboardRecords.py',
+        old='        raise RecordContentError(f"{sLabel} is not a normalized absolute path")\n',
+        new='        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testDashboardRecords.py::testAnOversizedRecordIsRefused',
+        # A refused record answered as a server fault.
+        source='vaibify/gui/routes/dashboardStateRoutes.py',
+        old=(
+            '            "iRevision": error.iStoredRevision,\n'
+            '        }) from error\n'
+            '    except dashboardRecords.RecordContentError as error:\n'
+            '        raise HTTPException(400, detail={\n'
+        ),
+        new=(
+            '            "iRevision": error.iStoredRevision,\n'
+            '        }) from error\n'
+            '    except dashboardRecords.RecordContentError as error:\n'
+            '        raise HTTPException(500, detail={\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testTheCatalogProgramTakesOnlyValidatedArguments',
+        # The catalog's repository check no longer refusing.
+        source='vaibify/gui/agentChatCatalog.py',
+        old='        raise ValueError("the project repository is not a normalized path")\n',
+        new='        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testAgentChatResume.py::testAListedChatWithAMalformedFieldIsDropped',
+        # A listed chat's session id no longer checked.
+        source='vaibify/gui/agentChatCatalog.py',
+        old='    if not fbIsSessionId(dictEntry.get("sSessionId")):\n        return None\n',
+        new='',
+    ),
+    # --- 2026-11-07: a refused verify or a refused request never
+    # quarantines a container, and the refusal says how to clear one ---
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testARefusedPostPushVerifyLeavesTheContainerUsable'
+        ),
+        # The shipped worker: the verify's refusal raised inside the
+        # carrier, which poisoned the record.
+        source='vaibify/gui/routeContext.py',
+        old=(
+            '        try:\n'
+            '            fdictRunRemoteVerifyBlocking(dictWorkflow, sService, '
+            'filesRepo)\n'
+            '        except Exception as errorAny:  # noqa: BLE001 — '
+            'carried, not raised\n'
+            '            return {"errorRemote": errorAny}\n'
+            '        return {"errorRemote": None}\n'
+        ),
+        new=(
+            '        fdictRunRemoteVerifyBlocking(dictWorkflow, sService, '
+            'filesRepo)\n'
+            '        return {"errorRemote": None}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testAModeBRequestRefusedByAQuarantineLeavesNoRecord'
+        ),
+        # A refused request leaves its never-launched record IN_FLIGHT.
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    except MutationNotAdmittedError:\n'
+            '        _fnSettleNeverLaunchedRecord(sName, sOperationId)\n'
+            '        raise\n'
+        ),
+        new='    except MutationNotAdmittedError:\n        raise\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReconciliation.py::'
+            'test_self_held_helper_record_refusal_says_to_quit_the_hub'
+        ),
+        # The record falls through to the probe's "missing identity;
+        # remove the residue" -- advice nobody can follow.
+        source='vaibify/config/reconciliation.py',
+        old='        return (False, S_SELF_HELD_PROCESS_RECORD_REFUSAL)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testQuarantineRefusalNamesItsCause.py::'
+            'testTheRefusalNamesTheCommandThatClearsIt'
+        ),
+        # The refusal says the container needs reconciling, not how.
+        source='vaibify/config/mutationAdmission.py',
+        old=(
+            '        "failure is, not here. The researcher clears it by '
+            'running "\n'
+            '        f"\'vaibify reconcile {sContainerName}\' on the '
+            'host."\n'
+        ),
+        new='        "failure is, not here."\n',
+    ),
+    # --- 2026-11-07: every command a carrier mode admits is journaled
+    # before it starts, so an abandoned one is never cleared as done ---
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testALockHeldCommandIsJournaledBeforeItStarts'
+        ),
+        # No carrier mode journals its commands: exec_run starts them unrecorded.
+        source='vaibify/config/mutationAdmission.py',
+        old=(
+            '    if admission is None or admission.sMode not in (\n'
+            '        _T_MODES_JOURNALING_EACH_COMMAND\n'
+            '    ):\n'
+            '        return None\n'
+        ),
+        new='    return None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testAnAbandonedCommandKeepsTheContainerUnreconciledUntilItEnds'
+        ),
+        # The same, so a command its worker abandoned has no record of its own.
+        source='vaibify/config/mutationAdmission.py',
+        old=(
+            '    if admission is None or admission.sMode not in (\n'
+            '        _T_MODES_JOURNALING_EACH_COMMAND\n'
+            '    ):\n'
+            '        return None\n'
+        ),
+        new='    return None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testACommandRefusedAtItsGateLeavesNoRecordAndNeverStarts'
+        ),
+        # A refused, never-started exec keeps its record.
+        source='vaibify/config/mutationAdmission.py',
+        old=(
+            '    except MutationNotAdmittedError:\n'
+            '        fnSettleJournaledExec(dictExecHandle)\n'
+            '        raise\n'
+        ),
+        new='    except MutationNotAdmittedError:\n        raise\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testACommandTheDaemonRefusesToCreateLeavesNoRecord'
+        ),
+        # A refused creation leaves its PREPARED exec record behind.
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        except Exception:\n'
+            '            mutationAdmission.fnSettleJournaledExec(dictExecHandle)\n'
+            '            raise\n'
+        ),
+        new='        except Exception:\n            raise\n',
     ),
 ]

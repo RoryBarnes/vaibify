@@ -28,6 +28,7 @@ reporting the visible tab set without it.
 import pytest
 
 from tests.browser.conftest import (
+    fnAnswerTheEntryDialog,
     S_HOST_PROJECT_READY,
     S_HOST_STEP_NAME,
     S_HOST_WORKFLOW_NAME,
@@ -61,6 +62,7 @@ def test_the_repos_tab_is_visible_once_a_project_is_open(
         f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
     )
     pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
+    fnAnswerTheEntryDialog(pageDashboard)
     pageDashboard.wait_for_selector(
         f"text={S_HOST_STEP_NAME}", timeout=20000,
     )

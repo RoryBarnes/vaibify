@@ -52,7 +52,7 @@ def fdictWriteProjectEntry(tmp_path, bObtained, sMode="container"):
     os.makedirs(sDirectory, exist_ok=True)
     sConfigPath = os.path.join(sDirectory, "vaibify.yml")
     with open(sConfigPath, "w") as fileHandle:
-        fileHandle.write(f"projectName: {S_PROJECT_NAME}\n")
+        fileHandle.write(f"projectName: {S_PROJECT_NAME}\nnetworkMode: web\n")
     dictEntry = {
         "sName": S_PROJECT_NAME,
         "sDirectory": sDirectory,
@@ -430,7 +430,7 @@ def testANotCheckedPreflightIsLoggedNeverRefused(
     dictEntry = fdictWriteProjectEntry(tmp_path, bObtained=False)
     with open(dictEntry["sConfigPath"], "w") as fileHandle:
         fileHandle.write(
-            f"projectName: {S_PROJECT_NAME}\n"
+            f"projectName: {S_PROJECT_NAME}\nnetworkMode: web\n"
             "pythonPackages:\n  - packageAlpha\n"
             "pipInstallFlags: --index-url https://index.example/simple\n"
         )

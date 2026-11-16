@@ -131,7 +131,10 @@ def sProjectDirectory(tmp_path, monkeypatch):
     sDirectory = str(tmp_path / "project")
     os.makedirs(sDirectory)
     with open(os.path.join(sDirectory, "vaibify.yml"), "w") as fileConfig:
-        fileConfig.write(f"projectName: {S_OLD}\n")
+        # A stated mode, as every file vaibify writes has (ruling D1);
+        # isolated, because the fixture image needs no network and the
+        # start must need no proxy and no reach approval.
+        fileConfig.write(f"projectName: {S_OLD}\nnetworkMode: isolated\n")
     registryManager.fnAddProject(sDirectory, sMode="container")
     return sDirectory
 

@@ -26,6 +26,7 @@ every proxy between the browser and the hub.
 __all__ = ["fnRegisterAll"]
 
 import asyncio
+import os
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field
@@ -61,8 +62,10 @@ def _fnRegisterChairbotChat(app, dictCtx):
         councilRouteGuards.fjsonRequireCampaign(
             councilRouteGuards.fdictCampaignStore(requestHttp), sCampaignId,
             sName, sProjectRepoPath)
+        dictStore = councilRouteGuards.fdictCampaignStore(requestHttp)
         return agentCouncilChat.fdictDescribeChatSession(
-            councilRouteGuards.fdictControllerState(requestHttp), sCampaignId)
+            councilRouteGuards.fdictControllerState(requestHttp), sCampaignId,
+            os.path.join(dictStore["sDurableStoreRoot"], sCampaignId))
 
     @app.post("/api/agent-councils/{sContainerId}/{sCampaignId}/chat/open")
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)

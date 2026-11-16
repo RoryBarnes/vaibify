@@ -5615,9 +5615,10 @@ def _fdictBuildLevelCell(
 ):
     """Return one wire cell with state, counts, and regression flag.
 
-    State precedence: the inactivity override (``not-started`` /
-    ``unassessed``) > ``not-applicable`` > ``attained`` > ``partial``
-    > ``unknown`` > ``none``. ``bRegression`` is True when the level holds
+    State precedence: ``not-applicable`` (no requirement at this level)
+    > the inactivity override (``not-started`` / ``unassessed``) >
+    ``attained`` > ``partial`` > ``unknown`` > ``none``. ``bRegression``
+    is True when the level holds
     a high-water stamp (the add-only ratchet recorded a first
     attainment) but the current state is not ``attained``; a
     ``not-applicable`` cell never regresses — there is no requirement
@@ -5640,14 +5641,20 @@ def _fdictBuildLevelCell(
 def _fsLevelCellState(iSatisfied, iTotal, sInactivityState, bUnknown):
     """Map counts plus the override flags onto the seven-state wire.
 
-    ``sInactivityState`` (``not-started`` / ``unassessed`` / None) is
-    the no-recorded-activity override and wins outright — a step that
-    was never assessed must not render a count-derived judgment.
     ``iTotal`` of 0 means no requirement applies at this level for
     this scope: per-step L3 on a step with nothing to reproduce, and
     per-step L1 on an ai-declaration step (whose sign-off is a Level
-    2 requirement). It renders as ``not-applicable`` so an empty
-    requirement set never reads as a vacuous attainment.
+    2 requirement). It renders as ``not-applicable`` whatever the
+    step's activity, and it is checked FIRST (2026-11-04): a never-run
+    declaration step used to read ``not-started`` at Level 1, which
+    the Steps banner counts as blocking, so two attained steps and one
+    never-run declaration summarized to partial after the project had
+    reached Level 1. ``sInactivityState`` (``not-started`` /
+    ``unassessed`` / None) is the no-recorded-activity override for
+    every level that HAS requirements: a step that was never assessed
+    must not render a count-derived judgment, and ``not-applicable``
+    is not one. An empty requirement set never reads as a vacuous
+    attainment either way.
 
     ``bUnknown`` ranks BELOW ``partial`` (2026-08-25 ruling). It used
     to short-circuit ahead of the counts, so a single unknowable
@@ -5663,10 +5670,10 @@ def _fsLevelCellState(iSatisfied, iTotal, sInactivityState, bUnknown):
     unknowable — and ``none`` stays reserved for a positive
     all-failed reading rather than for ignorance.
     """
-    if sInactivityState:
-        return sInactivityState
     if iTotal == 0:
         return "not-applicable"
+    if sInactivityState:
+        return sInactivityState
     if iSatisfied >= iTotal and not bUnknown:
         return "attained"
     if iSatisfied > 0:

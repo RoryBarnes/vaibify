@@ -32,6 +32,7 @@ a warning.
 __all__ = [
     "S_CONFIGURATION_IMAGE_LABEL",
     "T_BAKED_CONFIGURATION_FIELDS",
+    "fjsonNormalizeConfigurationValue",
     "fsComputeConfigurationFingerprint",
     "fdictCompareConfigurationAgainstImage",
     "fdictCompareConfigurationAgainstObtainedImage",
@@ -74,7 +75,7 @@ T_BAKED_CONFIGURATION_FIELDS = (
 )
 
 
-def _fjsonNormalizeValue(jsonValue):
+def fjsonNormalizeConfigurationValue(jsonValue):
     """Return a value in a form two equal configurations always share.
 
     Order is preserved for LISTS, deliberately. ``systemPackages`` is
@@ -82,20 +83,22 @@ def _fjsonNormalizeValue(jsonValue):
     different build; sorting here would call two different images the
     same. What is normalized is only what carries no meaning: a
     dataclass or object becomes its field mapping, and mapping key
-    order is fixed by the JSON dump.
+    order is fixed by the JSON dump. Public because the reach-approval
+    fingerprint (``reachApproval``) hashes its fields the same way, and
+    a second copy is how the two would come to disagree.
     """
     if hasattr(jsonValue, "__dict__"):
         return {
-            sKey: _fjsonNormalizeValue(jsonAny)
+            sKey: fjsonNormalizeConfigurationValue(jsonAny)
             for sKey, jsonAny in sorted(vars(jsonValue).items())
         }
     if isinstance(jsonValue, dict):
         return {
-            str(sKey): _fjsonNormalizeValue(jsonAny)
+            str(sKey): fjsonNormalizeConfigurationValue(jsonAny)
             for sKey, jsonAny in sorted(jsonValue.items())
         }
     if isinstance(jsonValue, (list, tuple)):
-        return [_fjsonNormalizeValue(jsonAny) for jsonAny in jsonValue]
+        return [fjsonNormalizeConfigurationValue(jsonAny) for jsonAny in jsonValue]
     return jsonValue
 
 
@@ -111,7 +114,7 @@ def fsComputeConfigurationFingerprint(config):
     for sField in T_BAKED_CONFIGURATION_FIELDS:
         if not hasattr(config, sField):
             continue
-        dictBaked[sField] = _fjsonNormalizeValue(getattr(config, sField))
+        dictBaked[sField] = fjsonNormalizeConfigurationValue(getattr(config, sField))
     sCanonical = json.dumps(dictBaked, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 

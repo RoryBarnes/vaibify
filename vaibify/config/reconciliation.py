@@ -33,6 +33,7 @@ before the marker.
 """
 
 __all__ = [
+    "S_SELF_HELD_PROCESS_RECORD_REFUSAL",
     "ReconciliationRefusedError",
     "flistDescribeJournalRecords",
     "fdictProveJournalRecordsSettled",
@@ -52,6 +53,17 @@ from vaibify.config.operationJournal import (
 )
 
 logger = logging.getLogger("vaibify")
+
+# A helper record's only proof is its holder process, and when that
+# holder is the running hub, dropping the identity leaves the prover
+# nothing to judge. It used to fall through to "remove the residue",
+# advice no researcher could follow; the hub's exit is the proof.
+S_SELF_HELD_PROCESS_RECORD_REFUSAL = (
+    "its recorded writer is this running vaibify hub, and a process "
+    "identity is the only proof this kind of record has, so it cannot be "
+    "proven finished while the hub runs; quit vaibify, then run "
+    "'vaibify reconcile' again"
+)
 
 # The allowlisted display fields (design §8: error messages and the
 # reconcile display never leak journal contents beyond these).
@@ -216,6 +228,11 @@ def _ftReconcileRecordVerdict(
     dictEffectiveRecord = _fdictRecordForProbe(
         dictRecord, fbSelfHolderProvenIdle,
     )
+    if dictEffectiveRecord is not dictRecord and (
+        dictHandler["fdictProbe"]
+        is DICT_OPERATION_PROBE_CATALOG["helper"]["fdictProbe"]
+    ):
+        return (False, S_SELF_HELD_PROCESS_RECORD_REFUSAL)
     dictProbe = dictHandler["fdictProbe"](
         dictEffectiveRecord, connectionDocker,
     )

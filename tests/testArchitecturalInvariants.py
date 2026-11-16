@@ -4401,7 +4401,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 802 -> 803 (2026-10-29): the X11 authorization lifecycle is
     # registered beside the rename recovery.
     # 803 -> 804 (2026-10-29): the project egress lifecycle is registered beside the X11 one.
-    "appFactory.py": 804,
+    # 804 -> 805 (2026-11-04): the reach-approval routes are mounted beside the image-trust ones.
+    "appFactory.py": 805,
     # 892 -> 897 (2026-10-28): a live environment rename vetoes the idle
     # watchdog, on the conversion's terms.
     # 897 -> 929 (2026-10-28): the idle watchdog's work vetoes become
@@ -4447,7 +4448,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # configuration raised is relayed in the push's warning.
     # 956 -> 978 (2026-10-28): the shared 409 for a lifecycle lock that
     # another operation holds, used by every route module that takes it.
-    "routeContext.py": 978,
+    # 978 -> 991 (2026-11-07): the post-push verify carries its failure
+    # back, as the manual verify route does; raised in the worker, it
+    # quarantined the container over a verify that wrote nothing.
+    "routeContext.py": 991,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -4693,7 +4697,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1581 -> 1585 (2026-10-26): the snapshot capture is bounded by the
     # council kind's own ceiling, so a read-only council keeps the whole
     # working tree and a full-sandbox one keeps half of it free.
-    "routes/councilRoutes.py": 1585,
+    # 1585 -> 1616 (2026-11-07): the Agent tabs page back through the durable event log.
+    "routes/councilRoutes.py": 1616,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4789,7 +4794,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (fsRedactCredentialSpans) instead of replacing the whole text.
     # 1017 -> 1071 (2026-10-01): retention deletes only settled campaigns,
     # oldest checkpoint first, instead of the first one alphabetically.
-    "agentCouncilStore.py": 1071,
+    # 1071 -> 1141 (2026-11-07): every council event is also appended to the campaign's durable log, a reload refills the ring from it, and retention spares campaigns holding a conversation.
+    "agentCouncilStore.py": 1141,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -5455,7 +5461,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 857 -> 858 (2026-10-29): the Network row reads the mode defensively.
     # 858 -> 859 (2026-11-02): the Network row covers both sealed modes, web and allowlist (web network mode plan, A5).
     # 859 -> 874 (2026-11-03): GET /api/system/about, the version both hubs' help shows (follow-up-after-210 plan, A2, A8).
-    "routes/systemRoutes.py": 874,
+    # 874 -> 913 (2026-11-04): the Network row reports a file that names no mode as unstated, never open, and carries the container's assessed network state and whether the file agrees (ruling D1 revised; merged with main, re-measured).
+    "routes/systemRoutes.py": 913,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -6399,7 +6406,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # mounted, and connect runs a migration pass.
     # 3809 + 3792 -> 3820 (2026-10-29): the two
     # lines of work above, merged.
-    "pipelineServer.py": 3820,
+    # 3820 -> 3821 (2026-11-07): mounts the saved dashboard layout routes.
+    "pipelineServer.py": 3821,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6460,7 +6468,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1317 -> 1321 (2026-10-01): type-only imports name the annotations.
     # 1321 -> 1359 (2026-10-28): the carrier's entry asks the Quit
     # gate, and names every live item so a Quit can say what it waits for.
-    "commitCarrier.py": 1359,
+    # 1359 -> 1385 (2026-11-07): modes (a) and (b) settle the record of
+    # a request the identity gate refused before its effect existed;
+    # it stayed IN_FLIGHT, a phantom operation per refused request.
+    "commitCarrier.py": 1385,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -6809,7 +6820,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2238 -> 2251 (2026-10-01): the shutdown releases the egress boundary after the runners drain.
     # 2251 -> 2279 (2026-10-26): the launch composes the note telling a
     # member what its council's kind permits and how much room it has.
-    "agentCouncilController.py": 2279,
+    # 2279 -> 2283 (2026-11-07): shutdown and release set chairbot conversations aside instead of closing them, with why.
+    "agentCouncilController.py": 2283,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
@@ -6818,7 +6830,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # runner's credential residency.
     # 868 -> 870 (2026-10-01): the chat runner is created with the limits
     # the daemon allows.
-    "agentCouncilChat.py": 870,
+    # 870 -> 969 (2026-11-07): a hub shutdown or lease release sets a chairbot conversation aside, open on disk, and every state change is saved (records in agentCouncilChatRecords).
+    "agentCouncilChat.py": 969,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -6862,7 +6875,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1136 -> 1141 (2026-10-28): the reserved create-and-start holds the
     # name's lifecycle lock, so a rename or a CLI start cannot land
     # between the clear, the create and the start.
-    "startReservation.py": 1141,
+    # 1141 -> 1174 (2026-11-04): the start route asks, before reserving, to approve what the container may reach (ruling D2).
+    "startReservation.py": 1175,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -7395,7 +7409,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2793 -> 2798 (2026-11-02): a creation request that names no mode gets the new-project mode, web (web network mode plan, A5).
     # 2798 -> 2800 (2026-11-03): every writer composes both network keys through projectConfig.fdictNetworkKeysForMode (follow-up-after-210 plan, A6, A8).
     # 2800 -> 2807 (2026-11-03): the Files to Copy listing describes each top-level link with what the seed's link contract will do (follow-up-after-210 plan, A7, A8).
-    "registryRoutes.py": 2807,
+    # 2807 -> 2840 (2026-11-04): the X11 refusal names a file with no mode (ruling D1 revised), and the settings, allow-host and creation routes record the reach approval for the file they wrote (ruling D2); merged with main, re-measured.
+    # 2840 -> 2853 (2026-11-05): the listing attributes a held record bound to the caller's own browser session to the caller, so a tab's in-flight start is not "another session".
+    # 2853 -> 2857 (2026-11-07): removing a registry entry removes the dashboard layout its name owned.
+    "registryRoutes.py": 2857,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7625,7 +7642,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1603 -> 1608 (2026-10-31): archive-zenodo-completion, the user-only retry for a PROOF completion version (proof-receipt plan, A11).
     # 1608 -> 1619 (2026-11-02): decide-token-rotation, the user-only answer to the token rotation notice (binding-and-rotation plan, A2, A5).
     # 1619 -> 1627 (2026-11-03): set-aside-binding-record, the user-only way out of an unreadable binding record (follow-up-after-210 plan, A3, A8).
-    "actionCatalog.py": 1627,
+    # 1627 -> 1633 (2026-11-04): the reach-approval route is researcher-only, with its reason; merged with main, re-measured.
+    # 1633 -> 1644 (2026-11-07): the saved dashboard layout's routes are researcher-only, reads included, with why.
+    "actionCatalog.py": 1644,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8193,7 +8212,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1251 + 1208 -> 1261 (2026-10-29): the two
     # lines of work above, merged.
     # 1261 -> 1265 (2026-10-29): the allow-host route's lifecycle scope.
-    "routeScope.py": 1265,
+    # 1265 -> 1266 (2026-11-04): the reach-approval route's scope.
+    # 1266 -> 1277 (2026-11-07): the saved dashboard layout's three reads and the council's earlier-events read, with what each reads.
+    "routeScope.py": 1277,
 }
 
 

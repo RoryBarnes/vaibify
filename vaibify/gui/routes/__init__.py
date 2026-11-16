@@ -35,12 +35,14 @@ __all__ = [
     "councilCredentialRoutes",
     "councilSnapshotRoutes",
     "imageTrustRoutes",
+    "reachApprovalRoutes",
     "remnantRoutes",
     "uploadRoutes",
     "downloadRoutes",
     "conversionRoutes",
     "connectionCheckRoutes",
     "runtimeSetupRoutes",
+    "dashboardStateRoutes",
 ]
 
 from . import (
@@ -63,6 +65,7 @@ from . import (
     levelRoutes,
     reproducibilityRoutes,
     bindingRoutes,
+    dashboardStateRoutes,
     zenodoTokenRoutes,
     committedFileRoutes,
     environmentArchiveRoutes,
@@ -78,6 +81,7 @@ from . import (
     councilCredentialRoutes,
     councilSnapshotRoutes,
     imageTrustRoutes,
+    reachApprovalRoutes,
     remnantRoutes,
     uploadRoutes,
     downloadRoutes,

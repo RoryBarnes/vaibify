@@ -25,6 +25,10 @@ from vaibify.config import containerConfig, registryManager
 from vaibify.docker import containerManager
 
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 S_IMAGE_ID = "sha256:" + "ab" * 32
 S_PROJECT_LINE = "aigreen|https://example.invalid/author/aigreen.git|main|reference"
 S_DEPENDENCY_LINE = "solver|https://example.invalid/solver.git|v2|pip_editable"

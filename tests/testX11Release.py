@@ -55,7 +55,8 @@ def testStoppingAContainerRevokesItsAuthorization(monkeypatch, listReleased):
 def _fsWriteConfig(tmp_path, bX11Forwarding):
     sPath = str(tmp_path / "vaibify.yml")
     projectConfig.fnSaveToFile(projectConfig.fconfigFromYamlDict(
-        {"projectName": "demo", "x11Forwarding": bX11Forwarding}), sPath)
+        {"projectName": "demo", "networkMode": "open",
+         "x11Forwarding": bX11Forwarding}), sPath)
     return sPath
 
 

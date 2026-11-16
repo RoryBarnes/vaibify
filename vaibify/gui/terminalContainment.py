@@ -76,7 +76,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from vaibify.config import operationJournal
+from vaibify.config import operationJournal, terminalRcfile
 from vaibify.config.mutationAdmission import (
     fnAssertOperationAdmittedByIdentity,
 )
@@ -110,36 +110,12 @@ S_RECORD_STATE_QUARANTINED = "quarantined"
 # metacharacters into the exec wrapper.
 _REGEX_SAFE_SHELL_COMMAND = re.compile(r"^[A-Za-z0-9 _/.-]+$")
 
-# The rcfile a container terminal's bash reads in place of ~/.bashrc. A
-# full-screen program that is SIGKILLed -- an agent the kernel killed
-# for lack of memory -- leaves xterm mouse reporting on, and every mouse
-# move then prints garbage at the prompt. The rcfile deletes itself and
-# its directory (bash has read it whole before it runs), reads the
-# researcher's own ~/.bashrc as bash would have (/etc/bash.bashrc is
-# still read by bash itself), and appends a prompt hook that switches
-# the input modes off. The hook goes LAST -- appended to the array form
-# of PROMPT_COMMAND, newline-joined to the string form, because a scalar
-# append to an array changes only its first element -- and returns the
-# status it was given, so it is invisible to any hook after it. A hook
-# a tool adds later, at runtime, may still follow it; the reset is
-# idempotent and status-transparent, so that is harmless.
-S_PROMPT_RESET_RCFILE = (
-    'rm -f -- "${BASH_SOURCE[0]}" && rmdir -- "${BASH_SOURCE[0]%/*}"\n'
-    "[ -f ~/.bashrc ] && . ~/.bashrc\n"
-    "fnVaibifyResetInputModes() {\n"
-    "    local iStatus=$?\n"
-    "    printf '\\033[?1000l\\033[?1002l\\033[?1003l\\033[?1005l"
-    "\\033[?1006l\\033[?1015l\\033[?1004l\\033[?25h'\n"
-    '    return "$iStatus"\n'
-    "}\n"
-    'if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]];'
-    " then\n"
-    "    PROMPT_COMMAND+=(fnVaibifyResetInputModes)\n"
-    "else\n"
-    "    PROMPT_COMMAND=\"${PROMPT_COMMAND:+$PROMPT_COMMAND$'\\n'}"
-    'fnVaibifyResetInputModes"\n'
-    "fi\n"
-)
+# The rcfile a terminal's bash reads in place of ~/.bashrc: it deletes
+# itself, reads the researcher's own ~/.bashrc, defines the agent-chat
+# wrappers and appends the input-mode reset hook last. Defined once in
+# vaibify.config.terminalRcfile, so the host launch stub hands bash the
+# same text.
+S_PROMPT_RESET_RCFILE = terminalRcfile.S_PROMPT_RESET_RCFILE
 
 _LOCK_DRAIN_REGISTRY = threading.Lock()
 _DICT_CONTAINER_DRAIN_LOCKS = {}

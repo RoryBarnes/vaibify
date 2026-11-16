@@ -254,8 +254,12 @@ def testLevel1TimingRequirementFailsOnStaleAttestation():
 
 
 def testStepWithNoActivityIsNotStartedAtEveryLevel():
+    """A step with requirements at every level (it declares an output,
+    so Level 3 has a domain on it) and no activity reads not-started
+    at each of them; the declared output is nowhere on disk."""
     dictStep = {
         "sName": "stepOne", "sDirectory": "stepOne",
+        "saOutputDataFiles": ["stepOne/output.json"],
         "dictVerification": {
             "sUser": "untested", "sUnitTest": "untested",
         },
@@ -502,13 +506,62 @@ def testStrayStampOnNotApplicableCellStaysInert():
     assert dictStates[0]["s3"]["bRegression"] is False
 
 
-def testNotStartedOutranksNotApplicable():
-    """A never-touched artifact-free step reads not-started on all
-    three cells — uniform, like every other untouched step."""
+def testNotApplicableOutranksNotStarted():
+    """A never-touched artifact-free step has nothing a rerun could
+    verify, so its Level 3 cell reads not-applicable (2026-11-04) while
+    the levels that do have requirements on it stay not-started."""
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithSteps([{"sName": "stepOne"}]), [], [], [],
     )
-    assert dictStates[0]["s3"]["sState"] == "not-started"
+    assert dictStates[0]["s3"]["sState"] == "not-applicable"
+    assert dictStates[0]["s1"]["sState"] == "not-started"
+    assert dictStates[0]["s2"]["sState"] == "not-started"
+
+
+@pytest.mark.falsification
+def testANeverRunDeclarationStepReadsNotApplicableAtLevelOne():
+    """Two attested, clean ordinary steps and one never-run AI
+    Declaration step: the declaration's Level 1 cell is not-applicable
+    with no requirement (the 2026-07-02 ruling: its sign-off is a
+    Level 2 requirement), its Level 2 cell is not-started (it has a
+    real requirement there), and each ordinary step's Level 1 cell is
+    attained. The Steps banner skips not-applicable cells, so the
+    project's Level 1 is no longer held at partial by a step that has
+    nothing to attain there.
+
+    Kills: restoring the old order in _fsLevelCellState, where the
+    inactivity override ran ahead of the empty-requirement check.
+    """
+    dictDeclaration = {
+        "sName": "AI Declaration", "sDirectory": "AIDeclaration",
+        "sStepKind": "ai-declaration", "sDeclarationFile": "AI_USAGE.md",
+        "bInteractive": True, "saDataCommands": [],
+        "saOutputDataFiles": [], "saPlotFiles": [],
+    }
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([
+            _fdictActiveCleanStep("stepOne"), _fdictActiveCleanStep("stepTwo"),
+            dictDeclaration,
+        ]), [], [], [],
+    )
+    assert dictStates[2]["s1"] == _fdictCell("not-applicable", 0, 0)
+    assert dictStates[2]["s2"]["sState"] == "not-started"
+    assert dictStates[0]["s1"]["sState"] == "attained"
+    assert dictStates[1]["s1"]["sState"] == "attained"
+
+
+def testANeverRunOrdinaryStepStillReadsNotStartedAtLevelOne():
+    """The override still fires where requirements exist."""
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([
+            _fdictActiveCleanStep("stepOne"),
+            {"sName": "stepTwo", "sDirectory": "stepTwo",
+             "saOutputDataFiles": ["stepTwo/output.json"]},
+        ]), [], [], [],
+    )
+    assert dictStates[1]["s1"]["sState"] == "not-started"
+    assert dictStates[1]["s1"]["iTotal"] > 0
+    assert dictStates[0]["s1"]["sState"] == "attained"
 
 
 def testEveryFailingCriterionCountsNotJustTheDominantOne():

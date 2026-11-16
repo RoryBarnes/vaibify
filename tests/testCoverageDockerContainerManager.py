@@ -27,6 +27,10 @@ from vaibify.config.projectConfig import fconfigFromYamlDict
 from vaibify.docker import containerManager
 
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 S_PROJECT_NAME = "managedProject"
 S_CONTAINER_ID = "4a5b6c7d8e9f"
 S_RESERVATION_ID = "0123456789abcdef0123456789abcdef"
@@ -103,6 +107,7 @@ def fconfigProject():
     """Return a real, validated configuration with no agents enabled."""
     return fconfigFromYamlDict({
         "projectName": S_PROJECT_NAME,
+        "networkMode": "open",
         "features": {"latex": False},
     })
 

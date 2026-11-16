@@ -21,6 +21,7 @@ import json
 import pytest
 
 from tests.browser.conftest import (
+    fnAnswerTheEntryDialog,
     S_HOST_PROJECT_READY,
     S_HOST_STEP_NAME,
     S_HOST_WORKFLOW_NAME,
@@ -84,6 +85,7 @@ def _fnOpenTheEnvironmentsHub(page, serverHub):
 def _fnOpenTheSeededProject(page):
     """From the Projects Hub, open the seeded project's dashboard."""
     page.click(f"text={S_HOST_WORKFLOW_NAME}")
+    fnAnswerTheEntryDialog(page)
     page.wait_for_selector(f"text={S_HOST_STEP_NAME}", timeout=20000)
 
 
@@ -135,6 +137,27 @@ def _fdictViewerAState(page):
                 .map((el) => el.value).filter(Boolean),
         })"""
     )
+
+
+def _fnStampViewerAContent(page):
+    """Mark the element viewer A displays, to tell kept from rebuilt."""
+    page.evaluate(
+        "() => { document.getElementById('viewportA')"
+        ".firstElementChild._bKeptByTheTest = true; }")
+
+
+def _fnAssertViewerAContentNeverRebuilt(page):
+    """Assert viewer A still shows the very element it showed before.
+
+    The saved dashboard layout restores an EMPTIED viewer from its saved
+    paths when a project opens, so the same text on screen cannot tell
+    "kept" from "emptied and refetched". The rebuilt element carries no
+    mark; the kept one does.
+    """
+    assert page.evaluate(
+        "() => document.getElementById('viewportA')"
+        ".firstElementChild._bKeptByTheTest === true"), (
+        "returning to the same project emptied viewer A and rebuilt it")
 
 
 def _fnAssertViewerAKept(page):
@@ -189,8 +212,10 @@ def testReturningFromTheProjectsHubKeepsTheViewers(pageDashboard, serverHub):
     _fnOpenTheProjectHubFromTheTile(pageDashboard)
     _fnOpenTheSeededProject(pageDashboard)
     _fnShowTwoFilesInViewerA(pageDashboard)
+    _fnStampViewerAContent(pageDashboard)
     _fnReturnToTheProjectHub(pageDashboard)
     _fnOpenTheSeededProject(pageDashboard)
+    _fnAssertViewerAContentNeverRebuilt(pageDashboard)
     _fnAssertViewerAKept(pageDashboard)
     assert pageDashboard.listPageErrors == []
 

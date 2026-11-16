@@ -125,12 +125,18 @@ holds three kinds of entry for each workflow:
   never compared with `project.json`, and no project deposit touches it.
 
 **Notices and the review.** When a project opens, a notice appears for
-each entry that applies and is not confirmed, or that `project.json`
-disagrees with, and its **Review and confirm…** button opens the review.
-An action that needs an entry you have not confirmed opens the same
-review instead of failing. The review sets side by side what
-`project.json` names, what you confirmed and what vaibify could see with
-your own token, and says what **Confirm** authorizes. Confirm records
+each entry that applies and that `project.json` disagrees with, and its
+**Review and confirm…** button opens the review. An entry you have not
+confirmed on this computer has no notice, so a project opened on a
+second computer is quiet: an action that needs such an entry opens the
+same review instead of failing. The exception is **Auto Archive**,
+which asks nobody: while it is on, an unconfirmed Overleaf project or
+project record it would send to carries a notice. The review sets
+side by side what `project.json` names, what you confirmed and what
+vaibify could see with your own token, and says what **Confirm**
+authorizes. Where nothing names a record (a new record, or the
+environment archive below), it says what confirming allows instead of
+comparing. Confirm records
 exactly that entry, and the refused action runs again, once. If the
 project view changes while you are confirming, the review closes and
 nothing is run again. A disagreement carries the sentence "If you did
@@ -179,7 +185,7 @@ notice's **Move it aside** button does that for you, as does
 `vaibify bindings --set-aside -p <project>` on the host. Either one
 renames the file beside itself to
 `<project id>.json.unreadable-<UTC time>`, so nothing is deleted, and
-the notices then show what is left to confirm. Both refuse with
+each entry is confirmed again the first time an action needs it. Both refuse with
 `BINDING-RECORD-VALID` while the record can be read, so a valid
 confirmation is never moved, and neither is reachable from inside the
 container.
@@ -435,7 +441,9 @@ above the step list) pushes a step's files that you have marked for
 Overleaf and Zenodo automatically when that step's verification first
 brings the project to Level 1. It is off by default. A failed
 automatic push is logged and never blocks the step that triggered it;
-the Sync menu remains the way to retry.
+the Sync menu remains the way to retry. Auto Archive sends only to
+remotes you have confirmed on this computer, so while it is on, a
+notice names each one still to confirm.
 
 ## Revoking credentials
 

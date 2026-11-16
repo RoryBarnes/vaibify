@@ -70,6 +70,11 @@ var VaibifyAgentCouncil = (function () {
         iHighestSequenceSeen: 0,
         iLowestRetainedSeen: 0,
         bEvictionSeen: false,
+        /* Paging back through the campaign's durable event log: the
+           byte cursor the last page returned, and whether its start
+           has been reached. */
+        iEarlierEventsCursor: -1,
+        bEarliestEventLoaded: false,
         sActiveTab: "council",
         sRenderSignature: "",
         iPollTimer: null,
@@ -137,6 +142,8 @@ var VaibifyAgentCouncil = (function () {
         _dictState.iHighestSequenceSeen = 0;
         _dictState.iLowestRetainedSeen = 0;
         _dictState.bEvictionSeen = false;
+        _dictState.iEarlierEventsCursor = -1;
+        _dictState.bEarliestEventLoaded = false;
         _dictState.sActiveTab = "council";
         _dictState.sRenderSignature = "";
         _dictState.dictChat = null;
@@ -1905,6 +1912,8 @@ var VaibifyAgentCouncil = (function () {
         _dictState.iHighestSequenceSeen = 0;
         _dictState.iLowestRetainedSeen = 0;
         _dictState.bEvictionSeen = false;
+        _dictState.iEarlierEventsCursor = -1;
+        _dictState.bEarliestEventLoaded = false;
         _setKnownEventSequences.clear();
         _dictState.sActiveTab = "council";
         _dictState.sRenderSignature = "";
@@ -2632,6 +2641,7 @@ var VaibifyAgentCouncil = (function () {
            earlier than everything retained — which is why the marker
            below belongs at the top of a log rather than between two
            rows. */
+        if (_dictState.bEarliestEventLoaded) return false;
         var bGap = _dictState.iLowestRetainedSeen > 1
             && _dictState.iLowestRetainedSeen >
                 (_fiEarliestSeenSequence() + 1);
@@ -2650,10 +2660,51 @@ var VaibifyAgentCouncil = (function () {
            sequence numbers that were never lost at all. */
         if (!_fbConsoleHasLostEarlierEvents()) return "";
         return "<li class=\"council-event council-event-evicted\">" +
-            "earlier events no longer retained" +
+            "earlier events are not in this window" +
             (_dictState.iLowestRetainedSeen > 1
                 ? " (before #" + _dictState.iLowestRetainedSeen + ")" : "") +
-            " — the structured phase artifacts remain</li>";
+            " <button type=\"button\" class=\"btn btn-small " +
+            "council-earlier-events\">Show earlier events</button></li>";
+    }
+
+    var I_EARLIER_PAGE_EVENTS = 200;
+    var I_EARLIER_PAGES_PER_CLICK = 4;
+
+    async function _fnLoadEarlierEvents() {
+        /* Pages back through the campaign's event log on disk, each
+           page a bounded read from the cursor the last one returned,
+           until it reaches events older than any on screen or the
+           log's start. */
+        var sCampaignId = _dictState.sActiveCampaignId;
+        var iEarliestBefore = _fiEarliestSeenSequence();
+        for (var iPage = 0; iPage < I_EARLIER_PAGES_PER_CLICK; iPage++) {
+            var dictPage = await VaibifyApi.fdictGet(
+                _fsRoute("/" + sCampaignId + "/events/earlier?iBeforeOffset=" +
+                    _dictState.iEarlierEventsCursor + "&iMaximum=" +
+                    I_EARLIER_PAGE_EVENTS) + _fsDirectoryQuery("&"));
+            if (_dictState.sActiveCampaignId !== sCampaignId) return;
+            _fnPrependEarlierEvents(dictPage.listEvents || []);
+            _dictState.iEarlierEventsCursor = dictPage.iNextBeforeOffset;
+            _dictState.bEarliestEventLoaded = Boolean(dictPage.bStartReached);
+            if (dictPage.bStartReached ||
+                    _fiEarliestSeenSequence() < iEarliestBefore) {
+                break;
+            }
+        }
+        _fnRenderWorkspace();
+    }
+
+    function _fnPrependEarlierEvents(listEvents) {
+        var listNew = listEvents.filter(function (dictEvent) {
+            return !_setKnownEventSequences.has(dictEvent.iSequence);
+        });
+        listNew.forEach(function (dictEvent) {
+            _setKnownEventSequences.add(dictEvent.iSequence);
+        });
+        Array.prototype.unshift.apply(_dictState.listEvents, listNew);
+        _dictState.listEvents.sort(function (dictFirst, dictSecond) {
+            return dictFirst.iSequence - dictSecond.iSequence;
+        });
     }
 
     function _fiEarliestSeenSequence() {
@@ -3593,6 +3644,39 @@ var VaibifyAgentCouncil = (function () {
             "</div>";
     }
 
+    /* --- The saved layout ---
+
+       Whether the workspace was open, on which campaign and which tab.
+       A restore re-reads the campaign from the server like any other
+       open, so nothing about its state comes from the saved record. */
+
+    var _REGEX_COUNCIL_TAB = /^(council|plan|chat|participant:[A-Za-z0-9_.-]{1,64})$/;
+
+    function fdictCaptureModalState() {
+        return {
+            bOpen: _fbWorkspaceVisible() &&
+                Boolean(_dictState.sActiveCampaignId),
+            sCampaignId: _dictState.sActiveCampaignId || "",
+            sActiveTab: _dictState.sActiveTab || "council",
+        };
+    }
+
+    async function fnRestoreModalState(dictSaved) {
+        if (!dictSaved || dictSaved.bOpen !== true) return;
+        var sCampaignId = String(dictSaved.sCampaignId || "");
+        if (!/^[A-Za-z0-9_-]{1,128}$/.test(sCampaignId)) return;
+        await _fnLoadCampaign(sCampaignId);
+        if (_dictState.sActiveCampaignId !== sCampaignId) return;
+        if (_REGEX_COUNCIL_TAB.test(dictSaved.sActiveTab || "")) {
+            _dictState.sActiveTab = dictSaved.sActiveTab;
+        }
+        _fnShowWorkspace();
+        _fnRenderToolbarButton();
+        if (_dictState.sActiveTab === "chat") {
+            _fnLoadChatQuietly().then(_fnRenderWorkspace);
+        }
+    }
+
     function _fnSelectTab(sTab) {
         _dictState.sActiveTab = sTab;
         _fnRenderWorkspace();
@@ -4304,16 +4388,51 @@ var VaibifyAgentCouncil = (function () {
 
     function _fsChatTab() {
         var dictChat = _dictState.dictChat;
+        if (dictChat && !dictChat.bOpen && dictChat.bResumable) {
+            return "<div class=\"council-chat\">" + _fsChatStaleNotice() +
+                _fsChatSetAsideNotice() + _fsChatTranscript(dictChat) +
+                _fsChatArchive(dictChat) + "</div>";
+        }
         if (!dictChat || !dictChat.bOpen) {
             return "<div class=\"council-chat\">" + _fsChatStaleNotice() +
-                _fsChatClosedTab() + "</div>";
+                _fsChatClosedTab() + _fsChatArchive(dictChat) + "</div>";
         }
         return "<div class=\"council-chat\">" +
             _fsChatStaleNotice() +
             _fsChatStatusLine(dictChat) +
             _fsChatTranscript(dictChat) +
             _fsChatComposer(dictChat) +
+            _fsChatArchive(dictChat) +
             "</div>";
+    }
+
+    function _fsChatSetAsideNotice() {
+        /* A conversation the hub set aside when it stopped or the lease
+           was released: kept, not closed. Continuing builds a fresh
+           runner, so the cost is stated before the button, as it is
+           for a new conversation. */
+        return "<p class=\"council-hint\">This conversation was set " +
+            "aside when vaibify stopped or the project was released; " +
+            "nothing in it was lost. Continuing builds a fresh runner " +
+            "from the council's sealed snapshot, and every message " +
+            "spends this project's provider subscription.</p>" +
+            "<button type=\"button\" id=\"btnCouncilChatOpen\" " +
+            "class=\"btn\">Continue this conversation</button>";
+    }
+
+    function _fsChatArchive(dictChat) {
+        var listArchived = (dictChat && dictChat.listArchived) || [];
+        if (!listArchived.length) return "";
+        return "<details class=\"council-chat-archive\"><summary>Past " +
+            "conversations (" + listArchived.length + ", read only)" +
+            "</summary>" + listArchived.map(function (dictArchived) {
+                var sWhen = dictArchived.fClosedEpoch ? new Date(
+                    dictArchived.fClosedEpoch * 1000).toLocaleString() : "";
+                return "<div class=\"council-chat-archived\"><p " +
+                    "class=\"council-hint\">Closed " + _fsEscape(sWhen) +
+                    "</p>" + _fsChatTranscript(
+                        {listMessages: dictArchived.listMessages}) + "</div>";
+            }).join("") + "</details>";
     }
 
     function _fsChatStaleNotice() {
@@ -4381,8 +4500,33 @@ var VaibifyAgentCouncil = (function () {
                     "\"><span class=\"council-chat-author\">" +
                     _fsEscape(dictMessage.sAuthor) + "</span>" +
                     "<div class=\"council-chat-text\">" +
-                    _fsEscape(dictMessage.sText) + "</div></div>";
+                    _fsEscape(dictMessage.sText) + "</div>" +
+                    _fsInterruptedNote(dictMessage) + "</div>";
             }).join("") + "</div>";
+    }
+
+    function _fsInterruptedNote(dictMessage) {
+        /* Paid work never repeats by itself: the question is shown as
+           interrupted, and only the researcher's click asks it again. */
+        if (!dictMessage.bInterrupted) return "";
+        var dictChat = _dictState.dictChat || {};
+        var bCanAsk = dictChat.bOpen && (dictChat.sState === "ready" ||
+            dictChat.sState === "resting");
+        return "<p class=\"council-chat-failure\">Interrupted by " +
+            "shutdown — not re-asked.</p>" + (bCanAsk ?
+            "<button type=\"button\" class=\"btn btn-small " +
+            "council-chat-ask-again\" data-message-id=\"" +
+            _fsEscape(dictMessage.sMessageId) + "\">Ask again</button>" :
+            "");
+    }
+
+    async function _fnAskAgain(sMessageId) {
+        var listMessages = ((_dictState.dictChat || {}).listMessages) || [];
+        var dictMessage = listMessages.filter(function (d) {
+            return d.sMessageId === sMessageId;
+        })[0];
+        if (!dictMessage) return;
+        await _fbPostChatAction("/chat/ask", {sQuestionText: dictMessage.sText});
     }
 
     function _fsChatComposer(dictChat) {
@@ -4507,6 +4651,22 @@ var VaibifyAgentCouncil = (function () {
         _fnBindElement("btnCouncilImplementPlan",
                        _fnOpenImplementationForm);
         _fnBindElement("btnCouncilChatOpen", _fnOpenChat);
+        document.querySelectorAll(".council-chat-ask-again").forEach(
+            function (elButton) {
+                elButton.addEventListener("click", function () {
+                    _fnAskAgain(elButton.getAttribute("data-message-id"));
+                });
+            });
+        document.querySelectorAll(".council-earlier-events").forEach(
+            function (elButton) {
+                elButton.addEventListener("click", function () {
+                    _fnLoadEarlierEvents().catch(function (error) {
+                        VaibifyApp.fnShowToast("Earlier events could not " +
+                            "be read: " + (error.message || String(error)),
+                            "warning");
+                    });
+                });
+            });
         _fnBindElement("btnCouncilChatAsk", _fnAskChairbot);
         _fnBindElement("btnCouncilChatClose", _fnCloseChat);
         _fnBindPlanActions(dictCampaign);
@@ -4963,6 +5123,8 @@ var VaibifyAgentCouncil = (function () {
         fnInitialize: fnInitialize,
         fnActivate: fnActivate,
         fnTeardown: fnTeardown,
+        fdictCaptureModalState: fdictCaptureModalState,
+        fnRestoreModalState: fnRestoreModalState,
         fnHandleToolbarClick: fnHandleToolbarClick,
         fnRefreshCapabilities: fnRefreshCapabilities,
         /* Exported so the panel can be opened without first convening a

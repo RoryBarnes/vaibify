@@ -622,7 +622,7 @@ def testAStepSuffixedGeneratedTestIsStillComparedToItsTemplate():
 
 
 def testTestFileChangesNameNewMissingAndEditedFiles():
-    dictStep = {"sDirectory": "stepA", "dictTests": {"quantitative": {
+    dictStep = {"sDirectory": "stepA", "dictTests": {"dictQuantitative": {
         "saCommands": ["pytest tests/test_quantitative_stepA.py",
                        "pytest test_registered_gone.py"],
     }}}

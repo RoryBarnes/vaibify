@@ -24,6 +24,7 @@ __all__ = [
     "S_PREFLIGHT_NAME",
     "flistDescribeInvalidFields",
     "flistDescribeUnusableConfiguration",
+    "flistDescribeUnusableProjectConfiguration",
     "fpreflightConfigurationFields",
 ]
 
@@ -103,9 +104,32 @@ def _fsDescribeX11WithNetworkIsolation(config):
         return (
             f"x11Forwarding is true while networkMode is {sMode}; a "
             "display channel into a sealed container would defeat the "
-            "seal. Set networkMode to open or x11Forwarding to false"
+            "seal. Set networkMode: open explicitly (vaibify will ask you "
+            "to approve it) or x11Forwarding to false"
         )
     return ""
+
+
+def _fsDescribeUnstatedNetworkMode(config):
+    """Return the D1 complaint for a project file that names no mode, or ''.
+
+    Only a loaded project configuration can be unstated: a wizard
+    request never carries this field empty with that meaning (an empty
+    request mode means the new-project mode), so this is asked of the
+    configuration lane alone. As with the fields above, a config that
+    does not CARRY the mode at all is not graded; a loaded file always
+    carries it, empty when the file names none.
+    """
+    from vaibify.docker.containerManager import fsNetworkModeOf
+    from vaibify.config.projectConfig import (
+        S_NETWORK_MODE_UNSTATED, fsDescribeUnstatedNetworkMode,
+    )
+    if not hasattr(config, "sNetworkMode") and not hasattr(config, "bNetworkIsolation"):
+        return ""
+    if fsNetworkModeOf(config) != S_NETWORK_MODE_UNSTATED:
+        return ""
+    return fsDescribeUnstatedNetworkMode(
+        getattr(config, "sProjectName", "") or "this project")
 
 
 _T_FIELD_DESCRIBERS = (
@@ -148,9 +172,24 @@ def flistDescribeUnusableConfiguration(config):
     return listComplaints
 
 
+def flistDescribeUnusableProjectConfiguration(config):
+    """Return every complaint about a loaded project configuration.
+
+    The request-or-config complaints, plus the one only a file can
+    carry: no network mode at all (ruling D1). A build is refused on it
+    here, before an hour-long image build, with the sentence the start
+    would give.
+    """
+    listComplaints = flistDescribeUnusableConfiguration(config)
+    sUnstatedComplaint = _fsDescribeUnstatedNetworkMode(config)
+    if sUnstatedComplaint:
+        listComplaints.append(sUnstatedComplaint)
+    return listComplaints
+
+
 def fpreflightConfigurationFields(config):
     """Return a fail result for unusable fields, else None."""
-    listComplaints = flistDescribeUnusableConfiguration(config)
+    listComplaints = flistDescribeUnusableProjectConfiguration(config)
     if not listComplaints:
         return None
     return PreflightResult(

@@ -30,6 +30,10 @@ from vaibify.docker.disposableSpecification import (
 )
 from vaibify.reproducibility.dockerfileComposer import S_RECIPE_IMAGE_LABEL
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 S_PROJECT = "thirdPartyProject"
 S_DIGEST = "sha256:" + "a" * 64
 S_OTHER_DIGEST = "sha256:" + "c" * 64
@@ -60,7 +64,7 @@ def fconfigAgentProject():
     return SimpleNamespace(
         sProjectName=S_PROJECT, sWorkspaceRoot="/workspace",
         sContainerUser="researcher", listPorts=[], listBindMounts=[],
-        listSecrets=[], bNetworkIsolation=False, iCpuLimit=0,
+        listSecrets=[], bNetworkIsolation=False, sNetworkMode="open", iCpuLimit=0,
         fMemoryLimitGigabytes=0.0,
         features=SimpleNamespace(
             bGpu=False, bClaude=True, bCodex=False, bGemini=False,

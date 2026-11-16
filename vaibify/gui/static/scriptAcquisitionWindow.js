@@ -551,7 +551,7 @@ var VaibifyAcquisitionWindow = (function () {
             {sLabel: "Start container", sAction: "start", bPrimary: true,
              fnOnClick: function () {
                  fnClose();
-                 VaibifyContainerManager.fnStartContainer(sNewName);
+                 VaibifyContainerManager.fbStartContainer(sNewName);
              }},
             {sLabel: "Not now", sAction: "close", fnOnClick: fnClose},
         ]);

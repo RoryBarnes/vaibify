@@ -172,7 +172,10 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # execs with them), and the reads and writes that replaced them -- the
 # host lanes' confined file read, the migration's keyring read, and the
 # pull's confined tree write -- are classified.
-I_UNCLASSIFIED_ROW_BUDGET = 260
+# 260 -> 259 (2026-11-07): Prompt Record's unclassified transcript
+# listing and the saved layout's chat catalog share one classified
+# runner, promptRecordManager.ftRunTranscriptProgram.
+I_UNCLASSIFIED_ROW_BUDGET = 259
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -2173,6 +2176,9 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # BEFORE the launch functions create one.
     "fdictResolveLaunchPosture",
     "fdictBuildImageTrustPromptForProject",
+    # Reads the project's registry entry and builds the reach-approval
+    # prompt; no daemon call and no container.
+    "fdictBuildReachPromptIfUnapproved",
     # A pure predicate over an exception object. It reads a status code
     # that a daemon call already returned; it makes no call of its own.
     "fbErrorMeansContainerGone",

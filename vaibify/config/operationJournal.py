@@ -98,6 +98,8 @@ from vaibify.config.pidFileRegistry import (
 from vaibify.config.processLiveness import (
     fbIsProcessAliveSince,
     fbIsUsablePid,
+    fbStartClockIsConsistentWithClaim,
+    fdatetimeReadProcessStartClock,
     fsNowClaimIso,
     ftEnumerateSessionMembers,
 )
@@ -742,6 +744,24 @@ def _fbProcessGroupIsEmpty(iProcessGroup):
     return False
 
 
+def _fbProcessGroupNumberWasReissued(iProcessGroup, sInFlightIso):
+    """Return True when the group's number was reissued after the record.
+
+    POSIX (Base Definitions §4.14, "Process ID Reuse") forbids handing
+    out a process ID while a process group with that ID exists. So a
+    live process whose PID equals the recorded group number, and which
+    started after the record went in flight, proves the recorded group
+    had ended before it started: whatever now answers to that number is
+    a new, unrelated group. Without this, a recycled number keeps a
+    record unprovable forever. An unreadable start clock is not a
+    proof, so it answers False and the record stays quarantined.
+    """
+    datetimeStart = fdatetimeReadProcessStartClock(iProcessGroup)
+    if datetimeStart is None:
+        return False
+    return not fbStartClockIsConsistentWithClaim(datetimeStart, sInFlightIso)
+
+
 def _fdictProbeHostTerminalOperation(dictRecord):
     """Probe a HOST terminal record: dead holder AND an empty SESSION.
 
@@ -799,6 +819,14 @@ def _fdictProbeHelperOperation(dictRecord, connectionDocker):
         return _fdictProbeOutcome(
             False, True, False,
             "holder is dead and its process group is empty",
+        )
+    if _fbProcessGroupNumberWasReissued(
+        iHolderProcessGroup, dictRecord.get("sInFlightIso"),
+    ):
+        return _fdictProbeOutcome(
+            False, True, False,
+            "holder is dead and its process-group number now belongs to "
+            "a process started after this record, so its group has ended",
         )
     return _fdictProbeOutcome(
         False, False, False,

@@ -134,6 +134,34 @@ TUPLE_X86_64_LEVEL_FLAGS = (
 S_FLOOR_NOT_REQUESTED = "not requested"
 S_FLOOR_APPLIED = "applied"
 S_FLOOR_NOT_APPLIED = "not applied"
+# The floor names an x86-64 level and the processor is not x86-64 at
+# all (an arm64 kernel, the Apple Silicon case), so nothing about this
+# computer could honor it: recorded, never warned about (2026-11-05).
+S_FLOOR_NOT_APPLICABLE = "not applicable"
+# What /proc/cpuinfo says the KERNEL's processor family is, read from
+# the keys the kernel itself writes: ``flags`` on x86, ``CPU
+# implementer`` and ``CPU architecture`` on arm64 (arch/arm64/kernel/
+# cpuinfo.c). ``os.uname()`` is not used for this: under Rosetta or
+# QEMU an x86-64 container reports x86_64 on an arm64 machine.
+S_PROCESSOR_FAMILY_X86_64 = "x86-64"
+S_PROCESSOR_FAMILY_ARM64 = "arm64"
+# A Darwin kernel (a host project on a Mac) writes no /proc/cpuinfo and
+# answers the same questions through sysctl: ``hw.optional.arm64`` is 1
+# on an Apple Silicon Mac, for a process translated by Rosetta too, and
+# the three feature lists carry the x86 instruction names in Darwin's
+# own spelling, mapped below onto the names Linux writes.
+S_DARWIN_KERNEL_NAME = "Darwin"
+S_DARWIN_ARM64_SYSCTL = "hw.optional.arm64"
+S_DARWIN_VENDOR_SYSCTL = "machdep.cpu.vendor"
+TUPLE_DARWIN_FEATURE_SYSCTLS = (
+    "machdep.cpu.features", "machdep.cpu.leaf7_features",
+    "machdep.cpu.extfeatures",
+)
+DICT_DARWIN_FLAG_SPELLINGS = {
+    "sse3": "pni", "sse4.1": "sse4_1", "sse4.2": "sse4_2", "avx1.0": "avx",
+    "lahf": "lahf_lm", "lzcnt": "abm",
+}
+F_SYSCTL_TIMEOUT_SECONDS = 5.0
 # What became of each CPU feature NumPy was asked to disable (design F7).
 S_FEATURE_APPLIED = "applied"
 S_FEATURE_NOT_APPLIED = "not applied"
@@ -568,31 +596,99 @@ def fiCountVisibleCores():
     return os.cpu_count() or 0
 
 
-def fdictReadProcessorCapabilities(sCpuinfoPath="/proc/cpuinfo"):
+def fdictReadProcessorCapabilities(sCpuinfoPath="/proc/cpuinfo",
+                                   sKernelName="", fsQuerySysctl=None):
     """Return vendor, x86-64 level and visible cores; never a model name.
 
     Only what explains a difference is kept. The model string and the
-    host name identify a machine, and these records are published.
+    host name identify a machine, and these records are published. A
+    Linux kernel is read from ``/proc/cpuinfo``; a Darwin kernel, which
+    has no such file, through sysctl.
     """
     dictCapabilities = {
         "sArchitecture": os.uname().machine, "sVendor": "", "sLevel": "",
         "iVisibleCores": fiCountVisibleCores(), "bReadable": False,
+        "sProcessorFamily": "",
     }
+    if (sKernelName or os.uname().sysname) == S_DARWIN_KERNEL_NAME:
+        return _fdictReadDarwinCapabilities(
+            dictCapabilities, fsQuerySysctl or fsQueryDarwinSysctl)
+    return _fdictReadCpuinfoCapabilities(dictCapabilities, sCpuinfoPath)
+
+
+def _fdictReadCpuinfoCapabilities(dictCapabilities, sCpuinfoPath):
+    """Fill the capabilities from the keys a Linux kernel writes."""
     try:
         with open(sCpuinfoPath, encoding="utf-8") as fileIn:
             listLines = fileIn.read().splitlines()
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError) as error:
+        dictCapabilities["sUnreadableReason"] = (
+            sCpuinfoPath + " could not be read: " + type(error).__name__)
         return dictCapabilities
     setFlags = set()
+    setKeys = set()
     for sLine in listLines:
         sKey, _, sValue = sLine.partition(":")
+        setKeys.add(sKey.strip())
         if sKey.strip() == "vendor_id" and not dictCapabilities["sVendor"]:
             dictCapabilities["sVendor"] = sValue.strip()
         if sKey.strip() == "flags" and not setFlags:
             setFlags = set(sValue.split())
+    dictCapabilities["sProcessorFamily"] = fsReadProcessorFamily(setKeys, setFlags)
     dictCapabilities["bReadable"] = bool(setFlags)
     dictCapabilities["sLevel"] = fsReadX86Level(setFlags)
+    if not setFlags:
+        dictCapabilities["sUnreadableReason"] = (
+            sCpuinfoPath + " carries no flags line")
     return dictCapabilities
+
+
+def fsQueryDarwinSysctl(sName):
+    """Return one sysctl value, or "" when this kernel does not carry it."""
+    try:
+        processResult = subprocess.run(
+            ["sysctl", "-n", sName], capture_output=True, encoding="utf-8",
+            errors="replace", timeout=F_SYSCTL_TIMEOUT_SECONDS)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if processResult.returncode != 0:
+        return ""
+    return processResult.stdout.strip()
+
+
+def fsSpellDarwinFlagAsLinux(sDarwinFlag):
+    """Return a Darwin feature name as Linux spells it in ``flags``."""
+    sFlag = sDarwinFlag.lower()
+    return DICT_DARWIN_FLAG_SPELLINGS.get(sFlag, sFlag)
+
+
+def _fdictReadDarwinCapabilities(dictCapabilities, fsQuery):
+    """Fill the capabilities from what a Darwin kernel answers to sysctl."""
+    if fsQuery(S_DARWIN_ARM64_SYSCTL).strip() == "1":
+        dictCapabilities["sProcessorFamily"] = S_PROCESSOR_FAMILY_ARM64
+        return dictCapabilities
+    setFlags = set()
+    for sName in TUPLE_DARWIN_FEATURE_SYSCTLS:
+        setFlags.update(
+            fsSpellDarwinFlagAsLinux(sWord) for sWord in fsQuery(sName).split())
+    if not setFlags:
+        dictCapabilities["sUnreadableReason"] = (
+            "sysctl reports no processor features")
+        return dictCapabilities
+    dictCapabilities["sVendor"] = fsQuery(S_DARWIN_VENDOR_SYSCTL).strip()
+    dictCapabilities["sProcessorFamily"] = S_PROCESSOR_FAMILY_X86_64
+    dictCapabilities["bReadable"] = True
+    dictCapabilities["sLevel"] = fsReadX86Level(setFlags)
+    return dictCapabilities
+
+
+def fsReadProcessorFamily(setKeys, setFlags):
+    """Return the kernel's processor family from the keys cpuinfo carries."""
+    if setFlags:
+        return S_PROCESSOR_FAMILY_X86_64
+    if "CPU implementer" in setKeys or "CPU architecture" in setKeys:
+        return S_PROCESSOR_FAMILY_ARM64
+    return ""
 
 
 def fdictDecideAppliedSettings(dictCapabilities, sRequiredLevel,
@@ -602,15 +698,27 @@ def fdictDecideAppliedSettings(dictCapabilities, sRequiredLevel,
     A processor below the profile's required level cannot honor its
     instruction floor, so the floor keys are dropped and the thread pins
     kept. A processor whose capabilities could not be read is treated the
-    same way: the floor is not applied, and the reason says why.
+    same way: the floor is not applied, and the reason says why, with
+    the reading's own account when it left one. A processor that is not
+    x86-64 at all drops the same keys under a state of its own, ``not
+    applicable``: an arm64 machine cannot have an x86-64 instruction
+    floor, nothing about it could change that, and the dashboard warns
+    about the two other states only.
     """
     listFloorKeys = list(listFloorKeys or [])
     if not sRequiredLevel or not listFloorKeys:
         return {"sFloorState": S_FLOOR_NOT_REQUESTED, "listDroppedKeys": [],
                 "sReason": ""}
     sLevel = dictCapabilities.get("sLevel") or ""
+    if dictCapabilities.get("sProcessorFamily") == S_PROCESSOR_FAMILY_ARM64:
+        return {"sFloorState": S_FLOOR_NOT_APPLICABLE,
+                "listDroppedKeys": sorted(listFloorKeys),
+                "sReason": _fsDescribeInapplicableFloor(
+                    dictCapabilities, sRequiredLevel)}
     if not dictCapabilities.get("bReadable"):
         sReason = "floor not applied: capabilities unreadable on this host"
+        if dictCapabilities.get("sUnreadableReason"):
+            sReason += " (" + str(dictCapabilities["sUnreadableReason"]) + ")"
     elif (sLevel in TUPLE_X86_64_LEVELS
           and TUPLE_X86_64_LEVELS.index(sLevel)
           >= TUPLE_X86_64_LEVELS.index(sRequiredLevel)):
@@ -620,6 +728,15 @@ def fdictDecideAppliedSettings(dictCapabilities, sRequiredLevel,
         sReason = f"floor not applied: this processor lacks {sRequiredLevel}"
     return {"sFloorState": S_FLOOR_NOT_APPLIED,
             "listDroppedKeys": sorted(listFloorKeys), "sReason": sReason}
+
+
+def _fsDescribeInapplicableFloor(dictCapabilities, sRequiredLevel):
+    """Return why an x86-64 floor has no meaning on this processor."""
+    sReason = ("floor not applicable: " + sRequiredLevel + " is an x86-64 "
+               "instruction level and this computer's processor is arm64")
+    if dictCapabilities.get("sArchitecture") in ("x86_64", "amd64"):
+        sReason += " (this process runs under emulation)"
+    return sReason
 
 
 def flistValidateFloorRequest(sRequiredLevel, listFloorKeys):

@@ -28,6 +28,7 @@ import time
 import pytest
 
 from tests.browser.conftest import (
+    fnAnswerTheEntryDialog,
     S_HOST_PROJECT_READY,
     S_HOST_STEP_NAME,
     S_HOST_WORKFLOW_NAME,
@@ -57,6 +58,7 @@ def _fnOpenTheSandboxWorkflow(page, serverHub):
     page.click("#btnConfirmOk")
     page.wait_for_selector(f"text={S_HOST_WORKFLOW_NAME}", timeout=20000)
     page.click(f"text={S_HOST_WORKFLOW_NAME}")
+    fnAnswerTheEntryDialog(page)
     page.wait_for_selector(f"text={S_HOST_STEP_NAME}", timeout=20000)
     # The pipeline socket connects lazily, on the first pipeline
     # action, and stays open afterwards -- a researcher who ran a step

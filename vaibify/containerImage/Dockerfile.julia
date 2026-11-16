@@ -9,6 +9,10 @@ ARG JULIA_VERSION=1.11.3
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# The base image ends as the unprivileged container user; unpacking
+# into /opt needs root, and the image is handed back after it.
+USER root
+
 # Install Julia from official tarball. Download to a file (so we can
 # detect curl failure separately from tar failure) and emit an
 # actionable diagnostic on network failure — same template as the
@@ -40,5 +44,8 @@ RUN ARCH="$(uname -m)" \
     && rm -f /tmp/julia.tar.gz \
     && ln -s /opt/julia-${JULIA_VERSION}/bin/julia /usr/local/bin/julia
 
-# Install IJulia kernel for Jupyter integration
+USER ${CONTAINER_USER}
+
+# Install IJulia kernel for Jupyter integration, into the container
+# user's own depot, where the researcher's Julia looks for it.
 RUN julia -e 'using Pkg; Pkg.add("IJulia")'

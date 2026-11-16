@@ -67,6 +67,7 @@ def testTheWizardOffersX11OffAndWebAndExcludesThePair(
     assert pageDashboard.input_value("#wizardNetworkMode") == "web"
     assert pageDashboard.is_disabled("#wizardX11Forwarding")
     pageDashboard.select_option("#wizardNetworkMode", "open")
+    _fnConfirmOpenMode(pageDashboard)
     assert pageDashboard.is_enabled("#wizardX11Forwarding")
     pageDashboard.check("#wizardX11Forwarding")
     assert pageDashboard.is_disabled("#wizardNetworkMode")
@@ -86,6 +87,7 @@ def testTheWizardRemembersTheChoiceWhenThePageIsLeft(
     _fnOpenTheConvertWizard(pageDashboard, serverHub)
     _fnAdvanceToTheRuntimeOptions(pageDashboard)
     pageDashboard.select_option("#wizardNetworkMode", "open")
+    _fnConfirmOpenMode(pageDashboard)
     pageDashboard.check("#wizardX11Forwarding")
     pageDashboard.click("#btnWizardNext")
     pageDashboard.wait_for_timeout(300)
@@ -98,6 +100,14 @@ def testTheWizardRemembersTheChoiceWhenThePageIsLeft(
     assert pageDashboard.is_checked("#wizardX11Forwarding")
     assert pageDashboard.input_value("#wizardNetworkMode") == "open"
     assert pageDashboard.is_disabled("#wizardNetworkMode")
+
+
+def _fnConfirmOpenMode(page):
+    """Answer the open-mode question (ruling D2's pre-selection warning)."""
+    page.wait_for_selector("#modalConfirm", timeout=5000)
+    assert "Use open mode?" in page.text_content("#modalConfirm")
+    page.click("#btnConfirmOk")
+    page.wait_for_selector("#modalConfirm", state="detached", timeout=5000)
 
 
 def _fnStubSettings(page, listPostBodies, dictGet):
@@ -181,3 +191,99 @@ def testTheSettingsDialogLocksTheModeOpenWhileX11IsOn(pageDashboard, serverHub):
     assert pageDashboard.is_checked("#settingX11Forwarding")
     assert pageDashboard.is_disabled("#settingNetworkMode")
     assert "Locked to open" in pageDashboard.text_content("#modalSettings")
+
+
+
+# ---------------------------------------------------------------------
+# The unstated mode and the open-mode question (2026-11-04)
+# ---------------------------------------------------------------------
+
+
+def testTheSettingsDialogShowsAPlaceholderForAFileThatNamesNoMode(
+    pageDashboard, serverHub,
+):
+    listPostBodies = []
+    _fnStubSettings(pageDashboard, listPostBodies, _fdictSettings(""))
+    _fnOpenTheSettingsDialog(pageDashboard, serverHub)
+    assert pageDashboard.input_value("#settingNetworkMode") == ""
+    sSelected = pageDashboard.text_content("#settingNetworkMode option:checked")
+    assert sSelected == "Choose a network mode"
+    assert "No mode is written" in pageDashboard.text_content("#modalSettings")
+    assert pageDashboard.is_disabled("#settingX11Forwarding")
+    pageDashboard.click("#btnSettingsSave")
+    pageDashboard.wait_for_timeout(500)
+    assert len(listPostBodies) == 1 and listPostBodies[0]["sNetworkMode"] is None
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testChoosingOpenInTheWizardAsksFirstAndCancelPutsTheControlBack(
+    pageDashboard, serverHub,
+):
+    """Kills: the wizard's cancel handler not restoring the previous mode."""
+    _fnOpenTheConvertWizard(pageDashboard, serverHub)
+    _fnAdvanceToTheRuntimeOptions(pageDashboard)
+    pageDashboard.select_option("#wizardNetworkMode", "open")
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
+    assert "Use open mode?" in pageDashboard.text_content("#modalConfirm")
+    assert pageDashboard.text_content("#btnConfirmOk").strip() == "Use open mode"
+    # Next does not submit while the question is open.
+    pageDashboard.evaluate("document.getElementById('btnWizardNext').click()")
+    pageDashboard.wait_for_timeout(300)
+    assert pageDashboard.is_visible("#modalConfirm")
+    assert pageDashboard.query_selector("#wizardX11Forwarding") is not None
+    pageDashboard.click("#btnConfirmCancel")
+    pageDashboard.wait_for_selector("#modalConfirm", state="detached", timeout=5000)
+    assert pageDashboard.input_value("#wizardNetworkMode") == "web"
+    assert pageDashboard.is_disabled("#wizardX11Forwarding")
+    assert pageDashboard.listPageErrors == []
+
+
+def testCheckingX11InTheWizardAsksAndCancelUnchecksIt(pageDashboard, serverHub):
+    _fnOpenTheConvertWizard(pageDashboard, serverHub)
+    _fnAdvanceToTheRuntimeOptions(pageDashboard)
+    pageDashboard.select_option("#wizardNetworkMode", "allowlist")
+    assert pageDashboard.is_disabled("#wizardX11Forwarding")
+    pageDashboard.evaluate(
+        "() => { const el = document.getElementById('wizardX11Forwarding');"
+        " el.disabled = false; el.checked = true;"
+        " el.dispatchEvent(new Event('change')); }")
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
+    pageDashboard.click("#btnConfirmCancel")
+    pageDashboard.wait_for_selector("#modalConfirm", state="detached", timeout=5000)
+    assert not pageDashboard.is_checked("#wizardX11Forwarding")
+    assert pageDashboard.input_value("#wizardNetworkMode") == "allowlist"
+    assert pageDashboard.is_enabled("#wizardNetworkMode")
+    pageDashboard.evaluate(
+        "() => { const el = document.getElementById('wizardX11Forwarding');"
+        " el.checked = true; el.dispatchEvent(new Event('change')); }")
+    _fnConfirmOpenMode(pageDashboard)
+    assert pageDashboard.is_checked("#wizardX11Forwarding")
+    assert pageDashboard.input_value("#wizardNetworkMode") == "open"
+    assert pageDashboard.is_disabled("#wizardNetworkMode")
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testChoosingOpenInTheSettingsDialogAsksFirstAndSaveWaits(
+    pageDashboard, serverHub,
+):
+    """Kills: a settings save that submits while the open-mode question is open."""
+    listPostBodies = []
+    _fnStubSettings(pageDashboard, listPostBodies, _fdictSettings("web"))
+    _fnOpenTheSettingsDialog(pageDashboard, serverHub)
+    pageDashboard.select_option("#settingNetworkMode", "open")
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
+    pageDashboard.evaluate("document.getElementById('btnSettingsSave').click()")
+    pageDashboard.wait_for_timeout(300)
+    assert listPostBodies == []
+    assert pageDashboard.is_visible("#modalSettings")
+    pageDashboard.click("#btnConfirmCancel")
+    pageDashboard.wait_for_selector("#modalConfirm", state="detached", timeout=5000)
+    assert pageDashboard.input_value("#settingNetworkMode") == "web"
+    pageDashboard.select_option("#settingNetworkMode", "open")
+    _fnConfirmOpenMode(pageDashboard)
+    pageDashboard.click("#btnSettingsSave")
+    pageDashboard.wait_for_timeout(500)
+    assert len(listPostBodies) == 1 and listPostBodies[0]["sNetworkMode"] == "open"
+    assert pageDashboard.listPageErrors == []

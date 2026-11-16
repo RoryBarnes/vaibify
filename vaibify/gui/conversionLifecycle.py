@@ -639,9 +639,26 @@ def _fnWriteInOrder(dictRecord, dockerDisposable):
     registryManager.fnConvertProjectToContainer(
         dictRecord["sHostName"], sNewName, dictImageSource,
         dictRecord.get("dictImageTrust"), dictRecord.get("dictPendingSeed"),
+        _fdictReachApprovalForRewrittenConfig(dictRecord["sConfigPath"]),
     )
     _fnDropStagingTagQuietly(dictRecord, dockerDisposable)
     pendingConversions.fnRemoveConversionRecord(dictRecord["sHostName"])
+
+
+def _fdictReachApprovalForRewrittenConfig(sConfigPath):
+    """Return the approval for the reach-widening settings the rewrite wrote.
+
+    The conversion is researcher-only and rewrites the file BEFORE the
+    entry exists under the new name, so the record is built here from
+    the rewritten file and travels into the registry mutation, as the
+    image-trust answer does. A file that widens nothing yields none.
+    """
+    from vaibify.config import reachApproval
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    config = fconfigLoadFromFile(sConfigPath)
+    if not reachApproval.fbConfigurationWidensReach(config):
+        return None
+    return reachApproval.fdictBuildReachApprovalRecord(config)
 
 
 def _fnRewriteConfigDurably(dictRecord):

@@ -42,6 +42,7 @@ import asyncio
 
 from fastapi import WebSocket
 
+from .. import agentChatLifecycle
 from .. import pipelineServer as _pipelineServer
 from ..attributionLog import (
     S_TERMINAL_CHANNEL,
@@ -196,9 +197,17 @@ async def _fnStartAndRunTerminal(
             else 0
         ),
     }
+    # The browser names the tab; the shell is told where to record the
+    # agent chats it runs (agentChatLifecycle). A missing or malformed
+    # id records nothing.
+    dictLifecycleEnvironment = agentChatLifecycle.fdictLifecycleEnvironment(
+        sName if bHostProject else sContainerId,
+        websocket.query_params.get("sTerminalId", ""),
+    )
     if bHostProject:
         session = HostTerminalSession(
             dictCtx["docker"], sName, dictContainment,
+            dictEnvironmentOverlay=dictLifecycleEnvironment,
         )
     else:
         session = TerminalSession(
@@ -207,6 +216,7 @@ async def _fnStartAndRunTerminal(
                 sContainerId, dictCtx.get("sTerminalUser")
             ),
             dictContainment=dictContainment,
+            dictEnvironmentOverlay=dictLifecycleEnvironment,
         )
     try:
         await asyncio.to_thread(session.fnStart)

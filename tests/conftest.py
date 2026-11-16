@@ -11,6 +11,7 @@ overwrite, or delete the researcher's real stored credentials).
 """
 
 import atexit
+import contextlib
 import fnmatch
 import importlib
 import logging
@@ -414,6 +415,10 @@ T_REDIRECTED_STATE_STORES = (
         bCreateOnResolve=True,
     ),
     StateStoreRedirect(
+        "vaibify.config.dashboardRecords", "fsDashboardStateRoot",
+        "dashboardState",
+    ),
+    StateStoreRedirect(
         "vaibify.gui.agentCouncilCredentialGate",
         "fsResolveCredentialEvidencePath",
         "agentCouncils/credentialEvidence.json",
@@ -477,6 +482,27 @@ def _fnRedirectStateStore(monkeypatch, sHome, tStoreRedirect):
         )
         return
     monkeypatch.setattr(moduleStore, tStoreRedirect.sAttribute, sPath)
+
+
+@contextlib.contextmanager
+def fcontextRedirectEveryStateStore(sHome):
+    """Hold every declared store redirect open for the life of the context.
+
+    The autouse fixture below redirects per TEST. A hub kept open across
+    a whole module (the browser lane's) runs its startup hooks, its
+    first reaper pass, the gaps between tests and its shutdown outside
+    any test, so it needs the redirects for its own lifetime: without
+    them its keep-alive reaper signalled the researcher's real
+    caffeinate, and its recoveries read the real rename and conversion
+    journals against a registry that did not know their projects.
+    """
+    monkeypatchStores = pytest.MonkeyPatch()
+    try:
+        for tStoreRedirect in T_REDIRECTED_STATE_STORES:
+            _fnRedirectStateStore(monkeypatchStores, sHome, tStoreRedirect)
+        yield
+    finally:
+        monkeypatchStores.undo()
 
 
 @pytest.fixture(autouse=True)
@@ -767,6 +793,34 @@ def fnKeepCouncilStartupOffTheRealDaemon(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fnKeepEgressOffTheRealDaemon(request, monkeypatch):
+    """A non-live test's hub must not run egress commands on a real daemon.
+
+    The hub's egress reconcile shells out to ``docker`` itself, so every
+    test that boots a hub with a TestClient ran it against the machine's
+    daemon; a browser-lane hub doing the same removed a developer's
+    running proxy (2026-11-08). Every egress command is refused here
+    unless the test is a live one; a test of the module itself replaces
+    the runner with its own scripted daemon, which takes precedence.
+    """
+    if any(
+        request.node.get_closest_marker(sMarker) is not None
+        for sMarker in ("docker", "docker_live", "dockerProbeUnderTest")
+    ):
+        yield
+        return
+    from vaibify.docker import egressProxy, projectEgress
+
+    def fnRefuseEgressDockerCall(listArguments, fTimeoutSeconds=None):
+        raise egressProxy.EgressSetupError(
+            "a non-live test runs no egress command on a real daemon: "
+            + " ".join(listArguments[:2]))
+
+    monkeypatch.setattr(projectEgress, "_fprocessDocker", fnRefuseEgressDockerCall)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def fnClearPushDedupeCache():
     """Reset the syncRoutes push idempotency cache between tests.
 
@@ -836,3 +890,23 @@ def fnKeepEveryTestOutOfTheRealCouncilStore(
         agentCouncilStore, "fsResolveDurableStoreRoot",
         lambda: sIsolatedRoot)
     yield
+
+
+@pytest.fixture
+def fixtureReachApproved(monkeypatch):
+    """Stand in for the researcher's recorded approval of what a container may reach.
+
+    The run-argument builder refuses a configuration that widens the
+    container's reach (open network mode, X11, bind mounts, allowed
+    hosts) until this host holds the researcher's approval of exactly
+    those values; ``tests/testReachApprovalGuardsTheLaunch.py`` is that
+    gate's own kill-confirmed guard. A module whose subject is something
+    else -- the arguments open mode adds, the X11 arguments, a resource
+    limit -- opts in with ``pytestmark =
+    pytest.mark.usefixtures("fixtureReachApproved")`` rather than
+    registering a project and recording an approval for every fixture
+    configuration it builds.
+    """
+    from vaibify.docker import containerManager
+    monkeypatch.setattr(
+        containerManager, "_fnRequireReachApproval", lambda config: None)

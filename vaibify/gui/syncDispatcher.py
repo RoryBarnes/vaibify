@@ -2175,7 +2175,7 @@ def _fsBuildTestMarkerScript(
         '        if ("_PROJECT_REPO" not in sConftestSource\n'
         '            and "# vaibify-conftest-loader:" not in sConftestSource):\n'
         '            R["missingConftest"].append(d)\n'
-        "print(json.dumps(R))\n"
+        'R["bTestFilesListed"] = True\nprint(json.dumps(R))\n'
     )
 
 

@@ -9,6 +9,7 @@ import json
 
 import pytest
 
+from tests.browser.conftest import fnAnswerTheEntryDialog
 from tests.browser.conftest import S_HOST_PROJECT_READY, S_HOST_WORKFLOW_NAME
 
 pytestmark = pytest.mark.browser
@@ -61,6 +62,7 @@ def testAProjectThatWillNotLoadSaysWhyAndOffersADiagnosis(
         ),
     )
     pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
+    fnAnswerTheEntryDialog(pageDashboard)
     pageDashboard.wait_for_selector(".toast.error", timeout=10000)
     sToast = pageDashboard.locator(".toast.error").first.inner_text()
     assert "missing required top-level key" in sToast

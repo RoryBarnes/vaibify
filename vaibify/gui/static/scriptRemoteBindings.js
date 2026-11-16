@@ -302,8 +302,10 @@ var VaibifyRemoteBindings = (function () {
         }
         dictDialog.dictEntry = dictEntry;
         if (dictEntry.bHasTarget === false) {
-            /* An environment archive authorizes an instance and names no
-               record, so a comparison of records would read as broken. */
+            /* Nothing names a record (the environment archive, or a
+               project record nobody has created yet), so a comparison of
+               records would read as broken; the server says what
+               confirming allows. */
             _fnAppendParagraph(elBody, dictEntry.sAuthorizes,
                 "remote-binding-authorization");
         } else {

@@ -87,6 +87,9 @@ def _flistStartOnlyChecks(config):
     listResults.extend(_flistPreflightBindMountFormats(config))
     listResults.extend(_flistPreflightColimaSharedRoots(config))
     listResults.extend(flistCheckX11Host(config))
+    from . import doctorProjectChecks
+    listResults.extend(doctorProjectChecks.flistCheckNetworkModeStated(config))
+    listResults.extend(doctorProjectChecks.flistCheckReachApproval(config))
     return listResults
 
 

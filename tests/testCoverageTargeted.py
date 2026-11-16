@@ -22,6 +22,10 @@ from unittest.mock import MagicMock, patch
 # -----------------------------------------------------------------------
 
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 def test_fsExtractLogLine_output_event():
     from vaibify.gui.pipelineRunner import _fsExtractLogLine
     dictEvent = {"sType": "output", "sLine": "hello world"}
@@ -210,6 +214,7 @@ def test_flistBuildRunArgs_detached_no_rm(mockX11):
         listSecrets=[],
         features=features,
         bNetworkIsolation=False,
+        sNetworkMode="open",
     )
     saArgs = flistBuildRunArgs(config, bDetached=True)
     assert "--rm" not in saArgs
@@ -236,6 +241,7 @@ def test_flistBuildRunArgs_interactive_has_rm(mockX11):
         listSecrets=[],
         features=features,
         bNetworkIsolation=False,
+        sNetworkMode="open",
     )
     saArgs = flistBuildRunArgs(config, bDetached=False)
     assert "--rm" in saArgs

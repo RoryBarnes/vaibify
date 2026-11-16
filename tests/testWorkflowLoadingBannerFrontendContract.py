@@ -72,8 +72,13 @@ def test_workflow_card_carries_size_bytes_attribute():
 
 
 def test_card_click_handler_reads_size_bytes():
-    """The bound click handler must read dataset.sizeBytes and forward
-    it to fnSelectWorkflow."""
+    """The bound click handler must read dataset.sizeBytes and carry it,
+    through the entry dialog, to fnSelectWorkflow.
+
+    Since 2026-11-07 a card click first asks how terminals and agent
+    chats start (scriptEntryChoice.js), so the size travels in the card
+    description the dialog hands on.
+    """
     sSource = _fsReadStaticFile("scriptWorkflowManager.js")
     iStart = sSource.find("function _fnBindWorkflowCards(")
     assert iStart != -1
@@ -82,7 +87,12 @@ def test_card_click_handler_reads_size_bytes():
     assert "dataset.sizeBytes" in sBlock, (
         "Click handler must read data-size-bytes off the card"
     )
-    assert "fnSelectWorkflow(sId, sPath, sName" in sBlock
+    assert "VaibifyEntryChoice.fnEnterProject(sId, {" in sBlock
+    assert "iSizeBytes: iSize" in sBlock
+    sEntry = _fsReadStaticFile("scriptEntryChoice.js")
+    assert ("VaibifyWorkflowManager.fnSelectWorkflow(\n"
+            "                sContainerId, dictCard.sPath, dictCard.sName,\n"
+            "                dictCard.iSizeBytes || 0)") in sEntry
 
 
 def test_select_workflow_shows_and_hides_banner():

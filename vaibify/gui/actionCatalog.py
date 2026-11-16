@@ -1317,6 +1317,17 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # some of it as root, and starts a virtual machine there: never an
     # agent's to do. The handler also rejects the agent token by name.
     ("POST", "/api/runtime/setup/run"),
+    # The saved dashboard layout describes how a human views the
+    # container: which terminals and agent chats were open, and where.
+    # An agent may neither read how the researcher works nor rewrite
+    # it, so the reads are excluded too, and every handler rejects the
+    # agent token lane by name. The records live on the host.
+    ("GET", "/api/dashboard-state/{sContainerId}/environment"),
+    ("PUT", "/api/dashboard-state/{sContainerId}/environment"),
+    ("GET", "/api/dashboard-state/{sContainerId}/project"),
+    ("PUT", "/api/dashboard-state/{sContainerId}/project"),
+    ("GET", "/api/dashboard-state/{sContainerId}/terminal-chats"),
+    ("POST", "/api/dashboard-state/{sContainerId}/chat-catalog"),
     # A pending containerization is the researcher's decision at every
     # step: try again after a failed download, finish the switch once
     # the project is closed, or give up and delete the partial. The
@@ -1555,6 +1566,12 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # agent granting that trust to the very image it runs in is the
     # exact inversion of the question, so only the researcher answers.
     ("POST", "/api/registry/{sName}/image-trust"),
+    # Approving what the container may reach (open network mode, X11,
+    # bind mounts, allowed hosts, as vaibify.yml asks for them) is the
+    # researcher's: an in-container agent approving the reach of the
+    # very container it runs in is the exact inversion of the question,
+    # so only the researcher answers.
+    ("POST", "/api/registry/{sName}/reach-approval"),
     ("POST", "/api/host-directories/create"),
     ("POST", "/api/projects/create"),
     # Host-global browser preference (per-directory host-warning

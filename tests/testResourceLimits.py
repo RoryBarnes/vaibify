@@ -39,6 +39,10 @@ from vaibify.docker.containerManager import flistBuildRunArgs
 from tests.testContainerManager import _fConfigMinimal
 
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 I_GIGABYTE = 2 ** 30
 I_NANO = 10 ** 9
 

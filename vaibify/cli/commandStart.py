@@ -14,6 +14,7 @@ from .configLoader import (
     fconfigResolveProject, fsDockerDir, fsResolveProjectConfigPath,
 )
 from .imageTrustPrompt import fnConfirmImageTrustOrExit
+from .reachApprovalPrompt import fnConfirmReachOrExit
 from .portAllocator import (
     PortInUseError, fiResolveProjectPort,
 )
@@ -686,10 +687,17 @@ def _fnEnforcePreflightOrExit(listResults):
     help="Let the image's code read your stored credentials (needs "
     "--image-trust; off unless given).",
 )
+@click.option(
+    "--approve-reach", "bApproveReach", is_flag=True, default=False,
+    help="Approve the settings in vaibify.yml that widen what the "
+    "container reaches (open network mode, X11, bind mounts, allowed "
+    "hosts). Required without a terminal when they are not yet approved "
+    "on this computer; asked interactively otherwise.",
+)
 @click.argument("command", required=False, default=None)
 def fnStartCommand(
     bGui, bJupyter, iPort, sProjectName, bDetach, sImageTrust,
-    bWithCredentials, command,
+    bWithCredentials, bApproveReach, command,
 ):
     """Start the Vaibify environment."""
     config = fconfigResolveProject(sProjectName)
@@ -698,6 +706,7 @@ def fnStartCommand(
     _fnEnforcePreflightOrExit(listPreflight)
     _fnPrintWarningsIfAny(listPreflight)
     fnConfirmImageTrustOrExit(config, sImageTrust, bWithCredentials)
+    fnConfirmReachOrExit(config, bApproveReach)
     if bDetach:
         _fnRejectCommandWithDetach(command)
     _fnLaunchUnderLifecycleLock(config, fsDockerDir(), bDetach, command)

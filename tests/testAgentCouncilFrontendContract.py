@@ -212,7 +212,10 @@ def test_sequence_gap_and_eviction_are_surfaced():
     """
     sSource = _fsCouncilSource()
     assert "_fsRetentionBoundaryRow" in sSource
-    assert "no longer retained" in sSource
+    # Since 2026-11-07 the events past the window are on disk, so the
+    # row says they are not in the window and offers to page back.
+    assert "earlier events are not in this window" in sSource
+    assert "Show earlier events" in sSource
     assert "iLowestRetainedSequence" in sSource
     # In the log, not in the workspace header.
     iRender = sSource.find("function _fnRenderWorkspace")

@@ -51,6 +51,10 @@ def fsGenerateLogFilename(sWorkflowName):
     return f"{sCleanName}_{sTimestamp}.log"
 
 
+# The prefix the page gives a pre-run warning in the pipeline output.
+S_LOG_WARNING_PREFIX = "WARNING: "
+
+
 def ffBuildLoggingCallback(fnOriginalCallback, listLogLines):
     """Return a callback that logs output lines and forwards events."""
     dictByteAccum = {"iBytes": _fiBytesInLines(listLogLines)}
@@ -113,6 +117,11 @@ def _fsExtractLogLine(dictEvent):
         return (f"FAILED: {dictEvent.get('sCommand', '')} "
                 f"(exit {dictEvent.get('iExitCode', '?')})"
                 + (f"\n  {sExplanation}" if sExplanation else ""))
+    if dictEvent.get("sType") == "preflightWarning":
+        # The toast says "see the run log", so the log carries the
+        # warning in the words the page shows (researcher-reported
+        # 2026-11-05: the file never had it).
+        return S_LOG_WARNING_PREFIX + dictEvent.get("sMessage", "")
     if dictEvent.get("sType") == "started":
         # The header exists so the log FILE exists. Flushing an empty
         # buffer writes nothing, so without a line to carry there is

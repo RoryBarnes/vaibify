@@ -66,7 +66,9 @@ def fnRegisterProject(client, tmp_path, sProjectName):
     with open(
         os.path.join(sProjectDirectory, "vaibify.yml"), "w",
     ) as fileHandle:
-        fileHandle.write(f"projectName: {sProjectName}\n")
+        # A mode is stated, as every file vaibify writes states one: a
+        # file naming none cannot be built or started (ruling D1).
+        fileHandle.write(f"projectName: {sProjectName}\nnetworkMode: web\n")
     responseAdd = client.post(
         "/api/registry", json={"sDirectory": sProjectDirectory},
     )

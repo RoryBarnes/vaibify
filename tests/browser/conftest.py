@@ -211,8 +211,32 @@ def fdictHostWorkflowDocument():
     }
 
 
+def fnAnswerTheEntryDialog(page, sChoice="default"):
+    """Answer the dialog a click on a project opens, when it opens one.
+
+    A project click either asks how terminals and agent chats start
+    (``body[data-entry-state="asking"]``) or goes straight in: Admin >
+    Projects kept the environment's terminals live, so there is nothing
+    to ask (scriptEntryChoice.js, ruling 1). The page records which as
+    it decides, synchronously in the click, so this reads the answer
+    instead of guessing with a timeout. Tests that are not about the
+    dialog take Default, the first-entry view they were written against.
+    """
+    page.wait_for_function(
+        "() => document.body.dataset.entryState !== 'reading'",
+        timeout=20000)
+    if page.evaluate("() => document.body.dataset.entryState") != "asking":
+        return
+    page.check(
+        f'#modalEntryChoice input[name="entryChoice"][value="{sChoice}"]')
+    page.wait_for_selector(
+        "#btnEntryContinue:not([disabled])", timeout=20000)
+    page.click("#btnEntryContinue")
+
+
 def fnOpenTheSeededHostWorkflow(
     pageDashboard, serverHub, bAwaitProjectBlock=False,
+    sEntryChoice="default",
 ):
     """Acknowledge the host warning and open the seeded workflow.
 
@@ -256,6 +280,7 @@ def fnOpenTheSeededHostWorkflow(
         f"text={S_HOST_WORKFLOW_NAME}", timeout=20000,
     )
     pageDashboard.click(f"text={S_HOST_WORKFLOW_NAME}")
+    fnAnswerTheEntryDialog(pageDashboard, sEntryChoice)
     pageDashboard.wait_for_selector(
         f"text={S_HOST_STEP_NAME}", timeout=20000,
     )
@@ -388,9 +413,10 @@ def _fnIsolateProjectRegistry():
     # guard) but inside a gitignored subdir (so a killed run's leftover
     # can never be committed) — see PATH_BROWSER_LANE_TMP_ROOT.
     PATH_BROWSER_LANE_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    from tests.conftest import fcontextRedirectEveryStateStore
     with tempfile.TemporaryDirectory(
         dir=str(PATH_BROWSER_LANE_TMP_ROOT),
-    ) as sHome:
+    ) as sHome, fcontextRedirectEveryStateStore(sHome):
         sRegistry = os.path.join(sHome, "registry.json")
         sReadyDirectory = os.path.join(sHome, S_HOST_PROJECT_READY)
         os.makedirs(sReadyDirectory, exist_ok=True)
@@ -443,6 +469,10 @@ def _fnIsolateProjectRegistry():
         # The hub's scheduled re-verify stamps its first pass a short
         # delay after start, outside any test's own redirect.
         from vaibify.reproducibility import scheduledReverify
+        # A layout save lands a second after a click, and a closing
+        # page sends its last one on pagehide: both can arrive after
+        # the test that caused them has undone its own redirect.
+        from vaibify.config import dashboardRecords
         # The hub binds its control socket at startup, before any
         # test's own redirect. Its directory comes from the system
         # temporary root, not sHome: an AF_UNIX path is capped at 104
@@ -455,6 +485,9 @@ def _fnIsolateProjectRegistry():
         ), patch.object(
             scheduledReverify, "fsReverifyStatePath",
             lambda: os.path.join(sHome, "reverifyState.json"),
+        ), patch.object(
+            dashboardRecords, "fsDashboardStateRoot",
+            lambda: os.path.join(sHome, "dashboardState"),
         ), patch.object(
             registryManager, "_S_REGISTRY_DIRECTORY", sHome,
         ), patch.object(
@@ -483,6 +516,43 @@ def _fnIsolateProjectRegistry():
             yield sHome
 
 
+def _fnRefuseEgressDockerCall(listArguments, fTimeoutSeconds=None):
+    """The lane models no egress daemon, so every egress command is refused."""
+    from vaibify.docker.egressProxy import EgressSetupError
+    raise EgressSetupError(
+        "the browser lane models no Docker daemon for project egress: "
+        + " ".join(listArguments[:2]))
+
+
+@contextlib.contextmanager
+def _fcontextKeepHubHooksOffTheRealDaemon():
+    """Keep the hub's own daemon clients away from the developer's daemon.
+
+    The fake adapter stands in for ``pipelineServer``'s connection only.
+    Several startup hooks and reapers build their OWN Docker access, and
+    on a developer machine they acted on real resources: the egress
+    reconcile removed a running project's proxy (2026-11-08, reproduced
+    with a decoy), and the council reconcile destroys every council
+    runner whose peer lock it cannot see, which in a re-rooted lock
+    directory is all of them. Each is refused or emptied here for the
+    hub's whole life, not per test, because the hooks run at startup,
+    between tests and at shutdown. The X server check is answered
+    "absent" so the lane never runs ``xhost`` against the real display.
+    """
+    from vaibify.docker import projectEgress
+    from vaibify.gui import appFactory, serverLifespan, x11Lifecycle
+    with patch.object(
+        appFactory, "_fdockerCreateCouncilClientOrNone", lambda: None,
+    ), patch.object(
+        projectEgress, "_fprocessDocker", _fnRefuseEgressDockerCall,
+    ), patch.object(
+        x11Lifecycle, "fbXServerAvailable", lambda: False,
+    ), patch.object(
+        serverLifespan, "_fdictReclaimOnce", lambda: {},
+    ):
+        yield
+
+
 # Module scope, NOT session scope. These fixtures hold `patch.object`
 # on pipelineServer and registryManager open across the yield; at
 # session scope those patches stay live while every other test module
@@ -505,7 +575,7 @@ def serverHub():
     with socketListening, _fnIsolateProjectRegistry() as sHome, patch.object(
         pipelineServer, "_fconnectionCreateDocker",
         lambda *args, **kwargs: adapterDocker,
-    ):
+    ), _fcontextKeepHubHooksOffTheRealDaemon():
         app = fappCreateHubApplication(iExpectedPort=iPort)
         # The council's durable store root is derived from $HOME, which
         # this lane does NOT override — so without this the test hub

@@ -269,10 +269,30 @@ A project's `networkMode` in `vaibify.yml` is `web`, `allowlist`,
 `open` or `isolated`; `networkIsolation: true` is the old spelling of
 `isolated` and is still read (a file that sets the two to disagree is
 refused). Every new project is created with `web`, by the wizard and by
-`vaibify init`; a file that names no mode means `open`, so an existing
-project keeps `open` until you change it, because the mode applies when
-the container is created and a published project's files are not
-edited for you.
+`vaibify init`. A file that names no mode, or names only
+`networkIsolation: false`, loads and appears on the dashboard but
+cannot start a container until one line is written: nothing is read
+into it in either direction, neither `open` (which earlier versions
+read it as) nor `web`. The start, the build and `vaibify doctor` all
+say so with the same sentence, and the settings dialog shows "Choose a
+network mode" in its place.
+
+**Open mode** is the whole network. Measured on macOS under Colima
+(Docker Engine 28.4.0), a container in open mode reaches every TCP
+service on this computer, those listening on loopback only included,
+and your network, as well as the public internet. It gives no shell on
+the host, no Docker socket and no capabilities; the container is still
+a container. Because any unauthenticated or vulnerable service on this
+computer could be used by anything running in the container, an AI
+agent included, choosing `open` asks first (in the wizard and the
+settings dialog), and starting with it needs your approval on this
+computer (see [Settings that widen the container's
+reach](#settings-that-widen-the-containers-reach)). Choose it only
+when the container must talk to a service running here; `web` reaches
+the public internet without exposing this computer. The dashboard's
+Network row and `vaibify doctor` say when a running container is open,
+whatever the file says now: a container created `open` under the old
+default stays open until it is created again.
 
 **Web mode** is allowlist mode, described below, with one difference:
 its proxy serves `CONNECT` to any host name rather than to a list. The
@@ -319,9 +339,12 @@ one way out: an HTTP CONNECT proxy that vaibify runs beside it.
   name, no raw address, and the port is the one the hub recorded when
   it launched. The container's published ports (`ports`, Jupyter) are
   published on the sidecar and relayed to the container.
-- **The dashboard** shows the Network row: the mode, whether the proxy
-  is up (a dead proxy is said in so many words, never silent), and the
-  destinations the proxy refused recently with their counts. The
+- **The dashboard** shows the Network row only when there is something
+  to act on or to know: a proxy that is down (said in so many words,
+  never silent), the destinations the proxy refused recently with their
+  counts, an open container, a container whose network disagrees with
+  its file, or a file that names no mode. A sealed project whose proxy
+  is running with nothing refused shows no row at all. The
   researcher-only **Allow host** action adds one to `allowedHosts`
   (also `vaibify do allow-network-host`); it takes effect when the
   container is created again. Agents cannot extend the allowlist.
@@ -423,6 +446,43 @@ token is minted. Use host mode on a machine dedicated to the work, or
 to try vaibify before building an image; for contained, attestable work,
 create a containerized project. See
 [Environments and Projects](environmentsAndProjects.md).
+
+## Settings that widen the container's reach
+
+Four fields of `vaibify.yml` let the container reach something it
+otherwise could not: `networkMode: open` (services on this computer and
+your network), `x11Forwarding` (your display), `bindMounts` (a host
+path) and `allowedHosts` (a network host). They are read when the
+container is created, and that file can be changed by a hand that is
+not vaibify's: a text editor, or a commit an agent made in its clone
+that you then pulled. The [Declared bind mounts](#declared-bind-mounts)
+rule names the class: a container that could edit the file declaring
+its own confinement would choose that confinement at the next start.
+It closed the bind-mount path; this closes the git path the same way
+images vaibify did not build are handled.
+
+A configuration that widens nothing needs no approval. One that widens
+anything is refused by every launch path until the host registry holds
+your approval of exactly its current values: a record keyed by the
+project, carrying a SHA-256 fingerprint of the four fields, the values
+in plain form and the time, compared at every creation. The approval
+is recorded only through a route the in-container agent cannot reach,
+and `vaibify start --approve-reach` records the same one; without a
+terminal, an unapproved file stops the start naming that flag, and with
+one, the question is asked with a default of no. The prompt names each
+field that applies, what it exposes, and whether it is not yet
+approved or changed since you approved it, so a change to one of them
+is a new question and an unchanged one is not asked again.
+
+Vaibify's own writes record the approval as they write, because each
+of those routes already refuses the agent lane: the settings dialog,
+the allow-host button on the Network row, project creation and
+containerizing a host project. You therefore never meet the prompt for
+a change you made in vaibify; a file edited any other way prompts once
+per change, and that is the point. The record lives on this computer,
+so the same project on a second computer asks once there. The
+project's settings show the approval's date beside the network mode,
+and `vaibify doctor` reports the approval's state as `reach-approval`.
 
 ## Images vaibify did not build
 

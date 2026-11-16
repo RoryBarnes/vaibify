@@ -2253,6 +2253,12 @@ class DockerConnection:
         mutationAdmission.fnAssertContainerCommandAdmitted(
             sContainerId, "ftRunInContainerStreamed",
         )
+        if mutationAdmission.fadmissionFindCommandJournaling(sContainerId):
+            # ``exec_run`` creates and starts in one call, so its command
+            # would run before anything recorded it.
+            return self._ftRunJournaledCommand(
+                sContainerId, sCommand, sUser, sWorkdir, sLane,
+            )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
             sUser = _fsResolveExecUser(container, sLane)
@@ -3629,9 +3635,59 @@ class DockerConnection:
         ``baStdin`` held in memory, or ``fileStdin`` streamed in chunks
         so a whole directory tree never has to fit in memory.
         """
-        sExecId = self.fsExecCreate(
+        sExecId, dictExecHandle = self._ftCreateJournaledExec(
             sContainerId, listCommand=listCommand, bTty=False,
         )
+        return self._ftRunCreatedExecOnStdin(
+            sExecId, dictExecHandle, baStdin, fileStdin,
+        )
+
+    def _ftRunJournaledCommand(
+        self, sContainerId, sCommand, sUser, sWorkdir, sLane,
+    ):
+        """Run a carrier-admitted shell command, its exec journaled first.
+
+        Separate from :meth:`_ftRunProgramWithStdin` because the two
+        differ in whose identity they may run as: the confined write
+        always takes the unprivileged container user, while an admitted
+        command runs as the user its caller named. Stdin is closed at
+        once, as ``exec_run`` leaves it.
+        """
+        sExecId, dictExecHandle = self._ftCreateJournaledExec(
+            sContainerId, listCommand=["/bin/bash", "-c", sCommand],
+            bTty=False, sUser=sUser, sLane=sLane, sWorkdir=sWorkdir,
+        )
+        return self._ftRunCreatedExecOnStdin(
+            sExecId, dictExecHandle, b"", None,
+        )
+
+    def _ftCreateJournaledExec(self, sContainerId, **dictCreateKeywords):
+        """Prepare the exec's record, then create it; ``(sExecId, handle)``.
+
+        A creation the daemon refuses ran nothing, so its prepared
+        record is settled rather than left for a later probe -- where,
+        meanwhile, it would refuse a hand-over of the container.
+        """
+        dictExecHandle = mutationAdmission.fdictBeginJournaledCommandExec(
+            sContainerId,
+        )
+        try:
+            sExecId = self.fsExecCreate(sContainerId, **dictCreateKeywords)
+        except Exception:
+            mutationAdmission.fnSettleJournaledExec(dictExecHandle)
+            raise
+        return sExecId, dictExecHandle
+
+    def _ftRunCreatedExecOnStdin(
+        self, sExecId, dictExecHandle, baStdin, fileStdin,
+    ):
+        """Journal, start and collect a created exec; settle once it ended.
+
+        The exec id reaches the journal before ``exec_start``, so a
+        caller that gives up on the exec (a socket deadline, a raise)
+        leaves an unsettled record the exec probe can still judge.
+        """
+        mutationAdmission.fnPromoteJournaledExec(dictExecHandle, sExecId)
         socketExec = self.fsocketExecStart(sExecId, bTty=False)
         try:
             baStdout, baStderr = _ftExchangeWithExecSocket(
@@ -3639,11 +3695,13 @@ class DockerConnection:
             )
         finally:
             socketExec.close()
-        return ExecResult(
+        tExecResult = ExecResult(
             iExitCode=self._fiAwaitExecExitCode(sExecId),
             sStdout=baStdout.decode("utf-8", errors="replace"),
             sStderr=baStderr.decode("utf-8", errors="replace"),
         )
+        mutationAdmission.fnSettleJournaledExec(dictExecHandle)
+        return tExecResult
 
     def fnWriteTreeViaTar(
         self, sContainerId, sDestinationDirectory, listHostPaths,
@@ -3821,7 +3879,7 @@ class DockerConnection:
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None,
         listCommand=None, bTty=True, dictEnvironment=None,
-        sLane=S_EXEC_LANE_HUB_INTERNAL,
+        sLane=S_EXEC_LANE_HUB_INTERNAL, sWorkdir=None,
     ):
         """Create an interactive exec instance, return exec id.
 
@@ -3854,6 +3912,8 @@ class DockerConnection:
         )
         if dictEnvironment:
             dictKwargs["environment"] = dictEnvironment
+        if sWorkdir:
+            dictKwargs["workdir"] = sWorkdir
         sExecId = self._clientDocker.api.exec_create(
             container.id, **dictKwargs
         )["Id"]

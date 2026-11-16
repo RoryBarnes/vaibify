@@ -151,21 +151,61 @@ def testTheReleaseRemovesProxyNetworkAndScript(docker):
     sScriptDirectory = os.path.join(projectEgress._fsEgressRoot(), S_UUID)
     projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
     assert os.path.isdir(sScriptDirectory)
-    projectEgress.fnReleaseProjectEgressQuietly(S_UUID)
+    projectEgress.fnReleaseProjectEgressQuietly(S_UUID, "test")
     assert ["rm", "-f", S_PROXY] in docker.listCommands[-3:]
     assert ["network", "rm", S_NETWORK] in docker.listCommands[-3:]
     assert not os.path.exists(sScriptDirectory)
-    projectEgress.fnReleaseProjectEgressQuietly("not an identity")
+    projectEgress.fnReleaseProjectEgressQuietly("not an identity", "test")
 
 
-def testTheReconcileReleasesOnlyIdentitiesWithoutAContainer(docker):
-    docker.dictAnswers["ps -a --filter"] = (0, f"{S_UUID}\n{'c' * 32}\n")
-    docker.dictAnswers["network ls --filter"] = (0, f"{'d' * 32}\n")
-    dictOutcomes = projectEgress.fdictReconcileProjectEgress(
-        lambda sUuid: sUuid == S_UUID)
-    assert dictOutcomes == {S_UUID: "kept", "c" * 32: "released", "d" * 32: "released"}
-    assert ["rm", "-f", f"vaibifyProjectProxy-{'c' * 32}"] in docker.listCommands
+def _fsAttachedKey(sUuid):
+    return f"ps -a --filter network=vaibifyProjectEgress-{sUuid}"
+
+
+@pytest.mark.falsification
+def testTheReconcileReleasesOnlyIdentitiesNoContainerUses(docker):
+    """Kills: releasing an identity without asking the daemon who uses it.
+
+    The reconcile once released every identity its registry lacked, so
+    a test hub with a throwaway registry took a running container's
+    proxy. Here no registry exists at all: only the daemon's attachment
+    answer may decide. Mutation: the reconcile's ``if
+    fbEgressIsInUse(sProjectUuid):`` becomes ``if not sProjectUuid:``.
+    """
+    sOrphan, sNetworkOnly = "c" * 32, "d" * 32
+    docker.dictAnswers["ps -a --filter label"] = (0, f"{S_UUID}\n{sOrphan}\n")
+    docker.dictAnswers["network ls --filter"] = (0, f"{sNetworkOnly}\n")
+    docker.dictAnswers[_fsAttachedKey(S_UUID)] = (0, f"{S_PROXY}\nsealedProject\n")
+    docker.dictAnswers[_fsAttachedKey(sOrphan)] = (0, f"vaibifyProjectProxy-{sOrphan}\n")
+    docker.dictAnswers[_fsAttachedKey(sNetworkOnly)] = (0, "")
+    dictOutcomes = projectEgress.fdictReconcileProjectEgress()
+    assert dictOutcomes == {S_UUID: "kept", sOrphan: "released", sNetworkOnly: "released"}
+    assert ["rm", "-f", f"vaibifyProjectProxy-{sOrphan}"] in docker.listCommands
     assert ["rm", "-f", S_PROXY] not in docker.listCommands
+
+
+@pytest.mark.falsification
+def testAnUnansweredDaemonReleasesNothing(docker):
+    """Kills: reading a failed attachment question as "nothing uses it".
+
+    Mutation: ``fbEgressIsInUse``'s ``if processResult.returncode !=
+    0:`` becomes ``if False:``, so a daemon error reads as an empty list.
+    """
+    docker.dictAnswers["ps -a --filter label"] = (0, f"{S_UUID}\n")
+    docker.dictAnswers["network ls --filter"] = (0, "")
+    docker.dictAnswers[_fsAttachedKey(S_UUID)] = (1, "Cannot connect to the Docker daemon")
+    with pytest.raises(egressProxy.EgressSetupError):
+        projectEgress.fdictReconcileProjectEgress()
+    projectEgress.fnReleaseProjectEgressIfUnused(S_UUID, "test")
+    assert docker.flistOf("rm") == []
+    assert ["network", "rm", S_NETWORK] not in docker.listCommands
+
+
+def testTheProxyItselfDoesNotCountAsAUser(docker):
+    docker.dictAnswers[_fsAttachedKey(S_UUID)] = (0, f"{S_PROXY}\n")
+    assert not projectEgress.fbEgressIsInUse(S_UUID)
+    docker.dictAnswers[_fsAttachedKey(S_UUID)] = (0, f"{S_PROXY}\nsealedProject\n")
+    assert projectEgress.fbEgressIsInUse(S_UUID)
 
 
 @pytest.mark.falsification

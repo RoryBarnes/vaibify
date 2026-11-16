@@ -146,11 +146,12 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
     from .registryRoutes import fnRegisterRegistryRoutes
     from .hostControlChannel import fnRegisterHostControlChannel
     from .routes import (
-        connectionCheckRoutes, conversionRoutes, imageTrustRoutes, remnantRoutes,
-        runtimeSetupRoutes,
+        connectionCheckRoutes, conversionRoutes, imageTrustRoutes,
+        reachApprovalRoutes, remnantRoutes, runtimeSetupRoutes,
     )
     fnRegisterRegistryRoutes(app, dictCtx)
     imageTrustRoutes.fnRegisterAll(app, dictCtx)
+    reachApprovalRoutes.fnRegisterAll(app, dictCtx)
     remnantRoutes.fnRegisterAll(app, dictCtx)
     conversionRoutes.fnRegisterAll(app, dictCtx)
     connectionCheckRoutes.fnRegisterAll(app, dictCtx)

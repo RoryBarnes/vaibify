@@ -226,6 +226,7 @@ LIST_SEEDED_OFFENDERS = [
     "vaibify/gui/registryRoutes.py::_fnRegisterStopContainer.fdictStopContainer::1",
     "vaibify/gui/registryRoutes.py::_fsResolveContainerId::1",
     "vaibify/gui/registryRoutes.py::_ftDiscoverAllContainers::1",
+    "vaibify/gui/routeContext.py::_fnRunPostPushVerifyBlocking.fdictVerifyWorker::1",
     "vaibify/gui/routeContext.py::ffilesSnapshotForWorkflow::1",
     "vaibify/gui/routeContext.py::fnRecordAttributionEvent::1",
     "vaibify/gui/routeContext.py::fsHashContainerFileOrEmpty::1",

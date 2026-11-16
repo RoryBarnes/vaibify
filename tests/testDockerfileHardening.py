@@ -169,3 +169,90 @@ def test_entrypoint_chown_does_not_follow_symlinks():
         "a blanket 'chown -R' would recurse into bind mounts; the "
         f"migration prunes nested mounts instead: {listChownRCommands}"
     )
+
+
+# -----------------------------------------------------------------------
+# Overlays run as the user the base image ends as
+# -----------------------------------------------------------------------
+
+_S_CONTAINER_USER_DIRECTIVE = "${CONTAINER_USER}"
+_RE_SYSTEM_WIDE_INSTALL = re.compile(
+    r"apt-get |pip install|ldconfig|/usr/local/|/opt\b")
+
+
+def _flistOverlayPaths():
+    """Return every Dockerfile built on top of the base image."""
+    sImageDirectory = os.path.dirname(_S_DOCKERFILE)
+    sOverlayDirectory = os.path.join(sImageDirectory, "overlays")
+    return sorted(
+        [os.path.join(sImageDirectory, sName)
+         for sName in os.listdir(sImageDirectory)
+         if sName.startswith("Dockerfile.")]
+        + [os.path.join(sOverlayDirectory, sName)
+           for sName in os.listdir(sOverlayDirectory)
+           if sName.endswith(".dockerfile")])
+
+
+def _flistInstructions(sContent):
+    """Return each instruction with its continuation lines joined."""
+    listInstructions, sPending = [], ""
+    for sLine in sContent.splitlines():
+        if not sPending and (not sLine.strip() or sLine.lstrip().startswith("#")):
+            continue
+        sPending += sLine.rstrip("\\") + " "
+        if not sLine.endswith("\\"):
+            listInstructions.append(sPending.strip())
+            sPending = ""
+    return listInstructions
+
+
+def _flistUnprivilegedSystemWideInstalls(sContent):
+    """Return the RUN steps that install system-wide as a non-root user."""
+    sUser, listOffending = _S_CONTAINER_USER_DIRECTIVE, []
+    for sInstruction in _flistInstructions(sContent):
+        if sInstruction.startswith("USER "):
+            sUser = sInstruction.split(None, 1)[1]
+        elif (sInstruction.startswith("RUN ") and sUser != "root"
+              and _RE_SYSTEM_WIDE_INSTALL.search(sInstruction)):
+            listOffending.append(sInstruction[:80])
+    return listOffending
+
+
+def test_base_image_ends_as_the_container_user():
+    """The overlay checks below start from this: the last USER the base
+    image sets is the unprivileged container user."""
+    listUsers = [sInstruction for sInstruction in
+                 _flistInstructions(_fsReadDockerfile())
+                 if sInstruction.startswith("USER ")]
+    assert listUsers[-1] == "USER " + _S_CONTAINER_USER_DIRECTIVE
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize(
+    "sOverlayPath", _flistOverlayPaths(), ids=os.path.basename)
+def test_overlay_installs_system_wide_only_as_root(sOverlayPath):
+    """An overlay starts as the user the base image ended as, the
+    unprivileged container user, so an apt or pip step written before
+    any USER line runs without root and fails. Every feature overlay
+    that installs was written that way, and none built from 2026-07-27,
+    when the base image began ending as that user, until this check.
+
+    Kills: dropping the nested-sampling overlay's ``USER root``, under
+    which its apt step runs as the container user.
+    """
+    with open(sOverlayPath, "r") as fileHandle:
+        sContent = fileHandle.read()
+    assert _flistUnprivilegedSystemWideInstalls(sContent) == []
+
+
+@pytest.mark.parametrize(
+    "sOverlayPath", _flistOverlayPaths(), ids=os.path.basename)
+def test_overlay_hands_the_image_back_to_the_container_user(sOverlayPath):
+    """An overlay that switches to root must end as the container user,
+    or ``docker exec`` into the finished image runs as root."""
+    with open(sOverlayPath, "r") as fileHandle:
+        listUsers = [sInstruction for sInstruction in
+                     _flistInstructions(fileHandle.read())
+                     if sInstruction.startswith("USER ")]
+    assert not listUsers or listUsers[-1] == (
+        "USER " + _S_CONTAINER_USER_DIRECTIVE)

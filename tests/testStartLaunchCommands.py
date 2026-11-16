@@ -21,6 +21,10 @@ import pytest
 from vaibify.docker import containerManager
 
 
+# The arguments built here are the subject; the reach-approval gate has
+# its own guard (tests/conftest.py::fixtureReachApproved explains).
+pytestmark = pytest.mark.usefixtures("fixtureReachApproved")
+
 S_RESERVATION_ID = "0123456789abcdef0123456789abcdef"
 # A child that ignores every catchable termination signal, so only the
 # KILL escalation can end it.
@@ -40,7 +44,8 @@ def fconfigBuildMinimal(sProjectName="reservationProject"):
         sWorkspaceRoot="/workspace",
         sContainerUser="researcher",
         listPorts=[], listBindMounts=[], listSecrets=[],
-        bNetworkIsolation=False, iCpuLimit=0, fMemoryLimitGigabytes=0.0,
+        bNetworkIsolation=False, sNetworkMode="open", iCpuLimit=0,
+        fMemoryLimitGigabytes=0.0,
         features=SimpleNamespace(
             bGpu=False, bClaude=False, bCodex=False, bGemini=False,
             bOpenCode=False, bCline=False, bOpenHands=False, bPi=False,

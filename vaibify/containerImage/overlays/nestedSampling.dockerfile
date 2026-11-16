@@ -18,6 +18,10 @@ FROM ${BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# The base image ends as the unprivileged container user; installing
+# system-wide needs root, and the last line hands the image back.
+USER root
+
 # gfortran, cmake and LAPACK/BLAS exist solely to build MultiNest, so
 # they travel with it rather than sitting in the baseline toolchain.
 # They are installed here, not via the user-configurable
@@ -57,3 +61,5 @@ RUN mkdir -p /tmp/MultiNest \
     && rm -rf /tmp/MultiNest
 
 RUN pip install --no-cache-dir ultranest pymultinest
+
+USER ${CONTAINER_USER}

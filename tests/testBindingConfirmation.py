@@ -236,23 +236,31 @@ def testTheReadNamesWhatAppliesInTheDashboardsWords(tApp, monkeypatch):
         ("zenodo", "environment", "zenodo"),
     ]
     dictEnvironment = _fdictEntry(dictDescribed, "zenodo", "environment", "zenodo")
-    assert dictEnvironment["sNotice"] == (
-        "Not confirmed: this workflow's environment archive on zenodo.org (permanent)."
+    assert dictEnvironment["sLabel"] == (
+        "this workflow's environment archive on zenodo.org (permanent)"
     )
     assert "production" not in json.dumps(dictDescribed)
 
 
-def testOnlyTheEnvironmentArchiveNamesNoTargetAndSaysWhatItAuthorizes(tApp):
-    """The environment kind authorizes an instance; every other kind names a record."""
-    client, _, _ = tApp
+def _fdictEntriesByAddress(client):
     dictDescribed = client.get(S_READ_PATH, params={"bFetchEvidence": "false"}).json()
-    dictByAddress = {
+    return {
         (dictEntry["sService"], dictEntry["sRecordKind"], dictEntry["sInstance"]): dictEntry
         for dictEntry in dictDescribed["listEntries"]
     }
+
+
+def testOnlyAnEntryThatNamesARecordComparesOne(tApp):
+    """The fixture's project.json names an Overleaf project and no Zenodo record.
+
+    The environment archive never names a record, and neither project
+    record names one yet, so only Overleaf has anything to compare;
+    every other entry says what confirming would allow.
+    """
+    client, _, _ = tApp
+    dictByAddress = _fdictEntriesByAddress(client)
     assert {tAddress for tAddress, dictEntry in dictByAddress.items()
-            if not dictEntry["bHasTarget"]} == {
-        ("zenodo", "environment", "sandbox"), ("zenodo", "environment", "zenodo")}
+            if dictEntry["bHasTarget"]} == {("overleaf", "", "")}
     assert all(dictEntry["sAuthorizes"] == "" for dictEntry in dictByAddress.values()
                if dictEntry["bHasTarget"])
     assert dictByAddress[("zenodo", "environment", "zenodo")]["sAuthorizes"] == (
@@ -263,6 +271,75 @@ def testOnlyTheEnvironmentArchiveNamesNoTargetAndSaysWhatItAuthorizes(tApp):
         "This lets vaibify deposit this workflow's container images on "
         "the Zenodo sandbox (testing only) with your token. Each deposit "
         "records its own DOI in .vaibify/environment.json.")
+
+
+@pytest.mark.falsification
+def testANewRecordsReviewSaysWhatItAllowsAndComparesNothing(tApp):
+    """A project record nobody has created yet has nothing to compare.
+
+    Kills: deciding the comparison by the KIND of binding, which drew
+    "no record yet" three times for a record that does not exist.
+    """
+    client, _, _ = tApp
+    dictNewRecord = _fdictEntriesByAddress(client)[("zenodo", "project", "zenodo")]
+    assert dictNewRecord["bHasTarget"] is False
+    assert dictNewRecord["sAuthorizes"] == (
+        "This lets vaibify create a new record on zenodo.org (permanent) for "
+        "this workflow's project deposits, with your token.")
+
+
+def _fdictApplyingEntriesWithEverythingInUse(client, dictCtx, monkeypatch):
+    """Name a record, apply the environment archive, and confirm nothing."""
+    dictCtx["workflows"][S_CONTAINER_ID]["sZenodoConceptDoi"] = "10.5072/zenodo.9"
+    monkeypatch.setattr(
+        bindingRoutes, "_fsEnvironmentArchiveInstance",
+        lambda dictCtx, sContainerId, dictWorkflow: "zenodo",
+    )
+    return {tAddress: dictEntry for tAddress, dictEntry
+            in _fdictEntriesByAddress(client).items() if dictEntry["bApplies"]}
+
+
+@pytest.mark.falsification
+def testNothingConfirmedOnThisComputerCarriesNoNotice(tApp, monkeypatch):
+    """A second computer has confirmed nothing, so it has nothing to warn about.
+
+    Each entry applies (an Overleaf project, a named sandbox record, an
+    environment archive on zenodo.org), and the first action that would
+    spend a token on any of them is refused and opens the review.
+
+    Kills: noticing an entry only because nobody confirmed it here,
+    which greeted every project opened on a second computer.
+    """
+    client, dictCtx, _ = tApp
+    dictApplying = _fdictApplyingEntriesWithEverythingInUse(client, dictCtx, monkeypatch)
+    assert set(dictApplying) == {
+        ("overleaf", "", ""), ("zenodo", "project", "sandbox"),
+        ("zenodo", "environment", "zenodo"),
+    }
+    assert {dictEntry["sState"] for dictEntry in dictApplying.values()} == {"unconfirmed"}
+    assert [dictEntry["sNotice"] for dictEntry in dictApplying.values()] == ["", "", ""]
+
+
+@pytest.mark.falsification
+def testAutoArchiveStillNoticesWhatItWouldSendTo(tApp, monkeypatch):
+    """Auto Archive asks nobody, so an unconfirmed remote it sends to is noticed.
+
+    It sends to Overleaf and the project record, never the environment
+    archive, so that entry stays silent.
+
+    Kills: silencing every unconfirmed entry, which would leave Auto
+    Archive refused with only a line in the hub's log to say so.
+    """
+    client, dictCtx, _ = tApp
+    dictCtx["workflows"][S_CONTAINER_ID]["bAutoArchive"] = True
+    dictApplying = _fdictApplyingEntriesWithEverythingInUse(client, dictCtx, monkeypatch)
+    sUntil = " Auto Archive sends nothing there until you confirm it."
+    assert dictApplying[("overleaf", "", "")]["sNotice"] == (
+        "Not confirmed: this workflow's Overleaf project." + sUntil)
+    assert dictApplying[("zenodo", "project", "sandbox")]["sNotice"] == (
+        "Not confirmed: this workflow's project deposits on the Zenodo sandbox "
+        "(testing only)." + sUntil)
+    assert dictApplying[("zenodo", "environment", "zenodo")]["sNotice"] == ""
 
 
 def testADifferingEntryNamesBothValues(tApp):

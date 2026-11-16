@@ -642,7 +642,10 @@ streams into a viewer, and the **Logs** tab lists past run logs.
 ### Terminal
 
 The terminal strip opens shells inside the container (or, for a host
-environment, on your computer), with tabs and panes. Start a coding
+environment, on your computer), with tabs and panes. Clicking a Project
+asks whether to start fresh, restore the panes as you left them with
+each agent chat resumed, or choose past chats; see
+[Returning to Your Work](dashboardMemory.md). Start a coding
 agent from a shell; the **Using AI** section of the Help panel lists
 the commands. A program that takes over the mouse, such as an agent or
 an editor, also takes your drag gestures. To get text out:

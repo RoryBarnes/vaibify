@@ -877,6 +877,36 @@ def _fnRegisterPollEvents(app, dictCtx):
         return dictEvents
 
 
+def _fnRegisterEarlierEvents(app, dictCtx):
+    """Register GET .../{sCampaignId}/events/earlier: page back on disk.
+
+    The poll's window holds the newest 500 events; the campaign's
+    durable event log holds all of them. Each page is a bounded read
+    backwards from a byte cursor the previous page returned
+    (``agentCouncilEventLog``), so an old page costs what a new one does.
+    """
+
+    @app.get("/api/agent-councils/{sContainerId}/{sCampaignId}/events/earlier")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictPageEarlierEvents(
+        sContainerId: str, sCampaignId: str, requestHttp: Request,
+        iBeforeOffset: int = -1, iMaximum: int = 200,
+        sProjectDirectory: str = "",
+    ):
+        sName, sProjectRepoPath = ftResolveCouncilPrincipal(
+            dictCtx, requestHttp, sContainerId, sProjectDirectory, sCampaignId)
+        fjsonRequireCampaign(
+            fdictCampaignStore(requestHttp), sCampaignId, sName,
+            sProjectRepoPath)
+        dictPage = await asyncio.to_thread(
+            agentCouncilStore.fdictCollectEarlierCampaignEvents,
+            fdictCampaignStore(requestHttp), sCampaignId, iBeforeOffset,
+            iMaximum)
+        if dictPage is None:
+            raise HTTPException(404, f"no council campaign '{sCampaignId}'")
+        return dictPage
+
+
 def _fsLoadAcceptedPlanSeed(dictStore, sSourceCampaignId, sName,
                             sProjectRepoPath):
     """Load the sealed accepted plan an implementation council implements.
@@ -1573,6 +1603,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterListCouncils(app, dictCtx)
     _fnRegisterStartCouncil(app, dictCtx)
     _fnRegisterPollEvents(app, dictCtx)
+    _fnRegisterEarlierEvents(app, dictCtx)
     _fnRegisterRespond(app, dictCtx)
     _fnRegisterResume(app, dictCtx)
     _fnRegisterRetry(app, dictCtx)

@@ -465,3 +465,167 @@ def test_the_proxy_probe_program_really_speaks_connect():
     assert dictAnswer["bThroughProxy"] is True
     assert dictAnswer["bConnected"] is False
     assert "407" in dictAnswer["sProxyError"]
+
+
+# ---------------------------------------------------------------------
+# The network assessment: what the container HAS (2026-11-04)
+# ---------------------------------------------------------------------
+
+from vaibify.docker import networkAssessment  # noqa: E402
+
+
+def fjsonSealedInspectCaptured():
+    """A sealed attachment's inspect record, captured 2026-11-04.
+
+    Docker Engine 28.4.0 under Colima: a container created with
+    vaibify's web flag on a network made ``--internal`` with the
+    bridge's gateway mode ``isolated``. The empty ``Gateway`` is the
+    fact the sealed reading rests on; this record is the independent
+    oracle for it, read from the daemon rather than from the code.
+    """
+    return {
+        "HostConfig": {"NetworkMode": "vaibifyProjectEgress-" + "a" * 32,
+                       "Dns": None},
+        "Config": {"Env": ["VAIBIFY_NETWORK_MODE=web"]},
+        "NetworkSettings": {"Networks": {
+            "vaibifyProjectEgress-" + "a" * 32: {
+                "NetworkID": "6c1c7c4862ec" + "0" * 52, "Gateway": "",
+                "IPAddress": "172.20.0.1", "IPPrefixLen": 16,
+            },
+        }},
+    }
+
+
+def fjsonDefaultBridgeInspectCaptured():
+    """A default-bridge attachment's inspect record, captured 2026-11-04."""
+    return {
+        "HostConfig": {"NetworkMode": "bridge"},
+        "Config": {"Env": []},
+        "NetworkSettings": {"Networks": {
+            "bridge": {"Gateway": "172.17.0.1", "IPAddress": "172.17.0.2"},
+        }},
+    }
+
+
+def test_the_captured_sealed_record_is_sealed():
+    dictAssessment = networkAssessment.fdictAssessContainerNetwork(
+        fjsonSealedInspectCaptured())
+    assert dictAssessment["sState"] == "sealed"
+    assert "no gateway" in dictAssessment["sEvidence"]
+
+
+@pytest.mark.falsification
+def test_the_sealed_flag_with_a_gateway_is_a_disagreement_never_sealed():
+    """A flag is a claim; the attachment is what the container has.
+
+    Kills: the assessment reading the sealed flag alone, without the
+    gateway check.
+    """
+    jsonInspect = fjsonSealedInspectCaptured()
+    sNetwork = next(iter(jsonInspect["NetworkSettings"]["Networks"]))
+    jsonInspect["NetworkSettings"]["Networks"][sNetwork]["Gateway"] = "172.20.0.254"
+    dictAssessment = networkAssessment.fdictAssessContainerNetwork(jsonInspect)
+    assert dictAssessment["sState"] == "disagreement"
+    assert "172.20.0.254" in dictAssessment["sEvidence"]
+    jsonInspect = fjsonSealedInspectCaptured()
+    jsonInspect["NetworkSettings"]["Networks"] = {"bridge": {"Gateway": "172.17.0.1"}}
+    assert networkAssessment.fdictAssessContainerNetwork(
+        jsonInspect)["sState"] == "disagreement"
+    jsonInspect = fjsonSealedInspectCaptured()
+    jsonInspect["NetworkSettings"]["Networks"][sNetwork + "b"] = {"Gateway": ""}
+    assert networkAssessment.fdictAssessContainerNetwork(
+        jsonInspect)["sState"] == "disagreement"
+
+
+def test_the_other_three_states_are_told_apart():
+    assert networkAssessment.fdictAssessContainerNetwork({
+        "HostConfig": {"NetworkMode": "none"},
+        "Config": {"Env": ["VAIBIFY_NETWORK_ISOLATED=true"]},
+    })["sState"] == "isolated"
+    dictOpen = networkAssessment.fdictAssessContainerNetwork(
+        fjsonDefaultBridgeInspectCaptured())
+    assert dictOpen["sState"] == "open" and "172.17.0.1" in dictOpen["sEvidence"]
+    assert networkAssessment.fdictAssessContainerNetwork({})["sState"] == "unknown"
+    assert networkAssessment.fdictAssessContainerNetwork({
+        "HostConfig": {"NetworkMode": "bridge"},
+        "Config": {"Env": ["VAIBIFY_NETWORK_ISOLATED=true"]},
+        "NetworkSettings": {"Networks": {"bridge": {"Gateway": "172.17.0.1"}}},
+    })["sState"] == "disagreement"
+
+
+@pytest.mark.parametrize("sFileMode,sState,bAgrees", [
+    ("web", "sealed", True), ("allowlist", "sealed", True),
+    ("open", "open", True), ("isolated", "isolated", True),
+    ("web", "open", False), ("", "open", False), ("unstated", "open", False),
+    ("open", "sealed", False), ("web", "disagreement", False),
+    ("", "unknown", True), ("open", "unknown", True),
+])
+def test_the_file_agrees_only_when_both_name_one_thing(sFileMode, sState, bAgrees):
+    assert networkAssessment.fbFileModeAgreesWithContainerState(
+        sFileMode, sState) is bAgrees
+
+
+def _flistDoctorResultsFor(monkeypatch, jsonInspect):
+    monkeypatch.setattr(doctorNetwork, "fjsonInspectContainer", lambda sName: jsonInspect)
+    return doctorNetwork.flistDiagnoseContainerNetwork(
+        _ConfigStub(), "networkProbe", _ConnectionStub())
+
+
+def _fdictNetworkRowFor(monkeypatch, jsonInspect, sFileMode):
+    from types import SimpleNamespace
+    from vaibify.gui.routes import systemRoutes
+    from vaibify.docker import containerManager
+    monkeypatch.setattr(containerManager, "fjsonInspectContainer", lambda sId: jsonInspect)
+    monkeypatch.setattr(
+        systemRoutes, "_fconfigForContainerOrNone",
+        lambda *tArgs: SimpleNamespace(sNetworkMode=sFileMode, bNetworkIsolation=False))
+    monkeypatch.setattr(
+        systemRoutes, "_fnDescribeProxyInto",
+        lambda dictNetwork, *tArgs: dictNetwork.update({"sProxyState": "running"}))
+    return systemRoutes._fdictDescribeNetwork(None, "cid")
+
+
+def test_the_doctor_and_the_network_row_agree_on_every_fixture(monkeypatch):
+    """Both read the one assessment, so one fixture gives one answer twice."""
+    jsonSealed = fjsonSealedInspectCaptured()
+    listSealed = _flistDoctorResultsFor(monkeypatch, jsonSealed)
+    assert [(r.sName, r.sLevel) for r in listSealed] == [("network-isolation", "info")]
+    assert "no gateway" in listSealed[0].sMessage
+    assert _fdictNetworkRowFor(monkeypatch, jsonSealed, "web")["sContainerState"] == "sealed"
+
+    jsonOpen = fjsonDefaultBridgeInspectCaptured()
+    dictOpen = {r.sName: r for r in _flistDoctorResultsFor(monkeypatch, jsonOpen)}
+    assert dictOpen["network-exposure"].sLevel == "warn"
+    assert "networkMode: web" in dictOpen["network-exposure"].sRemediation
+    assert _fdictNetworkRowFor(monkeypatch, jsonOpen, "open")["sContainerState"] == "open"
+
+    jsonSealed["NetworkSettings"]["Networks"] = {"bridge": {"Gateway": "172.17.0.1"}}
+    dictDisagreement = {
+        r.sName: r for r in _flistDoctorResultsFor(monkeypatch, jsonSealed)}
+    assert dictDisagreement["network-isolation"].sLevel == "fail"
+    assert "built-in network `bridge`" in dictDisagreement["network-isolation"].sMessage
+    assert "network-exposure" not in dictDisagreement
+    assert _fdictNetworkRowFor(
+        monkeypatch, jsonSealed, "web")["sContainerState"] == "disagreement"
+
+
+@pytest.mark.falsification
+def test_an_open_container_under_an_unstated_or_web_file_is_shown_open(monkeypatch):
+    """The dashboard says what the container IS, not only what the file says.
+
+    A container created open under the old default, while the file is
+    now unstated or web, must read open with the file disagreeing.
+
+    Kills: the Network row deriving the container's state from the
+    file's mode instead of the daemon's record.
+    """
+    jsonOpen = fjsonDefaultBridgeInspectCaptured()
+    for sFileMode in ("", "web"):
+        dictRow = _fdictNetworkRowFor(monkeypatch, jsonOpen, sFileMode)
+        assert dictRow["sContainerState"] == "open"
+        assert dictRow["bFileAgrees"] is False
+        assert "172.17.0.1" in dictRow["sEvidence"]
+    assert _fdictNetworkRowFor(monkeypatch, jsonOpen, "open")["bFileAgrees"] is True
+    dictUnknown = _fdictNetworkRowFor(monkeypatch, {}, "")
+    assert (dictUnknown["sMode"], dictUnknown["sContainerState"],
+            dictUnknown["bFileAgrees"]) == ("unstated", "unknown", True)

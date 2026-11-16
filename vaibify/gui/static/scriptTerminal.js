@@ -266,6 +266,14 @@ const VaibifyTerminal = (function () {
         iTabCounter++;
         var dictTab = {
             iId: iTabCounter,
+            /* Names this tab's shell to the hub, which hands it to the
+               shell as the place its agent-chat lifecycle is recorded
+               (the saved layout reads it back). A new id per tab, so
+               two tabs can never share a record. */
+            sTerminalId: _fsMintTerminalId(),
+            /* A command to type once this tab's shell opens: a saved
+               chat being resumed. Empty for an ordinary tab. */
+            sPendingCommand: "",
             sLabel: "Term " + iTabCounter,
             terminal: null,
             fitAddon: null,
@@ -288,6 +296,14 @@ const VaibifyTerminal = (function () {
         dictPane.listTabs.push(dictTab);
         fnRenderPaneTabs(iPaneId);
         fnActivateTabInPane(iPaneId, dictPane.listTabs.length - 1);
+    }
+
+    function _fsMintTerminalId() {
+        var aBytes = new Uint8Array(16);
+        window.crypto.getRandomValues(aBytes);
+        return Array.from(aBytes, function (iByte) {
+            return ("0" + iByte.toString(16)).slice(-2);
+        }).join("");
     }
 
     function fnRenderPaneTabs(iPaneId) {
@@ -367,6 +383,11 @@ const VaibifyTerminal = (function () {
             dictTab.terminal.element.style.display = "";
             fnRefitTabPreservingSelection(dictTab, dictTab.fitAddon);
             dictTab.terminal.focus();
+        }
+        /* A restored chat waits on its tab's first focus, and coming
+           to the front is that focus. */
+        if (dictTab.sPendingCommand && !dictTab.websocket) {
+            fnDialTabShell(dictTab);
         }
         fnRenderPaneTabs(iPaneId);
     }
@@ -1477,7 +1498,8 @@ const VaibifyTerminal = (function () {
         var sUrl = sProtocol + "//" + window.location.host +
             "/ws/terminal/" + sContainerId +
             "?sToken=" + encodeURIComponent(sToken) +
-            "&sLeaseId=" + encodeURIComponent(sLeaseId);
+            "&sLeaseId=" + encodeURIComponent(sLeaseId) +
+            "&sTerminalId=" + encodeURIComponent(dictTab.sTerminalId || "");
         var ws = new WebSocket(sUrl);
         dictTab.websocket = ws;
         ws.binaryType = "arraybuffer";
@@ -1490,6 +1512,7 @@ const VaibifyTerminal = (function () {
                 iRows: terminal.rows,
                 iColumns: terminal.cols,
             }));
+            _fnTypePendingCommand(dictTab, ws);
         };
 
         ws.onmessage = function (event) {
@@ -2059,6 +2082,101 @@ const VaibifyTerminal = (function () {
         });
     }
 
+    /* --- The saved layout ---
+
+       Geometry and identity only: how many panes, how wide, which tabs
+       each holds and which is in front, and each tab's terminal id so
+       the hub can say which agent chat it held. Shells are never kept
+       alive across a leave -- the quiescence claim depends on that --
+       so a restored tab gets a new shell, and a resumed chat is a
+       command typed into it once it opens. */
+
+    var _REGEX_PANE_FLEX = /^0 0 \d{1,5}px$/;
+    var _REGEX_TAB_LABEL = /^[A-Za-z0-9 ._-]{1,40}$/;
+
+    function fdictCaptureLayout() {
+        return {
+            listPanes: listPanes.map(function (dictPane) {
+                return {
+                    sFlex: dictPane.elPane.style.flex || "",
+                    iActiveTabIndex: dictPane.iActiveTabIndex,
+                    listTabs: dictPane.listTabs.map(function (dictTab) {
+                        return {sTerminalId: dictTab.sTerminalId,
+                                sLabel: dictTab.sLabel,
+                                bShellStarted: Boolean(dictTab.websocket)};
+                    }),
+                };
+            }),
+        };
+    }
+
+    function _fnTypePendingCommand(dictTab, ws) {
+        var sCommand = dictTab.sPendingCommand;
+        if (!sCommand) return;
+        dictTab.sPendingCommand = "";
+        /* Typed after the shell has drawn its first prompt; the rcfile
+           must have defined the agent wrappers before the command runs. */
+        setTimeout(function () {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(new TextEncoder().encode(sCommand + "\r"));
+            }
+        }, 700);
+    }
+
+    function _fnRestoreOnePane(dictSavedPane, fsCommandForTab, iPaneIndex) {
+        fnCreatePane();
+        var dictPane = listPanes[listPanes.length - 1];
+        var listSavedTabs = Array.isArray(dictSavedPane.listTabs) &&
+            dictSavedPane.listTabs.length ? dictSavedPane.listTabs : [{}];
+        for (var iTab = 1; iTab < listSavedTabs.length; iTab++) {
+            fnCreateTab(dictPane.iId);
+        }
+        listSavedTabs.forEach(function (dictSavedTab, iTabIndex) {
+            var dictTab = dictPane.listTabs[iTabIndex];
+            if (_REGEX_TAB_LABEL.test(dictSavedTab.sLabel || "")) {
+                dictTab.sLabel = dictSavedTab.sLabel;
+            }
+            dictTab.sPendingCommand =
+                fsCommandForTab(iPaneIndex, iTabIndex) || "";
+        });
+        if (_REGEX_PANE_FLEX.test(dictSavedPane.sFlex || "")) {
+            dictPane.elPane.style.flex = dictSavedPane.sFlex;
+        }
+        var iActive = parseInt(dictSavedPane.iActiveTabIndex, 10);
+        if (!(iActive >= 0 && iActive < dictPane.listTabs.length)) iActive = 0;
+        fnActivateTabInPane(dictPane.iId, iActive);
+    }
+
+    function fnRestoreLayout(dictLayout, fsCommandForTab) {
+        /* Replaces whatever panes are open. A tab with a command to
+           type starts its shell now when it is in front of its pane;
+           a tab behind starts on first focus, as every tab does. */
+        fnCloseAll();
+        var listSavedPanes = ((dictLayout || {}).listPanes || [])
+            .slice(0, I_MAX_PANES);
+        var fsCommand = fsCommandForTab || function () { return ""; };
+        listSavedPanes.forEach(function (dictSavedPane, iPaneIndex) {
+            _fnRestoreOnePane(dictSavedPane || {}, fsCommand, iPaneIndex);
+        });
+        fnUpdateAddPaneButton();
+    }
+
+    function fbHasOpenPanes() {
+        return listPanes.length > 0;
+    }
+
+    function flistTabsAt() {
+        /* [{iPane, iTab, sTerminalId}] for every open tab, in order. */
+        var listTabs = [];
+        listPanes.forEach(function (dictPane, iPane) {
+            dictPane.listTabs.forEach(function (dictTab, iTab) {
+                listTabs.push({iPane: iPane, iTab: iTab,
+                               sTerminalId: dictTab.sTerminalId});
+            });
+        });
+        return listTabs;
+    }
+
     /* --- Init --- */
 
     document.addEventListener("DOMContentLoaded", function () {
@@ -2205,6 +2323,10 @@ const VaibifyTerminal = (function () {
         },
         fnCreatePane: fnCreatePane,
         fnCloseAll: fnCloseAll,
+        fdictCaptureLayout: fdictCaptureLayout,
+        fnRestoreLayout: fnRestoreLayout,
+        fbHasOpenPanes: fbHasOpenPanes,
+        flistTabsAt: flistTabsAt,
         fnMarkClosingForRelease: fnMarkClosingForRelease,
         fnUnmarkClosingForRelease: fnUnmarkClosingForRelease,
         fnFitActiveTerminal: fnFitAllTerminals,

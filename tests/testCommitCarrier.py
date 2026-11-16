@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from vaibify.config import containerLock, operationJournal
+from vaibify.config import containerLock, mutationAdmission, operationJournal
 from vaibify.config.mutationAdmission import (
     MutationAdmission,
     MutationNotAdmittedError,
@@ -1272,3 +1272,350 @@ def testABusyDurableRefusalNamesTheLiveWork():
         await asyncio.sleep(0.05)
 
     asyncio.run(_fnDrive())
+
+
+# ---------------------------------------------------------------------
+# A request a quarantine refuses never ran, so it leaves no record.
+# ---------------------------------------------------------------------
+
+def _fsPoisonAnEarlierOperation():
+    """Quarantine the container with one foreign, unfinished record."""
+    sPoisonedId = operationJournal.fsPrepareOperation(
+        S_CONTAINER_NAME, "helper", "post-push-verify github",
+    )
+    operationJournal.fnPromoteOperationToInFlight(
+        S_CONTAINER_NAME, sPoisonedId,
+        {"iHolderPid": 12345, "iHolderProcessGroup": 12345},
+    )
+    operationJournal.fnMarkOperationNeedsReconciliation(
+        S_CONTAINER_NAME, sPoisonedId, sNote="worker failed",
+    )
+    return sPoisonedId
+
+
+def _fsetRecordedOperationIds():
+    """Return the ids of every record in the container's journal."""
+    return set(operationJournal.fdictReadJournalOutcome(
+        S_CONTAINER_NAME,
+    )["dictOperations"])
+
+
+@pytest.mark.falsification
+def testAModeBRequestRefusedByAQuarantineLeavesNoRecord():
+    """A refused lock-held request erases the record it just wrote.
+
+    The gate runs after promotion by design, and the worker only after
+    the gate, so a refusal here describes work that never happened. The
+    record used to stay IN_FLIGHT: every request a quarantined container
+    turned away added a phantom operation to the journal the researcher
+    then had to reconcile.
+
+    Kills: dropping the settle from the refusal branch of
+    ``commitCarrier._fnPromoteAndGateBeforeAnyEffect``.
+    """
+    sPoisonedId = _fsPoisonAnEarlierOperation()
+    listRan = []
+
+    async def _fnDrive():
+        appState, _, dictLaneTuple = _ftBuildOwnedAppState()
+        with pytest.raises(MutationNotAdmittedError):
+            await commitCarrier.fdictRunLockHeldMutation(
+                appState, S_CONTAINER_NAME, S_CONTAINER_ID,
+                dictLaneTuple, "helper", "update-step",
+                lambda supervisor: listRan.append("ran"),
+            )
+
+    asyncio.run(_fnDrive())
+    assert listRan == []
+    assert _fsetRecordedOperationIds() == {sPoisonedId}
+
+
+def testAModeARequestRefusedByAQuarantineLeavesNoRecord():
+    """The synchronous carrier settles its refused record the same way."""
+    sPoisonedId = _fsPoisonAnEarlierOperation()
+    appState, _, dictLaneTuple = _ftBuildOwnedAppState()
+    listEffects = []
+    with pytest.raises(MutationNotAdmittedError):
+        commitCarrier.fdictCommitSynchronousMutation(
+            appState, S_CONTAINER_NAME, S_CONTAINER_ID, dictLaneTuple,
+            "file-write", "/workspace/project.json",
+            lambda: listEffects.append("ran"),
+            {"sExpectedSha256": "aa", "sPriorSha256": "bb"},
+        )
+    assert listEffects == []
+    assert _fsetRecordedOperationIds() == {sPoisonedId}
+
+
+def testAModeAOwnerChangeAfterTheGateLeavesNoRecord():
+    """An owner rotation between gate and effect also settles the record."""
+    appState, recordOwner, dictLaneTuple = _ftBuildOwnedAppState()
+    listEffects = []
+
+    def fnRotateTheOwnerAtTheGate(sName, sOperationId, dictIdentity):
+        recordOwner.iOwnerGeneration = 2
+
+    with patch.object(
+        commitCarrier, "fnAssertOperationAdmittedByIdentity",
+        fnRotateTheOwnerAtTheGate,
+    ), pytest.raises(commitCarrier.CommitRefusedError):
+        commitCarrier.fdictCommitSynchronousMutation(
+            appState, S_CONTAINER_NAME, S_CONTAINER_ID, dictLaneTuple,
+            "file-write", "/workspace/project.json",
+            lambda: listEffects.append("ran"),
+            {"sExpectedSha256": "aa", "sPriorSha256": "bb"},
+        )
+    assert listEffects == []
+    assert operationJournal.fdictReadJournalOutcome(
+        S_CONTAINER_NAME,
+    )["sReadState"] == "absent"
+
+
+# ---------------------------------------------------------------------
+# A carrier worker's container command is journaled before it starts,
+# so a command the worker abandoned is never cleared as finished.
+# ---------------------------------------------------------------------
+
+class _StubContainerDelegatingExecRun(_StubContainer):
+    """A container whose ``exec_run`` is docker-py's, over a stub daemon.
+
+    Create, start, inspect, with nothing journaled in between -- so a
+    command run this way meets the same daemon, timeout included, as
+    one the journaled path runs.
+    """
+
+    def __init__(self, sContainerId, apiDaemon):
+        super().__init__(sContainerId)
+        self.apiDaemon = apiDaemon
+
+    def exec_run(self, cmd, demux=False, **dictKwargs):
+        sExecId = self.apiDaemon.exec_create(
+            self.id, cmd=cmd, **dictKwargs,
+        )["Id"]
+        tOutput = self.apiDaemon.exec_start(sExecId, demux=demux)
+        return self.apiDaemon.exec_inspect(sExecId)["ExitCode"], tOutput
+
+
+class _StubApiClientTimingOutAtStart(_StubApiClient):
+    """A daemon whose plain exec start can outlast the caller.
+
+    Records the journal as it stands the instant any exec starts.
+    With ``bStartTimesOut`` the caller's wait fails at a socket deadline
+    while the daemon keeps the exec running, which is the case a
+    finished worker thread cannot speak for.
+    """
+
+    def __init__(self, bStartTimesOut=False):
+        super().__init__()
+        self.bStartTimesOut = bStartTimesOut
+        self.bExecRunning = False
+        self.listJournalAtStart = []
+
+    def exec_start(
+        self, sExecId, stream=False, demux=False, socket=False, tty=False,
+    ):
+        self.listJournalAtStart.append(
+            operationJournal.fdictReadJournalOutcome(
+                S_CONTAINER_NAME,
+            )["dictOperations"],
+        )
+        if self.bStartTimesOut:
+            self.bExecRunning = True
+            raise TimeoutError("the exec outlasted the socket deadline")
+        if socket:
+            return super().exec_start(sExecId, socket=True, tty=tty)
+        return (b"", b"")
+
+    def exec_inspect(self, sExecId):
+        return {"ExitCode": 0, "Running": self.bExecRunning}
+
+
+def _fconnectionWithTimingDaemon(bStartTimesOut=False):
+    """A real DockerConnection over the timing stub daemon."""
+    apiDaemon = _StubApiClientTimingOutAtStart(bStartTimesOut)
+    connectionDocker = _fconnectionBuildStubbedDockerConnection(
+        _StubContainerDelegatingExecRun(S_CONTAINER_ID, apiDaemon),
+    )
+    connectionDocker._clientDocker = SimpleNamespace(api=apiDaemon)
+    return connectionDocker
+
+
+def _fnRunOneCommandInALockHeldWorker(connectionDocker):
+    """Run one command from a mode-(b) worker; let any failure escape."""
+    async def _fnDrive():
+        appState, _, dictLaneTuple = _ftBuildOwnedAppState()
+        await commitCarrier.fdictRunLockHeldMutation(
+            appState, S_CONTAINER_NAME, S_CONTAINER_ID, dictLaneTuple,
+            "helper", "one command",
+            lambda supervisor: connectionDocker.ftRunInContainerStreamed(
+                S_CONTAINER_ID, "true", sUser="containeruser",
+            ),
+        )
+
+    asyncio.run(_fnDrive())
+
+
+@pytest.mark.falsification
+def testALockHeldCommandIsJournaledBeforeItStarts():
+    """The exec's own id is on disk before the daemon starts it.
+
+    Kills: journaling no carrier mode's commands, so a worker's command
+    runs through the one-call ``exec_run`` before anything records it.
+    """
+    connectionDocker = _fconnectionWithTimingDaemon()
+    _fnRunOneCommandInALockHeldWorker(connectionDocker)
+    listJournalAtStart = connectionDocker._clientDocker.api.listJournalAtStart
+    assert len(listJournalAtStart) == 1, listJournalAtStart
+    listExecRecords = [
+        dictRecord for dictRecord in listJournalAtStart[0].values()
+        if dictRecord["sKind"] == "exec"
+    ]
+    assert len(listExecRecords) == 1, listJournalAtStart
+    assert listExecRecords[0]["sState"] == "IN_FLIGHT"
+    assert listExecRecords[0]["sDockerExecId"]
+    assert operationJournal.fdictReadJournalOutcome(
+        S_CONTAINER_NAME,
+    )["sReadState"] == "absent"
+
+
+def _fnStandInForAnExitedHub():
+    """Point the carrier's own records at a dead holder, as after Quit."""
+    processExited = subprocess.Popen(
+        [sys.executable, "-c", "pass"], start_new_session=True,
+    )
+    processExited.wait()
+    dictPayload = operationJournal._fdictLoadPayloadForWrite(
+        S_CONTAINER_NAME,
+    )
+    for dictRecord in dictPayload["dictOperations"].values():
+        if "iHolderPid" in dictRecord:
+            dictRecord["iHolderPid"] = processExited.pid
+            dictRecord["iHolderProcessGroup"] = processExited.pid
+    operationJournal._fnStoreJournalPayload(S_CONTAINER_NAME, dictPayload)
+
+
+@pytest.mark.falsification
+def testAnAbandonedCommandKeepsTheContainerUnreconciledUntilItEnds():
+    """Reconciliation waits for a command its worker gave up on.
+
+    The worker's wait on its exec fails at a socket deadline while the
+    command keeps running. The worker's record is poisoned, and once the
+    hub has exited its holder is provably dead -- which says nothing
+    about the command. Only the command's own record, probed against the
+    daemon, can say it finished.
+
+    Kills: journaling no carrier mode's commands, which leaves the
+    abandoned command with no record of its own.
+    """
+    from vaibify.config.reconciliation import fdictProveJournalRecordsSettled
+
+    connectionDocker = _fconnectionWithTimingDaemon(bStartTimesOut=True)
+    with pytest.raises(TimeoutError):
+        _fnRunOneCommandInALockHeldWorker(connectionDocker)
+    _fnStandInForAnExitedHub()
+    setOperationIds = set(operationJournal.fdictReadJournalOutcome(
+        S_CONTAINER_NAME,
+    )["dictOperations"])
+    dictWhileRunning = fdictProveJournalRecordsSettled(
+        S_CONTAINER_NAME, connectionDocker, setOperationIds,
+    )
+    assert dictWhileRunning["bProven"] is False, dictWhileRunning
+    assert "still running" in dictWhileRunning["sRefusalReason"]
+    connectionDocker._clientDocker.api.bExecRunning = False
+    dictAfterExit = fdictProveJournalRecordsSettled(
+        S_CONTAINER_NAME, connectionDocker, setOperationIds,
+    )
+    assert dictAfterExit["bProven"] is True, dictAfterExit
+
+
+def testAnAuditedReadIsNotJournaled():
+    """A typed read changes nothing, so it writes no record of its own."""
+    connectionDocker = _fconnectionWithTimingDaemon()
+
+    def fnReadInsideTheWorker(supervisor):
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            return connectionDocker.ftRunInContainerStreamed(
+                S_CONTAINER_ID, "true", sUser="containeruser",
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+
+    async def _fnDrive():
+        appState, _, dictLaneTuple = _ftBuildOwnedAppState()
+        await commitCarrier.fdictRunLockHeldMutation(
+            appState, S_CONTAINER_NAME, S_CONTAINER_ID, dictLaneTuple,
+            "helper", "one read", fnReadInsideTheWorker,
+        )
+
+    asyncio.run(_fnDrive())
+    listJournalAtStart = connectionDocker._clientDocker.api.listJournalAtStart
+    assert len(listJournalAtStart) == 1, listJournalAtStart
+    assert [
+        dictRecord for dictRecord in listJournalAtStart[0].values()
+        if dictRecord["sKind"] == "exec"
+    ] == [], listJournalAtStart
+
+
+@pytest.mark.falsification
+def testACommandRefusedAtItsGateLeavesNoRecordAndNeverStarts():
+    """A quarantine that lands mid-worker refuses the next command cleanly.
+
+    The exec is created, journaled and identity-gated before it starts.
+    A refusal there means the daemon never ran it, so its record must
+    not survive as an operation somebody has to reconcile.
+
+    Kills: dropping the settle from ``fnPromoteJournaledExec``'s
+    refusal branch.
+    """
+    connectionDocker = _fconnectionWithTimingDaemon()
+
+    def fnPoisonThenRunACommand(supervisor):
+        _fsPoisonAnEarlierOperation()
+        return connectionDocker.ftRunInContainerStreamed(
+            S_CONTAINER_ID, "true", sUser="containeruser",
+        )
+
+    async def _fnDrive():
+        appState, _, dictLaneTuple = _ftBuildOwnedAppState()
+        await commitCarrier.fdictRunLockHeldMutation(
+            appState, S_CONTAINER_NAME, S_CONTAINER_ID, dictLaneTuple,
+            "helper", "one command", fnPoisonThenRunACommand,
+        )
+
+    with pytest.raises(MutationNotAdmittedError):
+        asyncio.run(_fnDrive())
+    assert connectionDocker._clientDocker.api.listJournalAtStart == []
+    listExecRecords = [
+        dictRecord for dictRecord in operationJournal.fdictReadJournalOutcome(
+            S_CONTAINER_NAME,
+        )["dictOperations"].values()
+        if dictRecord["sKind"] == "exec"
+    ]
+    assert listExecRecords == [], listExecRecords
+
+
+@pytest.mark.falsification
+def testACommandTheDaemonRefusesToCreateLeavesNoRecord():
+    """A refused exec creation ran nothing, so no exec record survives it.
+
+    Left PREPARED, the record would refuse a hand-over of the container
+    until something probed it.
+
+    Kills: dropping the settle from
+    ``DockerConnection._ftCreateJournaledExec``'s failure branch.
+    """
+    connectionDocker = _fconnectionWithTimingDaemon()
+
+    def fnRefuseTheCreation(sContainerId, **dictKeywords):
+        raise RuntimeError("the daemon refused the exec creation")
+
+    connectionDocker._clientDocker.api.exec_create = fnRefuseTheCreation
+    with pytest.raises(RuntimeError):
+        _fnRunOneCommandInALockHeldWorker(connectionDocker)
+    listExecRecords = [
+        dictRecord for dictRecord in operationJournal.fdictReadJournalOutcome(
+            S_CONTAINER_NAME,
+        )["dictOperations"].values()
+        if dictRecord["sKind"] == "exec"
+    ]
+    assert listExecRecords == [], listExecRecords

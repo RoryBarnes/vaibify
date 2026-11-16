@@ -359,7 +359,7 @@ S_IMAGE_SOURCE_ARCHIVE = "archive"
 
 def fnConvertProjectToContainer(
     sOldName, sNewName, dictImageSource=None, dictImageTrust=None,
-    dictPendingSeed=None,
+    dictPendingSeed=None, dictReachApproval=None,
 ):
     """Re-register a host project as a container under a new name.
 
@@ -376,6 +376,11 @@ def fnConvertProjectToContainer(
     ``dictImageTrust`` is the answer the wizard gave about the image
     (see :mod:`vaibify.config.imageTrust`), written in the same
     mutation so a converted project never exists without it.
+    ``dictReachApproval`` is the approval of the reach-widening settings
+    the conversion itself wrote into the file (see
+    :mod:`vaibify.config.reachApproval`), written in the same mutation
+    because the file is rewritten BEFORE the entry exists under the new
+    name, so nothing could record it there.
     ``dictPendingSeed`` names the files the first start still has to
     copy in; it rides the same write so the SWITCH from host to
     container is one atomic registry write and nothing else. A
@@ -418,6 +423,9 @@ def fnConvertProjectToContainer(
         dictEntry.pop(S_IMAGE_TRUST_KEY, None)
         if dictImageTrust:
             dictEntry[S_IMAGE_TRUST_KEY] = dict(dictImageTrust)
+        dictEntry.pop(S_REACH_APPROVAL_KEY, None)
+        if dictReachApproval:
+            dictEntry[S_REACH_APPROVAL_KEY] = dict(dictReachApproval)
         dictEntry.pop(S_WORKSPACE_SEEDED_KEY, None)
         if dictPendingSeed:
             dictEntry[S_PENDING_SEED_KEY] = dict(dictPendingSeed)
@@ -473,8 +481,8 @@ def fsReturnProjectToHost(sName):
         dictEntry["sMode"] = "host"
         dictEntry["sName"] = sHostName
         dictEntry["sContainerName"] = sHostName
-        for sKey in (S_IMAGE_SOURCE_KEY, S_IMAGE_TRUST_KEY, S_PENDING_SEED_KEY,
-                     S_WORKSPACE_SEEDED_KEY):
+        for sKey in (S_IMAGE_SOURCE_KEY, S_IMAGE_TRUST_KEY, S_REACH_APPROVAL_KEY,
+                     S_PENDING_SEED_KEY, S_WORKSPACE_SEEDED_KEY):
             dictEntry.pop(sKey, None)
         fnRemoveOriginRecord(sName)
         dictOutcome["sHostName"] = sHostName
@@ -521,6 +529,28 @@ def fnRecordImageTrust(sName, dictTrustRecord):
         if dictEntry is None:
             raise KeyError(f"Project '{sName}' not found in registry")
         dictEntry[S_IMAGE_TRUST_KEY] = dict(dictTrustRecord)
+
+    _fnMutateRegistryLocked(fnWriteRecord)
+
+
+S_REACH_APPROVAL_KEY = "dictReachApproval"
+
+
+def fnRecordReachApproval(sName, dictApprovalRecord):
+    """Write the researcher's approval of the file's reach-widening settings.
+
+    Under the lock, on the entry, host-held: nothing inside a container
+    can reach this file. ``None`` removes the record, which is what a
+    file that widens nothing leaves behind. The record carries the
+    fingerprint it answers for, so a changed file is a new question.
+    """
+    def fnWriteRecord(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sName)
+        if dictEntry is None:
+            raise KeyError(f"Project '{sName}' not found in registry")
+        dictEntry.pop(S_REACH_APPROVAL_KEY, None)
+        if dictApprovalRecord:
+            dictEntry[S_REACH_APPROVAL_KEY] = dict(dictApprovalRecord)
 
     _fnMutateRegistryLocked(fnWriteRecord)
 
