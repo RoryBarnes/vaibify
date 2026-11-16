@@ -40884,4 +40884,19 @@ LIST_FALSIFICATIONS = [
         ),
         new='        except Exception:\n            raise\n',
     ),
+    # --- 2026-11-16: a terminal closed in the task that opened it is
+    # disposed only after the scroll-area sync open() queued ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testClosingATerminalRaisesNoError.py::'
+            'test_a_terminal_closed_as_it_opens_raises_no_error'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # dispose at once; the queued sync reads a dropped renderer
+        old=(
+            '            _fnDisposeTerminalAfterItsOpeningSync'
+            '(dictTab.terminal);\n'
+        ),
+        new='            dictTab.terminal.dispose();\n',
+    ),
 ]

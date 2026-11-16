@@ -55,8 +55,17 @@ def _fnPressTheCenterOf(pageDashboard, sSelector):
     carries no stamp. Chromium delivers a click to the common ancestor
     of the press and the release, so the click alone can look as if it
     survived a rebuild it did not.
+
+    The box is read in the one page call that finds the element: a
+    poll render landing between Playwright resolving the element and
+    measuring it left a detached element with no box
+    (browser-chromium, 2026-11-12).
     """
-    dictBox = pageDashboard.locator(sSelector).first.bounding_box()
+    dictBox = pageDashboard.eval_on_selector(sSelector, """element => {
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 ? {x: rect.x, y: rect.y,
+            width: rect.width, height: rect.height} : null;
+    }""")
     assert dictBox is not None, f"{sSelector} has no box"
     pageDashboard.mouse.move(
         dictBox["x"] + dictBox["width"] / 2, dictBox["y"] + dictBox["height"] / 2,

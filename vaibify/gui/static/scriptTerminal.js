@@ -1961,12 +1961,24 @@ const VaibifyTerminal = (function () {
         dictTab.elKillButton = null;
         if (dictTab.terminal) {
             dictTab.terminal.clear();
-            dictTab.terminal.dispose();
+            _fnDisposeTerminalAfterItsOpeningSync(dictTab.terminal);
         }
         dictTab.terminal = null;
         dictTab.fitAddon = null;
         if (dictTab.resizeObserver) dictTab.resizeObserver.disconnect();
         dictTab.resizeObserver = null;
+    }
+
+    function _fnDisposeTerminalAfterItsOpeningSync(terminal) {
+        /* xterm 5.5's viewport syncs its scroll area on a bare
+           setTimeout that open() queues, and that sync reads the
+           renderer dispose() drops: a terminal closed in the task that
+           opened it threw an uncaught TypeError when the timer fired
+           (a reload restoring a saved layout closes the pane it has
+           just opened). A timeout queued now runs after open()'s, so
+           the terminal leaves the page at once and is disposed then. */
+        if (terminal.element) terminal.element.remove();
+        window.setTimeout(function () { terminal.dispose(); }, 0);
     }
 
     function fnReconcileActiveTab(iPaneId, iClosedIndex) {
