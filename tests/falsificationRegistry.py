@@ -40899,4 +40899,19 @@ LIST_FALSIFICATIONS = [
         ),
         new='            dictTab.terminal.dispose();\n',
     ),
+    # --- 2026-11-17: Gemini CLI's own session context is not a
+    # researcher prompt ---
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordViewer.py::'
+            'test_the_context_gemini_writes_as_a_user_message_is_not_a_prompt'
+        ),
+        source='vaibify/gui/promptRecordViewer.py',
+        # every Gemini user message is a prompt again
+        old=(
+            '    if sText.lstrip().startswith(_T_GEMINI_CONTEXT_PREFIXES):\n'
+            '        return "context"\n'
+        ),
+        new='',
+    ),
 ]

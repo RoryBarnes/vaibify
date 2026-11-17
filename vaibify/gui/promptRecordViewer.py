@@ -246,6 +246,11 @@ def _fsJoinBlockTexts(jsonBlocks):
 
 # --- Gemini ----------------------------------------------------------
 
+# The user-role messages the CLI writes itself, as its own
+# isIgnoredUserContent names them; the researcher typed none of them.
+_T_GEMINI_CONTEXT_PREFIXES = ("<session_context>", "<hook_context>")
+
+
 def _flistGeminiTurns(listLines):
     """Replay a Gemini session and return its turns as it finally stood."""
     dictState = {"listTimeline": [], "dictMessages": {}}
@@ -334,8 +339,8 @@ def _flistGeminiMessageTurns(dictMessage, bRewound):
     sText = _fsJoinBlockTexts(jsonFinal.get("content"))
     if sText:
         dictText = _fdictTurn(
-            "prompt" if jsonFinal.get("type") == "user" else "reply",
-            sText, sTimestamp)
+            _fsGeminiTextKind(jsonFinal.get("type"), sText), sText,
+            sTimestamp)
         _fnMarkEarlierTexts(dictText, dictMessage, sText)
         listTurns.append(dictText)
     if jsonFinal.get("type") == "gemini":
@@ -345,6 +350,14 @@ def _flistGeminiMessageTurns(dictMessage, bRewound):
         dictTurn["listSupersededRecords"] = dictMessage["listRecords"][:-1]
         dictTurn["bRewound"] = bRewound
     return listTurns
+
+
+def _fsGeminiTextKind(sType, sText):
+    if sType == "gemini":
+        return "reply"
+    if sText.lstrip().startswith(_T_GEMINI_CONTEXT_PREFIXES):
+        return "context"
+    return "prompt"
 
 
 def _fnMarkEarlierTexts(dictTurn, dictMessage, sFinalText):

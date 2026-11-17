@@ -222,6 +222,49 @@ def test_a_gemini_session_counts_only_records_without_conversation():
         "conversation; a superseded version of a message does")
 
 
+S_GEMINI_SESSION_CONTEXT = (
+    "<session_context>\n"
+    "This is the Gemini CLI. We are setting up the context for our chat.\n"
+    "Today's date is Tuesday, November 17, 2026 (formatted according to "
+    "the user's locale).\n"
+    "My operating system is: linux\n"
+    "The project's temporary directory is: "
+    "/home/researcher/.gemini/tmp/projectrepo\n"
+    "- **Workspace Directories:**\n"
+    "  - /home/researcher/projectRepo\n"
+    "- **Directory Structure:**\n"
+    "\n"
+    "Showing up to 200 items (files + folders).\n"
+    "\n"
+    "/home/researcher/projectRepo/\n"
+    "\n\n\n"
+    "</session_context>"
+)
+
+
+@pytest.mark.falsification
+def test_the_context_gemini_writes_as_a_user_message_is_not_a_prompt():
+    """Gemini CLI opens a session with a ``<session_context>`` message
+    under the user role. The text is the CLI's own, verbatim from a
+    real session the nightly container-acceptance lane captured; shown
+    as a prompt it would put words in the researcher's mouth.
+
+    Kills: classifying every Gemini user message as a prompt.
+    """
+    sText = _fsTranscript([
+        {"id": "c1", "timestamp": "t1", "type": "user",
+         "content": [{"text": S_GEMINI_SESSION_CONTEXT}]},
+        {"id": "u1", "timestamp": "t2", "type": "user",
+         "content": [{"text": "summarize the table"}]},
+    ])
+    listTurns = flistParseTranscriptTurns(sText, "gemini")
+    assert [(d["sKind"], d["sText"]) for d in listTurns] == [
+        ("context", S_GEMINI_SESSION_CONTEXT),
+        ("prompt", "summarize the table"),
+    ]
+    assert fdictSummarizeTurns(sText, listTurns)["iPromptCount"] == 1
+
+
 def test_an_unreadable_gemini_line_is_shown_not_dropped():
     sText = _fsTranscript(_flistGeminiSession()[:2], "not json\n")
     listTurns = flistParseTranscriptTurns(sText, "gemini")
