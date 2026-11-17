@@ -58,7 +58,8 @@ jobs:
         run: docker version
 
       - name: Reproduce the published project
-        # The command exits non-zero unless its verdict is `reproduced`.
+        # The command exits zero for a byte-identical verdict and for one
+        # whose published comparisons passed.
         run: |
           vaibify reproduce \
             --from https://github.com/RoryBarnes/aigreenhouse.git \
@@ -66,10 +67,16 @@ jobs:
 
       - name: Assert the report's verdict
         # A second reading of the written report, so a change to the
-        # command's exit behaviour cannot turn a divergence green.
+        # command's exit behaviour cannot turn a divergence green. It is
+        # stricter than the command: this project has always reproduced
+        # byte for byte, so only that verdict passes here. The verdict is
+        # read from the policy's own constant, so a renamed verdict fails
+        # loudly instead of reddening a successful reproduction.
         run: |
           python - <<'PYEOF'
           import glob, json, os, sys
+          from vaibify.reproducibility.comparisonPolicyV1 import (
+              S_VERDICT_BYTE_IDENTICAL)
           sPattern = os.path.expanduser(
               "~/.vaibify/reproductions/reports/*.json")
           listReports = sorted(glob.glob(sPattern), key=os.path.getmtime)
@@ -77,7 +84,9 @@ jobs:
               sys.exit("no reproduction report was written")
           dictReport = json.load(open(listReports[-1]))
           print("verdict:", dictReport.get("sVerdict"))
-          sys.exit(0 if dictReport.get("sVerdict") == "reproduced" else 1)
+          sys.exit(
+              0 if dictReport.get("sVerdict") == S_VERDICT_BYTE_IDENTICAL
+              else 1)
           PYEOF
 
       - name: Upload the report

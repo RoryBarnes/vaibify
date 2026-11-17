@@ -43,6 +43,7 @@
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusAgentDocs.json">
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/containerAcceptance.yml/badge.svg?branch=main">
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/freshImageBuild.yml/badge.svg?branch=main">
+  <img src="https://img.shields.io/github/actions/workflow/status/RoryBarnes/vaibify/publishedReproduction.yml?branch=main&label=quickstart">
 
 </a>
 </p>

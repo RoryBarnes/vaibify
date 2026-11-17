@@ -613,7 +613,7 @@ report on a pull request.
 | `tests-macos-nightly.yml` | the full macOS unit matrix, so the cells the pull-request lane leaves out (macOS 15 and 26 on Python 3.10–3.13) still run within a day of a merge | macOS 15 and 26 × Python 3.9–3.14; nightly when `main` has changed since the last passing night, and manual |
 | `containerAcceptance.yml` | the modeled container commands and core container behavior, against a real container; and, as a separate job, the Prompt Record reading transcripts the real Codex and Gemini CLIs wrote (`agent_cli_live`) | one Linux cell; nightly and manual |
 | `freshImageBuild.yml` | a full image build from scratch, then acceptance | amd64 and arm64; weekly, manual, and on pull requests that touch the image, its build code, or the documents staged into it |
-| `publishedReproduction.yml` | reproduces a published project in its author's environment and fails unless the report's verdict is `reproduced` | one Linux cell; weekly and manual |
+| `publishedReproduction.yml` | reproduces a published project in its author's environment and fails unless the report's verdict is `byte-identical`; the README's `quickstart` badge shows its outcome | one Linux cell; weekly and manual |
 | `toolchainEpoch.yml` | asks whether Ubuntu has moved past the pinned toolchain snapshot and opens or updates a standing issue describing the change | one Linux cell; monthly and manual |
 | `runtimeSetup.yml` | runs `vaibify setup-docker` for real: on Ubuntu with the runner's Docker removed, then requires a buildx build and a container run as the user; on macOS the Homebrew install, stopping before Colima, which GitHub's Apple Silicon runners cannot start | one Ubuntu and one macOS cell; weekly, manual, and on pull requests that touch the setup code |
 

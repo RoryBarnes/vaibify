@@ -40914,4 +40914,19 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
+    # --- 2026-11-17: the weekly published-reproduction check reads the
+    # policy's verdict, not a retired spelling of it ---
+    Falsification(
+        nodeid=(
+            'tests/testPublishedReproductionWorkflow.py::'
+            'test_only_a_byte_identical_report_passes_the_weekly_check'
+        ),
+        source='.github/workflows/publishedReproduction.yml',
+        # the retired spelling: every report fails, byte-identical too
+        old=(
+            '              0 if dictReport.get("sVerdict") == '
+            'S_VERDICT_BYTE_IDENTICAL\n'
+        ),
+        new='              0 if dictReport.get("sVerdict") == "reproduced"\n',
+    ),
 ]
