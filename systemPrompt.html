@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>System Prompt &mdash; Vaibify 0.3.1.dev29 documentation</title>
+  <title>System Prompt &mdash; Vaibify 0.3.2.dev5 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f9b6ac3b"></script>
+      <script src="_static/documentation_options.js?v=d23b48e5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -67,6 +67,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#verification">Verification</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-proof-ladder">The PROOF ladder</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#conventions-defaults">Conventions (defaults)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#shell-commands">Shell commands</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#creating-new-pipeline-steps">Creating New Pipeline Steps</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#managing-package-dependencies">Managing Package Dependencies</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#detection-and-immediate-fix">Detection and Immediate Fix</a></li>
@@ -305,6 +306,35 @@ convention; theirs win.</p>
 <li><p>Output figures go in <code class="docutils literal notranslate"><span class="pre">Plot/</span></code> subdirectories</p></li>
 <li><p>A script that can fail on its inputs, files or external tools should stop with a message naming what failed; the <strong>graceful-exits</strong> skill has a checker</p></li>
 </ul>
+</section>
+<section id="shell-commands">
+<h3>Shell commands<a class="headerlink" href="#shell-commands" title="Link to this heading"></a></h3>
+<p>Claude Code keeps a few checks even when it is started with
+<code class="docutils literal notranslate"><span class="pre">--dangerously-skip-permissions</span></code>, and each one stops the work until the
+researcher answers it. Every one of them fires on a deletion whose
+target cannot be read from the command text, so write deletions the
+checker can read. The same habits make a command safer under any agent:</p>
+<ul class="simple">
+<li><p>Name what <code class="docutils literal notranslate"><span class="pre">rm</span></code> removes by a literal absolute path:
+<code class="docutils literal notranslate"><span class="pre">rm</span> <span class="pre">-rf</span> <span class="pre">/workspace/&lt;repository&gt;/runs/trial3</span></code>, never
+<code class="docutils literal notranslate"><span class="pre">cd</span> <span class="pre">runs</span> <span class="pre">&amp;&amp;</span> <span class="pre">rm</span> <span class="pre">-rf</span> <span class="pre">trial*</span></code>. A relative wildcard after a <code class="docutils literal notranslate"><span class="pre">cd</span></code>, a
+target built from <code class="docutils literal notranslate"><span class="pre">$(...)</span></code> or backticks, and a target that starts
+with a variable all prompt.</p></li>
+<li><p>If a variable is unavoidable, guard it, <code class="docutils literal notranslate"><span class="pre">&quot;${sRunDir:?}&quot;</span></code>, so an empty
+value stops the shell instead of reaching <code class="docutils literal notranslate"><span class="pre">/</span></code>.</p></li>
+<li><p>Never remove the working directory, one of its parents, <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>,
+or the home directory.</p></li>
+<li><p>Prefer not deleting at all: write each run to a fresh output
+directory, and keep logs with <code class="docutils literal notranslate"><span class="pre">mv</span></code>.</p></li>
+<li><p>After a <code class="docutils literal notranslate"><span class="pre">cd</span></code>, chain with <code class="docutils literal notranslate"><span class="pre">&amp;&amp;</span></code>, never <code class="docutils literal notranslate"><span class="pre">;</span></code>, so a failed <code class="docutils literal notranslate"><span class="pre">cd</span></code> stops
+everything after it. Better still, use absolute paths and skip the
+<code class="docutils literal notranslate"><span class="pre">cd</span></code>.</p></li>
+<li><p>Split a long sequence into separate commands: stop the processes,
+confirm they stopped, then clean up.</p></li>
+</ul>
+<p>These checks are a safety net. Never rewrite a deletion as
+<code class="docutils literal notranslate"><span class="pre">find</span> <span class="pre">-delete</span></code>, <code class="docutils literal notranslate"><span class="pre">shutil.rmtree</span></code> or a script file just to get past one;
+make the target readable instead.</p>
 </section>
 <section id="creating-new-pipeline-steps">
 <h3>Creating New Pipeline Steps<a class="headerlink" href="#creating-new-pipeline-steps" title="Link to this heading"></a></h3>

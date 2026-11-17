@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.3.1.dev29 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.3.2.dev5 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f9b6ac3b"></script>
+      <script src="_static/documentation_options.js?v=d23b48e5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -108,7 +108,7 @@
 <h1>QuickStart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
 <p>In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author’s. Thus, you will then recreate the author’s computing environment inside your computer and verify the reproduction in the author’s environment, where the files usually come out byte-identical. This latter step requires that you have <a class="reference internal" href="install.html"><span class="std std-doc">Docker installed</span></a> on your computer.</p>
 <section id="install">
-<h2>1. Install<a class="headerlink" href="#install" title="Link to this heading"></a></h2>
+<span id="1-install"></span><h2>1. Install<a class="headerlink" href="#install" title="Link to this heading"></a></h2>
 <p>You need Python 3.9 or later to run <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>vaibify
 vaibify
@@ -119,7 +119,7 @@ should see the <code class="docutils literal notranslate"><span class="pre">vaib
 list.</p>
 </section>
 <section id="download-the-example-project">
-<h2>2. Download the example project<a class="headerlink" href="#download-the-example-project" title="Link to this heading"></a></h2>
+<span id="2-download-the-example-project"></span><h2>2. Download the example project<a class="headerlink" href="#download-the-example-project" title="Link to this heading"></a></h2>
 <p>Return to the terminal and run</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/RoryBarnes/aigreenhouse.git
 <span class="nb">cd</span><span class="w"> </span>aigreenhouse
@@ -134,7 +134,7 @@ Level 3</span></a>, which means its author committed a manifest of every artifac
 SHA-256 hash along with the pinned environment that produced them.</p>
 </section>
 <section id="view-the-example-project-in-vaibify">
-<h2>3. View the example project in vaibify<a class="headerlink" href="#view-the-example-project-in-vaibify" title="Link to this heading"></a></h2>
+<span id="3-view-the-example-project-in-vaibify"></span><h2>3. View the example project in vaibify<a class="headerlink" href="#view-the-example-project-in-vaibify" title="Link to this heading"></a></h2>
 <p>Back in the hub, click the <strong>+</strong> symbol below the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> motto “Vibe boldly. Verify everything.” This launches a wizard to add a project to the list of environments that <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> can access. The wizard prompts you to choose the type of environment, a <em>container</em>, <em>this machine</em>, or <em>a reproduction</em>. Choose <strong>This machine</strong> and then on the next screen choose <strong>Add
 Existing</strong>. Navigate the directory tree to your aigreenhouse clone (it will have a blue checkmark next to it) and select it. You will then return to the Environments Hub and see a registered environment: <code class="docutils literal notranslate"><span class="pre">aigreenhouse</span></code>. Select it and you will see a window that warns you that you are working in an uncontained environment. Press “I understand, continue”.</p>
 <p>You will now move to the <strong>Projects Hub</strong>. An environment is a <em>place</em> projects run, and it can hold more than one, so
@@ -144,7 +144,7 @@ workspace (a “sandbox”) in which you can experiment in the environment. All 
 <p>The published result is at <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF Level 3</span></a>, meaning the author reran the project in its preserved environment and the rerun passed its assessment: every output byte-identical, or the author’s published comparisons (the tests that ship with the project) passed. When the bytes are identical, the verdict says so. Your copy, however, is not at that level. In fact, you’re at “Level 0”, meaning your results aren’t even being labeled as “self-consistent”! This status is because you have not run any of the steps locally or verified the results pass the unit tests (which check that the output files match the author’s results to some tolerance that they deemed acceptable for scientific reproduction). Before we start driving your copy up the PROOF Ladder, we’re going to explore the repository a bit more.</p>
 </section>
 <section id="check-the-archive-before-touching-it">
-<h2>4. Check the archive before touching it<a class="headerlink" href="#check-the-archive-before-touching-it" title="Link to this heading"></a></h2>
+<span id="4-check-the-archive-before-touching-it"></span><h2>4. Check the archive before touching it<a class="headerlink" href="#check-the-archive-before-touching-it" title="Link to this heading"></a></h2>
 <p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hash of every file listed in the repository’s file <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>, compares each with the hash recorded there, and reports if they match. In this case, they will.</p>
 <p>This result <em>must</em> hold for a freshly cloned Level 3 project because nothing has changed. You have
 confirmed that the files in your clone are byte-for-byte identical to the files the
@@ -152,7 +152,7 @@ author committed. Note that this check is <em>not</em> a statement about the
 accuracy of the science; it is a check on the archive’s integrity and nothing more.</p>
 </section>
 <section id="recreate-the-data">
-<h2>5. Recreate the data<a class="headerlink" href="#recreate-the-data" title="Link to this heading"></a></h2>
+<span id="5-recreate-the-data"></span><h2>5. Recreate the data<a class="headerlink" href="#recreate-the-data" title="Link to this heading"></a></h2>
 <p>Next we will rerun the results locally and see if they pass the unit tests. First, we need to get rid of the old outputs and start clean.
 From the <strong>Run</strong> menu, choose <strong>Clean Outputs</strong>, and confirm. Every automatic step’s data files and figures are deleted and every
 verification mark resets to untested.</p>
@@ -167,7 +167,7 @@ pulses orange as it runs and turns to solid orange once it finishes. Orange mean
 </section>
 </section>
 <section id="check-the-bytes-again">
-<h2>6. Check the bytes again<a class="headerlink" href="#check-the-bytes-again" title="Link to this heading"></a></h2>
+<span id="6-check-the-bytes-again"></span><h2>6. Check the bytes again<a class="headerlink" href="#check-the-bytes-again" title="Link to this heading"></a></h2>
 <p>So are the new files identical to the author’s manifest? From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong> again.</p>
 <p>You will see an alert in the top right that counts the files that do not match. Its <strong>Learn more</strong> button opens a window that lists each file with what was recorded about how it was made, on the author’s computer and on yours. A fact only one of the two computers measured is never counted as a difference: a host-mode run does not probe NumPy and its BLAS library, so those facts read “not measured in host mode”, and an Apple Silicon Mac reports no processor vendor or x86-64 level, so those read “this machine does not report it”. A difference in hardware or settings can change a file’s last digits, but it doesn’t prove that’s why the bytes differ. Here’s what happened:</p>
 <ul class="simple">
@@ -185,7 +185,7 @@ not reproduce byte-for-byte because your computing environment is slightly diffe
 <p>This next section, which describes how to rerun the work in the author’s own environment and have the result assessed, is technically optional, but encouraged. While <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>’s behavior is the same in both “host mode” and “container mode”, the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!</p>
 </section>
 <section id="containerize-the-same-project">
-<h2>7. Containerize the same project<a class="headerlink" href="#containerize-the-same-project" title="Link to this heading"></a></h2>
+<span id="7-containerize-the-same-project"></span><h2>7. Containerize the same project<a class="headerlink" href="#containerize-the-same-project" title="Link to this heading"></a></h2>
 <p>Before we begin this step, note the following:</p>
 <ul class="simple">
 <li><p><strong>The project must not be open anywhere else.</strong> If it is open in the
@@ -282,7 +282,7 @@ changed, 4 could not run, 5 not enough evidence).</p>
 </section>
 </section>
 <section id="when-something-is-wrong">
-<h2>8. When something is wrong<a class="headerlink" href="#when-something-is-wrong" title="Link to this heading"></a></h2>
+<span id="8-when-something-is-wrong"></span><h2>8. When something is wrong<a class="headerlink" href="#when-something-is-wrong" title="Link to this heading"></a></h2>
 <p>A diagnosis is offered where a problem is reported: an error message
 in the dashboard ends with <strong>Click to run a diagnosis</strong>, and the window
 that reports a failed build or a failed download has a <strong>Run a diagnosis</strong> button. Click either and a report opens. It checks this
@@ -307,7 +307,7 @@ cannot — a network that is down, a daemon that needs more memory — the
 finding says so plainly rather than sending you to a tab.</p>
 </section>
 <section id="where-to-next">
-<h2>9. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>
+<span id="9-where-to-next"></span><h2>9. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>
 <ul class="simple">
 <li><p><strong><a class="reference internal" href="environmentsAndProjects.html#templates"><span class="std std-ref">The three templates: sandbox, toolkit, workflow</span></a></strong> —
 Start your own project rather than reproduce someone else’s work.</p></li>

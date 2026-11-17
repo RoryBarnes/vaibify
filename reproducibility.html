@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.3.1.dev29 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.3.2.dev5 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f9b6ac3b"></script>
+      <script src="_static/documentation_options.js?v=d23b48e5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -138,7 +138,7 @@ on another computer. This page explains how vaibify records the
 environment, saves it permanently, reruns the project in it, and judges
 what the rerun produced.</p>
 <section id="proof-level-3-reproducible">
-<h2>PROOF Level 3 — Reproducible<a class="headerlink" href="#proof-level-3-reproducible" title="Link to this heading"></a></h2>
+<span id="proof-level-3--reproducible"></span><h2>PROOF Level 3 — Reproducible<a class="headerlink" href="#proof-level-3-reproducible" title="Link to this heading"></a></h2>
 <p>Level 3 rests on four things:</p>
 <ol class="arabic simple">
 <li><p><strong>A fingerprint of every file.</strong> A list of every input, script and
@@ -221,7 +221,7 @@ reproduce.sh</strong>, and the Dockerfile row <strong>Copy image Dockerfile into
 repo</strong>. Vaibify regenerates the envelope automatically the first time
 the project reaches Level 1.</p>
 <section id="tier-1-the-manifest">
-<h3>Tier 1 — the manifest<a class="headerlink" href="#tier-1-the-manifest" title="Link to this heading"></a></h3>
+<span id="tier-1--the-manifest"></span><h3>Tier 1 — the manifest<a class="headerlink" href="#tier-1-the-manifest" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> is the heart of the envelope. From the <strong>Run</strong> menu,
 <strong>Check Files Against Manifest</strong> recomputes every hash and reports any
 file that no longer matches. Two Level 3 rows read it: <strong>Manifest
@@ -241,7 +241,7 @@ loses the comparison with them, so do it only for a change you intend
 to publish.</p>
 </section>
 <section id="tier-2-the-python-packages">
-<h3>Tier 2 — the Python packages<a class="headerlink" href="#tier-2-the-python-packages" title="Link to this heading"></a></h3>
+<span id="tier-2--the-python-packages"></span><h3>Tier 2 — the Python packages<a class="headerlink" href="#tier-2-the-python-packages" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> lists each Python package at the exact version that
 actually ran in your container, with a hash so a substitute package
 cannot slip in. <strong>Check dependencies</strong> confirms that every entry
@@ -252,7 +252,7 @@ without that line still fails, because it cannot tell “needs nothing”
 from “never locked”.</p>
 </section>
 <section id="tier-3-the-container">
-<h3>Tier 3 — the container<a class="headerlink" href="#tier-3-the-container" title="Link to this heading"></a></h3>
+<span id="tier-3--the-container"></span><h3>Tier 3 — the container<a class="headerlink" href="#tier-3-the-container" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code> records the container image by its
 <em>digest</em>, an identifier computed from the image’s contents, so it names
 one exact image and nothing else. It also records the processor
@@ -267,7 +267,7 @@ Rebuilding would download today’s packages, not the ones you used.
 exactly.</p>
 </section>
 <section id="reproduce-sh">
-<h3><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code><a class="headerlink" href="#reproduce-sh" title="Link to this heading"></a></h3>
+<span id="reproducesh"></span><h3><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code><a class="headerlink" href="#reproduce-sh" title="Link to this heading"></a></h3>
 <p><strong>Generate reproduce.sh</strong> writes the script a stranger runs, and the
 assessor beside it, <code class="docutils literal notranslate"><span class="pre">.vaibify/rerunAssessment.py</span></code>. The script finds the
 archived image and, inside it:</p>

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.3.1.dev29 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.3.2.dev5 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f9b6ac3b"></script>
+      <script src="_static/documentation_options.js?v=d23b48e5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -367,7 +367,7 @@ the <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/bl
 state” trap warns about.</p>
 </section>
 <section id="the-poll-s-freshness-stamp-and-why-it-ships-no-store">
-<h3>The poll’s freshness stamp, and why it ships <code class="docutils literal notranslate"><span class="pre">no-store</span></code><a class="headerlink" href="#the-poll-s-freshness-stamp-and-why-it-ships-no-store" title="Link to this heading"></a></h3>
+<span id="the-polls-freshness-stamp-and-why-it-ships-no-store"></span><h3>The poll’s freshness stamp, and why it ships <code class="docutils literal notranslate"><span class="pre">no-store</span></code><a class="headerlink" href="#the-poll-s-freshness-stamp-and-why-it-ships-no-store" title="Link to this heading"></a></h3>
 <p>The file-status response carries an <code class="docutils literal notranslate"><span class="pre">ETag</span></code> so a client that echoes it
 in <code class="docutils literal notranslate"><span class="pre">If-None-Match</span></code> gets a <code class="docutils literal notranslate"><span class="pre">304</span></code> instead of a payload that can reach
 500 KB on a large project. That optimization has one failure mode,
@@ -470,7 +470,7 @@ re-runs a project through the container and therefore reproduces the
 environment as well as the steps.</p>
 </section>
 <section id="project-git-repo">
-<h2>Project = git repo<a class="headerlink" href="#project-git-repo" title="Link to this heading"></a></h2>
+<span id="project--git-repo"></span><h2>Project = git repo<a class="headerlink" href="#project-git-repo" title="Link to this heading"></a></h2>
 <p>Every vaibify project lives inside a git repository — its
 “repository”. The <code class="docutils literal notranslate"><span class="pre">project.json</span></code> file belongs to that repo, not to the
 container, not to <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>, and not to a shared vaibify-managed
@@ -602,7 +602,7 @@ under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/<
 resolved from the active project’s <code class="docutils literal notranslate"><span class="pre">sProjectRepoPath</span></code>.</p>
 </section>
 <section id="project-json-is-a-definition-the-sidecar-records-what-happened">
-<h2>project.json is a definition; the sidecar records what happened<a class="headerlink" href="#project-json-is-a-definition-the-sidecar-records-what-happened" title="Link to this heading"></a></h2>
+<span id="projectjson-is-a-definition-the-sidecar-records-what-happened"></span><h2>project.json is a definition; the sidecar records what happened<a class="headerlink" href="#project-json-is-a-definition-the-sidecar-records-what-happened" title="Link to this heading"></a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">project.json</span></code> is compared byte-for-byte against its published copies
 (GitHub and, at Level 3, the immutable Zenodo archive). Until
 2026-08-27 it also carried what publishing <em>produced</em> — the deposit
@@ -1596,7 +1596,7 @@ complete environment, under one name, after recovery.</p>
 </section>
 </section>
 <section id="the-hub-s-reapers-run-on-one-cadence-and-record-what-they-did">
-<h2>The hub’s reapers run on one cadence and record what they did<a class="headerlink" href="#the-hub-s-reapers-run-on-one-cadence-and-record-what-they-did" title="Link to this heading"></a></h2>
+<span id="the-hubs-reapers-run-on-one-cadence-and-record-what-they-did"></span><h2>The hub’s reapers run on one cadence and record what they did<a class="headerlink" href="#the-hub-s-reapers-run-on-one-cadence-and-record-what-they-did" title="Link to this heading"></a></h2>
 <p>A <em>reaper</em> deletes garbage the hub can prove is garbage: a container
 lock no process holds, a credential file no container mounts, a
 shadow-rerun lock nothing flocks, a terminal whose owning hub is dead.
@@ -2313,7 +2313,7 @@ It carries no schema keys: the previous copy showed
 undefined entirely, which is what made the section unusable.</p>
 </section>
 <section id="a-requirement-row-shows-the-gate-s-verdict-never-its-own">
-<h2>A requirement row shows the gate’s verdict, never its own<a class="headerlink" href="#a-requirement-row-shows-the-gate-s-verdict-never-its-own" title="Link to this heading"></a></h2>
+<span id="a-requirement-row-shows-the-gates-verdict-never-its-own"></span><h2>A requirement row shows the gate’s verdict, never its own<a class="headerlink" href="#a-requirement-row-shows-the-gate-s-verdict-never-its-own" title="Link to this heading"></a></h2>
 <p>A researcher declared their project had nothing non-deterministic, the
 Reproducibility-rules row went green, and the Level 3 verification then
 refused to start over that same requirement (reported 2026-08-30). Four
@@ -2405,7 +2405,7 @@ the root configs, and every step’s <code class="docutils literal notranslate">
 <code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code> — not every file in the repository.</p>
 </section>
 <section id="a-remote-s-files-are-grouped-by-what-to-do-about-them">
-<h2>A remote’s files are grouped by what to do about them<a class="headerlink" href="#a-remote-s-files-are-grouped-by-what-to-do-about-them" title="Link to this heading"></a></h2>
+<span id="a-remotes-files-are-grouped-by-what-to-do-about-them"></span><h2>A remote’s files are grouped by what to do about them<a class="headerlink" href="#a-remote-s-files-are-grouped-by-what-to-do-about-them" title="Link to this heading"></a></h2>
 <p>A flat file list does not survive that same scale. Measured the same
 day: a thousand files across two expanded remote rows built 1.8 MB of
 HTML and 12,161 DOM nodes on every render, and the researcher had to
@@ -3128,7 +3128,7 @@ can two builds of one codec, which would report an identical image as
 diverged.</p>
 </section>
 <section id="the-deposit-runs-on-the-host-with-the-host-s-token">
-<h3>The deposit runs on the host, with the host’s token<a class="headerlink" href="#the-deposit-runs-on-the-host-with-the-host-s-token" title="Link to this heading"></a></h3>
+<span id="the-deposit-runs-on-the-host-with-the-hosts-token"></span><h3>The deposit runs on the host, with the host’s token<a class="headerlink" href="#the-deposit-runs-on-the-host-with-the-host-s-token" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">save</span></code> talks to the daemon, so only the hub can produce the
 tarball, and since 2026-10-29 the Zenodo token lives only on the host
 too (<code class="docutils literal notranslate"><span class="pre">vaibify/gui/zenodoTokenAccess.py</span></code> reads the project’s active
@@ -3247,7 +3247,7 @@ verdict — never from JavaScript comparing hashes, which would be a
 second authority on a question that has one.</p>
 </section>
 <section id="a-clone-carrying-someone-else-s-attestation-records-a-reproduction">
-<h3>A clone carrying someone else’s attestation records a reproduction<a class="headerlink" href="#a-clone-carrying-someone-else-s-attestation-records-a-reproduction" title="Link to this heading"></a></h3>
+<span id="a-clone-carrying-someone-elses-attestation-records-a-reproduction"></span><h3>A clone carrying someone else’s attestation records a reproduction<a class="headerlink" href="#a-clone-carrying-someone-else-s-attestation-records-a-reproduction" title="Link to this heading"></a></h3>
 <p>An attestation is the author’s claim about their own project. A
 researcher who obtained the author’s environment and clicked Verify has
 REPRODUCED the result, or failed to — they have not attested, and
@@ -3324,7 +3324,7 @@ naming <code class="docutils literal notranslate"><span class="pre">git</span> <
 git.</p>
 </section>
 <section id="containerizing-from-the-author-s-pinned-image">
-<h3>Containerizing from the author’s pinned image<a class="headerlink" href="#containerizing-from-the-author-s-pinned-image" title="Link to this heading"></a></h3>
+<span id="containerizing-from-the-authors-pinned-image"></span><h3>Containerizing from the author’s pinned image<a class="headerlink" href="#containerizing-from-the-author-s-pinned-image" title="Link to this heading"></a></h3>
 <p>A rebuild from the Dockerfile produces a different digest and cannot
 reproduce the author’s bytes. Since 2026-09-11 the Containerize wizard
 offers, on a clone whose envelope pins an image by content digest, to
@@ -3621,7 +3621,7 @@ name race; <code class="docutils literal notranslate"><span class="pre">tests/br
 drives the window.</p>
 </section>
 <section id="a-folder-copied-in-from-the-researcher-s-directory-is-never-cloned-over">
-<h3>A folder copied in from the researcher’s directory is never cloned over<a class="headerlink" href="#a-folder-copied-in-from-the-researcher-s-directory-is-never-cloned-over" title="Link to this heading"></a></h3>
+<span id="a-folder-copied-in-from-the-researchers-directory-is-never-cloned-over"></span><h3>A folder copied in from the researcher’s directory is never cloned over<a class="headerlink" href="#a-folder-copied-in-from-the-researcher-s-directory-is-never-cloned-over" title="Link to this heading"></a></h3>
 <p>A conversion that copies files in writes the project’s folder from the
 hub’s seed, just after the container starts. The image’s entrypoint
 clones, at the same moment, every repository its baked
@@ -4065,7 +4065,7 @@ it is still running, since an in-container agent’s client gives up at
 60 and used to report a busy host as an unreachable one.</p>
 </section>
 <section id="where-a-token-may-be-spent-is-the-researcher-s-record">
-<h2>Where a token may be spent is the researcher’s record<a class="headerlink" href="#where-a-token-may-be-spent-is-the-researcher-s-record" title="Link to this heading"></a></h2>
+<span id="where-a-token-may-be-spent-is-the-researchers-record"></span><h2>Where a token may be spent is the researcher’s record<a class="headerlink" href="#where-a-token-may-be-spent-is-the-researcher-s-record" title="Link to this heading"></a></h2>
 <p>A token-bearing action reads its target from a host-side binding record
 the researcher writes, never from <code class="docutils literal notranslate"><span class="pre">project.json</span></code>, which the
 in-container agent can edit; a confirmation therefore pins exactly what
