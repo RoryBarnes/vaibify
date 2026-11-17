@@ -1265,6 +1265,35 @@ convention; theirs win.
 - Output figures go in `Plot/` subdirectories
 - A script that can fail on its inputs, files or external tools should stop with a message naming what failed; the **graceful-exits** skill has a checker
 
+## Shell commands
+
+Claude Code keeps a few checks even when it is started with
+`--dangerously-skip-permissions`, and each one stops the work until the
+researcher answers it. Every one of them fires on a deletion whose
+target cannot be read from the command text, so write deletions the
+checker can read. The same habits make a command safer under any agent:
+
+- Name what `rm` removes by a literal absolute path:
+  `rm -rf /workspace/<repository>/runs/trial3`, never
+  `cd runs && rm -rf trial*`. A relative wildcard after a `cd`, a
+  target built from `$(...)` or backticks, and a target that starts
+  with a variable all prompt.
+- If a variable is unavoidable, guard it, `"${sRunDir:?}"`, so an empty
+  value stops the shell instead of reaching `/`.
+- Never remove the working directory, one of its parents, `/workspace`,
+  or the home directory.
+- Prefer not deleting at all: write each run to a fresh output
+  directory, and keep logs with `mv`.
+- After a `cd`, chain with `&&`, never `;`, so a failed `cd` stops
+  everything after it. Better still, use absolute paths and skip the
+  `cd`.
+- Split a long sequence into separate commands: stop the processes,
+  confirm they stopped, then clean up.
+
+These checks are a safety net. Never rewrite a deletion as
+`find -delete`, `shutil.rmtree` or a script file just to get past one;
+make the target readable instead.
+
 ## Creating New Pipeline Steps
 
 To author a new analysis or plot step, use the

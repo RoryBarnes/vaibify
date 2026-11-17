@@ -280,7 +280,10 @@ def test_claude_md_delegates_ladder_and_step_authoring_to_skills():
     # 225 -> 245 (2026-10-19, measured 241): the "Whose instructions
     # win" section and the conventions stated as defaults, which must
     # be read before any other instruction, not loaded on demand.
-    assert sBody.count("\n") < 245, (
+    # 245 -> 275 (2026-11-12, measured 270): the "Shell commands"
+    # section, which the agent needs before its first deletion, not
+    # after a skill is loaded.
+    assert sBody.count("\n") < 275, (
         "CLAUDE.md body did not shrink — the heavy sections are "
         "still inlined"
     )
