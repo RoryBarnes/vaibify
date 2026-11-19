@@ -40929,4 +40929,20 @@ LIST_FALSIFICATIONS = [
         ),
         new='              0 if dictReport.get("sVerdict") == "reproduced"\n',
     ),
+    # --- 2026-11-13: the shell is told the size the pane actually
+    # has, read back from the pty with stty rather than from vaibify's
+    # own record of what it sent ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheShellIsToldThePanesSize.py::'
+            'test_the_shell_is_told_the_panes_size'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # the hub acknowledges a size it never gave the pty
+        old=(
+            '    dictPendingResize.clear()\n'
+            '    session.fnResize(iRows, iColumns)\n'
+        ),
+        new='    dictPendingResize.clear()\n',
+    ),
 ]

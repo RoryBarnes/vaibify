@@ -48,4 +48,5 @@ Citing vaibify
 If you use vaibify in your research, please cite the paper that
 describes it:
 
-   TBD: the citation will appear here once the paper is published.
+   Barnes, R. (2026) "Integrating AI Agents into Scientific Research."
+   `arXiv:2611.23334 <https://arxiv.org/abs/2611.23334>`_.
