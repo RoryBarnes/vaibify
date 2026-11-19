@@ -221,18 +221,29 @@ _S_GEMINI_WRAPPER = r"""function gemini {
 
 _S_CODEX_WRAPPER = r"""function codex {
     local sArgument sSessionId="" iStatus
+    local -a listArguments
+    listArguments=("$@")
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --sandbox|-s|--ask-for-approval|-a)
+                [ "$#" -ge 2 ] || break
+                shift 2 ;;
+            --sandbox=*|--ask-for-approval=*) shift ;;
+            *) break ;;
+        esac
+    done
     case "${1:-}" in
         resume) sSessionId=$(fsVaibifyLowerUuid "${2:-}") ;;
         exec|e|review|login|logout|mcp|plugin|app-server|remote-control|completion|update|doctor|sandbox|debug|apply|a|queue|archive|delete|migrate-rollouts|migrate-nfs-db|unarchive|fork|cloud|exec-server|features|help|agents)
-            command codex "$@"; return $? ;;
+            command codex ${listArguments[@]+"${listArguments[@]}"}; return $? ;;
     esac
-    for sArgument in "$@"; do
+    for sArgument in ${listArguments[@]+"${listArguments[@]}"}; do
         case "$sArgument" in
-            -h|--help|-V|--version) command codex "$@"; return $? ;;
+            -h|--help|-V|--version) command codex ${listArguments[@]+"${listArguments[@]}"}; return $? ;;
         esac
     done
-    fnVaibifyRecordStart codex "$sSessionId" false "$@"
-    command codex "$@"
+    fnVaibifyRecordStart codex "$sSessionId" false ${listArguments[@]+"${listArguments[@]}"}
+    command codex ${listArguments[@]+"${listArguments[@]}"}
     iStatus=$?
     fnVaibifyRecordExit "$iStatus"
     return "$iStatus"

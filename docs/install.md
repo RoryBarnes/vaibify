@@ -391,6 +391,17 @@ mode and through the proxy in `web` and `allowlist` mode; an `isolated`
 container has no network, so there `vaibify-do` cannot reach the
 dashboard.
 
+When Codex is installed, container startup adds an interactive Bash alias
+for `codex --sandbox danger-full-access --ask-for-approval on-request`.
+Docker provides the isolation: Codex's inner sandbox is disabled, and
+on-request approvals remain enabled. Codex can access all files and
+credentials available to the container user. This avoids Bubblewrap
+namespace failures inside restricted containers, following
+[OpenAI's container guidance](https://learn.chatgpt.com/docs/agent-approvals-security#run-codex-in-dev-containers).
+The alias applies only to interactive container shells; scripts invoking
+the Codex executable directly must supply their own options. Rebuild and
+recreate an existing container to receive the updated startup script.
+
 ### Reproducibility
 
 Nested under `reproducibility`. vaibify reads and keeps these keys,
