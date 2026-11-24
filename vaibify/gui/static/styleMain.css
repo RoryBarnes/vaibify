@@ -1610,6 +1610,44 @@ pre.quarantine-remedy {
     background: var(--border-color);
 }
 
+/* The "?" that says why a notice banner is showing: at the right of
+   the header, just before its x. The drift banner styles every button
+   it holds, so the help icon's own shape is restated for it, and the
+   generic .help-icon rule later in this file is outranked so its
+   secondary text color cannot drop the "?" below the contrast floor. */
+.build-warnings-banner-header .notice-banner-help {
+    margin-left: auto;
+}
+
+.help-icon.notice-banner-help,
+.drift-banner .help-icon.notice-banner-help {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    font-size: 10px;
+    line-height: 1;
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+/* The toolbar chips that show the network row and the remote
+   bindings on demand. */
+.notice-status-chip {
+    background: rgba(128, 128, 160, 0.10);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin: 0 0 0 6px;
+    font-size: 0.75em;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
 /* One row per Zenodo token moved out of the container: the server's
    state sentence, what Zenodo reports, and the researcher's buttons. */
 .zenodo-token-row {

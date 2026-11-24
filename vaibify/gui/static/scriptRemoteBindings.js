@@ -49,6 +49,10 @@ var VaibifyRemoteBindings = (function () {
         store: "Store your token", replace: "Replace your token",
     };
     var _RE_OVERLEAF_PROJECT_ID = /^[A-Za-z0-9]+$/;
+    var _S_CHIP_ID = "remoteBindingsChip";
+    var _S_NOTHING_TO_REVIEW = "Nothing needs your review now. An action " +
+        "that would spend your Overleaf or Zenodo token on a target nobody " +
+        "has confirmed on this computer asks you first.";
     var _sContainerId = "";
     var _dictDialog = null;
 
@@ -78,6 +82,7 @@ var VaibifyRemoteBindings = (function () {
            leaves the notices as they were and says so in the console. */
         if (!sContainerId) return;
         _sContainerId = sContainerId;
+        _fnShowChip(true);
         var dictContext = fdictCaptureContext();
         try {
             var dictDescribed = await VaibifyApi.fdictGet(
@@ -102,23 +107,95 @@ var VaibifyRemoteBindings = (function () {
             });
     }
 
-    function fnRenderNotices(dictDescribed) {
+    function _flistNoticeContent(listNotices) {
+        /* What the banner shows, as the server said it: the key a
+           dismissal holds, so a different set of notices shows again. */
+        return listNotices.map(function (dictNotice) {
+            var dictEntry = dictNotice.dictEntry;
+            return [dictNotice.sNotice, dictEntry ? [
+                dictEntry.sService, dictEntry.sRecordKind,
+                dictEntry.sInstance, dictEntry.sState] : null];
+        });
+    }
+
+    function fnRenderNotices(dictDescribed, bAskedFor) {
+        /* Drawn by itself only when there is a notice, and then until
+           the researcher hides it: the x holds while the notices and
+           the view are the ones it hid. Asked for through the chip, it
+           is drawn whatever the answer, and says so when there is
+           nothing to review. Hiding it authorizes nothing: every
+           token-spending action is refused by the server until its
+           target is confirmed. */
         var elBanner = document.getElementById(_S_BANNER_ID);
         if (!elBanner) return;
         elBanner.textContent = "";
+        if (!dictDescribed) _fnShowChip(false);
         var listNotices = _flistNotices(dictDescribed);
-        if (!listNotices.length) {
+        var sContentKey = VaibifyNoticeBanners.fsBuildContentKey(
+            _flistNoticeContent(listNotices));
+        if (bAskedFor) {
+            VaibifyNoticeBanners.fnForgetDismissal(_S_BANNER_ID);
+        } else if (!listNotices.length ||
+                VaibifyNoticeBanners.fbIsDismissed(_S_BANNER_ID, sContentKey)) {
             elBanner.style.display = "none";
             return;
         }
-        var elHeader = document.createElement("div");
-        elHeader.className = "build-warnings-banner-header";
-        elHeader.textContent = "Remote bindings to review before a token is spent";
-        elBanner.appendChild(elHeader);
+        elBanner.appendChild(_felementNoticeHeader(elBanner, sContentKey));
+        if (!listNotices.length) {
+            var elNothing = document.createElement("div");
+            elNothing.className = "remote-binding-row remote-binding-nothing";
+            elNothing.textContent = _S_NOTHING_TO_REVIEW;
+            elBanner.appendChild(elNothing);
+        }
         listNotices.forEach(function (dictNotice) {
             elBanner.appendChild(_felementNoticeRow(dictNotice));
         });
         elBanner.style.display = "block";
+    }
+
+    function _felementNoticeHeader(elBanner, sContentKey) {
+        var elHeader = document.createElement("div");
+        elHeader.className = "build-warnings-banner-header";
+        var elHeading = document.createElement("span");
+        elHeading.textContent = "Remote bindings to review before a token is spent";
+        var elDismiss = VaibifyNoticeBanners.felementBuildDismissButton(
+            _S_BANNER_ID, sContentKey, function () {
+                elBanner.style.display = "none";
+                elBanner.textContent = "";
+            });
+        elDismiss.id = "btnDismissRemoteBindings";
+        elHeader.appendChild(elHeading);
+        elHeader.appendChild(
+            VaibifyNoticeBanners.felementBuildHelpButton(_S_BANNER_ID));
+        elHeader.appendChild(elDismiss);
+        return elHeader;
+    }
+
+    function _fnShowChip(bShow) {
+        var elChip = document.getElementById(_S_CHIP_ID);
+        if (elChip) elChip.style.display = bShow ? "" : "none";
+    }
+
+    async function fnShowNoticesOnDemand() {
+        /* Asked of the server now: the notices rendered at open may
+           describe a project.json that has changed since. */
+        var sContainerId = _sContainerId;
+        if (!sContainerId) return;
+        var dictContext = fdictCaptureContext();
+        var dictDescribed;
+        try {
+            dictDescribed = await VaibifyApi.fdictGet(
+                _fsUrl(sContainerId, "?bFetchEvidence=false"));
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            return;
+        }
+        if (_fbContextIsCurrent(dictContext)) fnRenderNotices(dictDescribed, true);
+    }
+
+    function fnBindChip() {
+        var elChip = document.getElementById(_S_CHIP_ID);
+        if (elChip) elChip.addEventListener("click", fnShowNoticesOnDemand);
     }
 
     function _felementNoticeRow(dictNotice) {
@@ -564,6 +641,8 @@ var VaibifyRemoteBindings = (function () {
     return {
         fnRefresh: fnRefresh,
         fnRenderNotices: fnRenderNotices,
+        fnShowNoticesOnDemand: fnShowNoticesOnDemand,
+        fnBindChip: fnBindChip,
         fdictCaptureContext: fdictCaptureContext,
         fpromiseReviewAndConfirm: fpromiseReviewAndConfirm,
         fbRefusalNeedsABinding: fbRefusalNeedsABinding,

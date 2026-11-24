@@ -510,6 +510,19 @@
                  busy. -->
             <span id="otherProjectRunBadge" class="other-project-run-badge"
                   style="display: none;"></span>
+            <!-- On demand, the rows above the steps that show by
+                 themselves only when something needs attention. A
+                 click asks the server again and shows the row even
+                 when all is well. The network chip's label is the
+                 mode the server last reported. -->
+            <button type="button" id="networkStatusChip"
+                    class="notice-status-chip" style="display: none;"
+                    title="Show this container's network status"
+                    ></button>
+            <button type="button" id="remoteBindingsChip"
+                    class="notice-status-chip" style="display: none;"
+                    title="Show the remote bindings that need your review"
+                    >Remote bindings</button>
         </div>
         <!-- Agent Council: after the project identity, before the Run
              menu (design section 6.1). Disabled without an active
@@ -1483,6 +1496,7 @@
 <script src="/static/vendor/addon-unicode11.min.js"></script>
 <script src="/static/vendor/pdf.min.js"></script>
 <script src="/static/scriptUtilities.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptNoticeBanners.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptFileOutcomes.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptApiClient.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptConnectionMonitor.js?v=__CACHE_VERSION__"></script>

@@ -40172,8 +40172,8 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/browser/testTheNetworkRowShowsOnlyWhatNeedsAttention.py::testANormalSealedOrIsolatedProjectShowsNoRow',
         # Drawing the row for every readiness answer that carries a network.
         source='vaibify/gui/static/scriptContainerManager.js',
-        old='        if (!_fbNetworkNeedsAttention(dictNetwork)) {\n',
-        new='        if (!dictNetwork) {\n',
+        old='        } else if (!_fbNetworkNeedsAttention(dictNetwork) ||\n',
+        new='        } else if (!dictNetwork ||\n',
     ),
     Falsification(
         nodeid='tests/testReachApprovalCommandLine.py::testWithoutATerminalAnUnapprovedConfigurationStopsAndNamesTheFlag',
@@ -41066,6 +41066,49 @@ LIST_FALSIFICATIONS = [
         new=(
             '            sTokenAction: dictDialog.sLastStoreFailure ? "" : '
             '_fsTokenActionOf(listActions),\n'
+        ),
+    ),
+    # --- 2026-11-24: a dismissed notice banner hides what was read,
+    # never what comes next, and hiding a binding notice reaches no
+    # server ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testNoticeBannersExplainAndClear.py::'
+            'testTheNetworkRowReturnsWhenTheServerSaysSomethingNew'
+        ),
+        # a dismissal that holds whatever the server says next
+        source='vaibify/gui/static/scriptNoticeBanners.js',
+        old='                dictDismissal.sContentKey === sContentKey) {\n',
+        new='                true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testNoticeBannersExplainAndClear.py::'
+            'testADismissedRowReturnsOnTheNextOpen'
+        ),
+        # a dismissal that outlives the view it was made in
+        source='vaibify/gui/static/scriptNoticeBanners.js',
+        old=(
+            '        if (dictDismissal.iViewGeneration === '
+            'VaibifyApp.fiGetViewGeneration() &&\n'
+        ),
+        new='        if (true &&\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testNoticeBannersExplainAndClear.py::'
+            'testHidingABindingNoticeSendsNothingAndTheActionIsStillRefused'
+        ),
+        # a dismissal that reaches the server (here, by asking again)
+        source='vaibify/gui/static/scriptRemoteBindings.js',
+        old=(
+            '            _S_BANNER_ID, sContentKey, function () {\n'
+            '                elBanner.style.display = "none";\n'
+        ),
+        new=(
+            '            _S_BANNER_ID, sContentKey, function () {\n'
+            '                fnRefresh(_sContainerId);\n'
+            '                elBanner.style.display = "none";\n'
         ),
     ),
 ]

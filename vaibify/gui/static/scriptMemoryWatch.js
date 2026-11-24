@@ -197,6 +197,8 @@ var VaibifyMemoryWatch = (function () {
             elBanner.remove();
         });
         elHeader.appendChild(elTitle);
+        elHeader.appendChild(
+            VaibifyNoticeBanners.felementBuildHelpButton("memoryIncidentBanners"));
         elHeader.appendChild(elDismiss);
         var elSentence = document.createElement("p");
         elSentence.className = "memory-incident-sentence";
