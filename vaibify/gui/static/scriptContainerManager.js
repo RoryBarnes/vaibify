@@ -3073,9 +3073,6 @@ var VaibifyContainerManager = (function () {
         _fnRenderNetworkBanner(
             (dictReadiness && dictReadiness.dictNetwork) || null
         );
-        _fnUpdateNetworkChip(
-            (dictReadiness && dictReadiness.dictNetwork) || null
-        );
         if (!dictReadiness) return;
         var sStatus = dictReadiness.sStatus || "";
         if (sStatus === "failed") {
@@ -3211,7 +3208,7 @@ var VaibifyContainerManager = (function () {
            what it refused (ruling D8). A proxy that is down is said in
            so many words; nothing here is re-derived, and a normal state
            renders nothing unless the researcher asked for it through
-           the Network chip. The x hides exactly the payload it was
+           View > Network Status. The x hides exactly the payload it was
            shown, in this view: a different answer from the server, or
            the next open, shows the row again. */
         var elBanner = document.getElementById("networkBanner");
@@ -3301,22 +3298,7 @@ var VaibifyContainerManager = (function () {
             });
     }
 
-    function _fnUpdateNetworkChip(dictNetwork) {
-        /* The chip's label is the mode the server last reported; a
-           project with no network answer (a host project, a closed
-           view) has no chip. */
-        var elChip = document.getElementById("networkStatusChip");
-        if (!elChip) return;
-        if (!dictNetwork || !dictNetwork.sMode) {
-            elChip.style.display = "none";
-            elChip.textContent = "";
-            return;
-        }
-        elChip.textContent = "Network: " + dictNetwork.sMode;
-        elChip.style.display = "";
-    }
-
-    async function _fnShowNetworkStatusOnDemand() {
+    async function fnShowNetworkStatusOnDemand() {
         /* Asked of the server now, never replayed from the answer the
            container gave when it was opened: what the proxy refused
            since then is exactly what the researcher is asking about. */
@@ -3333,7 +3315,6 @@ var VaibifyContainerManager = (function () {
         }
         if (sContainerId !== _sReadinessBannersContainerId) return;
         var dictNetwork = (dictReadiness && dictReadiness.dictNetwork) || null;
-        if (dictNetwork) _fnUpdateNetworkChip(dictNetwork);
         _fnRenderNetworkBanner(dictNetwork, true);
     }
 
@@ -3647,11 +3628,6 @@ var VaibifyContainerManager = (function () {
             }
         );
         VaibifyRemnants.fnBindRemnantsGlyph();
-        var elNetworkChip = document.getElementById("networkStatusChip");
-        if (elNetworkChip) {
-            elNetworkChip.addEventListener(
-                "click", _fnShowNetworkStatusOnDemand);
-        }
         document.addEventListener("click", function () {
             document.querySelectorAll(".container-tile-menu").forEach(
                 function (el) { el.style.display = "none"; }
@@ -3919,6 +3895,7 @@ var VaibifyContainerManager = (function () {
     }
 
     return {
+        fnShowNetworkStatusOnDemand: fnShowNetworkStatusOnDemand,
         fnLoadContainers: fnLoadContainers,
         fnRefreshContainerHub: fnRefreshContainerHub,
         fnConnectToContainer: fnConnectToContainer,

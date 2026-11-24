@@ -49,7 +49,6 @@ var VaibifyRemoteBindings = (function () {
         store: "Store your token", replace: "Replace your token",
     };
     var _RE_OVERLEAF_PROJECT_ID = /^[A-Za-z0-9]+$/;
-    var _S_CHIP_ID = "remoteBindingsChip";
     var _S_NOTHING_TO_REVIEW = "Nothing needs your review now. An action " +
         "that would spend your Overleaf or Zenodo token on a target nobody " +
         "has confirmed on this computer asks you first.";
@@ -82,7 +81,6 @@ var VaibifyRemoteBindings = (function () {
            leaves the notices as they were and says so in the console. */
         if (!sContainerId) return;
         _sContainerId = sContainerId;
-        _fnShowChip(true);
         var dictContext = fdictCaptureContext();
         try {
             var dictDescribed = await VaibifyApi.fdictGet(
@@ -129,7 +127,6 @@ var VaibifyRemoteBindings = (function () {
         var elBanner = document.getElementById(_S_BANNER_ID);
         if (!elBanner) return;
         elBanner.textContent = "";
-        if (!dictDescribed) _fnShowChip(false);
         var listNotices = _flistNotices(dictDescribed);
         var sContentKey = VaibifyNoticeBanners.fsBuildContentKey(
             _flistNoticeContent(listNotices));
@@ -171,11 +168,6 @@ var VaibifyRemoteBindings = (function () {
         return elHeader;
     }
 
-    function _fnShowChip(bShow) {
-        var elChip = document.getElementById(_S_CHIP_ID);
-        if (elChip) elChip.style.display = bShow ? "" : "none";
-    }
-
     async function fnShowNoticesOnDemand() {
         /* Asked of the server now: the notices rendered at open may
            describe a project.json that has changed since. */
@@ -191,11 +183,6 @@ var VaibifyRemoteBindings = (function () {
             return;
         }
         if (_fbContextIsCurrent(dictContext)) fnRenderNotices(dictDescribed, true);
-    }
-
-    function fnBindChip() {
-        var elChip = document.getElementById(_S_CHIP_ID);
-        if (elChip) elChip.addEventListener("click", fnShowNoticesOnDemand);
     }
 
     function _felementNoticeRow(dictNotice) {
@@ -642,7 +629,6 @@ var VaibifyRemoteBindings = (function () {
         fnRefresh: fnRefresh,
         fnRenderNotices: fnRenderNotices,
         fnShowNoticesOnDemand: fnShowNoticesOnDemand,
-        fnBindChip: fnBindChip,
         fdictCaptureContext: fdictCaptureContext,
         fpromiseReviewAndConfirm: fpromiseReviewAndConfirm,
         fbRefusalNeedsABinding: fbRefusalNeedsABinding,

@@ -6,8 +6,8 @@ about, beside a remote-binding notice with no x either
 carries a "?" that opens its own explanation, the two that had no x
 have one, and that x holds only while the server's answer and the view
 are the ones it hid: a different answer, or the next open, shows the
-banner again. The Network and Remote bindings chips in the toolbar show
-their rows on demand, asked of the server at the click, even when all
+banner again. View > Network Status and View > Remote Bindings show
+those rows on demand, asked of the server at the click, even when all
 is well.
 
 Driven through each module's own render path over the real page, with
@@ -269,7 +269,12 @@ def testEveryBannerSaysWhyItIsShowing(pageDashboard, serverHub):
 # ---------------------------------------------------------------------------
 
 
-def testTheNetworkChipShowsTheRowWhenAllIsWell(pageDashboard, serverHub):
+def _fnChooseFromTheViewMenu(pageDashboard, sItemSelector):
+    pageDashboard.click(".toolbar-menu-trigger:text-is('View')")
+    pageDashboard.click(sItemSelector)
+
+
+def testViewNetworkStatusShowsTheRowWhenAllIsWell(pageDashboard, serverHub):
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     listReadinessAsks = []
     dictHealthy = fdictNetwork(sMode="web")
@@ -282,13 +287,11 @@ def testTheNetworkChipShowsTheRowWhenAllIsWell(pageDashboard, serverHub):
     pageDashboard.route(_RE_READY, fnReady)
     pageDashboard.evaluate(S_SURFACE_NETWORK, dictHealthy)
     assert fsDisplay(pageDashboard, "networkBanner") == "none"
-    assert pageDashboard.is_visible("#networkStatusChip")
-    assert pageDashboard.inner_text("#networkStatusChip") == "Network: web"
-    pageDashboard.click("#networkStatusChip")
+    _fnChooseFromTheViewMenu(pageDashboard, "#btnViewNetworkStatus")
     pageDashboard.wait_for_function(
         "() => document.getElementById('networkBanner').style.display === 'block'",
         timeout=10000)
-    assert len(listReadinessAsks) == 1, "the chip asks the server at the click"
+    assert len(listReadinessAsks) == 1, "the menu item asks the server at the click"
     sText = pageDashboard.inner_text("#networkBanner")
     assert "Network mode: web (network proxy running)" in sText
     assert "Nothing refused recently." in sText
@@ -297,16 +300,15 @@ def testTheNetworkChipShowsTheRowWhenAllIsWell(pageDashboard, serverHub):
     assert pageDashboard.listPageErrors == []
 
 
-def testTheBindingsChipSaysWhenNothingNeedsReview(pageDashboard, serverHub):
+def testViewRemoteBindingsSaysWhenNothingNeedsReview(pageDashboard, serverHub):
     def fnRead(routeIntercepted):
         fnAnswerJson(routeIntercepted, 200, fdictDescribed([
             fdictBindingEntry("", sState="agrees")]))
 
     pageDashboard.route(_RE_BINDINGS_READ, fnRead)
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
-    pageDashboard.wait_for_selector("#remoteBindingsChip", state="visible", timeout=10000)
     assert fsDisplay(pageDashboard, "remoteBindingBanner") == "none"
-    pageDashboard.click("#remoteBindingsChip")
+    _fnChooseFromTheViewMenu(pageDashboard, "#btnViewRemoteBindings")
     pageDashboard.wait_for_function(
         "() => document.getElementById('remoteBindingBanner').style.display === 'block'",
         timeout=10000)

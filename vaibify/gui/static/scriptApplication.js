@@ -613,7 +613,6 @@ const VaibifyApp = (function () {
         VaibifyEventBindings.fnBindToolbarEvents();
         VaibifyEventBindings.fnBindWorkflowPickerEvents();
         VaibifyContainerManager.fnBindContainerLandingEvents();
-        VaibifyRemoteBindings.fnBindChip();
         VaibifyContainerManager.fnBindAddContainerModal();
         VaibifyEventBindings.fnBindErrorModal();
         VaibifyTestManager.fnBindApiConfirmModal();

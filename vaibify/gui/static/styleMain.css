@@ -1633,21 +1633,6 @@ pre.quarantine-remedy {
     color: var(--text-primary);
 }
 
-/* The toolbar chips that show the network row and the remote
-   bindings on demand. */
-.notice-status-chip {
-    background: rgba(128, 128, 160, 0.10);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    border-radius: 4px;
-    padding: 2px 8px;
-    margin: 0 0 0 6px;
-    font-size: 0.75em;
-    font-weight: 600;
-    white-space: nowrap;
-    cursor: pointer;
-}
-
 /* One row per Zenodo token moved out of the container: the server's
    state sentence, what Zenodo reports, and the researcher's buttons. */
 .zenodo-token-row {

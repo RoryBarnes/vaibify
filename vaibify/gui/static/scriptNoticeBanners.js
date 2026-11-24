@@ -66,7 +66,7 @@ var VaibifyNoticeBanners = (function () {
             "proxy that is down or could not be read, or refused " +
             "hosts. \"Allow host\" adds a refused host to the allowed " +
             "list, effective when the container next starts. The " +
-            "Network chip at the top shows this row at any time.",
+            "View menu's Network Status shows this row at any time.",
         zenodoTokenBanner:
             "You are seeing this because a Zenodo token was found " +
             "inside this container and moved to this computer's " +
@@ -83,8 +83,8 @@ var VaibifyNoticeBanners = (function () {
             "differs from the one you confirmed, or when Auto Archive " +
             "would send to a target nobody has confirmed. \"Review and " +
             "confirm…\" sets what project.json names beside what " +
-            "you confirmed and what your token can see. The Remote " +
-            "bindings chip at the top shows this at any time.",
+            "you confirmed and what your token can see. The View " +
+            "menu's Remote Bindings shows this at any time.",
         resourceLimitDriftBanner:
             "You are seeing this because the CPU or memory limit this " +
             "container is running with differs from the one in its " +

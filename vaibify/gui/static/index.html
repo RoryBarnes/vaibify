@@ -510,19 +510,6 @@
                  busy. -->
             <span id="otherProjectRunBadge" class="other-project-run-badge"
                   style="display: none;"></span>
-            <!-- On demand, the rows above the steps that show by
-                 themselves only when something needs attention. A
-                 click asks the server again and shows the row even
-                 when all is well. The network chip's label is the
-                 mode the server last reported. -->
-            <button type="button" id="networkStatusChip"
-                    class="notice-status-chip" style="display: none;"
-                    title="Show this container's network status"
-                    ></button>
-            <button type="button" id="remoteBindingsChip"
-                    class="notice-status-chip" style="display: none;"
-                    title="Show the remote bindings that need your review"
-                    >Remote bindings</button>
         </div>
         <!-- Agent Council: after the project identity, before the Run
              menu (design section 6.1). Disabled without an active
@@ -608,6 +595,15 @@
                     Resource Monitor</div>
                 <div class="toolbar-menu-item" id="btnZenodoStatus">
                     Zenodo Status</div>
+                <!-- On demand, the rows above the steps that show by
+                     themselves only when something needs attention. A
+                     click asks the server again and shows the row even
+                     when all is well. Menu items, not toolbar chips:
+                     the bar has no width to spare at 1100px. -->
+                <div class="toolbar-menu-item" id="btnViewNetworkStatus">
+                    Network Status</div>
+                <div class="toolbar-menu-item" id="btnViewRemoteBindings">
+                    Remote Bindings</div>
                 <div class="toolbar-menu-separator"></div>
                 <div class="toolbar-menu-item" id="btnResetLayout">
                     Default Layout</div>
