@@ -30,7 +30,8 @@ _LIST_VALID_ZENODO_INSTANCES = ["sandbox", "production"]
     "--keyring-slot", "sKeyringSlot", default="",
     help=(
         "GitHub only: per-repo keyring slot to clear "
-        "(e.g. 'github_token:owner/repo')."
+        "(e.g. 'github_token:owner/repo'); your gh login is left in "
+        "place. Without it, 'revoke github' logs out of gh."
     ),
 )
 @click.option(

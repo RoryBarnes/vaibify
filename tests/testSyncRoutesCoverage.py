@@ -559,9 +559,11 @@ def test_github_push_success_includes_commit_hash(clientHttp):
 
 
 def test_setup_connection_token_store_failure(clientHttp):
-    """When credential storage raises, return bConnected=False."""
+    """A keyring that refuses the write is said, after the check passed."""
     _fnConnectToContainer(clientHttp)
     with patch(
+        "vaibify.gui.syncDispatcher.ftValidateOverleafCandidate", return_value=("", ""),
+    ), patch(
         "vaibify.config.secretManager.fnStoreSecret",
         side_effect=RuntimeError("keyring unavailable"),
     ):
@@ -569,26 +571,26 @@ def test_setup_connection_token_store_failure(clientHttp):
             f"/api/sync/{S_CONTAINER_ID}/setup",
             json={
                 "sService": "overleaf",
+                "sProjectId": "abc123proj",
                 "sToken": "secret_token_value",
             },
         )
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
-    assert "Failed to store" in dictResult["sMessage"]
+    assert dictResult["sClass"] == "keyring-unwritable"
+    assert "keychain did not confirm" in dictResult["sMessage"]
+    assert "secret_token_value" not in responseHttp.text
 
 
 # ── Lines 200-206: Zenodo setup with token validation failure ────
 
 
-def test_setup_zenodo_validation_fails(clientHttp):
-    """Zenodo token stored but validation call fails."""
+def test_setup_zenodo_validation_fails(clientHttp, fixtureHostZenodoSlots):
+    """A token Zenodo rejects is never stored, and the sentence says so."""
     _fnConnectToContainer(clientHttp)
-    _mockDockerInstance._iSyncExitCode = 0
-    _mockDockerInstance._sSyncOutput = "ok"
     with patch(
-        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
-        return_value=(False, ""),
+        "vaibify.reproducibility.zenodoClient.ftValidateZenodoCandidate", return_value=("token-rejected", ""),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -600,30 +602,26 @@ def test_setup_zenodo_validation_fails(clientHttp):
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
-    assert "validation failed" in dictResult["sMessage"]
+    assert "sandbox.zenodo.org rejected the token" in dictResult["sMessage"]
+    assert dictResult["listActions"] == ["replace"]
+    assert fixtureHostZenodoSlots.fsActive("sandbox") == ""
 
 
-def test_setup_zenodo_failure_detail_reaches_the_response(clientHttp):
+def test_setup_zenodo_failure_detail_reaches_the_response(
+    clientHttp, fixtureHostZenodoSlots,
+):
     """The classified failure detail must arrive, not the generic text.
 
     Asserted with a value the fallback cannot produce (the
     threaded-parameter lesson: a detail accepted and dropped is
-    indistinguishable from its default at every call site). Dropping
-    ``sDetail`` anywhere between the validator and ``sMessage``
-    regresses every failure to "check deposit scopes" — the message
-    that sent a researcher with a valid token and a requests-less
-    container to their Zenodo settings page.
+    indistinguishable from its default at every call site). A failure to
+    get an answer is the class whose detail is kept: it names the network
+    error, which no Zenodo response body can echo.
     """
     _fnConnectToContainer(clientHttp)
-    _mockDockerInstance._iSyncExitCode = 0
-    _mockDockerInstance._sSyncOutput = "ok"
-    sDistinctDetail = (
-        "DISTINCT-CLASSIFIED-DETAIL the container is missing "
-        "'requests'"
-    )
+    sDistinctDetail = "DISTINCT-CLASSIFIED-DETAIL ConnectionError reset"
     with patch(
-        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
-        return_value=(False, sDistinctDetail),
+        "vaibify.reproducibility.zenodoClient.ftValidateZenodoCandidate", return_value=("no-answer", sDistinctDetail),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -723,21 +721,12 @@ def test_dag_export_unsupported_format_returns_500(clientHttp):
 # ── Overleaf setup: store + validate + cleanup on failure ───────
 
 
-def test_setup_overleaf_validation_passes(clientHttp):
-    """Valid Overleaf token: bConnected True, no cleanup call."""
+def test_setup_overleaf_validation_passes(clientHttp, fixtureHermeticKeyring):
+    """A token Overleaf accepts is stored in the one host slot, nothing deleted."""
     _fnConnectToContainer(clientHttp)
-    _mockDockerInstance._iSyncExitCode = 0
-    _mockDockerInstance._sSyncOutput = "ok"
     with patch(
-        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
-        return_value={"bConnected": True, "sMessage": "Connected"},
-    ), patch(
-        "vaibify.config.secretManager.fnStoreSecret",
-        return_value=None,
-    ) as mockStore, patch(
-        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
-        return_value=(True, ""),
-    ), patch(
+        "vaibify.gui.syncDispatcher.ftValidateOverleafCandidate", return_value=("", ""),
+    ) as mockCheck, patch(
         "vaibify.config.secretManager.fnDeleteSecret",
         return_value=None,
     ) as mockDelete:
@@ -754,28 +743,23 @@ def test_setup_overleaf_validation_passes(clientHttp):
     assert dictResult["bConnected"] is True
     assert dictResult["sMessage"] == "Connected"
     mockDelete.assert_not_called()
-    mockStore.assert_called_once_with(
-        "overleaf_token", "valid_git_token", "keyring",
-    )
+    mockCheck.assert_called_once_with("abc123proj", "valid_git_token")
+    assert fixtureHermeticKeyring.dictStore[
+        ("vaibify", "overleaf_token")] == "valid_git_token"
 
 
-def test_setup_overleaf_validation_fails_cleans_up(clientHttp):
-    """Bad Overleaf token: bConnected False, remediation, cleanup."""
+def test_setup_overleaf_validation_fails_cleans_up(
+    clientHttp, fixtureHermeticKeyring,
+):
+    """A rejected Overleaf token is never written, so nothing is cleaned up."""
     _fnConnectToContainer(clientHttp)
-    _mockDockerInstance._iSyncExitCode = 0
-    _mockDockerInstance._sSyncOutput = "ok"
     with patch(
-        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
-        return_value={"bConnected": True, "sMessage": "Connected"},
+        "vaibify.gui.syncDispatcher.ftValidateOverleafCandidate",
+        return_value=("token-rejected", "fatal: Authentication failed"),
     ), patch(
         "vaibify.config.secretManager.fnStoreSecret",
-        return_value=None,
-    ), patch(
-        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
-        return_value=(False, ""),
-    ), patch(
+    ) as mockStore, patch(
         "vaibify.config.secretManager.fnDeleteSecret",
-        return_value=None,
     ) as mockDelete:
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -788,32 +772,27 @@ def test_setup_overleaf_validation_fails_cleans_up(clientHttp):
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
-    assert "git authentication token" in dictResult["sMessage"]
-    mockDelete.assert_called_once_with("overleaf_token", "keyring")
+    assert "git authentication token" in dictResult["sMessage"].lower()
+    mockStore.assert_not_called()
+    mockDelete.assert_not_called()
 
 
 def test_setup_overleaf_validation_failure_restores_previous_token(
     clientHttp, fixtureHermeticKeyring,
 ):
-    """A failed validation must roll back to the previously saved token.
+    """A failed check must leave the previously saved token in place.
 
-    Stage-validate-commit: a mistyped token or a transient network
-    failure must never destroy a credential that worked an hour
-    earlier. Exercises the real secretManager against the hermetic
-    in-memory keyring — no store/delete mocks — so the rollback is
-    demonstrated on the actual storage path.
+    A mistyped token or a transient network failure must never destroy a
+    credential that worked an hour earlier. The candidate is checked
+    BEFORE it replaces anything, so the old token is never touched rather
+    than restored. Exercises the real secretManager against the hermetic
+    in-memory keyring, with no store or delete mocks.
     """
     _fnConnectToContainer(clientHttp)
-    _mockDockerInstance._iSyncExitCode = 0
-    _mockDockerInstance._sSyncOutput = "ok"
     fixtureHermeticKeyring.dictStore[
         ("vaibify", "overleaf_token")] = "previously-working-token"
     with patch(
-        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
-        return_value={"bConnected": True, "sMessage": "Connected"},
-    ), patch(
-        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
-        return_value=(False, ""),
+        "vaibify.gui.syncDispatcher.ftValidateOverleafCandidate", return_value=("token-rejected", ""),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -826,7 +805,6 @@ def test_setup_overleaf_validation_failure_restores_previous_token(
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
-    assert "previously saved token was restored" in dictResult["sMessage"]
     assert fixtureHermeticKeyring.dictStore[
         ("vaibify", "overleaf_token")] == "previously-working-token"
 
@@ -834,17 +812,10 @@ def test_setup_overleaf_validation_failure_restores_previous_token(
 def test_setup_overleaf_validation_failure_without_previous_deletes(
     clientHttp, fixtureHermeticKeyring,
 ):
-    """With no prior token, a failed validation leaves the slot empty
-    and says the entered token was not saved."""
+    """With no prior token, a failed check leaves the slot empty."""
     _fnConnectToContainer(clientHttp)
-    _mockDockerInstance._iSyncExitCode = 0
-    _mockDockerInstance._sSyncOutput = "ok"
     with patch(
-        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
-        return_value={"bConnected": True, "sMessage": "Connected"},
-    ), patch(
-        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
-        return_value=(False, ""),
+        "vaibify.gui.syncDispatcher.ftValidateOverleafCandidate", return_value=("token-rejected", ""),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -857,7 +828,6 @@ def test_setup_overleaf_validation_failure_without_previous_deletes(
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
-    assert "was not saved" in dictResult["sMessage"]
     assert (
         ("vaibify", "overleaf_token")
         not in fixtureHermeticKeyring.dictStore
@@ -867,17 +837,15 @@ def test_setup_overleaf_validation_failure_without_previous_deletes(
 def test_setup_zenodo_validation_failure_restores_the_previous_host_token(
     clientHttp, fixtureHostZenodoSlots,
 ):
-    """A failed Zenodo validation restores the previous ACTIVE host token.
+    """A failed Zenodo check leaves the previous ACTIVE host token in place.
 
-    Stage-validate-commit: the token the host already held is captured
-    before the new one lands; a failed validation writes it back, never
-    deleting the working credential.
+    The candidate is checked before it replaces anything, so the token
+    the host already held is never touched.
     """
     _fnConnectToContainer(clientHttp)
     fixtureHostZenodoSlots.fnStoreActive("sandbox", "the_working_token")
     with patch(
-        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
-        return_value=(False, ""),
+        "vaibify.reproducibility.zenodoClient.ftValidateZenodoCandidate", return_value=("token-rejected", ""),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -890,19 +858,16 @@ def test_setup_zenodo_validation_failure_restores_the_previous_host_token(
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
-    assert "previously saved token was restored" in dictResult["sMessage"]
     assert fixtureHostZenodoSlots.fsActive("sandbox") == "the_working_token"
 
 
 def test_setup_zenodo_validation_failure_without_previous_deletes(
     clientHttp, fixtureHostZenodoSlots,
 ):
-    """With no prior Zenodo token, a failed validation deletes the
-    fresh one and says it was not saved."""
+    """With no prior Zenodo token, a failed check leaves the slot empty."""
     _fnConnectToContainer(clientHttp)
     with patch(
-        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
-        return_value=(False, ""),
+        "vaibify.reproducibility.zenodoClient.ftValidateZenodoCandidate", return_value=("token-rejected", ""),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -915,28 +880,15 @@ def test_setup_zenodo_validation_failure_without_previous_deletes(
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
-    assert "was not saved" in dictResult["sMessage"]
-    assert "restored" not in dictResult["sMessage"]
     assert fixtureHostZenodoSlots.fsActive("sandbox") == ""
 
 
 def test_setup_overleaf_validation_fails_embeds_stderr(clientHttp):
-    """Remediation message embeds the git stderr fragment when available."""
+    """The sentence embeds git's own words, redacted and bounded."""
     _fnConnectToContainer(clientHttp)
-    _mockDockerInstance._iSyncExitCode = 0
-    _mockDockerInstance._sSyncOutput = "ok"
     with patch(
-        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
-        return_value={"bConnected": True, "sMessage": "Connected"},
-    ), patch(
-        "vaibify.config.secretManager.fnStoreSecret",
-        return_value=None,
-    ), patch(
-        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
-        return_value=(False, "fatal: authentication failed for xyz"),
-    ), patch(
-        "vaibify.config.secretManager.fnDeleteSecret",
-        return_value=None,
+        "vaibify.gui.syncDispatcher.ftValidateOverleafCandidate",
+        return_value=("token-rejected", "fatal: authentication failed for xyz"),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -948,22 +900,21 @@ def test_setup_overleaf_validation_fails_embeds_stderr(clientHttp):
         )
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
-    assert "Overleaf rejected the token:" in dictResult["sMessage"]
-    assert "authentication failed" in dictResult["sMessage"]
-    assert "git authentication token" in dictResult["sMessage"]
+    assert dictResult["sMessage"].startswith("Overleaf rejected the token.")
+    assert "authentication failed for xyz" in dictResult["sMessage"]
+    assert "git authentication token" in dictResult["sMessage"].lower()
     assert len(dictResult["sMessage"]) < 600
 
 
 def test_setup_overleaf_store_failure_no_validation(clientHttp):
-    """Store raises: bConnected False, no validation attempt."""
+    """The check runs first; a keyring that then refuses the write is said."""
     _fnConnectToContainer(clientHttp)
     with patch(
         "vaibify.config.secretManager.fnStoreSecret",
         side_effect=RuntimeError("Keyring storage failed: NoKeyringError"),
     ), patch(
-        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
-        return_value=(True, ""),
-    ) as mockValidate, patch(
+        "vaibify.gui.syncDispatcher.ftValidateOverleafCandidate", return_value=("", ""),
+    ) as mockCheck, patch(
         "vaibify.config.secretManager.fnDeleteSecret",
         return_value=None,
     ) as mockDelete:
@@ -978,30 +929,24 @@ def test_setup_overleaf_store_failure_no_validation(clientHttp):
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is False
-    assert "Failed to store" in dictResult["sMessage"]
-    assert "NoKeyringError" in dictResult["sMessage"]
-    mockValidate.assert_not_called()
+    assert dictResult["sClass"] == "keyring-unwritable"
+    mockCheck.assert_called_once()
     mockDelete.assert_not_called()
 
 
 # ── Overleaf host-keyring migration tests ───────────────────────
 
 
-def test_setup_overleaf_writes_host_keyring_not_container(clientHttp):
-    """Overleaf setup with token should call host keyring, not container."""
+def test_setup_overleaf_writes_host_keyring_not_container(
+    clientHttp, fixtureHermeticKeyring,
+):
+    """Overleaf setup with token writes the host keyring, never a container."""
     _fnConnectToContainer(clientHttp)
     with patch(
-        "vaibify.config.secretManager.fnStoreSecret",
-        return_value=None,
-    ) as mockHostStore, patch(
         "vaibify.gui.zenodoTokenAccess.fnStoreActiveZenodoToken",
         return_value=None,
     ) as mockContainerStore, patch(
-        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
-        return_value={"bConnected": True, "sMessage": "Connected"},
-    ), patch(
-        "vaibify.gui.syncDispatcher.fbValidateOverleafCredentials",
-        return_value=(True, ""),
+        "vaibify.gui.syncDispatcher.ftValidateOverleafCandidate", return_value=("", ""),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -1014,9 +959,8 @@ def test_setup_overleaf_writes_host_keyring_not_container(clientHttp):
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bConnected"] is True
-    mockHostStore.assert_called_once_with(
-        "overleaf_token", "t0kEn", "keyring",
-    )
+    assert fixtureHermeticKeyring.dictStore[
+        ("vaibify", "overleaf_token")] == "t0kEn"
     mockContainerStore.assert_not_called()
 
 
@@ -1126,11 +1070,7 @@ def test_setup_zenodo_validation_passes(clientHttp, fixtureHostZenodoSlots):
     """Regression: Zenodo setup via shared helper still works."""
     _fnConnectToContainer(clientHttp)
     with patch(
-        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
-        return_value={"bConnected": True, "sMessage": "Connected"},
-    ), patch(
-        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
-        return_value=(True, ""),
+        "vaibify.reproducibility.zenodoClient.ftValidateZenodoCandidate", return_value=("", ""),
     ):
         responseHttp = clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -1151,11 +1091,7 @@ def test_setup_zenodo_stores_token_in_the_sandbox_host_slot_by_default(
     """Default sZenodoInstance is sandbox -> the project's sandbox active slot."""
     _fnConnectToContainer(clientHttp)
     with patch(
-        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
-        return_value={"bConnected": True, "sMessage": "Connected"},
-    ), patch(
-        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
-        return_value=(True, ""),
+        "vaibify.reproducibility.zenodoClient.ftValidateZenodoCandidate", return_value=("", ""),
     ):
         clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -1174,11 +1110,7 @@ def test_setup_zenodo_stores_production_token_in_the_production_host_slot(
     """sZenodoInstance=production -> the project's production active slot."""
     _fnConnectToContainer(clientHttp)
     with patch(
-        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
-        return_value={"bConnected": True, "sMessage": "Connected"},
-    ), patch(
-        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
-        return_value=(True, ""),
+        "vaibify.reproducibility.zenodoClient.ftValidateZenodoCandidate", return_value=("", ""),
     ) as mockValidate:
         clientHttp.post(
             f"/api/sync/{S_CONTAINER_ID}/setup",
@@ -1190,18 +1122,14 @@ def test_setup_zenodo_stores_production_token_in_the_production_host_slot(
         )
     assert fixtureHostZenodoSlots.fsActive("production") == "prod_token"
     assert fixtureHostZenodoSlots.fsActive("sandbox") == ""
-    assert mockValidate.call_args[0][2] == "zenodo"
+    assert mockValidate.call_args[0][0] == "zenodo"
 
 
 def test_setup_zenodo_persists_service_on_success(clientHttp):
     """Successful setup writes sZenodoService to the workflow."""
     _fnConnectToContainer(clientHttp)
     with patch(
-        "vaibify.gui.syncDispatcher.fdictCheckConnectivity",
-        return_value={"bConnected": True, "sMessage": "Connected"},
-    ), patch(
-        "vaibify.gui.syncDispatcher.ftResultValidateZenodoToken",
-        return_value=(True, ""),
+        "vaibify.reproducibility.zenodoClient.ftValidateZenodoCandidate", return_value=("", ""),
     ), patch(
         "vaibify.gui.workflowManager.fnSaveWorkflowToContainer",
     ) as mockSave:
@@ -2655,48 +2583,6 @@ def test_ftRunServiceValidation_unknown_service_returns_pass():
     assert bPass is True
     assert sDetail == ""
 
-
-def test_fsOverleafRemediation_truncates_long_stderr():
-    from vaibify.gui.routes.syncRoutes import _fsOverleafRemediation
-    sLong = "x" * 400
-    sRemediation = _fsOverleafRemediation(sLong)
-    assert "xxxx" in sRemediation
-    assert "..." in sRemediation
-    # The embedded stderr fragment should not carry all 400 chars.
-    assert len(sRemediation) < 600
-
-
-def test_fsOverleafRemediation_whitespace_only_falls_back_to_default():
-    from vaibify.gui.routes.syncRoutes import (
-        _fsOverleafRemediation,
-        _S_OVERLEAF_REMEDIATION,
-    )
-    assert _fsOverleafRemediation("   \n\t  ") == (
-        _S_OVERLEAF_REMEDIATION
-    )
-
-
-def test_fnCleanupCredential_swallows_delete_failure():
-    """A host slot delete raising keeps the caller resilient."""
-    from vaibify.gui.routes.syncRoutes import _fnCleanupCredential
-    with patch(
-        "vaibify.gui.zenodoTokenAccess.fnDeleteActiveZenodoToken",
-        side_effect=RuntimeError("nope"),
-    ):
-        # Should not raise
-        _fnCleanupCredential({"docker": MagicMock()}, "cid", "zenodo", "sandbox")
-
-
-def test_fnCleanupOverleafHostCredential_swallows_delete_failure():
-    from vaibify.gui.routes.syncRoutes import (
-        _fnCleanupOverleafHostCredential,
-    )
-    with patch(
-        "vaibify.config.secretManager.fnDeleteSecret",
-        side_effect=RuntimeError("boom"),
-    ):
-        # Should not raise
-        _fnCleanupOverleafHostCredential("overleaf_token")
 
 
 def test_fdictValidateStoredCredential_connectivity_fail_short_circuits():

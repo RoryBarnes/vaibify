@@ -35,28 +35,34 @@ def _fnFakeFailingGhLogout(*args, **kwargs):
 
 
 def test_fdictRevokeGitHubToken_clears_keyring_slot():
+    """A named slot is cleared and the gh login is left in place.
+
+    The slot outranks gh, so clearing a stale one is how a push falls
+    back to a working gh login; logging gh out too would remove the
+    login being fallen back to.
+    """
     with patch(
         "vaibify.reproducibility.githubAuth.subprocess.run",
         side_effect=_fnFakeSuccessfulGhLogout,
-    ), patch(
+    ) as mockRun, patch(
         "vaibify.config.secretManager.fnDeleteSecret",
     ) as mockDelete:
         dictResult = fdictRevokeGitHubToken("github_token:victim/repo")
     mockDelete.assert_called_once_with(
         "github_token:victim/repo", "keyring",
     )
+    mockRun.assert_not_called()
     assert dictResult["bLocalCleared"] is True
-    assert dictResult["bUpstreamRevoked"] is True
+    assert dictResult["bUpstreamRevoked"] is False
+    assert "gh login was left in place" in dictResult["sMessage"]
 
 
 def test_fdictRevokeGitHubToken_reports_gh_logout_failure():
     with patch(
         "vaibify.reproducibility.githubAuth.subprocess.run",
         side_effect=_fnFakeFailingGhLogout,
-    ), patch(
-        "vaibify.config.secretManager.fnDeleteSecret",
     ):
-        dictResult = fdictRevokeGitHubToken("github_token:victim/repo")
+        dictResult = fdictRevokeGitHubToken("")
     assert dictResult["bUpstreamRevoked"] is False
     assert "PAT" in dictResult["sMessage"]
 
@@ -65,10 +71,8 @@ def test_fdictRevokeGitHubToken_handles_missing_gh_binary():
     with patch(
         "vaibify.reproducibility.githubAuth.subprocess.run",
         side_effect=FileNotFoundError,
-    ), patch(
-        "vaibify.config.secretManager.fnDeleteSecret",
     ):
-        dictResult = fdictRevokeGitHubToken("github_token:victim/repo")
+        dictResult = fdictRevokeGitHubToken("")
     assert dictResult["bUpstreamRevoked"] is False
     assert "gh CLI" in dictResult["sMessage"]
 

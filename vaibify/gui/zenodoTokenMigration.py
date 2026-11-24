@@ -63,6 +63,7 @@ __all__ = [
 import logging
 from typing import Callable, NamedTuple
 
+from vaibify.config import credentialReplacement
 from vaibify.config import zenodoMigrationJournal as journal
 from vaibify.config import zenodoTokenSlots as slots
 from vaibify.config.registryManager import fbIsHostProject
@@ -508,14 +509,20 @@ def _fnConfirmPending(sProjectUuid, sSlot, sInstance, bReplaceActive):
     if not sPendingValue:
         raise ValueError(f"nothing is pending for slot {sSlot!r}")
     sChosen = _fsResolveConfirmInstance(sProjectUuid, sSlot, sInstance)
-    sActive = slots.fsReadActiveToken(sChosen, sProjectUuid)
-    if sActive and sActive != sPendingValue and not bReplaceActive:
-        raise ValueError(
-            f"an active {sChosen} token is already stored for this project; "
-            f"confirm with bReplaceActive to replace it, or decline the "
-            f"migrated one"
-        )
-    slots.fnStoreActiveToken(sChosen, sProjectUuid, sPendingValue)
+    # The active slot is also written by the token box and cleared by
+    # the CLI; its host-wide lock spans the read, the check and the write
+    # so neither can land between them.
+    with credentialReplacement.fcontextHoldSlotLock(
+        slots.fsActiveSlot(sChosen, sProjectUuid),
+    ):
+        sActive = slots.fsReadActiveToken(sChosen, sProjectUuid)
+        if sActive and sActive != sPendingValue and not bReplaceActive:
+            raise ValueError(
+                f"an active {sChosen} token is already stored for this "
+                f"project; confirm with bReplaceActive to replace it, or "
+                f"decline the migrated one"
+            )
+        slots.fnStoreActiveToken(sChosen, sProjectUuid, sPendingValue)
     slots.fnDeleteSlot(sPending)
     journal.fnRecordSlotState(
         sProjectUuid, sSlot, journal.S_STATE_ACTIVATED, f"confirmed for {sChosen}",

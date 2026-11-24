@@ -53,7 +53,7 @@ from typing import Optional
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
-from vaibify.config import remoteBindings
+from vaibify.config import credentialFailures, remoteBindings
 from vaibify.reproducibility.syncBookkeeping import fsDescribeZenodoService
 
 from ..actionCatalog import ffnAgentAction
@@ -69,7 +69,7 @@ from ..routeScope import (
     S_CARRIER_SEPARATE_AUTHORITY, S_CARRIER_TYPED_READ, ffnDeclareCarrierMode,
 )
 
-_S_TOKEN_MISSING = "token-missing"
+_S_TOKEN_MISSING = credentialFailures.S_CLASS_TOKEN_MISSING
 
 
 class BindingConfirmRequest(BaseModel):
@@ -85,16 +85,50 @@ class BindingConfirmRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _fdictEvidenceFailure(sService, sInstance, sClass, sDetail=""):
+    """Return failed evidence: its class, its fixed sentence, its actions.
+
+    The class is the state, and the actions are the buttons the review
+    dialog shows; both come from
+    :mod:`vaibify.config.credentialFailures`, so the page never decides
+    whether a failure is the token's.
+    """
+    from vaibify.reproducibility import overleafAuth, zenodoClient
+    if sService == remoteBindings.S_SERVICE_OVERLEAF:
+        dictFailure = overleafAuth.fdictDescribeOverleafFailure(sClass, sDetail)
+    else:
+        dictFailure = zenodoClient.fdictDescribeZenodoFailure(
+            sClass, sInstance, sDetail,
+        )
+    return {"bSucceeded": False, "sState": sClass, **dictFailure}
+
+
 def _fdictFetchOverleafEvidence(dictCtx, sContainerId, sRecordKind, dictTarget):
     """Return whether the host's Overleaf token can read the project, and what it saw."""
     del dictCtx, sContainerId, sRecordKind
     from .. import syncDispatcher
+    from vaibify.reproducibility import overleafAuth
+    sService = remoteBindings.S_SERVICE_OVERLEAF
+    sClass = overleafAuth.fsClassifyStoredOverleafToken()
+    if sClass:
+        return _fdictEvidenceFailure(sService, "", sClass)
     try:
         tRefresh = syncDispatcher.ftRefreshOverleafMirror(dictTarget["sProjectId"])
+    except ValueError:
+        return _fdictEvidenceFailure(
+            sService, "", credentialFailures.S_CLASS_INPUT_INVALID,
+        )
     except Exception as error:  # noqa: BLE001 -- the fetch's own words are the evidence
-        return _fdictUnavailable(f"{type(error).__name__}: {error}")
+        return _fdictEvidenceFailure(
+            sService, "", credentialFailures.S_CLASS_NO_ANSWER,
+            f"{type(error).__name__}: {error}",
+        )
     if not tRefresh[0]:
-        return _fdictUnavailable(str(tRefresh[1]))
+        sDetail = str(tRefresh[1])
+        return _fdictEvidenceFailure(
+            sService, "", overleafAuth.fsClassifyOverleafGitFailure(sDetail),
+            sDetail,
+        )
     dictMirror = dict(tRefresh[1])
     return {
         "bSucceeded": True, "sState": "readable",
@@ -104,38 +138,79 @@ def _fdictFetchOverleafEvidence(dictCtx, sContainerId, sRecordKind, dictTarget):
     }
 
 
-def _fdictUnavailable(sMessage):
-    return {"bSucceeded": False, "sState": "unavailable", "sMessage": sMessage}
-
-
 def _fdictFetchZenodoEvidence(dictCtx, sContainerId, sRecordKind, dictTarget):
     """Return the strongest evidence the active token gives for one Zenodo entry.
 
     Fetched with the project's ACTIVE token for the instance; a pending
     migrated token is not spent here, because it is not yet the
-    researcher's to spend.
+    researcher's to spend. A keyring that cannot be read is said to be
+    unreadable, never "no token stored".
     """
     from .. import zenodoTokenAccess
+    from vaibify.config import zenodoTokenSlots
+    from vaibify.reproducibility import zenodoClient
+    sService = remoteBindings.S_SERVICE_ZENODO
     sInstance = dictTarget["sInstance"]
-    sToken = zenodoTokenAccess.fsActiveZenodoToken(
-        dictCtx["docker"], sContainerId, sInstance,
-    )
-    if not sToken:
-        return {
-            "bSucceeded": False, "sState": _S_TOKEN_MISSING,
-            "sMessage": (
-                f"No token for {fsDescribeZenodoService(sInstance)} is "
-                f"stored on this computer for this project. Store one, and "
-                f"the check runs again."
-            ),
-        }
     try:
-        return _fdictAskZenodo(sInstance, sToken, sRecordKind, dictTarget)
+        sToken = zenodoTokenAccess.fsActiveZenodoToken(
+            dictCtx["docker"], sContainerId, sInstance,
+        )
+    except zenodoTokenSlots.TokenStoreUnreadable:
+        return _fdictEvidenceFailure(
+            sService, sInstance, credentialFailures.S_CLASS_KEYRING_UNREADABLE,
+        )
+    if not sToken:
+        return _fdictEvidenceFailure(
+            sService, sInstance, credentialFailures.S_CLASS_TOKEN_MISSING,
+        )
+    try:
+        dictEvidence = _fdictAskZenodo(sInstance, sToken, sRecordKind, dictTarget)
     except Exception as error:  # noqa: BLE001 -- the fetch's own words are the evidence
-        return _fdictUnavailable(f"{type(error).__name__}: {error}")
+        dictEvidence = _fdictEvidenceFailure(
+            sService, sInstance, zenodoClient.fsClassifyZenodoFailure(error),
+            f"{type(error).__name__}: {error}",
+        )
+    if "sMessage" in dictEvidence:
+        dictEvidence["sMessage"] = credentialFailures.fsScrubKnownSecret(
+            dictEvidence["sMessage"], sToken,
+        )
+    return dictEvidence
 
 
 def _fdictAskZenodo(sInstance, sToken, sRecordKind, dictTarget):
+    """Ask Zenodo about the token first, then about the record it names.
+
+    The token is checked on the deposit listing before any record is
+    fetched, so a refusal of the RECORD by a token Zenodo accepts reads
+    as access to that record, never as a bad token.
+    """
+    from vaibify.reproducibility import zenodoClient
+    dictProbe = zenodoClient.fdictProbeToken(sInstance, sToken)
+    if dictProbe["sOutcome"] != zenodoClient.S_PROBE_ACCEPTED:
+        return _fdictEvidenceFailure(
+            remoteBindings.S_SERVICE_ZENODO, sInstance,
+            zenodoClient.fsProbeFailureClass(dictProbe),
+            dictProbe.get("sDetail", ""),
+        )
+    try:
+        dictRecord = _fdictDescribeNamedRecord(
+            sInstance, sToken, sRecordKind, dictTarget,
+        )
+    except zenodoClient.ZenodoAuthError as error:
+        return _fdictEvidenceFailure(
+            remoteBindings.S_SERVICE_ZENODO, sInstance,
+            credentialFailures.S_CLASS_ACCESS_DENIED,
+        )
+    if dictRecord is not None:
+        return dictRecord
+    return {
+        "bSucceeded": True, "sState": "token-accepted",
+        "listDepositTitles": list(dictProbe.get("listDepositTitles") or []),
+    }
+
+
+def _fdictDescribeNamedRecord(sInstance, sToken, sRecordKind, dictTarget):
+    """Return what Zenodo shows of the record an entry names, or None."""
     from vaibify.reproducibility import zenodoClient
     clientZenodo = zenodoClient.ZenodoClient(sInstance, sToken=sToken)
     sDeposition = dictTarget.get("sDepositionId", "")
@@ -148,16 +223,7 @@ def _fdictAskZenodo(sInstance, sToken, sRecordKind, dictTarget):
         return _fdictDescribeRecord("published-record", clientZenodo.fdictFetchPublishedRecord(
             zenodoClient.fsExtractRecordIdFromDoi(sConcept),
         ))
-    dictProbe = zenodoClient.fdictProbeToken(sInstance, sToken)
-    if dictProbe["sOutcome"] != zenodoClient.S_PROBE_ACCEPTED:
-        return _fdictUnavailable(
-            f"Zenodo did not accept the token ({dictProbe['sOutcome']}): "
-            f"{dictProbe['sDetail']}"
-        )
-    return {
-        "bSucceeded": True, "sState": "token-accepted",
-        "listDepositTitles": list(dictProbe.get("listDepositTitles") or []),
-    }
+    return None
 
 
 def _fdictDescribeRecord(sState, dictDeposit):

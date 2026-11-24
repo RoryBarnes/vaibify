@@ -697,6 +697,13 @@ async def _fdictPullManuscriptUnderTheDrain(
     )
 
 
+def _fsDescribeManuscriptPullFailure(sOutput):
+    """Say why a pull failed and what to do (``overleafAuth``'s sentence)."""
+    from vaibify.reproducibility import overleafAuth
+    return "Manuscript pull failed. " + overleafAuth.fsDescribeOverleafGitFailure(
+        sOutput)
+
+
 def _fdictPullManuscriptBlocking(
     syncDispatcher, dictCtx, sContainerId, sProjectId,
     listPullPaths, sTargetDirectory, sProjectRepoPath="",
@@ -715,10 +722,7 @@ def _fdictPullManuscriptBlocking(
     if iExitCode != 0:
         raise HTTPException(
             status_code=502,
-            detail=(
-                "Manuscript pull failed: "
-                + _fsRedactRemoteError((sOutput or "")[-400:])
-            ),
+            detail=_fsDescribeManuscriptPullFailure(sOutput),
         )
     dictCtx["docker"].fnWriteFile(
         sContainerId,
@@ -2038,6 +2042,7 @@ def _fnAssertGithubTokenBoundToRemote(
     from vaibify.reproducibility.githubAuth import (
         ftParseOwnerRepoFromRemoteUrl,
         fnAssertTokenOwnerBinding,
+        fsKeyringSlotInUse,
     )
     # Deliberate reuse of githubMirror's hardened resolver rather than
     # a bare fsKeyringSlotFor/fsResolveToken pair: it degrades to an
@@ -2053,7 +2058,9 @@ def _fnAssertGithubTokenBoundToRemote(
         return
     sToken = _fsResolveTokenSafely(sOwner, sRepo)
     try:
-        fnAssertTokenOwnerBinding(sToken, sOwner)
+        fnAssertTokenOwnerBinding(
+            sToken, sOwner, fsKeyringSlotInUse(sOwner, sRepo),
+        )
     except ValueError as errorBinding:
         raise HTTPException(status_code=409, detail=str(errorBinding))
 
@@ -2767,15 +2774,10 @@ _S_ZENODO_REMEDIATION = (
     "Token stored but validation failed. "
     "Check that the token has deposit scopes."
 )
-_S_OVERLEAF_REMEDIATION = (
-    "Overleaf rejected the token or project ID. Check that the "
-    "project ID matches the one in your Overleaf URL, and that "
-    "the saved git authentication token (Account Settings -> "
-    "Git integration on overleaf.com) has push access to this "
-    "project. Use the Sync menu to replace the saved token if "
-    "needed."
+_S_GITHUB_STORES_NO_TOKEN = (
+    "vaibify stores no GitHub token: it pushes with your gh login. "
+    "Run 'gh auth login' in a terminal on this computer."
 )
-_I_OVERLEAF_STDERR_MAX = 200
 
 
 def _ftRunOverleafValidation(
@@ -2827,96 +2829,74 @@ def _ftRunServiceValidation(
     return (True, "")
 
 
-def _fsOverleafRemediation(sStderrFragment):
-    """Embed a trimmed git error into the Overleaf remediation text."""
-    sTrimmed = (sStderrFragment or "").strip()
-    if not sTrimmed:
-        return _S_OVERLEAF_REMEDIATION
-    if len(sTrimmed) > _I_OVERLEAF_STDERR_MAX:
-        sTrimmed = sTrimmed[:_I_OVERLEAF_STDERR_MAX].rstrip() + "..."
-    return (
-        f"Overleaf rejected the token: {sTrimmed}. "
-        "On overleaf.com, open Account Settings and find the Git "
-        "integration section to generate a git authentication token "
-        "(not your login password). Paste that token above."
-    )
-
-
-def _fsServiceRemediation(sService, sDetail=""):
-    """Return the user-facing remediation message for a service.
-
-    A service-supplied detail wins: it names the failure that actually
-    happened, where the generic fallback guesses at scopes and sends a
-    researcher whose real problem is a missing container package or a
-    wrong instance to the wrong fix.
-    """
+def _fdictSetupFailure(sService, sClass, sZenodoInstance="", sDetail=""):
+    """Return the token box's answer to a failure: its class, sentence, actions."""
+    from .. import syncDispatcher
+    from vaibify.reproducibility import overleafAuth, zenodoClient
     if sService == "overleaf":
-        return _fsOverleafRemediation(sDetail)
-    return sDetail or _S_ZENODO_REMEDIATION
-
-
-def _fnCleanupCredential(
-    dictCtx, sContainerId, sService, sZenodoInstance="",
-):
-    """Delete a just-stored credential after validation failure."""
-    if sService == "overleaf":
-        _fnCleanupOverleafHostCredential("overleaf_token")
-        return
-    if sService != "zenodo":
-        return
-    from .. import zenodoTokenAccess
-    try:
-        zenodoTokenAccess.fnDeleteActiveZenodoToken(
-            dictCtx["docker"], sContainerId, sZenodoInstance or "sandbox",
+        dictFailure = overleafAuth.fdictDescribeOverleafFailure(sClass, sDetail)
+    else:
+        dictFailure = zenodoClient.fdictDescribeZenodoFailure(
+            sClass,
+            syncDispatcher.fsZenodoInstanceToService(
+                sZenodoInstance or "sandbox"),
+            sDetail,
         )
-    except Exception:
-        pass
+    return {"bConnected": False, **dictFailure}
 
 
-def _fnCleanupOverleafHostCredential(sTokenName):
-    """Remove the Overleaf token from the host keyring."""
-    from vaibify.config.secretManager import fnDeleteSecret
-    try:
-        fnDeleteSecret(sTokenName, "keyring")
-    except Exception:
-        pass
-
-
-def _fdictStoreCredentialSafely(
-    dictCtx, sContainerId, sService, sToken, sZenodoInstance="",
-):
-    """Try to store; return a failure dict or None on success."""
-    try:
-        _fnDispatchStore(
-            dictCtx, sContainerId, sService, sToken, sZenodoInstance,
-        )
-    except Exception as error:
+def _fdictRefuseSetupInput(sService, sProjectId):
+    """Return the failure for input no service could accept, or None."""
+    from vaibify.config import credentialFailures
+    from vaibify.reproducibility import overleafAuth
+    if sService == "github":
         return {
             "bConnected": False,
-            "sMessage": f"Failed to store credentials: {error}",
+            "sClass": credentialFailures.S_CLASS_INPUT_INVALID,
+            "sMessage": _S_GITHUB_STORES_NO_TOKEN, "listActions": [],
         }
+    if sService == "overleaf" and not overleafAuth.fbIsOverleafProjectId(
+        sProjectId,
+    ):
+        return _fdictSetupFailure(
+            sService, credentialFailures.S_CLASS_INPUT_INVALID,
+        )
     return None
 
 
-def _fnDispatchStore(
-    dictCtx, sContainerId, sService, sToken, sZenodoInstance="",
-):
-    """Overleaf goes to the host keyring's one slot; Zenodo to the project's.
+def _fsCredentialSlotForSetup(dictCtx, sContainerId, sService, sZenodoInstance):
+    """Return the keyring slot a token-box store writes for the service.
 
-    Both land on the HOST. A Zenodo token goes to the project's ACTIVE
-    slot (:mod:`vaibify.gui.zenodoTokenAccess`): the researcher
-    entering it on the host is the confirmation, and nothing is written
-    into the container, whose keyring the agent can read.
+    Overleaf has ONE slot for every project on this computer; Zenodo has
+    one per project and instance.
     """
-    if sService == "overleaf":
-        from vaibify.config.secretManager import fnStoreSecret
-        fnStoreSecret("overleaf_token", sToken, "keyring")
-        return
-    if sService != "zenodo":
-        raise ValueError(f"{sService} keeps no stored credential")
     from .. import zenodoTokenAccess
-    zenodoTokenAccess.fnStoreActiveZenodoToken(
-        dictCtx["docker"], sContainerId, sZenodoInstance or "sandbox", sToken,
+    from vaibify.config import zenodoTokenSlots
+    from vaibify.reproducibility import overleafAuth
+    if sService == "overleaf":
+        return overleafAuth.S_OVERLEAF_KEYRING_SLOT
+    sProjectUuid = zenodoTokenAccess.fsProjectUuidForContainer(
+        dictCtx["docker"], sContainerId,
+    )
+    if not sProjectUuid:
+        raise ValueError(
+            "This container is not a registered project, so no Zenodo "
+            "token can be stored for it."
+        )
+    return zenodoTokenSlots.fsActiveSlot(
+        sZenodoInstance or "sandbox", sProjectUuid,
+    )
+
+
+def _ftCheckCandidateWithItsService(sService, sToken, sProjectId, sZenodoInstance):
+    """Ask the service about a token that is NOT stored; ``(sClass, sDetail)``."""
+    from .. import syncDispatcher
+    from vaibify.reproducibility import zenodoClient
+    if sService == "overleaf":
+        return syncDispatcher.ftValidateOverleafCandidate(sProjectId, sToken)
+    return zenodoClient.ftValidateZenodoCandidate(
+        syncDispatcher.fsZenodoInstanceToService(sZenodoInstance or "sandbox"),
+        sToken,
     )
 
 
@@ -2924,119 +2904,129 @@ def _fdictStoreValidateCredential(
     dictCtx, sContainerId, sService, sToken, sProjectId,
     sZenodoInstance="",
 ):
-    """Store credential, verify connectivity, validate; roll back on failure.
+    """Check a token with its service, then store it only if it passed.
 
-    Stage-validate-commit: the previously stored credential is captured
-    before the new token overwrites it, and a validation failure
-    RESTORES it instead of deleting -- a mistyped token or a transient
-    network failure must never destroy a credential that worked an hour
-    earlier. Only when no previous credential existed does the failure
-    path delete the freshly staged token. The response message states
-    which happened so the researcher is never left guessing what
-    survived. Both services keep their token on the host, so the
-    capture is an in-process read and no secret crosses a boundary.
+    The candidate is checked BEFORE it replaces anything, and the commit
+    refuses when the slot changed meanwhile
+    (:mod:`vaibify.config.credentialReplacement`), so a failed, raised
+    or interleaved attempt leaves the stored token exactly as it was.
+    Nothing here raises into the carrier: this flow writes no container,
+    and an exception reaching the carrier would mark the operation for
+    reconciliation and quarantine a container it never touched. Each
+    attempt is logged by service and class, never by token.
     """
-    sPreviousToken = _fsFetchPreviousHostCredential(
-        dictCtx, sContainerId, sService, sZenodoInstance,
-    )
-    dictStoreFail = _fdictStoreCredentialSafely(
-        dictCtx, sContainerId, sService, sToken, sZenodoInstance,
-    )
-    if dictStoreFail is not None:
-        return dictStoreFail
-    dictResult = _fdictValidateStoredCredential(
-        dictCtx, sContainerId, sService, sProjectId,
-        sZenodoInstance,
-    )
-    if not dictResult["bConnected"]:
-        _fnRollBackFailedCredential(
-            dictCtx, sContainerId, sService, sZenodoInstance,
-            sPreviousToken, dictResult,
+    dictResult = _fdictRefuseSetupInput(sService, sProjectId)
+    if dictResult is None:
+        dictResult = _fdictCheckThenCommitCandidate(
+            dictCtx, sContainerId, sService, sToken, sProjectId,
+            sZenodoInstance,
         )
+    sWhere = (
+        f"zenodo {sZenodoInstance or 'sandbox'}"
+        if sService == "zenodo" else sService
+    )
+    logger.info(
+        "CREDENTIAL store for %s: %s", sWhere,
+        "stored" if dictResult.get("bConnected")
+        else dictResult.get("sClass") or "refused",
+    )
     return dictResult
 
 
-def _fsFetchPreviousHostCredential(
-    dictCtx, sContainerId, sService, sZenodoInstance="",
+def _fdictCheckThenCommitCandidate(
+    dictCtx, sContainerId, sService, sToken, sProjectId, sZenodoInstance,
 ):
-    """Return the currently stored host token for the service, or None.
-
-    Any read error is treated as "nothing stored" so a broken keyring
-    cannot block the connect flow.
-    """
+    """Fingerprint the slot, check the candidate, then commit it."""
+    from vaibify.config import credentialFailures as failures
+    from vaibify.config import credentialReplacement, zenodoTokenSlots
     try:
-        if sService == "overleaf":
-            from vaibify.config.secretManager import fsRetrieveSecret
-            return fsRetrieveSecret("overleaf_token", "keyring")
-        if sService == "zenodo":
-            from .. import zenodoTokenAccess
-            return zenodoTokenAccess.fsActiveZenodoToken(
-                dictCtx["docker"], sContainerId, sZenodoInstance or "sandbox",
-            ) or None
-    except Exception:
-        return None
-    return None
-
-
-def _fnRollBackFailedCredential(
-    dictCtx, sContainerId, sService, sZenodoInstance, sPreviousToken,
-    dictResult,
-):
-    """Undo a failed-validation store: restore the previous token or delete.
-
-    Appends the disposition to the result message so the dashboard
-    states plainly whether a previously saved token survived.
-    """
-    if sPreviousToken is not None:
-        try:
-            _fnDispatchStore(
-                dictCtx, sContainerId, sService, sPreviousToken,
-                sZenodoInstance,
-            )
-            _fnAppendTokenDisposition(dictResult, bRestored=True)
-            return
-        except Exception:
-            logger.warning(
-                "Failed to restore the previous %s token after a "
-                "validation failure", sService, exc_info=True,
-            )
-    _fnCleanupCredential(dictCtx, sContainerId, sService, sZenodoInstance)
-    _fnAppendTokenDisposition(dictResult, bRestored=False)
-
-
-def _fnAppendTokenDisposition(dictResult, bRestored):
-    """State what happened to the stored token after a failed validation."""
-    sDisposition = (
-        " — the entered token was not saved; your previously saved "
-        "token was restored"
-        if bRestored
-        else " — the entered token was not saved"
+        sSlot = _fsCredentialSlotForSetup(
+            dictCtx, sContainerId, sService, sZenodoInstance,
+        )
+        sFingerprintBefore = credentialReplacement.fsFingerprintSlot(sSlot)
+    except zenodoTokenSlots.TokenStoreUnreadable:
+        return _fdictSetupFailure(
+            sService, failures.S_CLASS_KEYRING_UNREADABLE, sZenodoInstance,
+        )
+    except ValueError as error:
+        return {
+            "bConnected": False, "sClass": failures.S_CLASS_INPUT_INVALID,
+            "sMessage": str(error), "listActions": [],
+        }
+    try:
+        sClass, sDetail = _ftCheckCandidateWithItsService(
+            sService, sToken, sProjectId, sZenodoInstance,
+        )
+    except Exception as error:  # noqa: BLE001 -- nothing was written; reported, never raised
+        fnReRaiseControlPlaneRefusal(error)
+        sClass, sDetail = failures.S_CLASS_NO_ANSWER, type(error).__name__
+    if sClass:
+        return _fdictSetupFailure(
+            sService, sClass, sZenodoInstance,
+            failures.fsScrubKnownSecret(sDetail, sToken),
+        )
+    return _fdictCommitCheckedCandidate(
+        sService, sSlot, sToken, sFingerprintBefore, sZenodoInstance,
     )
-    dictResult["sMessage"] = (
-        dictResult.get("sMessage") or "Validation failed"
-    ) + sDisposition
+
+
+def _fdictCommitCheckedCandidate(
+    sService, sSlot, sToken, sFingerprintBefore, sZenodoInstance,
+):
+    """Write a checked candidate unless the slot moved; answer either way."""
+    from vaibify.config import credentialFailures as failures
+    from vaibify.config import credentialReplacement, zenodoTokenSlots
+    try:
+        credentialReplacement.fnCommitValidatedCandidate(
+            sSlot, sToken, sFingerprintBefore,
+        )
+    except (
+        credentialReplacement.CredentialSlotChanged,
+        credentialReplacement.CredentialSlotBusy,
+    ):
+        return _fdictSetupFailure(
+            sService, failures.S_CLASS_SLOT_CHANGED, sZenodoInstance,
+        )
+    except zenodoTokenSlots.TokenStoreUnreadable:
+        return _fdictSetupFailure(
+            sService, failures.S_CLASS_KEYRING_UNREADABLE, sZenodoInstance,
+        )
+    except zenodoTokenSlots.TokenStoreError:
+        return _fdictSetupFailure(
+            sService, failures.S_CLASS_KEYRING_UNWRITABLE, sZenodoInstance,
+        )
+    return {"bConnected": True, "sMessage": "Connected"}
 
 
 def _fdictValidateStoredCredential(
     dictCtx, sContainerId, sService, sProjectId,
     sZenodoInstance="",
 ):
-    """Validate an already-stored credential without deleting it on failure."""
+    """Check the token already stored, writing and deleting nothing."""
     from .. import syncDispatcher
+    from vaibify.reproducibility import overleafAuth
     dictResult = syncDispatcher.fdictCheckConnectivity(
         dictCtx["docker"], sContainerId, sService,
         _fsProjectRepoPathOrEmpty(dictCtx, sContainerId))
     if not dictResult["bConnected"]:
         return dictResult
+    if sService == "overleaf":
+        dictRefusal = _fdictRefuseSetupInput(sService, sProjectId)
+        if dictRefusal is not None:
+            return dictRefusal
     bValid, sDetail = _ftRunServiceValidation(
         syncDispatcher, sService, dictCtx["docker"],
         sContainerId, sProjectId, sZenodoInstance,
     )
     if bValid:
         return {"bConnected": True, "sMessage": "Connected"}
+    if sService == "overleaf":
+        return _fdictSetupFailure(
+            sService, overleafAuth.fsClassifyOverleafGitFailure(sDetail),
+            "", sDetail,
+        )
     return {
-        "bConnected": False,
-        "sMessage": _fsServiceRemediation(sService, sDetail),
+        "bConnected": False, "sMessage": sDetail or _S_ZENODO_REMEDIATION,
     }
 
 
@@ -3152,6 +3142,12 @@ def _fnRegisterSyncRoutes(app, dictCtx):
     def _fnPersistServiceSettings(
         dictCtx, sContainerId, request, requestHttp,
     ):
+        # A credential-only store (the remote-binding review's token box)
+        # records no setting: the binding compares project.json's
+        # Overleaf project, and rewriting it there would change the very
+        # thing under review.
+        if request.bCredentialOnly:
+            return
         if request.sService == "overleaf" and request.sProjectId:
             dictWorkflow = fdictRequireWorkflow(
                 dictCtx["workflows"], sContainerId)
@@ -3161,7 +3157,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
                 "The Overleaf project binding",
             )
             return
-        if request.sService == "zenodo" and not request.bCredentialOnly:
+        if request.sService == "zenodo":
             _fnPersistZenodoService(
                 dictCtx, sContainerId, request, requestHttp,
             )
