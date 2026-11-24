@@ -41055,4 +41055,17 @@ LIST_FALSIFICATIONS = [
         old='    if bAccepted:\n        return ("", "")\n',
         new='    if True:\n        return ("", "")\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testATokenStoreNeverDeadEnds.py::'
+            'testAFailedStoreLeavesTheReviewAWayForwardAndSaysWhy'
+        ),
+        source='vaibify/gui/static/scriptRemoteBindings.js',
+        # the old one-prompt cap: no token action after a failed store
+        old='            sTokenAction: _fsTokenActionOf(listActions),\n',
+        new=(
+            '            sTokenAction: dictDialog.sLastStoreFailure ? "" : '
+            '_fsTokenActionOf(listActions),\n'
+        ),
+    ),
 ]

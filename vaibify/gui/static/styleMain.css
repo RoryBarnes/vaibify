@@ -4091,6 +4091,16 @@ pre.quarantine-remedy {
     font-size: 11px;
 }
 
+/* The token box keeps a failed store's sentence beside the field the
+   researcher will correct, rather than in a toast that disappears. */
+.modal .setup-failure-message {
+    color: var(--color-orange, #ff9a3c);
+    font-size: 13px;
+    margin: 8px 0 0;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
 .toast.toast-zenodo {
     min-width: 320px;
     padding: 14px 18px;

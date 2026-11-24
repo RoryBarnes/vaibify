@@ -40,6 +40,14 @@ var VaibifyRemoteBindings = (function () {
     // The binding names Zenodo by service; the token slots and the
     // credential prompt name the permanent instance "production".
     var _DICT_TOKEN_SLOT_FOR_SERVICE = {zenodo: "production", sandbox: "sandbox"};
+    // The server's evidence says which actions a failure offers
+    // (vaibify.config.credentialFailures); these are their labels.
+    var _S_ACTION_STORE = "store";
+    var _S_ACTION_REPLACE = "replace";
+    var _S_ACTION_RETRY = "retry";
+    var _DICT_TOKEN_ACTION_LABELS = {
+        store: "Store your token", replace: "Replace your token",
+    };
     var _RE_OVERLEAF_PROJECT_ID = /^[A-Za-z0-9]+$/;
     var _sContainerId = "";
     var _dictDialog = null;
@@ -188,7 +196,8 @@ var VaibifyRemoteBindings = (function () {
             _dictDialog = {
                 dictContext: dictContext,
                 listAddress: [sService, sRecordKind || "", sInstance || ""],
-                dictEntry: null, bCredentialAsked: false, bPosting: false,
+                dictEntry: null, bCredentialInFlight: false,
+                sLastStoreFailure: "", bPosting: false,
                 fnResolve: fnResolve,
             };
             _fnShowModal(true);
@@ -318,12 +327,24 @@ var VaibifyRemoteBindings = (function () {
         }
         var dictEvidence = dictEntry.dictEvidence || {};
         elBody.appendChild(_felementEvidence(dictEntry, dictEvidence));
+        if (dictDialog.sLastStoreFailure && !dictEvidence.bSucceeded) {
+            _fnAppendParagraph(elBody, "Your token was not stored: " +
+                dictDialog.sLastStoreFailure, "remote-binding-refusal");
+        }
+        var listActions = dictEvidence.listActions || [];
         _fnRenderButtons(dictDialog, {
             bConfirm: Boolean(dictEvidence.bSucceeded),
-            bRetry: dictEvidence.sState === "unavailable",
-            bStoreToken: dictEvidence.sState === "token-missing" &&
-                !dictDialog.bCredentialAsked,
+            bRetry: listActions.indexOf(_S_ACTION_RETRY) >= 0,
+            sTokenAction: _fsTokenActionOf(listActions),
         });
+    }
+
+    function _fsTokenActionOf(listActions) {
+        /* Store when none is stored, Replace when one is; the server's
+           list decides whether either is offered at all. */
+        if (listActions.indexOf(_S_ACTION_STORE) >= 0) return _S_ACTION_STORE;
+        if (listActions.indexOf(_S_ACTION_REPLACE) >= 0) return _S_ACTION_REPLACE;
+        return "";
     }
 
     function _fsAuthorizationSentence(dictEntry) {
@@ -375,11 +396,11 @@ var VaibifyRemoteBindings = (function () {
         var elEvidence = document.createElement("div");
         elEvidence.className = "remote-binding-evidence";
         if (!dictEvidence.bSucceeded) {
-            /* Couldn't check is never red: nothing about the remote
-               was learned. */
+            /* A failed check is never red: nothing about the remote
+               was learned. The server's sentence says what failed and
+               what to do, so it is shown as written. */
             elEvidence.classList.add("remote-binding-evidence--unchecked");
-            _fnAppendParagraph(elEvidence, (dictEvidence.sState === "token-missing"
-                ? "" : "Couldn't check: ") + (dictEvidence.sMessage || "no answer"));
+            _fnAppendParagraph(elEvidence, dictEvidence.sMessage || "no answer");
             return elEvidence;
         }
         _fnAppendParagraph(elEvidence, _fsDescribeEvidence(dictEntry, dictEvidence));
@@ -423,8 +444,10 @@ var VaibifyRemoteBindings = (function () {
         var listButtons = [["Cancel", "btnRemoteBindingCancel", "", function () {
             _fnSettleDialog(dictDialog, _S_CANCELLED);
         }]];
-        if (dictOffer.bStoreToken) {
-            listButtons.push(["Store your token", "btnRemoteBindingStoreToken", "",
+        if (dictOffer.sTokenAction) {
+            listButtons.push([
+                _DICT_TOKEN_ACTION_LABELS[dictOffer.sTokenAction],
+                "btnRemoteBindingStoreToken", "",
                 function () { _fnStoreToken(dictDialog); }]);
         }
         if (dictOffer.bRetry) {
@@ -443,16 +466,36 @@ var VaibifyRemoteBindings = (function () {
     }
 
     async function _fnStoreToken(dictDialog) {
-        /* One credential prompt per dialog; the evidence is asked again
-           once it resolves, whatever the answer. */
-        if (dictDialog.bCredentialAsked) return;
-        dictDialog.bCredentialAsked = true;
+        /* Offered every time the evidence calls for it: a store that
+           failed, or a box that was cancelled, leaves the researcher a
+           way forward. Only one token box is in flight at a time, and
+           the evidence is asked again once it closes, whatever the
+           answer; a failed store's sentence is kept for the redraw. */
+        if (dictDialog.bCredentialInFlight) return;
+        dictDialog.bCredentialInFlight = true;
         _fnShowModal(false);
-        await VaibifySyncManager.fpromiseConnectZenodoCredentialOnly(
-            _DICT_TOKEN_SLOT_FOR_SERVICE[dictDialog.listAddress[2]] || "sandbox");
+        var dictOutcome;
+        try {
+            dictOutcome = await VaibifySyncManager.fpromiseStoreCredentialForReview(
+                dictDialog.listAddress[0], _fdictTokenTargetOf(dictDialog));
+        } finally {
+            dictDialog.bCredentialInFlight = false;
+        }
         if (_fbDialogIsStale(dictDialog)) return;
+        dictDialog.sLastStoreFailure = (dictOutcome && !dictOutcome.bConnected)
+            ? (dictOutcome.sMessage || "") : "";
         _fnShowModal(true);
         _fnFetchForDialog(dictDialog);
+    }
+
+    function _fdictTokenTargetOf(dictDialog) {
+        /* What the token box needs to store a token for THIS entry: the
+           Zenodo instance, or the Overleaf project under review. */
+        var dictTarget = ((dictDialog.dictEntry || {}).dictReview || {}).dictTarget || {};
+        return {
+            sInstance: _DICT_TOKEN_SLOT_FOR_SERVICE[dictDialog.listAddress[2]] || "sandbox",
+            sProjectId: String(dictTarget.sProjectId || ""),
+        };
     }
 
     async function _fnConfirm(dictDialog, elButton) {

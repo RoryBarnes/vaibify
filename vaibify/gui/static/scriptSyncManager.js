@@ -19,8 +19,9 @@ var VaibifySyncManager = (function () {
     var _setActiveFileSyncs = new Set();
 
     var _DICT_SYNC_ERROR_MESSAGES = {
-        auth: "Authentication failed. Check your credentials " +
-            "in Sync > Setup.",
+        auth: "The remote refused the stored credential. Replace it " +
+            "from the service's badge menu on a file row " +
+            "(\u201cEdit \u2026 settings\u2026\u201d).",
         rateLimit: "Rate limited. Try again in a few minutes.",
         notFound: "Resource not found. Check the remote " +
             "configuration.",
@@ -43,6 +44,9 @@ var VaibifySyncManager = (function () {
 
     var _DICT_SERVICE_ERROR_MESSAGES = {
         GitHub: {
+            auth: "GitHub refused the credential. vaibify pushes with " +
+                "your gh login: run 'gh auth login' in a terminal on " +
+                "this computer.",
             notFound: "GitHub push failed. The file path may be " +
                 "outside the project repo, or the remote branch is " +
                 "unreachable. Check the toast detail for the exact " +
@@ -51,12 +55,20 @@ var VaibifySyncManager = (function () {
                 "don't have. Run 'git pull --rebase' first.",
         },
         Zenodo: {
+            auth: "Zenodo refused this project's stored token. Replace " +
+                "it with \u201cEdit Zenodo settings\u2026\u201d from a " +
+                "Zenodo badge's menu; sandbox and zenodo.org tokens are " +
+                "separate.",
             notFound: "Resource not found. Check your project ID " +
                 "or DOI.",
             conflict: "Deposit is already published or in an " +
                 "unexpected state. Check the Zenodo deposit page.",
         },
         Overleaf: {
+            auth: "Overleaf refused the stored token. Replace it with " +
+                "\u201cEdit Overleaf settings\u2026\u201d from an " +
+                "Overleaf badge's menu; one token serves every project " +
+                "on this computer.",
             notFound: "Overleaf project not found. Check the " +
                 "project's Overleaf URL.",
         },
@@ -1117,9 +1129,23 @@ var VaibifySyncManager = (function () {
         fnBindConnectionSetupEvents();
     }
 
+    var _S_GITHUB_CREDENTIAL_EXPLANATION =
+        "vaibify pushes to GitHub with your gh login and stores no " +
+        "GitHub token of its own. To change which account pushes, run " +
+        "'gh auth login' in a terminal on this computer. To push to " +
+        "another repository, change the project repository's origin " +
+        "remote.";
+
     async function fnShowConnectionSetup(sService) {
         var elModal = document.getElementById("modalConnectionSetup");
+        if (sService === "github") {
+            fnShowHelpPopup(_S_GITHUB_CREDENTIAL_EXPLANATION);
+            return;
+        }
         elModal.dataset.service = sService;
+        _fnShowSetupFailure("");
+        document.getElementById("inputSetupProjectId").readOnly = false;
+        _fnShowOverleafSharedNote(sService === "overleaf");
         var elProjectId = document.getElementById(
             "groupSetupProjectId");
         var elToken = document.getElementById("groupSetupToken");
@@ -1130,14 +1156,8 @@ var VaibifySyncManager = (function () {
         if (elZenodoInstance) elZenodoInstance.style.display = "none";
         if (sService === "overleaf") {
             await _fnSetupOverleafFields(elProjectId, elToken, elModal);
-        } else if (sService === "zenodo") {
-            _fnSetupZenodoFields(elToken, elModal);
         } else {
-            VaibifyApp.fnShowToast(
-                "GitHub uses gh auth. Run 'gh auth login' " +
-                "on your host machine.", "error"
-            );
-            return;
+            _fnSetupZenodoFields(elToken, elModal);
         }
         elModal.style.display = "flex";
         _fnAttachConnectionSetupEscape();
@@ -1156,15 +1176,53 @@ var VaibifySyncManager = (function () {
        push modal. */
     var _fnResolveCredentialOnly = null;
 
+    var _sLastCredentialFailure = "";
+
     function fpromiseConnectZenodoCredentialOnly(sInstance) {
+        return _fpromiseOpenCredentialOnly("zenodo", function () {
+            _fnPreselectZenodoInstance(sInstance);
+        }).then(function (dictOutcome) {
+            return dictOutcome.bConnected;
+        });
+    }
+
+    function fpromiseStoreCredentialForReview(sService, dictTarget) {
+        /* The remote-binding review's token box. Resolves
+           {bConnected, sMessage} when the box closes: stored, or
+           cancelled carrying the sentence of the last failed store, so
+           the review can show why nothing was stored. */
+        return _fpromiseOpenCredentialOnly(sService, function () {
+            if (sService === "overleaf") {
+                _fnFixOverleafProjectForReview(dictTarget.sProjectId);
+            } else {
+                _fnPreselectZenodoInstance(dictTarget.sInstance);
+            }
+        });
+    }
+
+    function _fpromiseOpenCredentialOnly(sService, fnPrepare) {
         var elModal = document.getElementById("modalConnectionSetup");
+        _fnSettleCredentialOnly(false);
         return new Promise(function (fnResolve) {
             _fnResolveCredentialOnly = fnResolve;
-            fnShowConnectionSetup("zenodo").then(function () {
+            _sLastCredentialFailure = "";
+            elModal.dataset.credentialOnly = "1";
+            fnShowConnectionSetup(sService).then(function () {
                 elModal.dataset.credentialOnly = "1";
-                _fnPreselectZenodoInstance(sInstance);
+                fnPrepare();
             });
         });
+    }
+
+    function _fnFixOverleafProjectForReview(sProjectId) {
+        /* The review is ABOUT this project, so its ID is shown and
+           fixed, and a new token is asked for rather than the stored
+           one being offered again. */
+        var elProjectId = document.getElementById("inputSetupProjectId");
+        elProjectId.value = sProjectId || "";
+        elProjectId.readOnly = true;
+        _fnRemoveOverleafReuseRow();
+        document.getElementById("groupSetupToken").style.display = "";
     }
 
     function _fnPreselectZenodoInstance(sInstance) {
@@ -1179,15 +1237,34 @@ var VaibifySyncManager = (function () {
     }
 
     function _fnSettleCredentialOnly(bConnected) {
-        /* Cancelling resolves FALSE rather than leaving the caller
-           awaiting forever: a promotion that was declined a token has
-           to report that, not hang. */
+        /* Cancelling resolves rather than leaving the caller awaiting
+           forever: a promotion that was declined a token has to report
+           that, not hang. */
         var elModal = document.getElementById("modalConnectionSetup");
         delete elModal.dataset.credentialOnly;
         if (!_fnResolveCredentialOnly) return;
         var fnResolve = _fnResolveCredentialOnly;
         _fnResolveCredentialOnly = null;
-        fnResolve(Boolean(bConnected));
+        fnResolve({
+            bConnected: Boolean(bConnected),
+            sMessage: bConnected ? "" : _sLastCredentialFailure,
+        });
+    }
+
+    function _fnShowSetupFailure(sMessage) {
+        /* A failed store's sentence stays in the box, beside the field
+           the researcher will correct; a toast disappears before it is
+           read (researcher-reported, 2026-11-24). */
+        var elFailure = document.getElementById("setupFailureMessage");
+        if (sMessage) _sLastCredentialFailure = sMessage;
+        if (!elFailure) return;
+        elFailure.textContent = sMessage || "";
+        elFailure.hidden = !sMessage;
+    }
+
+    function _fnShowOverleafSharedNote(bShow) {
+        var elNote = document.getElementById("noteSetupOverleafShared");
+        if (elNote) elNote.hidden = !bShow;
     }
 
 
@@ -1241,8 +1318,9 @@ var VaibifySyncManager = (function () {
         document.getElementById("modalConnectionTitle")
             .textContent = "Connect to Overleaf";
         _fnRemoveOverleafReuseRow();
+        if (elModal.dataset.credentialOnly === "1") return;
         var bHasStored = await _fbHostHasOverleafCredential();
-        if (bHasStored) {
+        if (bHasStored && elModal.dataset.credentialOnly !== "1") {
             _fnShowOverleafReuseOption(elModal);
         }
     }
@@ -1319,19 +1397,17 @@ var VaibifySyncManager = (function () {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/sync/" + sContainerId + "/setup", dictBody
             );
-            elModal.style.display = "none";
             if (dictResult.bConnected) {
+                elModal.style.display = "none";
+                _fnDetachConnectionSetupEscape();
                 VaibifyApp.fnShowToast("Connected!", "success");
                 fnOpenPushModal("overleaf");
             } else {
-                VaibifyApp.fnShowToast(
-                    dictResult.sMessage || "Connection failed",
-                    "error"
-                );
+                _fnShowSetupFailure(
+                    dictResult.sMessage || "Connection failed");
             }
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                _fsSanitizeError(error.message), "error");
+            _fnShowSetupFailure(_fsSanitizeError(error.message));
         }
     }
 
@@ -1430,8 +1506,24 @@ var VaibifySyncManager = (function () {
         );
     }
 
+    var _bSetupSaveInFlight = false;
+
     async function _fnHandleSetupSave() {
-        var elModal = document.getElementById("modalConnectionSetup");
+        /* One store at a time: a second click while the first is being
+           checked would race two candidates for one slot. */
+        if (_bSetupSaveInFlight) return;
+        _bSetupSaveInFlight = true;
+        var elSave = document.getElementById("btnSetupSave");
+        elSave.disabled = true;
+        try {
+            await _fnSubmitSetup();
+        } finally {
+            _bSetupSaveInFlight = false;
+            elSave.disabled = false;
+        }
+    }
+
+    function _fdictBuildSetupBody(elModal) {
         var sService = elModal.dataset.service;
         var dictBody = { sService: sService };
         var sProjectId = document.getElementById(
@@ -1440,43 +1532,43 @@ var VaibifySyncManager = (function () {
             "inputSetupToken").value.trim();
         if (sProjectId) dictBody.sProjectId = sProjectId;
         if (sToken) dictBody.sToken = sToken;
-        var bCredentialOnly = elModal.dataset.credentialOnly === "1";
         if (sService === "zenodo") {
             dictBody.sZenodoInstance = _fsReadZenodoInstance();
-            if (bCredentialOnly) dictBody.bCredentialOnly = true;
         }
-        var sContainerId = VaibifyApp.fsGetContainerId();
+        if (elModal.dataset.credentialOnly === "1") {
+            dictBody.bCredentialOnly = true;
+        }
+        return dictBody;
+    }
+
+    async function _fnSubmitSetup() {
+        var elModal = document.getElementById("modalConnectionSetup");
+        var dictBody = _fdictBuildSetupBody(elModal);
+        var bCredentialOnly = dictBody.bCredentialOnly === true;
+        var dictResult;
         try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/sync/" + sContainerId + "/setup",
+            dictResult = await VaibifyApi.fdictPost(
+                "/api/sync/" + VaibifyApp.fsGetContainerId() + "/setup",
                 dictBody
             );
-            if (bCredentialOnly) {
-                document.getElementById("modalConnectionSetup")
-                    .style.display = "none";
-                _fnDetachConnectionSetupEscape();
-                _fnSettleCredentialOnly(dictResult.bConnected);
-                if (!dictResult.bConnected) {
-                    VaibifyApp.fnShowToast(
-                        dictResult.sMessage || "Connection failed",
-                        "error");
-                }
-                return;
-            }
-            _fnHideConnectionSetup();
-            if (dictResult.bConnected) {
-                VaibifyApp.fnShowToast("Connected!", "success");
-                fnOpenPushModal(sService);
-            } else {
-                VaibifyApp.fnShowToast(
-                    dictResult.sMessage || "Connection failed",
-                    "error"
-                );
-            }
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                _fsSanitizeError(error.message), "error");
+            _fnShowSetupFailure(_fsSanitizeError(error.message));
+            return;
         }
+        if (!dictResult.bConnected) {
+            _fnShowSetupFailure(dictResult.sMessage || "Connection failed");
+            return;
+        }
+        _fnShowSetupFailure("");
+        if (bCredentialOnly) {
+            elModal.style.display = "none";
+            _fnDetachConnectionSetupEscape();
+            _fnSettleCredentialOnly(true);
+            return;
+        }
+        _fnHideConnectionSetup();
+        VaibifyApp.fnShowToast("Connected!", "success");
+        fnOpenPushModal(dictBody.sService);
     }
 
     function _fsSanitizeError(sMessage) {
@@ -3265,6 +3357,7 @@ var VaibifySyncManager = (function () {
         fnOpenPushModal: fnOpenPushModal,
         fpromiseConnectZenodoCredentialOnly:
             fpromiseConnectZenodoCredentialOnly,
+        fpromiseStoreCredentialForReview: fpromiseStoreCredentialForReview,
         fnVerifyRemoteFromDashboard: fnVerifyRemoteFromDashboard,
         fnPushEnvelopeFromDashboard: fnPushEnvelopeFromDashboard,
         fnRefreshConfiguredRemotes: fnRefreshConfiguredRemotes,

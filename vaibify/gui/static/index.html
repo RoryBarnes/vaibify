@@ -1114,7 +1114,14 @@
             </label>
             <input type="password" id="inputSetupToken"
                    placeholder="Paste your token here">
+            <p class="setup-instance-help" id="noteSetupOverleafShared"
+               hidden>
+                One Overleaf token serves every project on this computer;
+                storing one here replaces it for all of them.
+            </p>
         </div>
+        <p class="setup-failure-message" id="setupFailureMessage"
+           role="alert" hidden></p>
         <div class="modal-actions">
             <button class="btn" id="btnSetupCancel">Cancel</button>
             <button class="btn btn-primary" id="btnSetupSave">
