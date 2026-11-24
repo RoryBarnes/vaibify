@@ -9071,6 +9071,14 @@ DICT_HOME_STATE_EXEMPTIONS = {
      "fsResolveDepositScratchDirectory"): _S_REASON_FOLLOWS_HOME,
     ("vaibify.reproducibility.scheduledReverify", "fsArxivCacheDir"):
         _S_REASON_FOLLOWS_HOME,
+    ("vaibify.reproducibility.overleafMirror", "fsGetMirrorRoot"): (
+        "resolved from HOME at call time, which the mirror's own tests set "
+        "and assert on; tests/testSyncRoutesCoverage.py, whose push tests "
+        "ran a real git fetch into the researcher's mirror before "
+        "2026-11-24, points it into the isolated test home for every test, "
+        "and the session sentinel reports any write that reaches the real "
+        "home"
+    ),
 }
 
 

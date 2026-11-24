@@ -379,14 +379,6 @@ T_REDIRECTED_STATE_STORES = (
         "vaibify.config.credentialReplacement", "_S_CREDENTIAL_LOCK_DIRECTORY",
         "credentialLocks",
     ),
-    # Exempted until 2026-11-24 on the premise that every test reaching
-    # it sets HOME itself; the session sentinel then caught the Overleaf
-    # push tests running a real `git fetch` into the researcher's own
-    # ~/.vaibify/overleaf-mirrors.
-    StateStoreRedirect(
-        "vaibify.reproducibility.overleafMirror", "fsGetMirrorRoot",
-        "overleaf-mirrors",
-    ),
     StateStoreRedirect("vaibify.config.hubPortRegistry", "_S_VAIBIFY_DIRECTORY", ""),
     StateStoreRedirect("vaibify.config.sessionRegistry", "_S_SESSION_DIRECTORY", "sessions"),
     StateStoreRedirect("vaibify.config.keepAliveManager", "_S_PID_DIRECTORY", "caffeinate"),

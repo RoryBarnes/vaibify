@@ -196,7 +196,7 @@ def _fdictAskZenodo(sInstance, sToken, sRecordKind, dictTarget):
         dictRecord = _fdictDescribeNamedRecord(
             sInstance, sToken, sRecordKind, dictTarget,
         )
-    except zenodoClient.ZenodoAuthError as error:
+    except zenodoClient.ZenodoAuthError:
         return _fdictEvidenceFailure(
             remoteBindings.S_SERVICE_ZENODO, sInstance,
             credentialFailures.S_CLASS_ACCESS_DENIED,

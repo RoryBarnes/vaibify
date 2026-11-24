@@ -208,6 +208,21 @@ def _fmockCreateDockerSync():
 
 
 @pytest.fixture(autouse=True)
+def fixtureOverleafMirrorsInTheTestHome(monkeypatch, fnIsolateVaibifyStateDirectories):
+    """Keep every test here out of the researcher's Overleaf mirrors.
+
+    The push routes refresh a mirror they find empty, and the session
+    sentinel caught this module running a real git fetch into
+    ~/.vaibify/overleaf-mirrors (2026-11-24). The isolated home the
+    suite already made holds them instead.
+    """
+    import os
+    from vaibify.reproducibility import overleafMirror
+    sMirrorRoot = os.path.join(fnIsolateVaibifyStateDirectories, "overleaf-mirrors")
+    monkeypatch.setattr(overleafMirror, "fsGetMirrorRoot", lambda: sMirrorRoot)
+
+
+@pytest.fixture(autouse=True)
 def fixtureHostArchiveAnswersLikeTheMock(monkeypatch):
     """The Zenodo deposit and the Overleaf push run on the HOST since 2026-10-29.
 
