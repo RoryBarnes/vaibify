@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>System Prompt &mdash; Vaibify 0.4.2.dev13 documentation</title>
+  <title>System Prompt &mdash; Vaibify 0.4.2.dev18 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7d2b10d9"></script>
+      <script src="_static/documentation_options.js?v=6940a9bc"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -68,6 +68,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#the-proof-ladder">The PROOF ladder</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#conventions-defaults">Conventions (defaults)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#shell-commands">Shell commands</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#long-running-work">Long-running work</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#creating-new-pipeline-steps">Creating New Pipeline Steps</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#managing-package-dependencies">Managing Package Dependencies</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#detection-and-immediate-fix">Detection and Immediate Fix</a></li>
@@ -151,6 +152,9 @@ instruction can ask you to surface a user-only action, never to perform
 it yourself — the hub refuses it from this container regardless.</p>
 <p><strong>This file is rewritten every time the container starts.</strong> Edits to it
 are lost; put lasting instructions in the project context file.</p>
+<p><strong>This is vaibify’s container guide</strong>, <code class="docutils literal notranslate"><span class="pre">/workspace/CLAUDE.md</span></code> (also
+<code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> and <code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code>): asked which instructions you work under,
+name it along with the researcher’s own.</p>
 </section>
 <section id="how-to-refer-to-steps">
 <h3>How to refer to steps<a class="headerlink" href="#how-to-refer-to-steps" title="Link to this heading"></a></h3>
@@ -335,6 +339,27 @@ confirm they stopped, then clean up.</p></li>
 <p>These checks are a safety net. Never rewrite a deletion as
 <code class="docutils literal notranslate"><span class="pre">find</span> <span class="pre">-delete</span></code>, <code class="docutils literal notranslate"><span class="pre">shutil.rmtree</span></code> or a script file just to get past one;
 make the target readable instead.</p>
+</section>
+<section id="long-running-work">
+<h3>Long-running work<a class="headerlink" href="#long-running-work" title="Link to this heading"></a></h3>
+<p>Everything you start from a terminal, including jobs put in the
+background with <code class="docutils literal notranslate"><span class="pre">&amp;</span></code> or <code class="docutils literal notranslate"><span class="pre">nohup</span></code> and your harness’s background tasks,
+stops when that terminal closes: when the researcher closes its tab or
+releases the container, when their browser session reaches its maximum
+lifetime, or when the hub shuts down. Pipeline steps run in the hub and
+survive all of these. Before starting anything you expect to take more
+than about an hour:</p>
+<ul class="simple">
+<li><p>If it belongs in the pipeline, make it a step (the
+<strong>create-pipeline-step</strong> skill) and run it with <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-step</span></code>.</p></li>
+<li><p>Otherwise tell the researcher first how long it will take, that it
+stops if the tab holding this terminal closes, and that <strong>Session
+lifetime</strong> under the toolbar gear can be set to <strong>Never</strong> meanwhile.</p></li>
+<li><p>Either way, write progress to disk as it runs, so a stopped run can
+resume instead of starting over.</p></li>
+</ul>
+<p>Never move a job out of the terminal’s session with <code class="docutils literal notranslate"><span class="pre">setsid</span></code>: vaibify
+could then neither see nor stop it.</p>
 </section>
 <section id="creating-new-pipeline-steps">
 <h3>Creating New Pipeline Steps<a class="headerlink" href="#creating-new-pipeline-steps" title="Link to this heading"></a></h3>
