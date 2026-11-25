@@ -36,6 +36,7 @@ __all__ = [
     "fbValidateOverleafCredentials",
     "fbValidateZenodoToken",
     "fsDescribeZenodoValidationOutcome",
+    "ftValidateOverleafCandidate",
     "ftResultValidateZenodoToken",
     "fsZenodoInstanceToService",
     "fsZenodoTokenNameForInstance",
@@ -1567,18 +1568,35 @@ def _fdictCheckZenodoKeyring(connectionDocker, sContainerId):
 
 
 def _fdictCheckHostKeyring(sTokenName):
-    """Check whether a credential exists in the host OS keyring."""
+    """Check whether a credential exists in the host OS keyring.
+
+    Three answers, never two. ``fbSecretExists`` reads an unreachable
+    keyring as "absent", so an absence is asked again of the three-state
+    read: a keychain that cannot be read says so, because "Token not
+    found" would send the researcher to store a token they may hold.
+    """
+    from vaibify.config import credentialReplacement, zenodoTokenSlots
     from vaibify.config.secretManager import fbSecretExists
     if fbSecretExists(sTokenName, "keyring"):
         return {"bConnected": True, "sMessage": "Connected"}
+    try:
+        if credentialReplacement.fbSlotHoldsValue(sTokenName):
+            return {"bConnected": True, "sMessage": "Connected"}
+    except zenodoTokenSlots.TokenStoreUnreadable:
+        return {
+            "bConnected": False,
+            "sMessage": (
+                "Could not check: this computer's keychain could not be "
+                "read. Unlock it, or allow vaibify to use it, and try again."
+            ),
+        }
     return {"bConnected": False, "sMessage": "Token not found"}
 
 
 _S_HOST_CREDENTIAL_MISSING_MESSAGE = (
-    "The project repository reaches GitHub, but this host cannot "
-    "resolve a GitHub credential, so a push from the dashboard will "
-    "be refused. Run 'gh auth login' or store a per-repository token "
-    "in Settings."
+    "The project repository reaches GitHub, but vaibify on this host "
+    "has no GitHub login to push with, so a push from the dashboard "
+    "will be refused. Run 'gh auth login' in a terminal on this computer."
 )
 
 _S_NO_PROJECT_REPO_MESSAGE = (
@@ -1855,6 +1873,33 @@ def _ftRunHostLsRemote(sProjectId, sAskpass):
     return (processResult.returncode == 0, sDetail)
 
 
+def ftValidateOverleafCandidate(sProjectId, sCandidateToken):
+    """Ask Overleaf whether a token NOT yet stored can read the project.
+
+    Returns ``(sClass, sDetail)`` with ``sClass`` '' when it can. The
+    candidate reaches git through a mode-600 file and an askpass that
+    reads it (:func:`overleafAuth.fsWriteCandidateTokenFile`), both
+    removed before this returns; the stored token is never consulted,
+    so a check that fails or raises leaves it as it was. The git call is
+    the same hermetic, credential-isolated ``ls-remote`` that checks a
+    stored token.
+    """
+    from vaibify.reproducibility import overleafAuth
+    overleafAuth.fnValidateOverleafProjectId(sProjectId)
+    sTokenPath = overleafAuth.fsWriteCandidateTokenFile(sCandidateToken)
+    try:
+        sAskpass = overleafAuth.fsWriteCandidateAskpassScript(sTokenPath)
+        try:
+            bAccepted, sDetail = _ftRunHostLsRemote(sProjectId, sAskpass)
+        finally:
+            _fnRemovePath(sAskpass)
+    finally:
+        _fnRemovePath(sTokenPath)
+    if bAccepted:
+        return ("", "")
+    return (overleafAuth.fsClassifyOverleafGitFailure(sDetail), sDetail)
+
+
 def _fnRemovePath(sPath):
     """Remove a file, ignoring absent paths."""
     import os
@@ -1914,29 +1959,14 @@ def _fsZenodoHostForService(sService):
 def fsDescribeZenodoValidationOutcome(dictProbe, sService):
     """Name the failure a host-side token probe records.
 
-    Fixed sentences rather than the raw response: a rejection names the
-    instance that rejected and the one the token may have been made
-    on; an undetermined probe names the instance the host could not
-    get an answer from, and says it is not a token problem.
+    Fixed sentences rather than the raw response, chosen by the probe's
+    failure class (:func:`zenodoClient.fsClassifyZenodoFailure`); a
+    probe from before the class existed is read by its outcome.
     """
-    sHost = _fsZenodoHostForService(sService)
-    sOther = _fsZenodoHostForService(
-        "sandbox" if sService == "zenodo" else "zenodo",
-    )
-    if dictProbe["sOutcome"] == zenodoClient.S_PROBE_REJECTED:
-        return (
-            f"{sHost} rejected the token. Check that the token was "
-            f"created on {sHost} — not {sOther}; the two instances "
-            "have separate accounts and tokens, and the instance "
-            "selector above chooses which one is tested — and that "
-            "it has the deposit:write and deposit:actions scopes."
-        )
-    return (
-        f"This computer could not get an answer from {sHost} "
-        f"({dictProbe.get('sDetail') or 'no detail'}) — a network or "
-        "service problem, not a token problem. Nothing about the token "
-        "was decided; try again."
-    )
+    return zenodoClient.fdictDescribeZenodoFailure(
+        zenodoClient.fsProbeFailureClass(dictProbe), sService,
+        dictProbe.get("sDetail") or "",
+    )["sMessage"]
 
 
 # ---------------------------------------------------------------------------

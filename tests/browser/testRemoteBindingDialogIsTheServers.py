@@ -22,6 +22,7 @@ import re
 import pytest
 
 from tests.browser.conftest import fnOpenTheSeededHostWorkflow
+from vaibify.gui.routes.bindingRoutes import _fdictEvidenceFailure
 
 
 pytestmark = pytest.mark.browser
@@ -308,10 +309,9 @@ def testASwitchWhileTheConfirmIsPendingRetriesNothing(pageDashboard, serverHub):
 
 def testASwitchWhileTheCredentialPromptIsOpenFetchesAndRetriesNothing(pageDashboard, serverHub):
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
-    dictTokenMissing = dict(_DICT_MINT_ENTRY, dictEvidence={
-        "bSucceeded": False, "sState": "token-missing",
-        "sMessage": "No token for zenodo.org (permanent) is stored on this computer for this project.",
-    })
+    dictTokenMissing = dict(_DICT_MINT_ENTRY, dictEvidence=_fdictEvidenceFailure(
+        "zenodo", "zenodo", "token-missing",
+    ))
     hubDouble = _Hub(pageDashboard, [_fdictDescribed([dictTokenMissing])])
     _fnRunTheRefusedAction(pageDashboard)
     pageDashboard.wait_for_selector("#btnRemoteBindingStoreToken", timeout=10000)
@@ -351,10 +351,9 @@ def testAConfirmTheServerFindsStaleIsReportedAndRetriesNothing(pageDashboard, se
 
 def testAMissingTokenAsksForItThenFetchesTheEvidenceAgain(pageDashboard, serverHub):
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
-    dictTokenMissing = dict(_DICT_MINT_ENTRY, dictEvidence={
-        "bSucceeded": False, "sState": "token-missing",
-        "sMessage": "No token for zenodo.org (permanent) is stored on this computer for this project.",
-    })
+    dictTokenMissing = dict(_DICT_MINT_ENTRY, dictEvidence=_fdictEvidenceFailure(
+        "zenodo", "zenodo", "token-missing",
+    ))
     hubDouble = _Hub(pageDashboard, [
         _fdictDescribed([dictTokenMissing]), _fdictDescribed([_DICT_MINT_ENTRY]),
     ])
@@ -376,15 +375,14 @@ def testAMissingTokenAsksForItThenFetchesTheEvidenceAgain(pageDashboard, serverH
 
 def testUnavailableEvidenceIsNotRedAndConfirmStaysDisabled(pageDashboard, serverHub):
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
-    _Hub(pageDashboard, [_fdictDescribed([dict(_DICT_MINT_ENTRY, dictEvidence={
-        "bSucceeded": False, "sState": "unavailable",
-        "sMessage": "ConnectionError: zenodo.org did not answer",
-    })])])
+    _Hub(pageDashboard, [_fdictDescribed([dict(_DICT_MINT_ENTRY, dictEvidence=_fdictEvidenceFailure(
+        "zenodo", "zenodo", "no-answer", "ConnectionError: zenodo.org did not answer",
+    ))])])
     _fnOpenTheDialogFor(pageDashboard, ["zenodo", "project", "zenodo"])
     pageDashboard.wait_for_selector("#btnRemoteBindingRetry", timeout=10000)
     assert pageDashboard.locator("#btnRemoteBindingConfirm").is_disabled()
     elEvidence = pageDashboard.locator("#modalRemoteBinding .remote-binding-evidence--unchecked")
-    assert "Couldn't check" in elEvidence.inner_text()
+    assert "could not get an answer from zenodo.org" in elEvidence.inner_text()
     sColor = elEvidence.evaluate("(el) => getComputedStyle(el).color")
     iRed, iGreen, iBlue = [int(s) for s in re.findall(r"\d+", sColor)[:3]]
     assert not (iRed > 180 and iGreen < 140 and iBlue < 140), sColor

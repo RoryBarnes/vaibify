@@ -168,29 +168,29 @@ def test_credential_helper_args_reset_before_adding_helper():
     )
 
 
-def test_overleaf_rollback_restores_the_host_keyring_token():
-    """An Overleaf rollback with a captured token restores via keyring.
+def test_overleaf_rollback_restores_the_host_keyring_token(fixtureHermeticKeyring):
+    """A failed Overleaf check leaves the host keyring's token untouched.
 
-    The service dispatch is string equality: for ``overleaf`` with a
-    previous token the helper must store that token back in the host
-    keyring and report the restored disposition — never fall through
-    to the delete lane, which would end in a false "not saved" message.
+    There is no rollback any more: the candidate is checked with
+    Overleaf before it replaces anything, so the token that worked
+    before is never overwritten and never needs restoring. Driven
+    through the real store path against the hermetic keyring.
     """
-    from vaibify.gui.routes.syncRoutes import _fnRollBackFailedCredential
-    dictResult = {"sMessage": "Validation failed"}
+    from vaibify.gui.routes.syncRoutes import _fdictStoreValidateCredential
+    fixtureHermeticKeyring.dictStore[("vaibify", "overleaf_token")] = (
+        "previous-token"
+    )
     with patch(
-        "vaibify.config.secretManager.fnStoreSecret",
-    ) as mockStore:
-        _fnRollBackFailedCredential(
+        "vaibify.gui.syncDispatcher.ftValidateOverleafCandidate",
+        return_value=("token-rejected", "fatal: Authentication failed"),
+    ):
+        dictResult = _fdictStoreValidateCredential(
             {"docker": MagicMock()}, "cid", "overleaf",
-            "", "previous-token", dictResult,
+            "new-token", "abc123proj",
         )
-    mockStore.assert_called_once_with(
-        "overleaf_token", "previous-token", "keyring",
-    )
-    assert "your previously saved token was restored" in (
-        dictResult["sMessage"]
-    )
+    assert dictResult["bConnected"] is False
+    assert fixtureHermeticKeyring.dictStore[
+        ("vaibify", "overleaf_token")] == "previous-token"
 
 
 def test_hermetic_keyring_guardrail_is_active(fixtureHermeticKeyring):

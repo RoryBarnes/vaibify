@@ -1504,6 +1504,20 @@ PYEOF
 }
 
 # ---------------------------------------------------------------------------
+# fnConfigureCodexShell: Use Docker isolation for interactive Codex commands.
+# ---------------------------------------------------------------------------
+fnConfigureCodexShell() {
+    local sBashrc="$1"
+    local sAlias="alias codex='codex --sandbox danger-full-access --ask-for-approval on-request'"
+    if ! grep -Fxq "${sAlias}" "${sBashrc}" 2>/dev/null; then
+        printf '\n%s\n%s\n' \
+            '# Vaibify uses Docker isolation; Codex keeps on-request approvals.' \
+            "${sAlias}" >> "${sBashrc}"
+        echo "[vaib] Codex shell alias uses Docker isolation and on-request approvals."
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # fnConfigureCodexAutoUpdate: Update Codex at startup when explicitly enabled.
 # Codex's supported update mechanism is its ``codex update`` command.
 # ---------------------------------------------------------------------------
@@ -1768,6 +1782,7 @@ fnRunWorkspacePhase() {
         fnConfigureClaudeAutoUpdate
     fi
     if command -v codex > /dev/null 2>&1; then
+        fnConfigureCodexShell "/home/${CONTAINER_USER}/.bashrc"
         fnConfigureCodexAutoUpdate
     fi
     if command -v gemini > /dev/null 2>&1; then

@@ -5733,7 +5733,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3860 -> 4157 (2026-10-31): the journaled completion version -- automatic after a checkpoint, the user-only retry route, and the archive's refusal while one is in flight (proof-receipt plan, A13).
     # 4157 -> 4187 (2026-10-31): the automatic completion returns a control-plane refusal as its reason, and its capture worker carries one back rather than quarantining the container (proof-receipt plan, A13).
     # 4187 -> 4189 (2026-11-02): project deposits name the project-record kind, and a promotion asks for the mint authorization (binding-and-rotation plan, A12, A5).
-    "routes/syncRoutes.py": 4189,
+    # 4189 -> 4185 (2026-11-24): the token box checks a token before storing it, so the stage-validate-restore chain and its cleanup helpers left the module (token-remedies plan).
+    "routes/syncRoutes.py": 4185,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -6974,7 +6975,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2142 -> 2144 (2026-10-28): the integrity-read lane on the digest read.
     # 2144 -> 2572 (2026-10-31): the PROOF receipt's narrow write and staging hook, and the completion version's Zenodo steps and settlement (proof-receipt plan, A13).
     # 2572 -> 2574 (2026-10-31): the GitHub credential probe passes control-plane refusals through, now that the module imports the carrier (proof-receipt plan, A13).
-    "syncDispatcher.py": 2574,
+    # 2574 -> 2604 (2026-11-24): an Overleaf token is checked as a candidate through the module's own hermetic ls-remote before it is stored, and the keyring presence check says when the keychain cannot be read (token-remedies plan, approved rise).
+    "syncDispatcher.py": 2604,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -9067,10 +9069,16 @@ DICT_HOME_STATE_EXEMPTIONS = {
     ),
     ("vaibify.reproducibility.imageDeposit",
      "fsResolveDepositScratchDirectory"): _S_REASON_FOLLOWS_HOME,
-    ("vaibify.reproducibility.overleafMirror", "fsGetMirrorRoot"):
-        _S_REASON_FOLLOWS_HOME,
     ("vaibify.reproducibility.scheduledReverify", "fsArxivCacheDir"):
         _S_REASON_FOLLOWS_HOME,
+    ("vaibify.reproducibility.overleafMirror", "fsGetMirrorRoot"): (
+        "resolved from HOME at call time, which the mirror's own tests set "
+        "and assert on; tests/testSyncRoutesCoverage.py, whose push tests "
+        "ran a real git fetch into the researcher's mirror before "
+        "2026-11-24, points it into the isolated test home for every test, "
+        "and the session sentinel reports any write that reaches the real "
+        "home"
+    ),
 }
 
 

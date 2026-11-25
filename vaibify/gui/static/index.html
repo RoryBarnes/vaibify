@@ -595,6 +595,15 @@
                     Resource Monitor</div>
                 <div class="toolbar-menu-item" id="btnZenodoStatus">
                     Zenodo Status</div>
+                <!-- On demand, the rows above the steps that show by
+                     themselves only when something needs attention. A
+                     click asks the server again and shows the row even
+                     when all is well. Menu items, not toolbar chips:
+                     the bar has no width to spare at 1100px. -->
+                <div class="toolbar-menu-item" id="btnViewNetworkStatus">
+                    Network Status</div>
+                <div class="toolbar-menu-item" id="btnViewRemoteBindings">
+                    Remote Bindings</div>
                 <div class="toolbar-menu-separator"></div>
                 <div class="toolbar-menu-item" id="btnResetLayout">
                     Default Layout</div>
@@ -1114,7 +1123,14 @@
             </label>
             <input type="password" id="inputSetupToken"
                    placeholder="Paste your token here">
+            <p class="setup-instance-help" id="noteSetupOverleafShared"
+               hidden>
+                One Overleaf token serves every project on this computer;
+                storing one here replaces it for all of them.
+            </p>
         </div>
+        <p class="setup-failure-message" id="setupFailureMessage"
+           role="alert" hidden></p>
         <div class="modal-actions">
             <button class="btn" id="btnSetupCancel">Cancel</button>
             <button class="btn btn-primary" id="btnSetupSave">
@@ -1476,6 +1492,7 @@
 <script src="/static/vendor/addon-unicode11.min.js"></script>
 <script src="/static/vendor/pdf.min.js"></script>
 <script src="/static/scriptUtilities.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptNoticeBanners.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptFileOutcomes.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptApiClient.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptConnectionMonitor.js?v=__CACHE_VERSION__"></script>

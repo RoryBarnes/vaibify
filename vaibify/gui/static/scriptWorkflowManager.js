@@ -512,6 +512,7 @@ var VaibifyWorkflowManager = (function () {
         if (dictRefusal && dictRefusal.sRefusal === "dirty-working-tree") {
             elBanner.classList.add("dirty");
             elBanner.innerHTML = _fsBuildDirtyMarkup(dictRefusal);
+            VaibifyNoticeBanners.fnAttachHelpButton(elBanner, "driftBanner");
             elBanner.hidden = false;
             _fnAttachDirtyBannerActions(elBanner);
             return;
@@ -520,6 +521,7 @@ var VaibifyWorkflowManager = (function () {
                 dictRefusal.sRefusal === "diverged-branches") {
             elBanner.classList.add("dirty");
             elBanner.innerHTML = _fsBuildDivergedMarkup(dictRefusal);
+            VaibifyNoticeBanners.fnAttachHelpButton(elBanner, "driftBanner");
             elBanner.hidden = false;
             _fnAttachDivergedBannerActions(elBanner, dictRefusal);
             return;
@@ -531,6 +533,7 @@ var VaibifyWorkflowManager = (function () {
         }
         elBanner.classList.remove("dirty");
         elBanner.innerHTML = _fsBuildBehindMarkup(dictStatus);
+        VaibifyNoticeBanners.fnAttachHelpButton(elBanner, "driftBanner");
         elBanner.hidden = false;
         var elPull = elBanner.querySelector(".drift-banner-pull");
         if (elPull) {

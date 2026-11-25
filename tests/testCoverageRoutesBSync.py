@@ -508,42 +508,6 @@ def testGitIdentityRefusesAnEmptyField(sName, sEmail, sField):
 # ── Credential roll-back ladder ──
 
 
-def testCleanupDeletesTheProjectsActiveSlotAndSwallowsFailure(monkeypatch):
-    """The instance's ACTIVE host slot is the one cleared; a refusal is swallowed."""
-    from vaibify.gui import zenodoTokenAccess
-    listDeleted = []
-
-    def fnRefuse(connectionDocker, sContainerId, sInstance):
-        listDeleted.append(sInstance)
-        raise RuntimeError("keyring locked")
-
-    monkeypatch.setattr(
-        zenodoTokenAccess, "fnDeleteActiveZenodoToken", fnRefuse,
-    )
-    syncRoutes._fnCleanupCredential(
-        {"docker": SyncExecDouble()}, S_CONTAINER_ID, "zenodo", "production",
-    )
-    assert listDeleted == ["production"]
-
-
-def testAnOverleafRestoreThatFailsSaysTheTokenWasNotRestored(monkeypatch):
-    """The disposition must not claim a restore that did not happen."""
-    from vaibify.config import secretManager
-
-    def fnKeyringRefuses(sName, sValue, sBackend):
-        raise RuntimeError("keyring locked")
-
-    monkeypatch.setattr(secretManager, "fnStoreSecret", fnKeyringRefuses)
-    dictResult = {"sMessage": "Validation failed"}
-    syncRoutes._fnRollBackFailedCredential(
-        {"docker": SyncExecDouble()}, S_CONTAINER_ID,
-        "overleaf", "", "previousTokenValue", dictResult,
-    )
-    assert dictResult["sMessage"] == (
-        "Validation failed — the entered token was not saved"
-    )
-    assert "previousTokenValue" not in dictResult["sMessage"]
-
 
 # ── Verify, arXiv and destination validation ──
 

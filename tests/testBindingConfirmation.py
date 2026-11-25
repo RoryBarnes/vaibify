@@ -101,7 +101,7 @@ def testAMissingTokenIsRefusedBeforeAnyFetch(tApp, monkeypatch):
         S_CONFIRM_PATH, json=_fdictReviewOf(client, "zenodo", "environment", "zenodo"),
     ))
     assert (dictDetail["sError"], dictDetail["sInstance"]) == ("ZENODO-TOKEN-MISSING", "zenodo")
-    assert "No token for zenodo.org (permanent)" in dictDetail["sMessage"]
+    assert "No zenodo.org token is stored" in dictDetail["sMessage"]
     assert _fbaRecordOrNone(sUuid) is None
 
 
@@ -408,21 +408,26 @@ def listZenodoAsked(monkeypatch):
     return _ZenodoDouble.listAsked
 
 
-@pytest.mark.parametrize("sRecordKind, dictTarget, tExpected", [
+@pytest.mark.parametrize("sRecordKind, dictTarget, listExpected", [
     ("project", {"sInstance": "zenodo", "sConceptDoi": "10.5281/zenodo.7",
-                 "sDepositionId": "8"}, ("deposition", 8)),
+                 "sDepositionId": "8"}, [("probe", "zenodo"), ("deposition", 8)]),
     ("project", {"sInstance": "zenodo", "sConceptDoi": "10.5281/zenodo.7",
-                 "sDepositionId": ""}, ("record", "7")),
+                 "sDepositionId": ""}, [("probe", "zenodo"), ("record", "7")]),
     ("project", {"sInstance": "zenodo", "sConceptDoi": "", "sDepositionId": ""},
-     ("probe", "zenodo")),
-    ("environment", {"sInstance": "sandbox"}, ("probe", "sandbox")),
+     [("probe", "zenodo")]),
+    ("environment", {"sInstance": "sandbox"}, [("probe", "sandbox")]),
 ])
-def testTheStrongestEvidenceIsAsked(listZenodoAsked, sRecordKind, dictTarget, tExpected):
+def testTheStrongestEvidenceIsAsked(listZenodoAsked, sRecordKind, dictTarget, listExpected):
+    """The token is asked about first, then the record the entry names.
+
+    Asking the token first is what lets a refused RECORD read as access
+    to that record rather than as a bad token.
+    """
     dictEvidence = bindingRoutes._fdictFetchZenodoEvidence(
         {"docker": None}, "cid", sRecordKind, dictTarget,
     )
     assert dictEvidence["bSucceeded"] is True
-    assert listZenodoAsked == [tExpected]
+    assert listZenodoAsked == listExpected
 
 
 def testATokenZenodoRefusesIsEvidenceUnavailable(listZenodoAsked, monkeypatch):
@@ -437,8 +442,11 @@ def testATokenZenodoRefusesIsEvidenceUnavailable(listZenodoAsked, monkeypatch):
     assert "rejected" in dictEvidence["sMessage"]
 
 
-def testOverleafEvidenceClaimsOnlyThatTheProjectIsReadable(monkeypatch):
+def testOverleafEvidenceClaimsOnlyThatTheProjectIsReadable(
+    monkeypatch, fixtureHermeticKeyring,
+):
     from vaibify.gui import syncDispatcher
+    fixtureHermeticKeyring.dictStore[("vaibify", "overleaf_token")] = "stored"
     monkeypatch.setattr(
         syncDispatcher, "ftRefreshOverleafMirror",
         lambda sProjectId: (True, {"sHeadSha": "abc1234def", "iFileCount": 12, "sRefreshedAt": "now"}),
@@ -450,12 +458,40 @@ def testOverleafEvidenceClaimsOnlyThatTheProjectIsReadable(monkeypatch):
     }
     monkeypatch.setattr(
         syncDispatcher, "ftRefreshOverleafMirror",
-        lambda sProjectId: (False, "No Overleaf token stored on host"),
+        lambda sProjectId: (
+            False, "fatal: Authentication failed for 'https://git.overleaf.com/ol-1/'",
+        ),
     )
-    assert bindingRoutes._fdictFetchOverleafEvidence(None, "cid", "", {"sProjectId": "ol-1"}) == {
-        "bSucceeded": False, "sState": "unavailable",
-        "sMessage": "No Overleaf token stored on host",
-    }
+    dictRejected = bindingRoutes._fdictFetchOverleafEvidence(
+        None, "cid", "", {"sProjectId": "ol-1"},
+    )
+    assert (dictRejected["bSucceeded"], dictRejected["sState"]) == (
+        False, "token-rejected",
+    )
+    assert dictRejected["listActions"] == ["replace"]
+    assert dictRejected["sMessage"].startswith("Overleaf rejected the token.")
+
+
+def testOverleafEvidenceWithNoStoredTokenOffersToStoreOneBeforeAnyFetch(
+    monkeypatch, fixtureHermeticKeyring,
+):
+    """No stored token is said, with Store offered, and nothing is fetched.
+
+    The review used to send this case to "Couldn't check" with only a
+    Retry, which can never help (researcher-reported, 2026-11-24).
+    """
+    from vaibify.gui import syncDispatcher
+
+    def fnRefuseToFetch(sProjectId):
+        raise AssertionError("the mirror was fetched with no token stored")
+
+    monkeypatch.setattr(syncDispatcher, "ftRefreshOverleafMirror", fnRefuseToFetch)
+    dictEvidence = bindingRoutes._fdictFetchOverleafEvidence(
+        None, "cid", "", {"sProjectId": "ol-1"},
+    )
+    assert (dictEvidence["sState"], dictEvidence["listActions"]) == (
+        "token-missing", ["store"],
+    )
 
 
 # ---------------------------------------------------------------------------

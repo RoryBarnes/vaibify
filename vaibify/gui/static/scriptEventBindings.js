@@ -1104,6 +1104,12 @@ var VaibifyEventBindings = (function () {
             btnResetLayout: function () {
                 VaibifyApp.fnResetLayout();
             },
+            btnViewNetworkStatus: function () {
+                VaibifyContainerManager.fnShowNetworkStatusOnDemand();
+            },
+            btnViewRemoteBindings: function () {
+                VaibifyRemoteBindings.fnShowNoticesOnDemand();
+            },
             btnAdminContainers: function () {
                 VaibifyModals.fnShowConfirmModal(
                     "Leave Dashboard",

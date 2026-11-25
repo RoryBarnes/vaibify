@@ -31,6 +31,8 @@ __all__ = [
     "fsWriteAskpassScript",
     "fsResolveToken",
     "fsResolveTokenLoginOrEmpty",
+    "ftResolveTokenLogin",
+    "fsKeyringSlotInUse",
     "fnAssertTokenOwnerBinding",
     "fnClearTokenLoginCache",
     "fdictRevokeGitHubToken",
@@ -176,8 +178,35 @@ def fnClearTokenLoginCache():
     _dictTokenLoginCache.clear()
 
 
+def _fsClassifyUserEndpointFailure(errorHttp):
+    """Return the credential failure class an HTTP error from /user names.
+
+    GitHub answers a bad token with 401 "Bad credentials" (recorded with
+    a fake token, 2026-11-24). A spent rate limit is a 403 or 429 with
+    ``X-RateLimit-Remaining: 0``, per GitHub's REST documentation, and is
+    not a token problem. Any other 403 is the token lacking access (an
+    organization's SSO, a scope); a 5xx is GitHub not answering.
+    """
+    from vaibify.config import credentialFailures
+    dictHeaders = getattr(errorHttp, "headers", None) or {}
+    if errorHttp.code == 401:
+        return credentialFailures.S_CLASS_TOKEN_REJECTED
+    if errorHttp.code == 429 or (
+        errorHttp.code == 403
+        and str(dictHeaders.get("X-RateLimit-Remaining", "")) == "0"
+    ):
+        return credentialFailures.S_CLASS_RATE_LIMITED
+    if errorHttp.code == 403:
+        return credentialFailures.S_CLASS_ACCESS_DENIED
+    return credentialFailures.S_CLASS_NO_ANSWER
+
+
 def _ftFetchLoginFresh(sToken):
-    """Call GitHub /user with sToken and return (sLogin, sError)."""
+    """Call GitHub /user with sToken; return ``(sLogin, sFailureClass)``.
+
+    The second item is '' on success and otherwise a class from
+    :mod:`vaibify.config.credentialFailures`.
+    """
     requestUser = urllib.request.Request(
         _S_GITHUB_USER_URL,
         headers={
@@ -190,42 +219,115 @@ def _ftFetchLoginFresh(sToken):
         with urllib.request.urlopen(requestUser, timeout=10) as resp:
             dictBody = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as errorHttp:
-        return ("", f"GitHub /user returned HTTP {errorHttp.code}")
-    except urllib.error.URLError as errorUrl:
-        return ("", f"GitHub /user unreachable: {errorUrl.reason}")
-    except (ValueError, json.JSONDecodeError):
-        return ("", "GitHub /user returned malformed JSON")
+        return ("", _fsClassifyUserEndpointFailure(errorHttp))
+    except (urllib.error.URLError, OSError, ValueError):
+        from vaibify.config import credentialFailures
+        return ("", credentialFailures.S_CLASS_NO_ANSWER)
     return (str(dictBody.get("login") or ""), "")
 
 
-def fsResolveTokenLoginOrEmpty(sToken):
-    """Return the login for sToken via the /user endpoint, cached.
+def ftResolveTokenLogin(sToken):
+    """Return ``(sLogin, sFailureClass)`` for sToken via /user, cached.
 
-    Cache TTL is ~5 minutes so repeated pushes don't hammer the API.
-    Returns empty string on any failure; callers must treat empty as
-    "unable to verify" and fail closed.
+    Only a login is cached, for ~5 minutes, so repeated pushes don't
+    hammer the API; a failure is asked again next time. Callers must
+    treat an empty login as "unable to verify" and fail closed.
     """
     if not sToken:
-        return ""
+        return ("", "")
     fNow = time.time()
     tCached = _dictTokenLoginCache.get(sToken)
     if tCached is not None and fNow - tCached[1] < _F_TOKEN_LOGIN_TTL_SECONDS:
-        return tCached[0]
-    sLogin, _sError = _ftFetchLoginFresh(sToken)
+        return (tCached[0], "")
+    sLogin, sFailureClass = _ftFetchLoginFresh(sToken)
     if sLogin:
         _dictTokenLoginCache[sToken] = (sLogin, fNow)
-    return sLogin
+    return (sLogin, sFailureClass)
 
 
-def _fsBindingFailureReason(sToken, sExpectedOwner):
+def fsResolveTokenLoginOrEmpty(sToken):
+    """Return the login for sToken via the /user endpoint, or ''."""
+    return ftResolveTokenLogin(sToken)[0]
+
+
+def fsKeyringSlotInUse(sOwner, sRepo):
+    """Return the repository's slot when a token there outranks gh, else ''.
+
+    :func:`fsResolveToken` reads that slot BEFORE ``gh auth token``, so
+    a stale token in it silently overrides a working gh login; naming it
+    is what lets a refusal say which credential to remove. Guarded like
+    the resolver: a remote whose owner or repository cannot name a slot
+    answers '', never an exception a push route would turn into a 500.
+    """
+    from vaibify.config.secretManager import fbSecretExists
+    try:
+        sKeyringSlot = fsKeyringSlotFor(sOwner, sRepo)
+        if fbSecretExists(sKeyringSlot, "keyring"):
+            return sKeyringSlot
+    except Exception:
+        return ""
+    return ""
+
+
+_S_GH_LOGIN_REMEDY = (
+    "Run 'gh auth login' in a terminal on this computer; vaibify pushes "
+    "with that login and stores no GitHub token of its own."
+)
+
+
+def _fsDescribeCredentialInUse(sKeyringSlotInUse):
+    """Name the credential a refusal is about, and how to change it."""
+    if sKeyringSlotInUse:
+        return (
+            f"the token stored for this repository in this computer's "
+            f"keyring (slot {sKeyringSlotInUse}), which vaibify uses "
+            f"instead of your gh login. Remove it with: vaibify credential "
+            f"delete github --keyring-slot {sKeyringSlotInUse}"
+        )
+    return "your gh login. " + _S_GH_LOGIN_REMEDY
+
+
+def _fsDescribeLoginFailure(sFailureClass, sKeyringSlotInUse):
+    """Return the refusal sentence for a /user lookup that found no login."""
+    from vaibify.config import credentialFailures as failures
+    if sFailureClass == failures.S_CLASS_TOKEN_REJECTED:
+        return (
+            "GitHub rejected the credential vaibify would push with: "
+            + _fsDescribeCredentialInUse(sKeyringSlotInUse)
+        )
+    if sFailureClass == failures.S_CLASS_RATE_LIMITED:
+        return (
+            "GitHub is limiting requests from this computer, so the "
+            "credential's owner could not be checked. Try again after "
+            "the limit resets (GitHub resets it within the hour); this is "
+            "not a problem with the credential."
+        )
+    if sFailureClass == failures.S_CLASS_ACCESS_DENIED:
+        return (
+            "GitHub refused to say who the credential belongs to; it may "
+            "lack access or need single sign-on authorized for an "
+            "organization. It is " + _fsDescribeCredentialInUse(
+                sKeyringSlotInUse)
+        )
+    return (
+        "vaibify could not get an answer from GitHub to check who the "
+        "credential belongs to: a network or service problem, not a "
+        "problem with the credential. Try again."
+    )
+
+
+def _fsBindingFailureReason(sToken, sExpectedOwner, sKeyringSlotInUse=""):
     """Return the binding-failure reason string, or empty when OK."""
     if not sToken:
-        return "No GitHub token available; configure one in Settings."
+        return (
+            "No GitHub login is available to vaibify on this computer. "
+            + _S_GH_LOGIN_REMEDY
+        )
     if not sExpectedOwner:
         return "Cannot bind token: remote owner is empty."
-    sLogin = fsResolveTokenLoginOrEmpty(sToken)
+    sLogin, sFailureClass = ftResolveTokenLogin(sToken)
     if not sLogin:
-        return "Could not verify token owner against GitHub /user."
+        return _fsDescribeLoginFailure(sFailureClass, sKeyringSlotInUse)
     if sLogin.lower() != sExpectedOwner.lower():
         return (
             f"The GitHub token belongs to {sLogin}, but the remote "
@@ -239,20 +341,31 @@ def _fsBindingFailureReason(sToken, sExpectedOwner):
     return ""
 
 
-def fnAssertTokenOwnerBinding(sToken, sExpectedOwner):
+def fnAssertTokenOwnerBinding(sToken, sExpectedOwner, sKeyringSlotInUse=""):
     """Raise ValueError if sToken's GitHub login != sExpectedOwner.
 
     Empty token or unreachable /user endpoint also raises so the caller
     fails closed. Owner comparison is case-insensitive because GitHub
-    treats logins that way in URL routing.
+    treats logins that way in URL routing. ``sKeyringSlotInUse`` names
+    the per-repository slot the token came from, when it did, so the
+    refusal can say which credential to remove.
     """
-    sReason = _fsBindingFailureReason(sToken, sExpectedOwner)
+    sReason = _fsBindingFailureReason(
+        sToken, sExpectedOwner, sKeyringSlotInUse,
+    )
     if sReason:
         raise ValueError(sReason)
 
 
 def fdictRevokeGitHubToken(sKeyringSlot=""):
-    """Revoke a GitHub credential locally and announce upstream status.
+    """Clear ONE per-repository slot, or log out of gh; never both.
+
+    With ``sKeyringSlot`` only that keyring slot is cleared and the gh
+    login is left alone: the slot outranks gh (:func:`fsResolveToken`),
+    so removing a stale slot is how a researcher falls back to a working
+    gh login, and logging gh out at the same time would remove the very
+    login they were falling back to (found by review, 2026-11-24).
+    Without a slot, the gh login itself is logged out.
 
     Returns a dict describing what happened so the CLI can surface a
     precise status to the user:
@@ -266,7 +379,12 @@ def fdictRevokeGitHubToken(sKeyringSlot=""):
     ``gh auth logout --hostname github.com`` for the gh-managed
     credential and log a no-op message for direct PATs.
     """
-    bUpstream, sUpstreamMessage = _ftRevokeGitHubUpstream()
+    if sKeyringSlot:
+        bUpstream, sUpstreamMessage = (
+            False, "Your gh login was left in place.",
+        )
+    else:
+        bUpstream, sUpstreamMessage = _ftRevokeGitHubUpstream()
     bLocal, sLocalMessage = _ftClearLocalGithubCredential(sKeyringSlot)
     return {
         "bUpstreamRevoked": bUpstream,
@@ -297,9 +415,9 @@ def _ftClearLocalGithubCredential(sKeyringSlot):
     """Delete the keyring slot for sKeyringSlot if any."""
     if not sKeyringSlot:
         return (False, "No keyring slot specified; nothing to clear.")
-    from vaibify.config.secretManager import fnDeleteSecret
+    from vaibify.config.credentialReplacement import fnDeleteSlotUnderLock
     try:
-        fnDeleteSecret(sKeyringSlot, "keyring")
+        fnDeleteSlotUnderLock(sKeyringSlot)
     except Exception as errorDelete:
         return (
             False,
