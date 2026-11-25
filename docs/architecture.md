@@ -4094,6 +4094,26 @@ without a daemon and the part that touches the daemon is one place.
   and on the remnant reaper's cadence. There is no fallback to a
   gatewayed network: an engine that leaves the bridge an address is
   refused by name.
+
+  The one host destination the proxy serves is the hub, and the hub
+  that owns a container can change while the container runs: a second
+  hub may take it over, and its agent is then told that hub's port.
+  The launch therefore pins no port. Whichever hub connects pins its
+  own port, by rewriting `~/.vaibify/egress/<identity>/vaibifyEgressGateway/hubPort`,
+  and only then writes the agent's session file, from the same value
+  (`agentSessionBridge.fiAgentHubPort`). The proxy re-reads that file
+  on every request to the hub's host. As with the X authorization, the
+  directory is mounted, not the file, so a replaced file reaches the
+  running sidecar. Recreating the sidecar is not an alternative: the
+  container's proxy variables name the sidecar's address, which the
+  sealed network gives no way to keep. Two measured traps shaped the
+  proxy's half. Through colima's file sharing, a replaced file reads
+  as missing for about 0.3 s, so a missing file is waited for rather
+  than read as "no hub". And the launch used to pin the per-user
+  *preferred* hub port from `~/.vaibify/hub-port.json`, which is not
+  the launching hub's port when several hubs run. A sidecar started
+  before the file existed keeps the port fixed in its argv; the Network
+  row names both ports and asks for a restart.
 - **The X authorization** (`x11Forwarding: true`).
   `vaibify/host/x11Authority.py` is the helper process that makes every
   X call (an Xlib I/O error ends the process it happens in, so never the
