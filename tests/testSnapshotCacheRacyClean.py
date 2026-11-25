@@ -159,13 +159,21 @@ def test_a_same_tick_rewrite_with_an_unchanged_key_is_rehashed(tmp_path):
     would be offered that key, answer a hit, and serve X's digest for
     Y's bytes.
 
+    The pinned key's timestamps are a minute ahead, so poll one's
+    digest is taken inside the window however long the snapshot
+    program takes to start -- the fix its sibling above already
+    carries. Pinned to the real write time, a loaded machine (a
+    parallel suite beside a browser lane) started the program more
+    than a second later, the digest was legitimately settled and
+    cached, and the test failed while the rule was intact.
+
     Kills: dropping the racy condition from the cache update.
     """
     sRoot = str(tmp_path)
     sPath = _fnWrite(sRoot, b"X" * 64)
     statFirst = os.stat(sPath)
-    tStatKey = (statFirst.st_mtime_ns, statFirst.st_ctime_ns,
-                statFirst.st_size, statFirst.st_ino)
+    iAheadNs = time.time_ns() + 60_000_000_000
+    tStatKey = (iAheadNs, iAheadNs, statFirst.st_size, statFirst.st_ino)
     connection = _ConnectionWithAForcedStatKey(tStatKey)
     dictShaCache = {}
     dictFirst = _fdictPollOnce(connection, sRoot, dictShaCache)
