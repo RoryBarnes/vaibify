@@ -338,6 +338,9 @@ SET_GUI_ONLY_ROUTES = {
         "opens another browser tab's session",
     ("POST", "/api/session/renew"):
         "renews a browser tab's absolute session cap",
+    ("POST", "/api/session/expiry-warning"):
+        "logs what a browser tab did with an expiry warning; a terminal "
+        "shows no such warning",
     ("POST", "/api/registry/{sName}/claim"):
         "a tab's lease; the CLI claims and releases per command",
     ("POST", "/api/registry/{sName}/release"):

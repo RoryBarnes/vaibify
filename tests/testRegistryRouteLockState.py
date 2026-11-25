@@ -4,30 +4,30 @@ import fcntl
 import json
 import multiprocessing
 import os
-import time
 
 import pytest
 
 from vaibify.config import containerLock
 
 
-def _fnHoldLockInChildProcess(sTempDir, sProjectName, iPort, eventReady):
-    """Child: acquire the lock and block until the parent sets event."""
+# How long a forked child may take to acquire, or to exit. Generous on
+# purpose: the tests wait on the child's own signal or its exit, so the
+# bound is only ever reached by a child that is genuinely stuck.
+F_CHILD_WAIT_SECONDS = 60.0
+
+
+def _fnHoldLockInChildProcess(
+    sTempDir, sProjectName, iPort, eventAcquired, eventRelease,
+):
+    """Child: acquire the lock, say so, and hold it until released."""
     import vaibify.config.containerLock as childLockModule
     childLockModule._S_LOCK_DIRECTORY = sTempDir
     fileHandleChildLock = childLockModule.ffileAcquireContainerLock(
         sProjectName, iPort,
     )
-    eventReady.wait(timeout=10)
+    eventAcquired.set()
+    eventRelease.wait(timeout=F_CHILD_WAIT_SECONDS)
     fileHandleChildLock.close()
-
-
-def _fnAwaitLockFile(tmp_path, sProjectName):
-    """Block until the child has created its lock file."""
-    for _ in range(100):
-        if (tmp_path / f"{sProjectName}.lock").exists():
-            return
-        time.sleep(0.05)
 
 
 def _fiSpawnDeadPid():
@@ -35,7 +35,10 @@ def _fiSpawnDeadPid():
     contextFork = multiprocessing.get_context("fork")
     processChild = contextFork.Process(target=lambda: None)
     processChild.start()
-    processChild.join(timeout=5)
+    processChild.join(timeout=F_CHILD_WAIT_SECONDS)
+    assert processChild.exitcode is not None, (
+        "the child must have exited for its PID to be a dead one"
+    )
     return processChild.pid
 
 
@@ -97,22 +100,29 @@ def testRegistryReportsLockedWhenOtherProcessHoldsLock(
         [{"sName": "demo", "sContainerName": "demo"}],
     )
     contextFork = multiprocessing.get_context("fork")
-    eventReady = contextFork.Event()
+    eventAcquired = contextFork.Event()
+    eventRelease = contextFork.Event()
     processChild = contextFork.Process(
         target=_fnHoldLockInChildProcess,
-        args=(str(tmp_path), "demo", 8055, eventReady),
+        args=(str(tmp_path), "demo", 8055, eventAcquired, eventRelease),
     )
     processChild.start()
     try:
-        _fnAwaitLockFile(tmp_path, "demo")
+        # The child's own signal, sent once the flock is HELD. Waiting
+        # for the lock file to exist instead raced the flock that
+        # follows its creation, and a loaded machine (a parallel suite
+        # beside a browser lane) read the lock as free.
+        assert eventAcquired.wait(timeout=F_CHILD_WAIT_SECONDS), (
+            "the child never acquired the container lock"
+        )
         response = fixtureClient.get("/api/registry")
         dictContainer = response.json()["listContainers"][0]
         assert dictContainer["bLocked"] is True
         assert dictContainer["iLockedByPid"] == processChild.pid
         assert dictContainer["iLockedByPort"] == 8055
     finally:
-        eventReady.set()
-        processChild.join(timeout=5)
+        eventRelease.set()
+        processChild.join(timeout=F_CHILD_WAIT_SECONDS)
 
 
 def testRegistryRefreshReapsClaimOfDeadHolder(

@@ -283,7 +283,11 @@ def test_claude_md_delegates_ladder_and_step_authoring_to_skills():
     # 245 -> 275 (2026-11-12, measured 270): the "Shell commands"
     # section, which the agent needs before its first deletion, not
     # after a skill is loaded.
-    assert sBody.count("\n") < 275, (
+    # 275 -> 300 (2026-11-25, measured 297): the "Long-running work"
+    # section, which the agent needs before it starts a long job from a
+    # terminal, not after a skill is loaded, and the sentence by which
+    # the guide names itself.
+    assert sBody.count("\n") < 300, (
         "CLAUDE.md body did not shrink — the heavy sections are "
         "still inlined"
     )

@@ -1093,6 +1093,10 @@ it yourself — the hub refuses it from this container regardless.
 **This file is rewritten every time the container starts.** Edits to it
 are lost; put lasting instructions in the project context file.
 
+**This is vaibify's container guide**, `/workspace/CLAUDE.md` (also
+`AGENTS.md` and `GEMINI.md`): asked which instructions you work under,
+name it along with the researcher's own.
+
 ## How to refer to steps
 
 Every step in a project JSON carries an `sLabel` field — `A09` for the 9th *automated* step, `I01` for the 1st *interactive* step. Labels are per-type sequential, so `A09` is **not** `listSteps[9]`; the 0-based index depends on how many interactive steps precede it.
@@ -1293,6 +1297,27 @@ checker can read. The same habits make a command safer under any agent:
 These checks are a safety net. Never rewrite a deletion as
 `find -delete`, `shutil.rmtree` or a script file just to get past one;
 make the target readable instead.
+
+## Long-running work
+
+Everything you start from a terminal, including jobs put in the
+background with `&` or `nohup` and your harness's background tasks,
+stops when that terminal closes: when the researcher closes its tab or
+releases the container, when their browser session reaches its maximum
+lifetime, or when the hub shuts down. Pipeline steps run in the hub and
+survive all of these. Before starting anything you expect to take more
+than about an hour:
+
+- If it belongs in the pipeline, make it a step (the
+  **create-pipeline-step** skill) and run it with `vaibify-do run-step`.
+- Otherwise tell the researcher first how long it will take, that it
+  stops if the tab holding this terminal closes, and that **Session
+  lifetime** under the toolbar gear can be set to **Never** meanwhile.
+- Either way, write progress to disk as it runs, so a stopped run can
+  resume instead of starting over.
+
+Never move a job out of the terminal's session with `setsid`: vaibify
+could then neither see nor stop it.
 
 ## Creating New Pipeline Steps
 

@@ -93,6 +93,10 @@ __all__ = [
     "fdictRenewSessionExpiry",
     "ffElapsedFractionOfCap",
     "ffHighestWarningFractionCrossed",
+    "T_EXPIRY_WARNING_EVENTS",
+    "DICT_RENEWAL_SOURCE_PHRASES",
+    "fbIsReportableExpiryWarning",
+    "fbLogExpiryWarningEvent",
 ]
 
 import asyncio
@@ -1425,7 +1429,9 @@ def _flistCommitOrphanSynchronously(
     logger.warning(
         "SESSION orphaned for container %r (session %s): %d live "
         "socket(s), %.0fs since a socket was last seen; the credential "
-        "is revoked, the container's work and flock are retained",
+        "is revoked, pipeline work and the flock are retained, and "
+        "closing its sockets ends any terminal among them, stopping "
+        "everything started in it",
         sName, sSessionId[:8] or "<unbound>",
         recordOwner.iLiveConnectionCount,
         time.monotonic() - recordOwner.fLastSeenMonotonic,
@@ -1607,10 +1613,13 @@ async def fnExpireIdleBrowserSessions(appState):
         ):
             continue
         logger.info(
-            "SESSION %s expired (age %.0fs, idle %.0fs%s); revoking",
+            "SESSION %s expired (age %.0fs, idle %.0fs%s; %s); revoking",
             sSessionId[:8], dictLifetime["fAgeSeconds"],
             dictLifetime["fIdleSeconds"],
             f", owner of container {sName!r}" if sName else "",
+            _fsDescribeWarningReported(
+                dictLifetime["fReportedWarningFraction"],
+            ),
         )
         await _fnCommitSessionExpiry(
             appState, dictStore, sName, recordOwner, sSessionId,
@@ -1626,12 +1635,19 @@ def _fsExpiryEndedMessage(dictLifetime, fCapSeconds, sName):
     Named by TRIGGER, because the two say different things to the
     researcher: the cap fired on a session that may have been in use the
     whole time and its remedy is to re-attach (or raise the cap), while
-    sliding idle fired on one nobody touched. Both say the container is
-    untouched, because it is — session expiry commits an orphan, which
-    retains the flock, the keep-alive, and any running work.
+    sliding idle fired on one nobody touched. Both say the container
+    kept running, because it did — session expiry commits an orphan,
+    which retains the flock, the keep-alive, and any pipeline run. Both
+    also say what did NOT survive: the orphan closes the session's
+    sockets, a terminal's socket closing drains that terminal, and the
+    drain stops every process started in it. An agent's long job run
+    from a terminal ended that way on 2026-11-24 under a notice that
+    said "its work was retained".
     """
     sContainerClause = (
-        f"Container {sName!r} kept running and its work was retained."
+        f"Container {sName!r} kept running and its pipeline work was "
+        "retained, but any terminal this tab had open was closed, which "
+        "stopped everything started in it."
         if sName else "No container was held by it."
     )
     if dictLifetime["fAgeSeconds"] >= fCapSeconds:
@@ -1645,6 +1661,21 @@ def _fsExpiryEndedMessage(dictLifetime, fCapSeconds, sName):
         "This browser session ended after a long stretch with no "
         f"activity. {sContainerClause} Run 'vaibify open' for a fresh "
         "tab."
+    )
+
+
+def _fsDescribeWarningReported(fReportedWarningFraction):
+    """Say, for the expiry log, how far the tab was warned beforehand.
+
+    A researcher whose session ended asks first whether they were told;
+    this answers from the highest band any lifetime read reported, so
+    "none" means the dashboard never asked while the end was near.
+    """
+    if not fReportedWarningFraction:
+        return "no expiry warning was reported to its dashboard"
+    return (
+        f"highest expiry warning reported to its dashboard: "
+        f"{round(fReportedWarningFraction * 100)}%"
     )
 
 
@@ -1712,6 +1743,11 @@ def fdictSessionExpiryView(appState, sCredential):
     same clock as the countdown, so the dashboard warns from the
     server's arithmetic rather than re-deriving a band from a fraction
     and a tuple it would hold a second copy of.
+
+    The first read to answer a session with a new band is logged: that
+    answer is what the dashboard warns from, so the line marks when the
+    tab was told. A session that expired with no such line was never
+    told, which is otherwise unknowable after the fact.
     """
     dictStore = getattr(appState, "dictBrowserSessions", None) or {}
     dictLifetime = browserSession.fdictLifetimeForCredential(
@@ -1730,6 +1766,9 @@ def fdictSessionExpiryView(appState, sCredential):
         }
     fCapSeconds = ffResolveSessionCapSeconds()
     if math.isinf(fCapSeconds):
+        browserSession.fbRaiseReportedWarningFraction(
+            dictStore, sCredential, None,
+        )
         return {
             "bSessionKnown": True,
             "bNeverExpires": True,
@@ -1747,6 +1786,10 @@ def fdictSessionExpiryView(appState, sCredential):
         dictLifetime["fAgeSeconds"], fCapSeconds,
     )
     fWarningFraction = ffHighestWarningFractionCrossed(fElapsedFraction)
+    _fnLogWarningBandIfNew(
+        dictStore, sCredential, fWarningFraction, fRemainingSeconds,
+        fCapSeconds,
+    )
     return {
         "bSessionKnown": True,
         "bNeverExpires": False,
@@ -1794,13 +1837,93 @@ def ffHighestWarningFractionCrossed(fElapsedFraction):
     return fCrossed
 
 
-def fdictRenewSessionExpiry(appState, sCredential):
+def _fnLogWarningBandIfNew(
+    dictStore, sCredential, fWarningFraction, fRemainingSeconds,
+    fCapSeconds,
+):
+    """Log the first lifetime read that answers a session with a new band.
+
+    The read IS the report: its answer is what the dashboard warns
+    from. Whether the page then drew the warning, and whether anyone
+    could have seen it, only the page knows, and it says so itself
+    (:func:`fbLogExpiryWarningEvent`).
+    """
+    if not browserSession.fbRaiseReportedWarningFraction(
+        dictStore, sCredential, fWarningFraction,
+    ):
+        return
+    logger.info(
+        "SESSION %s reached its %d%% expiry warning, %.1f h before its "
+        "%.1f h cap; reported to its dashboard by this lifetime read",
+        browserSession.fsSessionIdForCredential(dictStore, sCredential)[:8],
+        round(fWarningFraction * 100), fRemainingSeconds / 3600.0,
+        fCapSeconds / 3600.0,
+    )
+
+
+T_EXPIRY_WARNING_EVENTS = ("displayed", "closed")
+
+# What the expiry log says a renewal came from. The dashboard names
+# the control; anything else is logged as unnamed rather than guessed.
+DICT_RENEWAL_SOURCE_PHRASES = {
+    "warning": "from an expiry warning",
+    "settings": "from the Settings panel",
+}
+
+
+def fbIsReportableExpiryWarning(sEvent, fWarningFraction):
+    """Return True when a page's warning report names a real event and band.
+
+    Only the server's own bands and the two events are accepted, so a
+    caller cannot write a line into the hub log the server would not
+    have written itself.
+    """
+    return (
+        sEvent in T_EXPIRY_WARNING_EVENTS
+        and fWarningFraction in T_EXPIRY_WARNING_FRACTIONS
+    )
+
+
+def fbLogExpiryWarningEvent(
+    appState, sCredential, sEvent, fWarningFraction, bTabVisible,
+    bWindowFocused,
+):
+    """Log what the presenting tab says it did with an expiry warning.
+
+    The page reports drawing a warning and closing one unrenewed, with
+    whether its tab was visible and its window focused at that moment:
+    the difference between "the warning was never drawn" and "it was
+    drawn in a tab nobody was looking at". Returns False, logging
+    nothing, for a credential the store does not know.
+    """
+    dictStore = getattr(appState, "dictBrowserSessions", None) or {}
+    sSessionId = browserSession.fsSessionIdForCredential(
+        dictStore, sCredential,
+    )
+    if not sSessionId:
+        return False
+    sWhat = (
+        "the dashboard displayed its %d%% expiry warning"
+        if sEvent == "displayed"
+        else "its %d%% expiry warning was closed without renewing"
+    ) % round(fWarningFraction * 100)
+    logger.info(
+        "SESSION %s: %s (tab visible: %s; window focused: %s)",
+        sSessionId[:8], sWhat, "yes" if bTabVisible else "no",
+        "yes" if bWindowFocused else "no",
+    )
+    return True
+
+
+def fdictRenewSessionExpiry(appState, sCredential, sSource=""):
     """Restart the presenting session's cap clock and report the result.
 
-    The action behind the warning toast's renewal. It returns the same
-    shape :func:`fdictSessionExpiryView` does, so the dashboard renders
-    one payload either way and cannot show a renewed session a stale
-    countdown.
+    The action behind the warning toast's renewal and the Settings
+    panel's Renew. It returns the same shape
+    :func:`fdictSessionExpiryView` does, so the dashboard renders one
+    payload either way and cannot show a renewed session a stale
+    countdown. The log line names the session and the control
+    ``sSource`` the dashboard says was used.
 
     A credential the store does not know, or one already revoked,
     renews nothing and is answered by the ordinary unknown-session
@@ -1809,7 +1932,15 @@ def fdictRenewSessionExpiry(appState, sCredential):
     dictStore = getattr(appState, "dictBrowserSessions", None) or {}
     bRenewed = browserSession.fbRenewSessionLifetime(dictStore, sCredential)
     if bRenewed:
-        logger.info("Browser session lifetime renewed by the researcher.")
+        logger.info(
+            "Browser session %s lifetime renewed by the researcher %s.",
+            browserSession.fsSessionIdForCredential(
+                dictStore, sCredential,
+            )[:8],
+            DICT_RENEWAL_SOURCE_PHRASES.get(
+                sSource, "from an unnamed control",
+            ),
+        )
     dictView = fdictSessionExpiryView(appState, sCredential)
     dictView["bRenewed"] = bRenewed
     return dictView

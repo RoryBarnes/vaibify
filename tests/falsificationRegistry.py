@@ -41111,4 +41111,65 @@ LIST_FALSIFICATIONS = [
             '                elBanner.style.display = "none";\n'
         ),
     ),
+    # --- 2026-11-25: after an expiry the hub log says whether the tab
+    # was warned, and the notice says what the expiry ended ---
+    Falsification(
+        nodeid=(
+            'tests/testSessionExpiryWarningLog.py::'
+            'testABandIsLoggedOnceAndAgainAfterARenewal'
+        ),
+        # every read in a band counts as a new announcement
+        source='vaibify/gui/browserSession.py',
+        old='        bNewHigh = fBand > recordSession.fReportedWarningFraction\n',
+        new='        bNewHigh = fBand > 0.0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSessionExpiryWarningLog.py::'
+            'testTheExpiryLineSaysHowFarTheTabWasWarned'
+        ),
+        # the expiry line ignores the band the session was told
+        source='vaibify/gui/sessionLifecycle.py',
+        old='                dictLifetime["fReportedWarningFraction"],\n',
+        new='                0.0,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSessionExpiryWarningLog.py::'
+            'testTheWarningReportLogsOnlyTheServersOwnBands'
+        ),
+        # a page's report is logged whatever band it names
+        source='vaibify/gui/sessionLifecycle.py',
+        old='        and fWarningFraction in T_EXPIRY_WARNING_FRACTIONS\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSessionEndingNotice.py::'
+            'testTheEndedNoticeSaysTerminalWorkWasStopped'
+        ),
+        # the notice claims every kind of work was retained
+        source='vaibify/gui/sessionLifecycle.py',
+        old=(
+            '        f"Container {sName!r} kept running and its pipeline '
+            'work was "\n'
+            '        "retained, but any terminal this tab had open was '
+            'closed, which "\n'
+            '        "stopped everything started in it."\n'
+        ),
+        new=(
+            '        f"Container {sName!r} kept running and its work was '
+            'retained."\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testBrowserJourneys.py::'
+            'testTheDashboardTellsTheLogItDrewAndClosedTheWarning'
+        ),
+        # the page draws the warning and tells the hub nothing
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        _fnReportExpiryWarningEvent("displayed", fBand);\n',
+        new='',
+    ),
 ]

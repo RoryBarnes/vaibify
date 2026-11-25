@@ -135,6 +135,28 @@ def testAnIdleExpiryAndACapExpirySayDifferentThings():
         )
 
 
+@pytest.mark.falsification
+def testTheEndedNoticeSaysTerminalWorkWasStopped():
+    """The notice names what an expiry ends as well as what it keeps.
+
+    The oracle is the orphan itself: it closes the session's sockets,
+    and a terminal whose socket closes is drained, every process in its
+    session stopped. A long job an in-container agent had started from
+    the dashboard's terminal ended that way under a notice that said
+    only "its work was retained", which a researcher reads as "my job
+    is still running".
+
+    Kills: restoring the notice that says only that the work was
+    retained.
+    """
+    sMessage = sessionLifecycle._fsExpiryEndedMessage(
+        {"fAgeSeconds": 43201.0, "fIdleSeconds": 0.0}, 43200.0, "proj",
+    )
+    assert "pipeline work was retained" in sMessage, sMessage
+    assert "terminal this tab had open was closed" in sMessage, sMessage
+    assert "stopped everything started in it" in sMessage, sMessage
+
+
 @pytest.mark.parametrize("sEndedMessage", ["", None])
 def testAnEndingWithNothingToSayFallsBackToTheBareRefusal(sEndedMessage):
     """The hub says what it knows and invents nothing for what it does not."""

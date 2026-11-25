@@ -6678,7 +6678,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # running neverSleep container starts its session lane; the claim path
     # is the one place that holds the verdict, the state and the lock.
     # 1870 -> 1872 (2026-10-28): a claim is refused while a Quit settles.
-    "sessionLifecycle.py": 1872,
+    # 1872 -> 2003 (2026-11-25): the expiry warning leaves a record. The
+    # view logs the first read of each band, a page's report of what it
+    # did with a warning is checked against the server's own bands and
+    # logged, the expiry line names the highest band the session was
+    # told, a renewal names its session and control, and the ended
+    # notice and orphan line say terminal work stops. Each is the record
+    # of the view or the expiry beside it, homed here for the reason the
+    # view is: so what is logged and what is enforced cannot drift.
+    "sessionLifecycle.py": 2003,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -7646,7 +7654,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1619 -> 1627 (2026-11-03): set-aside-binding-record, the user-only way out of an unreadable binding record (follow-up-after-210 plan, A3, A8).
     # 1627 -> 1633 (2026-11-04): the reach-approval route is researcher-only, with its reason; merged with main, re-measured.
     # 1633 -> 1644 (2026-11-07): the saved dashboard layout's routes are researcher-only, reads included, with why.
-    "actionCatalog.py": 1644,
+    # 1644 -> 1649 (2026-11-25): the expiry-warning report is excluded from the agent lane, with why.
+    "actionCatalog.py": 1649,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -8216,7 +8225,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1261 -> 1265 (2026-10-29): the allow-host route's lifecycle scope.
     # 1265 -> 1266 (2026-11-04): the reach-approval route's scope.
     # 1266 -> 1277 (2026-11-07): the saved dashboard layout's three reads and the council's earlier-events read, with what each reads.
-    "routeScope.py": 1277,
+    # 1277 -> 1281 (2026-11-25): the expiry-warning report's browser-hub scope.
+    "routeScope.py": 1281,
 }
 
 

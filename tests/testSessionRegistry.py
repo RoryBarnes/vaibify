@@ -3,7 +3,6 @@
 import json
 import multiprocessing
 import os
-import time
 
 import pytest
 
@@ -71,34 +70,54 @@ def test_fiCountActiveSessions_skips_unheld_slot_files(tmp_session_dir):
     assert fiCountActiveSessions() == 0
 
 
-def _fnHoldSessionSlotInChild(sTempDir, eventReady):
-    """Child: acquire a session slot and block until parent signals."""
+# How long a forked child may take to acquire, or to exit. Generous on
+# purpose: these tests wait on the child's own signal, so the bound is
+# only ever reached by a child that is genuinely stuck.
+F_CHILD_WAIT_SECONDS = 60.0
+
+
+def _fnHoldSessionSlotInChild(sTempDir, eventAcquired, eventRelease):
+    """Child: acquire a session slot, say so, and hold it until released."""
     import vaibify.config.sessionRegistry as childSessionModule
     childSessionModule._S_SESSION_DIRECTORY = sTempDir
     from vaibify.config.sessionRegistry import ffileAcquireSessionSlot
     fileHandleChildSlot = ffileAcquireSessionSlot("hub", 9001)
-    eventReady.wait(timeout=10)
+    eventAcquired.set()
+    eventRelease.wait(timeout=F_CHILD_WAIT_SECONDS)
     fileHandleChildSlot.close()
+
+
+def _ftStartSlotHoldingChild(tmp_session_dir):
+    """Fork a child that holds a slot; return it once the slot is HELD.
+
+    Waits on the child's own signal, sent after the flock is taken,
+    never on the slot file appearing: the file exists a moment before
+    its lock is held, and a loaded machine (a parallel suite beside a
+    browser lane) widened that moment until the parent read the slot
+    as free. Returns ``(processChild, eventRelease)``.
+    """
+    contextFork = multiprocessing.get_context("fork")
+    eventAcquired = contextFork.Event()
+    eventRelease = contextFork.Event()
+    processChild = contextFork.Process(
+        target=_fnHoldSessionSlotInChild,
+        args=(str(tmp_session_dir), eventAcquired, eventRelease),
+    )
+    processChild.start()
+    assert eventAcquired.wait(timeout=F_CHILD_WAIT_SECONDS), (
+        "the child never acquired its session slot"
+    )
+    return processChild, eventRelease
 
 
 def test_fiCountActiveSessions_counts_child_held_slot(tmp_session_dir):
     from vaibify.config.sessionRegistry import fiCountActiveSessions
-    contextSpawn = multiprocessing.get_context("fork")
-    eventReady = contextSpawn.Event()
-    processChild = contextSpawn.Process(
-        target=_fnHoldSessionSlotInChild,
-        args=(str(tmp_session_dir), eventReady),
-    )
-    processChild.start()
+    processChild, eventRelease = _ftStartSlotHoldingChild(tmp_session_dir)
     try:
-        for _ in range(50):
-            if list(tmp_session_dir.glob("*.slot")):
-                break
-            time.sleep(0.05)
         assert fiCountActiveSessions() == 1
     finally:
-        eventReady.set()
-        processChild.join(timeout=5)
+        eventRelease.set()
+        processChild.join(timeout=F_CHILD_WAIT_SECONDS)
 
 
 def test_fnAcquireSessionSlot_raises_when_limit_reached(
@@ -152,21 +171,19 @@ def test_fnAcquireSessionSlot_second_acquire_from_same_process_is_idempotent(
 
 
 def test_stale_slot_from_dead_process_is_not_counted(tmp_session_dir):
-    """A slot held by a process that exits must free its slot."""
+    """A slot held by a process that exits must free its slot.
+
+    The count is read only once the child has provably exited: a join
+    that merely timed out left a slow child holding its slot, and the
+    test then counted a live holder and reported a leak.
+    """
     from vaibify.config.sessionRegistry import fiCountActiveSessions
-    contextSpawn = multiprocessing.get_context("fork")
-    eventReady = contextSpawn.Event()
-    processChild = contextSpawn.Process(
-        target=_fnHoldSessionSlotInChild,
-        args=(str(tmp_session_dir), eventReady),
+    processChild, eventRelease = _ftStartSlotHoldingChild(tmp_session_dir)
+    eventRelease.set()
+    processChild.join(timeout=F_CHILD_WAIT_SECONDS)
+    assert processChild.exitcode == 0, (
+        "the child must have exited before its slot can be called free"
     )
-    processChild.start()
-    for _ in range(50):
-        if list(tmp_session_dir.glob("*.slot")):
-            break
-        time.sleep(0.05)
-    eventReady.set()
-    processChild.join(timeout=5)
     assert fiCountActiveSessions() == 0
 
 

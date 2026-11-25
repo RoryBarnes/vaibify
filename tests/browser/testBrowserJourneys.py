@@ -27,7 +27,9 @@ caught up to a day late.
 """
 
 import json
+import logging
 import os
+import time
 
 import pytest
 
@@ -547,6 +549,164 @@ def testSessionCapWarningComesFromTheBackendAndReachesTheScreen(
         recordSession.fCreatedMonotonic = fCreatedRestore
 
 
+class _HandlerCollectingMessages(logging.Handler):
+    """Collect every message the hub logs while one test runs."""
+
+    def __init__(self):
+        super().__init__(level=logging.INFO)
+        self.listMessages = []
+
+    def emit(self, record):
+        self.listMessages.append(record.getMessage())
+
+
+def _fhandlerAttachToHubLog():
+    """Attach a collecting handler to the in-process hub's logger.
+
+    The hub serves from a thread of this process, so its log lines
+    reach this handler. The logger is opened to INFO for the test and
+    put back by :func:`_fnDetachFromHubLog`.
+    """
+    handlerLog = _HandlerCollectingMessages()
+    loggerHub = logging.getLogger("vaibify")
+    handlerLog.iLevelBefore = loggerHub.level
+    loggerHub.setLevel(logging.INFO)
+    loggerHub.addHandler(handlerLog)
+    return handlerLog
+
+
+def _fnDetachFromHubLog(handlerLog):
+    """Remove the collecting handler and restore the logger's level."""
+    loggerHub = logging.getLogger("vaibify")
+    loggerHub.removeHandler(handlerLog)
+    loggerHub.setLevel(handlerLog.iLevelBefore)
+
+
+def _fiCountLogLinesWithin(handlerLog, sFragment, iExpected, fSeconds=10.0):
+    """Wait until ``iExpected`` hub log lines contain ``sFragment``.
+
+    Returns the count reached, so a timeout fails the caller's own
+    assertion with the number it actually saw.
+    """
+    fDeadline = time.monotonic() + fSeconds
+    while True:
+        iCount = sum(
+            sFragment in sMessage for sMessage in handlerLog.listMessages
+        )
+        if iCount >= iExpected or time.monotonic() >= fDeadline:
+            return iCount
+        time.sleep(0.1)
+
+
+@pytest.mark.falsification
+def testTheDashboardTellsTheLogItDrewAndClosedTheWarning(
+    pageDashboard, serverHub,
+):
+    """The page reports the warning it drew, and its closing, to the hub.
+
+    The oracle is the question the log could not answer after a real
+    expiry: was the warning ever on screen? Only the page knows, so the
+    line must come from the page drawing the toast, not from the server
+    answering a read. Closing it with its close button is a separate
+    line, because "warned and dismissed" and "never shown" call for
+    different remedies.
+
+    Kills: the page drawing the warning without reporting it.
+    """
+    from vaibify.gui import sessionLifecycle
+    stateApp = serverHub.app.state
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
+    sCredential = _fsPageCredential(pageDashboard)
+    assert sCredential, "the page must have bootstrapped a credential"
+    recordSession = stateApp.dictBrowserSessions[
+        "dictSessionsByCredential"
+    ][sCredential]
+    fCreatedRestore = recordSession.fCreatedMonotonic
+    handlerLog = _fhandlerAttachToHubLog()
+    try:
+        recordSession.fCreatedMonotonic -= (
+            sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS - 300.0
+        )
+        pageDashboard.evaluate(
+            "() => VaibifyPolling.fnStartSessionLifetimePolling()"
+        )
+        locatorToast = pageDashboard.locator(
+            ".toast", has_text="maximum lifetime"
+        )
+        locatorToast.first.wait_for(state="visible", timeout=10000)
+        assert "terminals are closed" in locatorToast.first.inner_text()
+        assert _fiCountLogLinesWithin(
+            handlerLog, "the dashboard displayed its 95% expiry warning "
+            "(tab visible: yes", 1,
+        ) == 1, handlerLog.listMessages
+        locatorToast.first.locator(".toast-close").click()
+        assert _fiCountLogLinesWithin(
+            handlerLog, "its 95% expiry warning was closed without "
+            "renewing", 1,
+        ) == 1, handlerLog.listMessages
+        assert pageDashboard.listPageErrors == []
+        assert pageDashboard.listConsoleErrors == []
+    finally:
+        _fnDetachFromHubLog(handlerLog)
+        recordSession.fCreatedMonotonic = fCreatedRestore
+
+
+def testASecondCycleWarnsAgainAfterARenewal(pageDashboard, serverHub):
+    """A renewed session is warned again when its new cap draws near.
+
+    A researcher renewed from the first week's warning and saw none in
+    the second, then lost the session. Reading the code says the page's
+    latch falls back on a renewal; this drives the whole cycle in a
+    real browser instead: warn, renew from the warning, age the renewed
+    clock, and the warning must appear again and be logged again.
+    """
+    from vaibify.gui import sessionLifecycle
+    stateApp = serverHub.app.state
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
+    sCredential = _fsPageCredential(pageDashboard)
+    assert sCredential, "the page must have bootstrapped a credential"
+    recordSession = stateApp.dictBrowserSessions[
+        "dictSessionsByCredential"
+    ][sCredential]
+    fCreatedRestore = recordSession.fCreatedMonotonic
+    fNearTheCap = sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS - 300.0
+    sStartPolling = "() => VaibifyPolling.fnStartSessionLifetimePolling()"
+    handlerLog = _fhandlerAttachToHubLog()
+    try:
+        recordSession.fCreatedMonotonic -= fNearTheCap
+        pageDashboard.evaluate(sStartPolling)
+        locatorToast = pageDashboard.locator(
+            ".toast", has_text="maximum lifetime"
+        )
+        locatorToast.first.wait_for(state="visible", timeout=10000)
+        fAgedStamp = recordSession.fCreatedMonotonic
+        locatorToast.first.click()
+        pageDashboard.wait_for_selector(".toast.success", timeout=10000)
+        assert "Session renewed" in pageDashboard.locator(
+            ".toast.success").first.inner_text()
+        assert recordSession.fCreatedMonotonic > fAgedStamp, (
+            "the click must have restarted the clock on the server"
+        )
+        assert locatorToast.count() == 0
+
+        recordSession.fCreatedMonotonic -= fNearTheCap
+        pageDashboard.evaluate(sStartPolling)
+        locatorToast.first.wait_for(state="visible", timeout=10000)
+        assert _fiCountLogLinesWithin(
+            handlerLog, "the dashboard displayed its 95% expiry warning",
+            2,
+        ) == 2, handlerLog.listMessages
+        assert _fiCountLogLinesWithin(
+            handlerLog, "renewed by the researcher from an expiry warning",
+            1,
+        ) == 1, handlerLog.listMessages
+        assert pageDashboard.listPageErrors == []
+        assert pageDashboard.listConsoleErrors == []
+    finally:
+        _fnDetachFromHubLog(handlerLog)
+        recordSession.fCreatedMonotonic = fCreatedRestore
+
+
 def testAnEndedSessionIsToldWhatHappenedNotThatTheServerRestarted(
     pageDashboard, serverHub,
 ):
@@ -576,9 +736,11 @@ def testAnEndedSessionIsToldWhatHappenedNotThatTheServerRestarted(
         stateApp.dictBrowserSessions, recordSession.sSessionId,
         sEndedMessage=(
             "This browser session reached its maximum lifetime (12h) "
-            "and ended. Container 'demo' kept running and its work was "
-            "retained. Run 'vaibify open' for a fresh tab, or raise "
-            "the session cap in Settings."
+            "and ended. Container 'demo' kept running and its pipeline "
+            "work was retained, but any terminal this tab had open was "
+            "closed, which stopped everything started in it. Run "
+            "'vaibify open' for a fresh tab, or raise the session cap "
+            "in Settings."
         ),
     )
     pageDashboard.evaluate(
