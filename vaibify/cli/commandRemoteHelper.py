@@ -121,13 +121,17 @@ def _fprocessStartDetachedHub(iPort):
     """Start a hub that will outlive this helper, and return it.
 
     Modelled on the dashboard's own detached-hub spawn: a new session,
-    stdio to devnull, and no expectation that this process supervises
-    it afterwards. The browser suppression matters -- there is very
+    stdio to devnull, the working directory this vaibify was imported
+    from (so ``-m vaibify`` cannot pick up a checkout in the SSH login
+    directory), and no expectation that this process supervises it
+    afterwards. The browser suppression matters -- there is very
     often no display on a compute machine, and a hub that tried to
     open one would hang or spray errors into its own startup.
     """
     import subprocess
-    from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
+    from vaibify.gui.routes.sessionRoutes import (
+        S_SUPPRESS_BROWSER_ENV, fsLocateOwnPackageRoot,
+    )
     dictChildEnvironment = {
         **os.environ,
         S_SUPPRESS_BROWSER_ENV: "1",
@@ -142,6 +146,7 @@ def _fprocessStartDetachedHub(iPort):
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        cwd=fsLocateOwnPackageRoot(),
         env=dictChildEnvironment,
     )
 

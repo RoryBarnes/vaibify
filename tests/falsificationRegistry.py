@@ -13548,10 +13548,50 @@ LIST_FALSIFICATIONS = [
         # bookmarked URL dies even though the old port clears seconds
         # later.
         old=(
-            '    if bHolderIsLiveListener:\n'
+            '    if bLiveForeignHolder:\n'
         ),
         new=(
             '    if True:\n'
+        ),
+    ),
+    # --- 2026-11-25: a "New window" child runs its parent's code and
+    # says how it failed. It imported whatever checkout the parent's
+    # working directory held, and its output went nowhere. ---
+    Falsification(
+        nodeid=(
+            'tests/testSpawnedWindowSignsIn.py::'
+            'testTheSpawnedHubImportsItsParentsVaibifyNotTheWorkingDirectorys'
+        ),
+        source='vaibify/gui/routes/sessionRoutes.py',
+        # Launch from the parent's working directory again.
+        old='            cwd=fsLocateOwnPackageRoot(),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSpawnedWindowSignsIn.py::'
+            'testARefusalSaysTheChildExitedOnItsOwnAndWhereItsOutputIs'
+        ),
+        source='vaibify/gui/routes/sessionRoutes.py',
+        # An exit of the child's own read as this hub's stop.
+        old='    elif iExitStatus is not None:\n',
+        new='    elif False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPortAllocator.py::'
+            'testAnotherLiveHubOnTheSavedPortKeepsTheSavedPort'
+        ),
+        source='vaibify/cli/portAllocator.py',
+        # Classify the holder by "accepts connections" alone (the
+        # 2026-11-25 defect): a second window beside a live hub saved
+        # its own port over the first window's bookmark.
+        old=(
+            '        iPersisted, bLiveForeignHolder, '
+            'bLiveListener and bVaibifyHubHolds,\n'
+        ),
+        new=(
+            '        iPersisted, bLiveListener, False,\n'
         ),
     ),
     Falsification(
@@ -26494,11 +26534,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testSpawnedWindowSignsIn.py::testAChildThatNeverBecomesReadyIsStoppedAndRefused',
         source='vaibify/gui/routes/sessionRoutes.py',
-        old=(
-            '    if not sCapability:\n'
-            '        _fnReapSpawnedChild(listChildren, processChild)\n'
-        ),
-        new='    if not sCapability:\n',
+        old='        _fnReapSpawnedChild(listChildren, processChild)\n',
+        new='',
     ),
     # --- A task nobody awaits is held until it ends ---
     Falsification(
