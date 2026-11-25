@@ -88,3 +88,49 @@ def testWhatNeedsAttentionIsShownAndNamed(pageDashboard, serverHub):
         _S_SURFACE_NETWORK, fdictNetwork("web", "sealed", True, "running"))
     assert dictQuiet["sDisplay"] == "none"
     assert pageDashboard.listPageErrors == []
+
+
+S_HUB_PIN_MISMATCH = (
+    "This container's network proxy serves hub port 8051; this dashboard "
+    "is 8053. Restart the container to reach it from here.")
+
+
+@pytest.mark.falsification
+def testAProxyServingAnotherHubIsShownInTheServersWords(pageDashboard, serverHub):
+    """Every call the agent makes is refused until the two ports agree.
+
+    Kills: a running proxy with nothing refused hiding the row although
+    it serves another hub.
+    """
+    _fnLoadTheHub(pageDashboard, serverHub)
+    dictNetwork = fdictNetwork("web", "sealed", True, sProxyState="running")
+    dictNetwork["sHubPinMismatch"] = S_HUB_PIN_MISMATCH
+    dictShown = pageDashboard.evaluate(_S_SURFACE_NETWORK, dictNetwork)
+    assert dictShown["sDisplay"] == "block"
+    assert S_HUB_PIN_MISMATCH in dictShown["sText"]
+    dictNetwork["sHubPinMismatch"] = ""
+    assert pageDashboard.evaluate(_S_SURFACE_NETWORK, dictNetwork)["sDisplay"] == "none"
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testARefusalOfTheHubsHostOffersNoAllowButton(pageDashboard, serverHub):
+    """Allowing the hub's host changes nothing: the allowlist never judges it.
+
+    Kills: drawing "Allow host" for a refusal the server marked not allowable.
+    """
+    _fnLoadTheHub(pageDashboard, serverHub)
+    dictShown = pageDashboard.evaluate(_S_SURFACE_NETWORK, fdictNetwork(
+        "web", "sealed", True, "running", listRefused=[
+            {"sHost": "host.docker.internal", "iPort": 5432, "iCount": 2,
+             "sReason": "only the hub's port is served on the host",
+             "bAllowable": False},
+            {"sHost": "data.example.org", "iPort": 443, "iCount": 1,
+             "sReason": "host not on allowlist", "bAllowable": True},
+        ]))
+    assert "host.docker.internal:5432" in dictShown["sText"]
+    listButtonHosts = pageDashboard.locator(
+        "#networkBanner .btn-allow-network-host").evaluate_all(
+        "(listElements) => listElements.map((el) => el.dataset.host)")
+    assert listButtonHosts == ["data.example.org:443"]
+    assert pageDashboard.listPageErrors == []

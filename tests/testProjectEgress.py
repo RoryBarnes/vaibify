@@ -80,7 +80,7 @@ def testTheNetworkIsInternalIsolatedAndWithoutIPv6(docker):
 
     Kills: creating the network without the isolated gateway mode.
     """
-    projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
+    projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID)
     listCreate = next(listCommand for listCommand in docker.listCommands
                       if listCommand[:2] == ["network", "create"])
     assert listCreate[:3] == ["network", "create", "--internal"]
@@ -96,7 +96,7 @@ def testAnEngineThatLeavesAGatewayIsRefusedWithNoFallback(docker):
     docker.dictAnswers["network inspect --format {{json .IPAM.Config}}"] = (
         0, '[{"Subnet":"172.30.0.0/16","Gateway":"172.30.0.1"}]\n')
     with pytest.raises(egressProxy.EgressSetupError, match="28.0.0"):
-        projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
+        projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID)
     assert ["network", "rm", S_NETWORK] in docker.listCommands
     assert docker.flistOf("run") == []
 
@@ -104,13 +104,13 @@ def testAnEngineThatLeavesAGatewayIsRefusedWithNoFallback(docker):
 def testAnEngineThatRejectsTheOptionIsRefusedByName(docker):
     docker.dictAnswers["network create"] = (1, "invalid option: gateway_mode_ipv4")
     with pytest.raises(egressProxy.EgressSetupError) as errorRaised:
-        projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
+        projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID)
     assert "28.0.0" in str(errorRaised.value) and "gateway_mode_ipv4" in str(errorRaised.value)
 
 
-def testTheProxyIsHardenedPinnedToTheHubAndForwardsThePublishedPorts(docker):
+def testTheProxyIsHardenedServesNoHubYetAndForwardsThePublishedPorts(docker):
     dictEgress = projectEgress.fdictPrepareProjectEgress(
-        _fconfig(listPorts=[{"host": 8888, "container": 8888}]), S_UUID, 8050)
+        _fconfig(listPorts=[{"host": 8888, "container": 8888}]), S_UUID)
     assert dictEgress == {"sNetworkName": S_NETWORK, "sProxyName": S_PROXY,
                           "sProxyAddress": "172.30.0.2"}
     listRun = docker.flistOf("run")[0]
@@ -123,12 +123,19 @@ def testTheProxyIsHardenedPinnedToTheHubAndForwardsThePublishedPorts(docker):
     assert egressProxy.S_PROXY_IMAGE in listRun
     iImage = listRun.index(egressProxy.S_PROXY_IMAGE)
     listCommand = listRun[iImage + 1:]
-    assert listCommand[listCommand.index("--hub-gateway") + 1] == "host.docker.internal:8050"
+    assert "--hub-gateway" not in listCommand
+    assert listCommand[listCommand.index("--hub-host") + 1] == "host.docker.internal"
+    assert listCommand[listCommand.index("--hub-port-file") + 1] == (
+        egressProxy.S_HUB_PORT_FILE_CONTAINER_PATH)
     assert listCommand[listCommand.index("--bind-cidr") + 1] == "172.30.0.0/16"
     assert listCommand[listCommand.index("--forward") + 1] == "8888=sealedProject:8888"
     assert "data.example.org" in listCommand[listCommand.index("--allowlist") + 1]
-    sMount = listRun[listRun.index("--mount") + 1]
-    assert "readonly" in sMount and projectEgress._fsEgressRoot() in sMount
+    listMounts = [listRun[iIndex + 1] for iIndex, sArgument in enumerate(listRun)
+                  if sArgument == "--mount"]
+    assert len(listMounts) == 2
+    for sMount in listMounts:
+        assert sMount.endswith(",readonly") and projectEgress._fsEgressRoot() in sMount
+    assert f"target=/{egressProxy.S_HUB_PORT_DIRECTORY}," in listMounts[1]
     assert ["network", "connect", "bridge", S_PROXY] in docker.listCommands
 
 
@@ -136,7 +143,7 @@ def testAProxyThatNeverListensIsRemovedAndTheLaunchRefused(docker, monkeypatch):
     monkeypatch.setattr(egressProxy, "F_PROXY_READY_DEADLINE_SECONDS", 0.01)
     docker.dictAnswers["logs"] = (0, "starting\n")
     with pytest.raises(egressProxy.EgressSetupError, match="never reported"):
-        projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
+        projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID)
     assert ["rm", "-f", S_PROXY] in docker.listCommands
 
 
@@ -144,12 +151,12 @@ def testAProxyThatExitsOnStartupReportsItsLog(docker):
     docker.dictAnswers["logs"] = (0, "")
     docker.dictAnswers["inspect --format {{.State.Running}}"] = (0, "false\n")
     with pytest.raises(egressProxy.EgressSetupError, match="exited on startup"):
-        projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
+        projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID)
 
 
 def testTheReleaseRemovesProxyNetworkAndScript(docker):
     sScriptDirectory = os.path.join(projectEgress._fsEgressRoot(), S_UUID)
-    projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID, 8050)
+    projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID)
     assert os.path.isdir(sScriptDirectory)
     projectEgress.fnReleaseProjectEgressQuietly(S_UUID, "test")
     assert ["rm", "-f", S_PROXY] in docker.listCommands[-3:]
@@ -222,16 +229,17 @@ def testTheRefusedDestinationsAreTalliedFromTheProxyLog(docker):
     assert dictDescribed["sProxyState"] == "running"
     assert dictDescribed["listRefused"] == [
         {"sHost": "evil.example.org", "iPort": 443, "iCount": 2,
-         "sReason": "host not on allowlist"},
+         "sReason": "host not on allowlist", "bAllowable": True},
         {"sHost": "10.0.0.5", "iPort": 22, "iCount": 1,
-         "sReason": "raw-address CONNECT target refused"},
+         "sReason": "raw-address CONNECT target refused", "bAllowable": True},
     ]
 
 
 def testAnAbsentProxyIsSaidToBeAbsentAndADeadOneDown(docker):
     docker.dictAnswers["inspect --format {{.State.Running}}"] = (1, "No such object")
     assert projectEgress.fdictDescribeProjectEgress(S_UUID) == {
-        "sProxyState": "absent", "listRefused": []}
+        "sProxyState": "absent", "sPin": "absent", "iPinnedHubPort": 0,
+        "listRefused": []}
     docker.dictAnswers["inspect --format {{.State.Running}}"] = (0, "false\n")
     assert projectEgress.fsProxyState(S_UUID) == "down"
 
@@ -250,9 +258,104 @@ def testOnlyAWebModeProxyMayTunnelToAnyPublicHost():
         config = _fconfig()
         config.sNetworkMode = sNetworkMode
         return projectEgress.flistProxyRunArguments(
-            config, S_UUID, S_NETWORK, "/script.py", "172.30.0.0/16", 8050)
+            config, S_UUID, S_NETWORK, "/script.py", "172.30.0.0/16")
 
     assert "--any-public-host" in flistRunArguments("web")
     assert "--any-public-host" not in flistRunArguments("allowlist")
     assert "Engine 28.0.0" in projectEgress.S_ENGINE_REQUIREMENT
     assert "networkMode: open" in projectEgress.S_ENGINE_REQUIREMENT
+
+
+S_REPINNABLE_COMMAND = (
+    '["python","/vaibifyEgress/vaibifyEgressProxy.py","--hub-host",'
+    '"host.docker.internal","--hub-port-file","/vaibifyEgressGateway/hubPort"]\n')
+S_OLDER_COMMAND = (
+    '["python","/vaibifyEgress/vaibifyEgressProxy.py",'
+    '"--hub-gateway","host.docker.internal:8051"]\n')
+
+
+def _fsReadPinFile():
+    return open(projectEgress._fsHubPortPath(S_UUID), encoding="ascii").read()
+
+
+@pytest.mark.falsification
+def testTheLaunchServesNoHubWhateverPortIsPreferred(docker):
+    """The launch once pinned the per-user PREFERRED port, not the hub's.
+
+    A preference of 8051 is persisted first; nothing the launch writes
+    or runs may name it, and the pin it leaves names no hub at all.
+
+    Kills: the launch writing a hub port into the pin.
+    """
+    from vaibify.config.hubPortRegistry import fnPersistHubPort
+    fnPersistHubPort(8051)
+    projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID)
+    listRun = docker.flistOf("run")[0]
+    assert not any("8051" in sArgument for sArgument in listRun)
+    assert _fsReadPinFile() == ""
+    assert oct(os.stat(projectEgress._fsHubPortDirectory(S_UUID)).st_mode & 0o777) == "0o755"
+    assert oct(os.stat(os.path.dirname(
+        projectEgress._fsHubPortDirectory(S_UUID))).st_mode & 0o777) == "0o700"
+
+
+@pytest.mark.falsification
+def testAConnectingHubRepinsAFilePinnedProxyToItsOwnPort(docker):
+    """Kills: pinning that never writes the port the connecting hub listens on."""
+    projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID)
+    docker.dictAnswers["inspect --format {{json .Config.Cmd}}"] = (0, S_REPINNABLE_COMMAND)
+    assert projectEgress.fsPinProjectEgressHub(S_UUID, 8053) == projectEgress.S_PIN_PINNED
+    assert _fsReadPinFile() == "8053"
+    assert projectEgress.fdictReadHubPin(S_UUID) == {"sPin": "pinned", "iPinnedHubPort": 8053}
+    assert projectEgress.fsPinProjectEgressHub(S_UUID, 9017) == projectEgress.S_PIN_PINNED
+    assert _fsReadPinFile() == "9017"
+
+
+def testAnUnchangedPinIsNotRewritten(docker):
+    projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID)
+    docker.dictAnswers["inspect --format {{json .Config.Cmd}}"] = (0, S_REPINNABLE_COMMAND)
+    projectEgress.fsPinProjectEgressHub(S_UUID, 8053)
+    iInodeBefore = os.stat(projectEgress._fsHubPortPath(S_UUID)).st_ino
+    projectEgress.fsPinProjectEgressHub(S_UUID, 8053)
+    assert os.stat(projectEgress._fsHubPortPath(S_UUID)).st_ino == iInodeBefore
+
+
+def testAnOlderProxyIsReportedFixedAndLeftAlone(docker):
+    docker.dictAnswers["inspect --format {{json .Config.Cmd}}"] = (0, S_OLDER_COMMAND)
+    assert projectEgress.fsPinProjectEgressHub(S_UUID, 8053) == projectEgress.S_PIN_FIXED
+    assert not os.path.exists(projectEgress._fsHubPortPath(S_UUID))
+    assert projectEgress.fdictReadHubPin(S_UUID) == {"sPin": "fixed", "iPinnedHubPort": 8051}
+
+
+def testNoProxyMeansNothingToPin(docker):
+    docker.dictAnswers["inspect --format {{json .Config.Cmd}}"] = (1, "No such object")
+    assert projectEgress.fsPinProjectEgressHub(S_UUID, 8053) == projectEgress.S_PIN_ABSENT
+    assert projectEgress.fdictReadHubPin(S_UUID) == {"sPin": "absent", "iPinnedHubPort": 0}
+
+
+@pytest.mark.parametrize("iHubPort", [0, 80, 1023, 65536, "8053", True])
+def testOnlyAPortAHubListensOnIsPinned(docker, iHubPort):
+    with pytest.raises(egressProxy.EgressSetupError):
+        projectEgress.fsPinProjectEgressHub(S_UUID, iHubPort)
+
+
+@pytest.mark.falsification
+def testHubRefusalsAreNotAllowableAndThoseOfTheServedPortAreDropped(docker):
+    """A refusal of the hub's host offered "Allow host", which changes nothing.
+
+    Kills: offering the allowlist remedy for a refusal of the hub's host.
+    """
+    projectEgress.fdictPrepareProjectEgress(_fconfig(), S_UUID)
+    docker.dictAnswers["inspect --format {{json .Config.Cmd}}"] = (0, S_REPINNABLE_COMMAND)
+    projectEgress.fsPinProjectEgressHub(S_UUID, 8053)
+    docker.dictAnswers["logs"] = (0, "\n".join([
+        "vaibify-egress: CONNECT host.docker.internal:8053 refused only the hub's "
+        "port is served on the host: this container's hub is port 8051, not 8053",
+        "vaibify-egress: CONNECT host.docker.internal:5432 refused only the hub's "
+        "port is served on the host: this container's hub is port 8053, not 5432",
+        "vaibify-egress: CONNECT data.example.net:443 refused host not on allowlist",
+    ]) + "\n")
+    dictDescribed = projectEgress.fdictDescribeProjectEgress(S_UUID)
+    assert dictDescribed["sPin"] == "pinned" and dictDescribed["iPinnedHubPort"] == 8053
+    assert [(dictEntry["sHost"], dictEntry["iPort"], dictEntry["bAllowable"])
+            for dictEntry in dictDescribed["listRefused"]] == [
+        ("host.docker.internal", 5432, False), ("data.example.net", 443, True)]

@@ -3193,6 +3193,7 @@ var VaibifyContainerManager = (function () {
         if (dictNetwork.sContainerState === "open") return true;
         if (dictNetwork.sMode === "unstated") return true;
         if (dictNetwork.bSealed !== true) return false;
+        if (dictNetwork.sHubPinMismatch) return true;
         return dictNetwork.sProxyState !== "running" ||
             (dictNetwork.listRefused || []).length > 0;
     }
@@ -3234,23 +3235,38 @@ var VaibifyContainerManager = (function () {
               VaibifyUtilities.fnEscapeHtml(
                   _fsNetworkBannerSentence(dictNetwork)) + '</p>'
             : "";
+        /* The server's sentence, naming the port the proxy serves and
+           this dashboard's port, when they differ: every call the
+           container's agent makes is refused until they agree. */
+        var sHubPinMismatch = dictNetwork.sHubPinMismatch
+            ? '<p class="build-warnings-banner-list network-hub-pin-mismatch">' +
+              VaibifyUtilities.fnEscapeHtml(dictNetwork.sHubPinMismatch) +
+              '</p>'
+            : "";
         elBanner.innerHTML =
             '<div class="build-warnings-banner-header">' +
             '<span>Network mode: ' +
             VaibifyUtilities.fnEscapeHtml(dictNetwork.sMode) + ' (' +
             VaibifyUtilities.fnEscapeHtml(sStateText) + ')</span></div>' +
-            sDisagreement +
+            sDisagreement + sHubPinMismatch +
             (listRefused.length
                 ? '<ul class="build-warnings-banner-list">' +
                   listRefused.map(function (dictEntry) {
                       var sHost = dictEntry.sHost + ":" + dictEntry.iPort;
+                      /* The hub's host is never judged by the allowlist,
+                         so the server marks its refusals not allowable
+                         and no button offers a remedy that changes
+                         nothing. */
+                      var sAllowButton = dictEntry.bAllowable === false
+                          ? ""
+                          : ' <button type="button" class="btn ' +
+                            'btn-allow-network-host" data-host="' +
+                            VaibifyUtilities.fnEscapeHtml(sHost) +
+                            '">Allow host</button>';
                       return "<li>Refused " + dictEntry.iCount + "\u00d7: " +
                           VaibifyUtilities.fnEscapeHtml(sHost) + " (" +
                           VaibifyUtilities.fnEscapeHtml(dictEntry.sReason || "") +
-                          ') <button type="button" class="btn ' +
-                          'btn-allow-network-host" data-host="' +
-                          VaibifyUtilities.fnEscapeHtml(sHost) +
-                          '">Allow host</button></li>';
+                          ')' + sAllowButton + '</li>';
                   }).join("") + '</ul>'
                 : "");
         elBanner.style.display = "block";

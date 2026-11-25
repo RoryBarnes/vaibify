@@ -14,9 +14,16 @@ the in-container ``vaibify-do`` CLI reads:
   world-readable; it carries no credentials.
 
 Both paths come from :mod:`actionCatalog`'s shared constants.
+
+Before either is written, a sealed container's network proxy is
+pointed at the hub port the session file is about to name
+(:func:`projectEgressLifecycle.fnPinProjectEgressToHub`), so the agent
+is never told a hub its proxy refuses: a container launched by one hub
+and taken over by another reaches the hub that now owns it.
 """
 
 __all__ = [
+    "fiAgentHubPort",
     "fnPushAgentSessionToContainer",
 ]
 
@@ -24,6 +31,7 @@ import json
 
 from .. import __version__
 from . import actionCatalog
+from . import projectEgressLifecycle
 
 
 def fsBuildSessionEnvBody(sHostUrl, sAgentToken, sContainerId):
@@ -37,11 +45,17 @@ def fsBuildSessionEnvBody(sHostUrl, sAgentToken, sContainerId):
     return "\n".join(listLines) + "\n"
 
 
+I_DEFAULT_HUB_PORT = 8050
+
+
+def fiAgentHubPort(iPort):
+    """Return the hub port the agent is told, the one its network proxy must serve."""
+    return iPort or I_DEFAULT_HUB_PORT
+
+
 def fsBuildHostUrl(iPort):
     """Return the host URL the agent should dial."""
-    if not iPort:
-        iPort = 8050
-    return f"http://host.docker.internal:{iPort}"
+    return f"http://host.docker.internal:{fiAgentHubPort(iPort)}"
 
 
 _I_CONTAINER_USER_UID = 1000
@@ -87,8 +101,12 @@ def fnWriteActionCatalog(connectionDocker, sContainerId):
 def fnPushAgentSessionToContainer(
     connectionDocker, sContainerId, sAgentToken, iPort,
 ):
-    """Materialize session.env + action-catalog.json in the container."""
+    """Pin the container's proxy to this hub, then write session.env + catalog."""
+    iAgentHubPort = fiAgentHubPort(iPort)
+    projectEgressLifecycle.fnPinProjectEgressToHub(
+        connectionDocker, sContainerId, iAgentHubPort,
+    )
     fnWriteSessionEnv(
-        connectionDocker, sContainerId, sAgentToken, iPort,
+        connectionDocker, sContainerId, sAgentToken, iAgentHubPort,
     )
     fnWriteActionCatalog(connectionDocker, sContainerId)

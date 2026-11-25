@@ -43,6 +43,10 @@ S_AGENT_PROJECT_QUERY = "sAgentProject"
 S_CLIENT_DIGEST_HEADER = "X-Vaibify-Client-Digest"
 S_CLIENT_DIGEST_QUERY = "sClientDigest"
 S_CLIENT_WARNING_HEADER = "X-Vaibify-Client-Warning"
+# The body every refusal by vaibify's own network proxy begins with
+# (``egressProxy.fnRefuse``); the hub never answers in this form.
+S_EGRESS_REFUSAL_PREFIX = "vaibify-egress: "
+I_REFUSAL_BODY_LIMIT_BYTES = 4096
 T_PROJECT_DIRECTORY_MARKERS = (
     os.path.join(".vaibify", "projects"),
     os.path.join(".vaibify", "workflows"),
@@ -100,6 +104,42 @@ def fnFailHostUnreachable(sUrl, error):
         "vaibify host unreachable at " + sUrl + " (" + str(error) + "); "
         "reconnect the container from the dashboard",
         iCode=4,
+    )
+
+
+class NetworkProxyRefusal(OSError):
+    """The container's network proxy refused the call, giving its reason."""
+
+    def __init__(self, sReason):
+        super().__init__(sReason)
+        self.sReason = sReason
+
+
+def fsEgressRefusalReason(baBody):
+    """Return the network proxy's reason when baBody is its refusal, else ""."""
+    sText = (baBody or b"").decode("utf-8", errors="replace").strip()
+    sPrefix = S_EGRESS_REFUSAL_PREFIX.rstrip()
+    if not sText.startswith(sPrefix):
+        return ""
+    return sText[len(sPrefix):].strip() or "no reason given"
+
+
+def fnFailProxyRefused(sUrl, sReason):
+    """Exit 6: the container's own network proxy refused the call.
+
+    Its own code because the remedy differs from 4's: the request never
+    left this container, so it says nothing about whether the hub is
+    connected, and reconnecting rewrites the session file without
+    changing what the proxy serves. An agent once sent a researcher to
+    reconnect a container whose proxy served a different hub's port.
+    """
+    fnFail(
+        "the container's network proxy refused the call to " + sUrl + " ("
+        + sReason + "). This is not a lost connection, so reconnecting "
+        "from the dashboard will not fix it. Show the researcher this "
+        "message; the dashboard banner that begins \"Network mode:\" "
+        "says what to do.",
+        iCode=6,
     )
 
 
@@ -436,9 +476,13 @@ def fiResolveLabelToIndex(sLabel, dictEnv):
         ) as resp:
             dictResult = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
+        baBody = error.read()
+        sProxyReason = fsEgressRefusalReason(baBody)
+        if sProxyReason:
+            fnFailProxyRefused(sUrl, sProxyReason)
         fnFail(
             "label resolution failed for " + sLabel + ": "
-            + error.read().decode("utf-8", errors="replace"),
+            + baBody.decode("utf-8", errors="replace"),
             iCode=2,
         )
     except urllib.error.URLError as error:
@@ -588,6 +632,9 @@ def _fiHandleHttpError(errHttp, bJsonMode):
         dataBody = errHttp.read()
     except Exception:
         dataBody = b""
+    sProxyReason = fsEgressRefusalReason(dataBody)
+    if sProxyReason:
+        fnFailProxyRefused(errHttp.geturl(), sProxyReason)
     _fnPrintHttpBody(dataBody, bJsonMode)
     if 400 <= errHttp.code < 500:
         return 1
@@ -787,9 +834,27 @@ def fsocketConnectToHub(sHost, iPort):
         baResponse += baChunk
     baStatusLine = baResponse.split(b"\r\n", 1)[0]
     if b" 200 " not in baStatusLine:
+        sProxyReason = fsEgressRefusalReason(
+            fbaReadRefusalBody(socketProxy, baResponse))
+        if sProxyReason:
+            raise NetworkProxyRefusal(sProxyReason)
         raise OSError("the network proxy refused the hub tunnel: "
                       + baStatusLine.decode("ascii", errors="replace"))
     return socketProxy
+
+
+def fbaReadRefusalBody(socketProxy, baResponse):
+    """Return the body of a refusal; the proxy closes the socket after it."""
+    baBody = baResponse.split(b"\r\n\r\n", 1)[1]
+    try:
+        while len(baBody) < I_REFUSAL_BODY_LIMIT_BYTES:
+            baChunk = socketProxy.recv(4096)
+            if not baChunk:
+                break
+            baBody += baChunk
+    except OSError:
+        pass
+    return baBody[:I_REFUSAL_BODY_LIMIT_BYTES]
 
 
 def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
@@ -808,6 +873,8 @@ def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
                "WebSocket path; use plain http host-bridge url", iCode=4)
     try:
         socketConnection = fsocketConnectToHub(sHost, iPort)
+    except NetworkProxyRefusal as error:
+        fnFailProxyRefused(dictEnv["VAIBIFY_HOST_URL"], error.sReason)
     except (OSError, socket.timeout) as error:
         fnFailHostUnreachable(dictEnv["VAIBIFY_HOST_URL"], error)
     socketConnection.settimeout(F_READ_TIMEOUT)

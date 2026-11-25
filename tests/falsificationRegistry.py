@@ -38566,8 +38566,8 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testProjectEgressLive.py::testTheHubIsReachedOnItsPortAloneForHttpAndConnect',
         source='vaibify/docker/egressProxy.py',
         old=(
-            '        if iPort != DICT_HUB_GATEWAY["iPort"]:\n'
-            '            return "only the hub\'s port is served on the host"\n'
+            '        if not fbIsHubGateway(sHostLower, iPort):\n'
+            '            return fsDescribeHubPortRefusal(iPort)\n'
         ),
         new='        pass\n',
     ),
@@ -39947,8 +39947,8 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testEgressProxy.py::testTheCouncilNeverComposesAnyPublicHost',
         # The composer's default flipped, so every caller allows any host.
         source='vaibify/docker/egressProxy.py',
-        old='                             bAnyPublicHost=False):\n',
-        new='                             bAnyPublicHost=True):\n',
+        old='                             bAnyPublicHost=False, sRepinnableHubHost=""):\n',
+        new='                             bAnyPublicHost=True, sRepinnableHubHost=""):\n',
     ),
     Falsification(
         nodeid='tests/testNetworkMode.py::testAWebLaunchIsSealed',
@@ -40944,5 +40944,119 @@ LIST_FALSIFICATIONS = [
             '    session.fnResize(iRows, iColumns)\n'
         ),
         new='    dictPendingResize.clear()\n',
+    ),
+    # --- 2026-11-24: a sealed container's proxy serves the hub that
+    # owns it. A container launched by one hub and taken over by another
+    # kept a proxy pinned to the first hub's port; the agent's every call
+    # was refused and it sent the researcher to reconnect. ---
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testThePinIsReadAgainOnEveryRequest',
+        # The proxy keeps the first port it read from the pin file.
+        source='vaibify/docker/egressProxy.py',
+        old='    if not sPortFile:\n        return\n',
+        new='    if not sPortFile or DICT_HUB_GATEWAY["iPort"]:\n        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgressLive.py::testATakenOverContainerReachesItsNewHubWithNoProxyRestart',
+        # The same break, met through a real sidecar and a real second hub.
+        source='vaibify/docker/egressProxy.py',
+        old='    if not sPortFile:\n        return\n',
+        new='    if not sPortFile or DICT_HUB_GATEWAY["iPort"]:\n        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testAPinFileBeingReplacedIsWaitedForNotReadAsNoHub',
+        # A missing pin file read as "no hub" at once.
+        source='vaibify/docker/egressProxy.py',
+        old='        except FileNotFoundError:\n            if loopRunning.time() >= fDeadline:\n',
+        new='        except FileNotFoundError:\n            if True:\n',
+    ),
+    Falsification(
+        nodeid='tests/testEgressProxy.py::testAPlainHttpRequestForAnotherHubIsRefusedByNameAndLogged',
+        # A plain-HTTP refusal of the hub's host goes unlogged again.
+        source='vaibify/docker/egressProxy.py',
+        old='        fnLogDecision(tTarget[0], tTarget[1], "refused", sReason)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testTheLaunchServesNoHubWhateverPortIsPreferred',
+        # The launch writes a hub port into the pin, as the persisted
+        # preference once was written into the proxy's argv.
+        source='vaibify/docker/projectEgress.py',
+        old='    _fnWriteHubPort(sProjectUuid, 0)\n',
+        new='    _fnWriteHubPort(sProjectUuid, 8051)\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testAConnectingHubRepinsAFilePinnedProxyToItsOwnPort',
+        # Pinning reports success without writing the connecting hub's port.
+        source='vaibify/docker/projectEgress.py',
+        old='        _fnWriteHubPort(sProjectUuid, iHubPort)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testProjectEgress.py::testHubRefusalsAreNotAllowableAndThoseOfTheServedPortAreDropped',
+        # "Allow host" offered for the hub's host, which the allowlist never judges.
+        source='vaibify/docker/projectEgress.py',
+        old='"bAllowable": not bHubHost',
+        new='"bAllowable": True',
+    ),
+    Falsification(
+        nodeid='tests/testEgressHubPin.py::testTheProxyIsPinnedBeforeTheAgentIsToldWhichHubToDial',
+        # The session push writes the session file without pinning the proxy.
+        source='vaibify/gui/agentSessionBridge.py',
+        old=(
+            '    projectEgressLifecycle.fnPinProjectEgressToHub(\n'
+            '        connectionDocker, sContainerId, iAgentHubPort,\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testEgressHubPin.py::testAnOlderProxyServingAnotherHubNamesBothPortsAndTheRestart',
+        # The banner names a fixed port instead of this dashboard's.
+        source='vaibify/gui/projectEgressLifecycle.py',
+        old='                 f"is {iAgentHubPort}.")\n',
+        new='                 "is 8053.")\n',
+    ),
+    Falsification(
+        nodeid='tests/testVaibifyDoProxyTunnel.py::testAProxyRefusingTheHubTunnelIsNotCalledALostConnection',
+        # A proxy refusal of the hub tunnel reported as an unreachable host.
+        source='vaibify/containerImage/vaibifyDo.py',
+        old=(
+            '    except NetworkProxyRefusal as error:\n'
+            '        fnFailProxyRefused(dictEnv["VAIBIFY_HOST_URL"], error.sReason)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testVaibifyDoProxyTunnel.py::testAProxyRefusingAnHttpCallExitsSixWithItsReason',
+        # A proxy refusal printed as though the hub had answered.
+        source='vaibify/containerImage/vaibifyDo.py',
+        old=(
+            '    sProxyReason = fsEgressRefusalReason(dataBody)\n'
+            '    if sProxyReason:\n'
+            '        fnFailProxyRefused(errHttp.geturl(), sProxyReason)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheNetworkRowShowsOnlyWhatNeedsAttention.py::testAProxyServingAnotherHubIsShownInTheServersWords',
+        # The row stays hidden for a proxy that serves another hub.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (dictNetwork.sHubPinMismatch) return true;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheNetworkRowShowsOnlyWhatNeedsAttention.py::testARefusalOfTheHubsHostOffersNoAllowButton',
+        # "Allow host" drawn for a refusal the server marked not allowable.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                      var sAllowButton = dictEntry.bAllowable === false\n',
+        new='                      var sAllowButton = false\n',
+    ),
+    Falsification(
+        nodeid='tests/testVaibifyDoProxyTunnel.py::testAProxyRefusalHasItsOwnExitCode',
+        # A proxy refusal exits with the unreachable-host code, 4.
+        source='vaibify/containerImage/vaibifyDo.py',
+        old='        iCode=6,\n',
+        new='        iCode=4,\n',
     ),
 ]

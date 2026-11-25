@@ -11,12 +11,20 @@ released the proxy of a researcher's running container, because
 "absent from my registry" was read as "absent from the daemon". The
 council's own sweep never touches these: they carry the project label,
 not the council's.
+
+The hub that connects to a sealed container also points its proxy at
+itself (:func:`fnPinProjectEgressToHub`) before the agent is told which
+hub to dial, so a container launched by one hub and taken over by
+another can still reach the hub that now owns it.
 """
 
 __all__ = [
+    "fdictDescribeProjectEgress",
     "fdictReconcileProjectEgress",
     "fdictReapOrphanedProjectEgress",
+    "fnPinProjectEgressToHub",
     "fnRegisterProjectEgressLifecycle",
+    "fsDescribeHubPinMismatch",
 ]
 
 import asyncio
@@ -53,6 +61,69 @@ def fdictReapOrphanedProjectEgress(dictCtx):
         remnantReapers.S_OUTCOME_RAN,
         iRemoved=sum(1 for sOutcome in dictOutcomes.values() if sOutcome == "released"),
     )
+
+
+def fnPinProjectEgressToHub(connectionDocker, sContainerId, iHubPort):
+    """Point the container's network proxy at hub ``iHubPort``, if it has one.
+
+    A container with no registered identity, or a project with no
+    proxy, has nothing to pin. A failure is logged and never raised:
+    the agent's session file is still written, and the dashboard's
+    network banner reports the port the proxy actually serves.
+    """
+    from vaibify.config.registryManager import fdictGetProject
+    from .pipelineServer import fsContainerNameForId
+    sContainerName = fsContainerNameForId(connectionDocker, sContainerId)
+    sProjectUuid = (fdictGetProject(sContainerName) or {}).get("sProjectUuid") or ""
+    if not sProjectUuid:
+        return
+    try:
+        sPin = projectEgress.fsPinProjectEgressHub(sProjectUuid, iHubPort)
+    except (projectEgress.EgressSetupError, OSError):
+        logger.warning("could not point the network proxy of %s at hub port %d",
+                       sContainerName, iHubPort, exc_info=True)
+        return
+    if sPin == projectEgress.S_PIN_FIXED:
+        logger.warning(
+            "the network proxy of %s was started by an older vaibify and "
+            "cannot be pointed at hub port %d; restart the container",
+            sContainerName, iHubPort)
+
+
+def fdictDescribeProjectEgress(sProjectUuid, iHubPort):
+    """Return the network banner's proxy facts, with ``sHubPinMismatch``.
+
+    ``iHubPort`` is the port of the hub asking; the agent is told the
+    port :func:`agentSessionBridge.fiAgentHubPort` makes of it, and a
+    proxy serving any other refuses every call the agent makes.
+    """
+    from .agentSessionBridge import fiAgentHubPort
+    dictEgress = projectEgress.fdictDescribeProjectEgress(sProjectUuid)
+    dictEgress["sHubPinMismatch"] = fsDescribeHubPinMismatch(
+        dictEgress, fiAgentHubPort(iHubPort))
+    return dictEgress
+
+
+def fsDescribeHubPinMismatch(dictEgress, iAgentHubPort):
+    """Return the sentence for a proxy serving another hub, or "".
+
+    A proxy that reads its port from a file is fixed by reopening the
+    container from this dashboard, which re-pins it; an older one only
+    by a restart, which makes a new proxy.
+    """
+    sPin = dictEgress.get("sPin")
+    iPinnedHubPort = dictEgress.get("iPinnedHubPort", 0)
+    if sPin not in (projectEgress.S_PIN_PINNED, projectEgress.S_PIN_FIXED):
+        return ""
+    if iPinnedHubPort == iAgentHubPort:
+        return ""
+    sServes = (f"serves hub port {iPinnedHubPort}" if iPinnedHubPort
+               else "serves no hub")
+    sSentence = (f"This container's network proxy {sServes}; this dashboard "
+                 f"is {iAgentHubPort}.")
+    if sPin == projectEgress.S_PIN_FIXED:
+        return sSentence + " Restart the container to reach it from here."
+    return sSentence + " Reopen the container from this dashboard to point the proxy here."
 
 
 def fnRegisterProjectEgressLifecycle(app):

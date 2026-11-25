@@ -1324,23 +1324,23 @@ def fsNetworkModeOf(config):
 def fdictPrepareEgressForLaunch(config):
     """Make the sealed network and proxy for a sealed-mode launch; else None.
 
-    The hub's port is the one destination on the host the container may
-    reach; it is read from the hub's own record, which a hub persists
-    at launch. A project the registry does not know has no identity to
-    key the egress by, and a sealed mode is refused for it.
+    The hub's port, the one destination on the host the container may
+    reach, is not decided here: the proxy starts serving no hub, and
+    the hub that connects pins its own port
+    (``projectEgress.fsPinProjectEgressHub``). A project the registry
+    does not know has no identity to key the egress by, and a sealed
+    mode is refused for it.
     """
     sMode = fsNetworkModeOf(config)
     if not fbIsSealedNetworkMode(sMode):
         return None
-    from vaibify.config.hubPortRegistry import fiReadPersistedHubPort
     sProjectUuid = _fsProjectUuidOrEmpty(config.sProjectName)
     if not sProjectUuid:
         raise RuntimeError(
             f"'{config.sProjectName}' sets networkMode: {sMode}, but it is "
             "not a registered project, so its network cannot be named; "
             "register it or set networkMode to open.")
-    return projectEgress.fdictPrepareProjectEgress(
-        config, sProjectUuid, fiReadPersistedHubPort())
+    return projectEgress.fdictPrepareProjectEgress(config, sProjectUuid)
 
 
 def _fnAddX11Forwarding(config, saRunArgs):
