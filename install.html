@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced Installation &mdash; Vaibify 0.4.2.dev5 documentation</title>
+  <title>Advanced Installation &mdash; Vaibify 0.4.2.dev7 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7f2d1b09"></script>
+      <script src="_static/documentation_options.js?v=ecad157a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -688,6 +688,16 @@ dashboard reaches the hub through <code class="docutils literal notranslate"><sp
 mode and through the proxy in <code class="docutils literal notranslate"><span class="pre">web</span></code> and <code class="docutils literal notranslate"><span class="pre">allowlist</span></code> mode; an <code class="docutils literal notranslate"><span class="pre">isolated</span></code>
 container has no network, so there <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> cannot reach the
 dashboard.</p>
+<p>When Codex is installed, container startup adds an interactive Bash alias
+for <code class="docutils literal notranslate"><span class="pre">codex</span> <span class="pre">--sandbox</span> <span class="pre">danger-full-access</span> <span class="pre">--ask-for-approval</span> <span class="pre">on-request</span></code>.
+Docker provides the isolation: Codex’s inner sandbox is disabled, and
+on-request approvals remain enabled. Codex can access all files and
+credentials available to the container user. This avoids Bubblewrap
+namespace failures inside restricted containers, following
+<a class="reference external" href="https://learn.chatgpt.com/docs/agent-approvals-security#run-codex-in-dev-containers">OpenAI’s container guidance</a>.
+The alias applies only to interactive container shells; scripts invoking
+the Codex executable directly must supply their own options. Rebuild and
+recreate an existing container to receive the updated startup script.</p>
 </section>
 <section id="reproducibility">
 <h3>Reproducibility<a class="headerlink" href="#reproducibility" title="Link to this heading"></a></h3>
