@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.4.2.dev7 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.4.2.dev13 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ecad157a"></script>
+      <script src="_static/documentation_options.js?v=7d2b10d9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -957,7 +957,7 @@ judgments available only here:</p>
 <td><p>Remove a provider’s key</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">set</span> <span class="pre">github|overleaf|zenodo</span> <span class="pre">[--project-id</span> <span class="pre">ID]</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
-<td><p>Store the Overleaf token (one slot for the whole host) or a project’s Zenodo token, read from a prompt that does not echo. GitHub stores nothing here (see below)</p></td>
+<td><p>Store the Overleaf token (one slot for the whole host) or a project’s Zenodo token, read from a prompt that does not echo. The token is checked with its service before it replaces the stored one. GitHub is refused (see below)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">status</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
 <td><p>Report which remotes are configured and reachable</p></td>
@@ -966,7 +966,7 @@ judgments available only here:</p>
 <td><p>The same as <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">github</span> <span class="pre">[--keyring-slot</span> <span class="pre">SLOT]</span></code></p></td>
-<td><p>Run <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">logout</span></code> for github.com, and with <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code> clear that one repository’s stored token. Without <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code> nothing local is cleared, so it exits 1</p></td>
+<td><p>With <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code>, clear that one repository’s stored token and leave your <code class="docutils literal notranslate"><span class="pre">gh</span></code> login in place. Without it, run <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">logout</span></code> for github.com; nothing local is cleared, so it exits 1</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">overleaf</span></code></p></td>
 <td><p>Clear the stored Overleaf token; Overleaf offers no way to revoke it from here (see below)</p></td>
@@ -981,16 +981,20 @@ forms. The token is read at a hidden prompt and sent only in the body
 of one request to the hub on this machine; it never appears on the
 command line, in an environment variable, or in any message the
 command prints. <code class="docutils literal notranslate"><span class="pre">--project-id</span></code> binds an Overleaf project, and
-<code class="docutils literal notranslate"><span class="pre">--instance</span></code> chooses the Zenodo instance (default <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>). GitHub
-has no token to set: vaibify uses the host’s <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">login</span></code>, so
-<code class="docutils literal notranslate"><span class="pre">credential</span> <span class="pre">set</span> <span class="pre">github</span></code> stores nothing and prints the hub’s answer
-that GitHub keeps no stored credential.</p>
+<code class="docutils literal notranslate"><span class="pre">--instance</span></code> chooses the Zenodo instance (default <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>). The token
+is checked with its service first and stored only if it passes, so a
+token that fails, or a check that cannot finish, leaves the stored one
+as it was; the answer names what failed and what to do. GitHub has no
+token to set: vaibify uses the host’s <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">login</span></code>, so
+<code class="docutils literal notranslate"><span class="pre">credential</span> <span class="pre">set</span> <span class="pre">github</span></code> refuses before asking for a token and says so.</p>
 <p><code class="docutils literal notranslate"><span class="pre">revoke</span></code> prints whether the upstream token was revoked and whether the
 local copy was cleared, and exits non-zero if the local copy was not
-cleared. For GitHub it runs <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">logout</span></code> and clears a local copy
-only when <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code> names one, so without that option it exits
-non-zero even when the logout succeeds. Overleaf and Zenodo
-offer tools no way to revoke a token, so for them the command clears
+cleared. For GitHub, <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code> clears only that repository’s
+stored token and leaves your <code class="docutils literal notranslate"><span class="pre">gh</span></code> login in place: a stored token
+outranks <code class="docutils literal notranslate"><span class="pre">gh</span></code>, so removing a stale one is how a push falls back to your
+<code class="docutils literal notranslate"><span class="pre">gh</span></code> login. Without the option it runs <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">logout</span></code> and clears
+nothing local, so it exits non-zero even when the logout succeeds.
+Overleaf and Zenodo offer no way to revoke a token, so for them the command clears
 the local copy and names the account page where you revoke the token
 yourself; do that too, because clearing a local copy does not
 invalidate a token that may have been copied elsewhere. A Zenodo token

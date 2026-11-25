@@ -596,10 +596,10 @@ judgments available only here:
 | `vaibify secret set-provider-key --provider NAME` | Store an agent provider's API key, read from a prompt that does not echo |
 | `vaibify secret provider-key-status --provider NAME` | Report whether a provider's key is configured |
 | `vaibify secret delete-provider-key --provider NAME` | Remove a provider's key |
-| `vaibify credential set github\|overleaf\|zenodo [--project-id ID] [--instance sandbox\|production] [-p NAME]` | Store the Overleaf token (one slot for the whole host) or a project's Zenodo token, read from a prompt that does not echo. GitHub stores nothing here (see below) |
+| `vaibify credential set github\|overleaf\|zenodo [--project-id ID] [--instance sandbox\|production] [-p NAME]` | Store the Overleaf token (one slot for the whole host) or a project's Zenodo token, read from a prompt that does not echo. The token is checked with its service before it replaces the stored one. GitHub is refused (see below) |
 | `vaibify credential status [-p NAME]` | Report which remotes are configured and reachable |
 | `vaibify credential delete github\|overleaf\|zenodo [--keyring-slot SLOT] [--instance sandbox\|production] [-p NAME]` | The same as `vaibify revoke` |
-| `vaibify revoke github [--keyring-slot SLOT]` | Run `gh auth logout` for github.com, and with `--keyring-slot` clear that one repository's stored token. Without `--keyring-slot` nothing local is cleared, so it exits 1 |
+| `vaibify revoke github [--keyring-slot SLOT]` | With `--keyring-slot`, clear that one repository's stored token and leave your `gh` login in place. Without it, run `gh auth logout` for github.com; nothing local is cleared, so it exits 1 |
 | `vaibify revoke overleaf` | Clear the stored Overleaf token; Overleaf offers no way to revoke it from here (see below) |
 | `vaibify revoke zenodo [--instance sandbox\|production] [-p NAME]` | The same, for one project's token on one Zenodo instance (default `sandbox`; the project is the current directory's unless named) |
 
@@ -608,17 +608,21 @@ forms. The token is read at a hidden prompt and sent only in the body
 of one request to the hub on this machine; it never appears on the
 command line, in an environment variable, or in any message the
 command prints. `--project-id` binds an Overleaf project, and
-`--instance` chooses the Zenodo instance (default `sandbox`). GitHub
-has no token to set: vaibify uses the host's `gh auth login`, so
-`credential set github` stores nothing and prints the hub's answer
-that GitHub keeps no stored credential.
+`--instance` chooses the Zenodo instance (default `sandbox`). The token
+is checked with its service first and stored only if it passes, so a
+token that fails, or a check that cannot finish, leaves the stored one
+as it was; the answer names what failed and what to do. GitHub has no
+token to set: vaibify uses the host's `gh auth login`, so
+`credential set github` refuses before asking for a token and says so.
 
 `revoke` prints whether the upstream token was revoked and whether the
 local copy was cleared, and exits non-zero if the local copy was not
-cleared. For GitHub it runs `gh auth logout` and clears a local copy
-only when `--keyring-slot` names one, so without that option it exits
-non-zero even when the logout succeeds. Overleaf and Zenodo
-offer tools no way to revoke a token, so for them the command clears
+cleared. For GitHub, `--keyring-slot` clears only that repository's
+stored token and leaves your `gh` login in place: a stored token
+outranks `gh`, so removing a stale one is how a push falls back to your
+`gh` login. Without the option it runs `gh auth logout` and clears
+nothing local, so it exits non-zero even when the logout succeeds.
+Overleaf and Zenodo offer no way to revoke a token, so for them the command clears
 the local copy and names the account page where you revoke the token
 yourself; do that too, because clearing a local copy does not
 invalidate a token that may have been copied elsewhere. A Zenodo token

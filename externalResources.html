@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Connecting to External Resources &mdash; Vaibify 0.4.2.dev7 documentation</title>
+  <title>Connecting to External Resources &mdash; Vaibify 0.4.2.dev13 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ecad157a"></script>
+      <script src="_static/documentation_options.js?v=7d2b10d9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -279,12 +279,18 @@ choice for practice, or <strong>Production</strong>, which mints real DOIs) and 
 personal access token from that instance with the <code class="docutils literal notranslate"><span class="pre">deposit:write</span></code>
 and <code class="docutils literal notranslate"><span class="pre">deposit:actions</span></code> scopes. Sandbox and production are separate
 sites with separate accounts and tokens.</p></li>
-<li><p><strong>GitHub</strong>: nothing; the dialog does not open for GitHub. Vaibify
-uses a token stored in the host keyring slot
+<li><p><strong>GitHub</strong>: nothing; vaibify stores no GitHub token of its own, and
+its GitHub settings item explains this instead of opening the
+dialog. Vaibify uses a token stored in the host keyring slot
 <code class="docutils literal notranslate"><span class="pre">github_token:&lt;owner&gt;/&lt;repo&gt;</span></code> if there is one, and otherwise your
-host’s <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span></code> login. When neither resolves, or the project
-repository cannot reach GitHub, the dashboard says “GitHub uses gh
-auth. Run ‘gh auth login’ on your host machine.”</p></li>
+host’s <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span></code> login. When neither resolves, the dashboard says to
+run <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">login</span></code> in a terminal on this computer. A refusal says
+which credential it is about: when the repository’s own keyring
+token is the one in use and GitHub rejects it, the refusal names the
+slot and the command that removes only it,
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">delete</span> <span class="pre">github</span> <span class="pre">--keyring-slot</span> <span class="pre">&lt;slot&gt;</span></code>, which
+leaves your <code class="docutils literal notranslate"><span class="pre">gh</span></code> login in place. A rate limit is said to be one, not
+a credential problem.</p></li>
 </ul>
 <section id="confirming-where-a-token-may-be-spent">
 <h3>Confirming where a token may be spent<a class="headerlink" href="#confirming-where-a-token-may-be-spent" title="Link to this heading"></a></h3>
@@ -338,9 +344,19 @@ your token;</p></li>
 count and latest commit. Overleaf’s Git access gives no title, so the
 review claims none, and links to the project instead.</p></li>
 </ul>
-<p>With no token stored for the site, the review offers to store one and
-then checks again. Evidence that could not be fetched reads “Couldn’t
-check”, in neutral gray, and <strong>Confirm</strong> stays off until <strong>Retry</strong> succeeds.</p>
+<p>A check that fails says what failed and what to do, in the hub’s own
+sentence and in neutral gray, and <strong>Confirm</strong> stays off until a check
+succeeds. The hub tells apart no token stored (the review offers
+<strong>Store your token</strong>), a token the service rejected (<strong>Replace your
+token</strong>), a token that works but cannot reach the record or project,
+a rate limit, a keychain it could not read, and no answer at all
+(<strong>Retry</strong>). Zenodo answers a token it does not know and one without
+the deposit scopes alike, so its sentence names both. <strong>Store</strong> and
+<strong>Replace</strong> open the same token box as <strong>Connect</strong>, as often as
+needed: a store that fails keeps its reason in the box and, once you
+close it, in the review. For Overleaf the box shows the project under
+review, which it does not change, and says that one token serves every
+project on this computer.</p>
 <p><strong>On the host</strong>, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">bindings</span> <span class="pre">-p</span> <span class="pre">&lt;project&gt;</span></code> prints the same review
 and the exact <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">confirm-remote-binding</span> <span class="pre">...</span> <span class="pre">sRecordKind=...</span> <span class="pre">sWorkflowKey=...</span> <span class="pre">dictTarget='{...}'</span></code> command that confirms what it
 showed. A confirmation carries what was reviewed: one made for another
@@ -369,11 +385,15 @@ each entry is confirmed again the first time an action needs it. Both refuse wit
 <code class="docutils literal notranslate"><span class="pre">BINDING-RECORD-VALID</span></code> while the record can be read, so a valid
 confirmation is never moved, and neither is reachable from inside the
 container.</p>
-<p><strong>Connect</strong> stores the token and immediately tests it against the
-service. If the test fails, vaibify restores the token you had before
-(or removes the new one if there was none), and the message says which
-happened. A connection that cannot be made because the container runs
-with network isolation is refused at once rather than after a timeout.</p>
+<p><strong>Connect</strong> checks the token with its service first and stores it only
+if the check passes, so a token that fails, or a check that cannot
+finish, leaves the token you had before exactly as it was; the reason
+stays in the dialog beside the field. If another project or window
+changes the same token while yours is being checked, yours is not
+stored and the dialog says so, rather than overwriting a token another
+project has just reported as connected. A connection that cannot be
+made because the container runs with network isolation is refused at
+once rather than after a timeout.</p>
 </section>
 <section id="zenodo-tokens-moved-out-of-an-older-container">
 <h3>Zenodo tokens moved out of an older container<a class="headerlink" href="#zenodo-tokens-moved-out-of-an-older-container" title="Link to this heading"></a></h3>
@@ -658,7 +678,9 @@ page too, because a cleared local copy does not invalidate a token
 that may have been copied elsewhere.</p>
 <p>A Zenodo token belongs to one project, so <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">zenodo</span></code> and
 <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">credential</span> <span class="pre">delete</span> <span class="pre">zenodo</span></code> take <code class="docutils literal notranslate"><span class="pre">--project</span></code> (or run inside the
-project directory) as well as <code class="docutils literal notranslate"><span class="pre">--instance</span></code>.</p>
+project directory) as well as <code class="docutils literal notranslate"><span class="pre">--instance</span></code>. For GitHub, <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code>
+clears only that repository’s stored token and leaves your <code class="docutils literal notranslate"><span class="pre">gh</span></code> login
+in place; without it, the command logs <code class="docutils literal notranslate"><span class="pre">gh</span></code> out.</p>
 </section>
 <section id="working-on-a-remote-machine">
 <h2>Working on a remote machine<a class="headerlink" href="#working-on-a-remote-machine" title="Link to this heading"></a></h2>
