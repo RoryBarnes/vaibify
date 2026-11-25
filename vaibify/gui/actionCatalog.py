@@ -1466,6 +1466,11 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # keep the researcher's credential alive past the attention it is
     # supposed to track. The route itself 403s the agent lane too.
     ("POST", "/api/session/renew"),
+    # The page's report that it drew, or saw closed, an expiry warning.
+    # It writes one hub log line about the browser tab that sent it; an
+    # agent has no tab and nothing to report. The route 403s the agent
+    # lane too.
+    ("POST", "/api/session/expiry-warning"),
     # Quit stops this hub and its child windows, and may stop the
     # researcher's environments. An agent inside one of them must never
     # end the hub it is talking to; the route refuses the agent lane too.

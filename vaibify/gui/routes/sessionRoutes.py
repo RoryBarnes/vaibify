@@ -20,6 +20,11 @@ session. It is the remedy the warning offers, and it is triggered by a
 researcher, never by a poll: an automatic renewal would delete the cap
 while the Settings control went on claiming one existed.
 
+``POST /api/session/expiry-warning`` is the page's report that it drew
+an expiry warning, or that one was closed without renewing. It only
+writes a hub log line, so that after an expiry the log says whether the
+tab was warned and whether anyone could have seen it.
+
 ``GET /api/session/quit-preflight`` and ``POST /api/session/quit`` are
 the hubs' Quit button and Admin -> Quit: what a Quit would leave
 running and what refuses it, and the Quit itself (``hubQuit``), which
@@ -39,6 +44,7 @@ import socket
 import subprocess
 import sys
 import time
+from typing import Optional
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
@@ -223,6 +229,10 @@ def _fnRegisterLifetime(app):
         )
 
 
+class RenewRequest(BaseModel):
+    sSource: str = ""
+
+
 def _fnRegisterRenewal(app):
     """Register POST /api/session/renew on the given app.
 
@@ -243,7 +253,9 @@ def _fnRegisterRenewal(app):
     """
 
     @app.post("/api/session/renew")
-    async def fdictRenewSessionLifetime(request: Request):
+    async def fdictRenewSessionLifetime(
+        request: Request, requestRenew: Optional[RenewRequest] = None,
+    ):
         from ..sessionLifecycle import fdictRenewSessionExpiry
         _fnRejectContainerAgentCallers(
             request,
@@ -253,7 +265,62 @@ def _fnRegisterRenewal(app):
         return fdictRenewSessionExpiry(
             request.app.state,
             request.headers.get(_S_BROWSER_CREDENTIAL_HEADER_NAME, ""),
+            requestRenew.sSource if requestRenew else "",
         )
+
+
+class ExpiryWarningRequest(BaseModel):
+    sEvent: str
+    fWarningFraction: float
+    bTabVisible: bool = False
+    bWindowFocused: bool = False
+
+
+def _fnRegisterExpiryWarningReport(app):
+    """Register POST /api/session/expiry-warning on the given app.
+
+    The page's report that it drew an expiry warning, or that the
+    researcher closed one without renewing, with whether the tab was
+    visible and its window focused at that moment. It writes one log
+    line and changes nothing else. Without it, a session that expired
+    unwarned and one warned in a tab nobody was looking at leave the
+    same log, which is how a researcher's week-long session ended on
+    2026-11-24 with no way to tell which had happened.
+
+    Only the server's own warning bands and the two events are
+    accepted, and anything else is refused with 422, so nothing the
+    page sends reaches the log as free text. The in-container agent
+    holds no browser session and is refused, as it is for the read and
+    the renewal.
+    """
+
+    @app.post("/api/session/expiry-warning")
+    async def fdictRecordExpiryWarningReport(
+        request: Request, requestReport: ExpiryWarningRequest,
+    ):
+        from ..sessionLifecycle import (
+            fbIsReportableExpiryWarning, fbLogExpiryWarningEvent,
+        )
+        _fnRejectContainerAgentCallers(
+            request,
+            sDetail="The in-container agent holds no browser session, "
+            "so it has no expiry warning to report.",
+        )
+        if not fbIsReportableExpiryWarning(
+            requestReport.sEvent, requestReport.fWarningFraction,
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Not an expiry warning this hub issues: the event "
+                "must be 'displayed' or 'closed' and the band one of the "
+                "server's own.",
+            )
+        return {"bLogged": fbLogExpiryWarningEvent(
+            request.app.state,
+            request.headers.get(_S_BROWSER_CREDENTIAL_HEADER_NAME, ""),
+            requestReport.sEvent, requestReport.fWarningFraction,
+            requestReport.bTabVisible, requestReport.bWindowFocused,
+        )}
 
 
 def _fnAwaitChildExit(processChild):
@@ -396,6 +463,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterSpawn(app)
     _fnRegisterLifetime(app)
     _fnRegisterRenewal(app)
+    _fnRegisterExpiryWarningReport(app)
     _fnRegisterQuitPreflight(app, dictCtx)
     _fnRegisterQuit(app, dictCtx)
     _fnRegisterShuttingDownRefusal(app)

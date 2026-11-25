@@ -485,7 +485,7 @@ These change host-wide behavior. Timeout values are seconds, or
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS` | never (browser launch); 1800 (`--no-browser`) | How long a hub with **no connected dashboard and no running pipeline** waits before shutting itself down. `0` shuts down as soon as it is idle. Overrides the **Idle shutdown** setting in the toolbar gear menu |
-| `VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS` | 604800 (7 days) | How long one browser tab's session lasts from when it opened, used or not. When it ends, the container and any running step keep going; a fresh tab is opened from the command line ([CLI Reference](cli.md)). Overrides the **Session lifetime** setting |
+| `VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS` | 604800 (7 days) | How long one browser tab's session lasts from when it opened, used or not. When it ends, the container and any running pipeline step keep going, but the tab's terminals close, which stops everything started in them, agents included; a fresh tab is opened from the command line ([CLI Reference](cli.md)). Overrides the **Session lifetime** setting |
 | `VAIBIFY_SLIDING_IDLE_SECONDS` | 3600 | Ends a browser session after this long with no activity. A connected tab counts as activity |
 | `VAIBIFY_RECONNECT_WINDOW_SECONDS` | 15 | How long a local session is held for a reconnecting tab |
 | `VAIBIFY_REMOTE_RECONNECT_WINDOW_SECONDS` | 900 | The same, for a session on another machine opened over SSH |

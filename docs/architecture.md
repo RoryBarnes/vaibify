@@ -1304,6 +1304,29 @@ in is decided on the server and shipped in the payload; the dashboard
 holds no copy of the thresholds, for the same reason the determinism
 row renders its gate's verdict rather than re-deriving it.
 
+**An expiry must leave a record of whether it was announced, and must
+say what it ended.** A researcher's session once reached its cap with
+the tab open and in use, and nothing afterwards could say whether the
+warnings had been drawn, drawn in a tab nobody was looking at, or never
+drawn at all. The hub log now carries the three facts needed to tell
+those apart. The first lifetime read to answer a session with a new
+band is logged, since that answer is what the page warns from. The page
+reports drawing each warning, and closing one unrenewed, with whether
+its tab was visible and its window focused
+(`POST /api/session/expiry-warning`, which accepts only the server's
+own bands and events, so nothing a page sends reaches the log as free
+text). The expiry line names the highest band the session was ever
+told, or that it was told none; a renewal names its session and the
+control used. The same expiry ended a long job an in-container agent
+had started from the dashboard's terminal, under a notice that said the
+container's work was retained. That is true of pipeline runs, which the
+hub runs and an orphan keeps, and false of anything started in a
+terminal: the orphan closes the session's sockets, and a terminal whose
+socket closes is drained, every process in its session stopped. The
+warning, the after-the-fact notice, and the log line now say so, and the
+in-container guide tells agents to make a long run a pipeline step, or
+to tell the researcher before starting one from a terminal.
+
 **Host-global settings live in the toolbar, not in the project panel.**
 Both timeouts were rendered into the Steps panel's project gear, whose
 renderer returns early with no open project — and Blank Project mode

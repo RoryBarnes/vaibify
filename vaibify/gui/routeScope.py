@@ -339,6 +339,10 @@ DICT_CONTROL_PLANE_SCOPES = {
     # would leave exactly those researchers unable to answer the
     # warning they were shown.
     ("POST", "/api/session/renew"): S_SCOPE_BROWSER_HUB,
+    # The page's report about an expiry warning it drew or saw closed:
+    # one log line about the presenting session, on the same terms as
+    # the renewal it accompanies.
+    ("POST", "/api/session/expiry-warning"): S_SCOPE_BROWSER_HUB,
     # Quit, and the preflight that says what Quit would leave running and
     # what refuses it: they stop this hub and its child windows, and read
     # host state (the hub's held environments and its children's busy

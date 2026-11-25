@@ -501,6 +501,11 @@ const VaibifyApp = (function () {
          * first notice still deserves the louder one later. A session
          * that reports a lower band than the one already warned has
          * been renewed or replaced, so the latch falls back with it.
+         *
+         * The page tells the hub log that it drew the warning, and
+         * later if it was closed unrenewed, because only the page
+         * knows: after an expiry the log otherwise cannot say whether
+         * the researcher was warned or the tab sat unseen.
          */
         if (!dictLifetime || !dictLifetime.bSessionKnown ||
                 !dictLifetime.bExpiringSoon) {
@@ -519,12 +524,31 @@ const VaibifyApp = (function () {
                 dictLifetime.fSecondsUntilSessionCap) +
             " (" + Math.round(fBand * 100) + "% of the way through). " +
             "Click to renew it — your open panels and agent " +
-            "conversations stay as they are. Otherwise run " +
-            "'vaibify open' for a fresh tab; the container and any " +
-            "running step keep going either way. Session lifetime is " +
-            "under the toolbar gear.",
+            "conversations stay as they are. If it ends, run " +
+            "'vaibify open' for a fresh tab: the container and any " +
+            "running pipeline step keep going, but this tab's " +
+            "terminals are closed, which stops everything started in " +
+            "them, agents and their background jobs included. Session " +
+            "lifetime is under the toolbar gear.",
             dictLifetime.bFinalWarning ? "error" : "warning",
-            _fnRenewSessionLifetime);
+            function () { _fnRenewSessionLifetime("warning"); },
+            undefined,
+            function () { _fnReportExpiryWarningEvent("closed", fBand); });
+        _fnReportExpiryWarningEvent("displayed", fBand);
+    }
+
+    function _fnReportExpiryWarningEvent(sEvent, fBand) {
+        /* A log line on the hub, nothing more: a report that fails
+           must not raise a second notice over the warning itself. */
+        VaibifyApi.fdictPost("/api/session/expiry-warning", {
+            sEvent: sEvent,
+            fWarningFraction: fBand,
+            bTabVisible: document.visibilityState === "visible",
+            bWindowFocused: document.hasFocus(),
+        }).catch(function (error) {
+            console.warn("The expiry-warning report was not logged:",
+                error);
+        });
     }
 
     function _fsDescribeRemainingLifetime(fSeconds) {
@@ -543,13 +567,15 @@ const VaibifyApp = (function () {
         return "about " + Math.round(iHours / 24) + " days";
     }
 
-    async function _fnRenewSessionLifetime() {
+    async function _fnRenewSessionLifetime(sSource) {
         /* Only ever from the researcher's own click. Nothing in the
          * polling path may call this: a renewal on a timer would
-         * delete the cap while the setting went on claiming one. */
+         * delete the cap while the setting went on claiming one.
+         * sSource names the control ("warning" or "settings") for the
+         * hub log. */
         try {
             var dictRenewed = await VaibifyApi.fdictPost(
-                "/api/session/renew", {});
+                "/api/session/renew", {sSource: sSource});
             if (!dictRenewed || !dictRenewed.bRenewed) {
                 fnShowToast(
                     "This session could not be renewed — it has " +
@@ -2260,7 +2286,7 @@ const VaibifyApp = (function () {
         var elRenew = document.getElementById("btnRenewSession");
         if (elRenew) {
             elRenew.addEventListener("click", async function () {
-                await _fnRenewSessionLifetime();
+                await _fnRenewSessionLifetime("settings");
                 _fnLoadSessionRemaining();
             });
         }
@@ -8119,9 +8145,12 @@ const VaibifyApp = (function () {
 
     var fsSanitizeErrorForUser = VaibifyUtilities.fsSanitizeErrorForUser;
 
-    function fnShowToast(sMessage, sType, fnOnClick, sActionLabel) {
+    function fnShowToast(sMessage, sType, fnOnClick, sActionLabel,
+            fnOnClose) {
         /* With sActionLabel the action is one named button beside the
-           text, and the rest of the toast is only text to read. */
+           text, and the rest of the toast is only text to read.
+           fnOnClose runs when the researcher closes the toast with its
+           close button, and not when the action removes it. */
         var el = document.createElement("div");
         el.className = "toast " + (sType || "");
         if (fnOnClick && !sActionLabel) el.classList.add("toast-clickable");
@@ -8134,6 +8163,7 @@ const VaibifyApp = (function () {
             "click", function (event) {
                 event.stopPropagation();
                 el.remove();
+                if (fnOnClose) fnOnClose();
             }
         );
         if (fnOnClick) {

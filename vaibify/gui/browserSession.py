@@ -52,6 +52,7 @@ __all__ = [
     "fdictActiveSessionLifetimes",
     "fdictLifetimeForCredential",
     "fbRenewSessionLifetime",
+    "fbRaiseReportedWarningFraction",
     "I_CAPABILITY_TTL_SECONDS",
     "I_ACTIVE_SESSION_CAP",
     "I_ARMED_CAPABILITY_CAP",
@@ -151,6 +152,12 @@ class BrowserSessionRecord:
     # ended at 05:28" is the whole content of the notice.
     sEndedMessage: str = ""
     sEndedWallClockIso: str = ""
+    # The highest expiry-warning band a lifetime read has answered this
+    # credential with, 0.0 for none. It falls back when a read answers
+    # a lower band (a renewal, or a raised cap), so the next crossing
+    # is logged again; the expiry log reads it to say whether the tab
+    # was ever told the end was near.
+    fReportedWarningFraction: float = 0.0
 
 
 # The one path segment on which a browser credential may ride the
@@ -579,13 +586,16 @@ def fbValidateCredential(dictStore, sCredential):
 
 
 def fdictActiveSessionLifetimes(dictStore):
-    """Return ``{sSessionId: {fIdleSeconds, fAgeSeconds}}`` for ACTIVE records.
+    """Return each ACTIVE session's two expiry clocks and its warning band.
 
-    The lifecycle evaluator's read of the two expiry clocks (design
-    §11), taken under the store lock so a concurrent mint or revocation
-    is never observed half-applied. Policy — the windows, the live-socket
+    The value per session id is ``{fIdleSeconds, fAgeSeconds,
+    fReportedWarningFraction}``: the lifecycle evaluator's read of the
+    two expiry clocks (design §11), plus the highest warning band a
+    lifetime read has answered it with, which the expiry log reports.
+    Taken under the store lock so a concurrent mint or revocation is
+    never observed half-applied. Policy — the windows, the live-socket
     veto, and what an expiry commits — stays in ``sessionLifecycle``;
-    this function only reports the clocks.
+    this function only reports.
 
     A session id carrying several credential records (a replayed
     bootstrap re-issues the SAME credential, so this is rare) is as
@@ -605,6 +615,9 @@ def fdictActiveSessionLifetimes(dictStore):
             dictLifetime = {
                 "fIdleSeconds": fNow - recordSession.fLastSeenMonotonic,
                 "fAgeSeconds": fNow - recordSession.fCreatedMonotonic,
+                "fReportedWarningFraction": (
+                    recordSession.fReportedWarningFraction
+                ),
             }
             if dictExisting is not None:
                 dictLifetime["fIdleSeconds"] = min(
@@ -613,6 +626,10 @@ def fdictActiveSessionLifetimes(dictStore):
                 )
                 dictLifetime["fAgeSeconds"] = max(
                     dictExisting["fAgeSeconds"], dictLifetime["fAgeSeconds"],
+                )
+                dictLifetime["fReportedWarningFraction"] = max(
+                    dictExisting["fReportedWarningFraction"],
+                    dictLifetime["fReportedWarningFraction"],
                 )
             dictLifetimes[recordSession.sSessionId] = dictLifetime
     return dictLifetimes
@@ -680,6 +697,30 @@ def fbRenewSessionLifetime(dictStore, sCredential):
             return False
         recordSession.fCreatedMonotonic = fNow
         return True
+
+
+def fbRaiseReportedWarningFraction(dictStore, sCredential, fWarningFraction):
+    """Record the band a lifetime read answered; True if it is a new high.
+
+    ``fWarningFraction`` is the band the read reported, None below the
+    first. A band above the recorded one is stored and answered True,
+    which is the caller's cue to log that this session has been told
+    something new. A lower band (after a renewal, or a raised cap) is
+    stored and answered False, so the next crossing counts again. An
+    unknown or revoked credential records nothing.
+    """
+    fBand = fWarningFraction or 0.0
+    with _lockBrowserSessions:
+        recordSession = dictStore.get(
+            "dictSessionsByCredential", {},
+        ).get(sCredential)
+        if recordSession is None or (
+            recordSession.sState != S_SESSION_STATE_ACTIVE
+        ):
+            return False
+        bNewHigh = fBand > recordSession.fReportedWarningFraction
+        recordSession.fReportedWarningFraction = fBand
+        return bNewHigh
 
 
 def fsSessionIdForCredential(dictStore, sCredential):
