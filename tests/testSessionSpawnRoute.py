@@ -1,5 +1,6 @@
 """Tests for the /api/session/spawn route."""
 
+import subprocess
 import sys
 
 import pytest
@@ -68,6 +69,7 @@ def testSpawnRouteLaunchesClosedShapeCommand():
     """_fprocessLaunchDetachedHub uses sys.executable -m vaibify --port N."""
     from vaibify.gui.routes.sessionRoutes import (
         S_SUPPRESS_BROWSER_ENV, _fprocessLaunchDetachedHub,
+        fsLocateOwnPackageRoot,
     )
     with patch("subprocess.Popen") as mockPopen:
         _fprocessLaunchDetachedHub(8099)
@@ -78,6 +80,8 @@ def testSpawnRouteLaunchesClosedShapeCommand():
     ]
     assert dictKwargs["start_new_session"] is True
     assert dictKwargs["env"][S_SUPPRESS_BROWSER_ENV] == "1"
+    assert dictKwargs["cwd"] == fsLocateOwnPackageRoot()
+    assert dictKwargs["stderr"] is subprocess.STDOUT
 
 
 def testSpawnRouteRejectsContainerAgentCaller(fixtureApp, fixtureClient):

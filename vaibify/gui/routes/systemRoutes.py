@@ -487,7 +487,7 @@ def _ftDescribeX11Findings(connectionDocker, sContainerId):
 S_NETWORK_MODE_UNSTATED_WIRE = "unstated"
 
 
-def _fdictDescribeNetwork(connectionDocker, sContainerId):
+def _fdictDescribeNetwork(connectionDocker, sContainerId, iHubPort=0):
     """Return the Network row: the file's mode, the container's state, the proxy.
 
     The mode is the file's (``unstated`` for a file that names none,
@@ -513,7 +513,7 @@ def _fdictDescribeNetwork(connectionDocker, sContainerId):
                    **_fdictAssessContainerState(sContainerId, sMode)}
     if not dictNetwork["bSealed"]:
         return dictNetwork
-    _fnDescribeProxyInto(dictNetwork, connectionDocker, sContainerId)
+    _fnDescribeProxyInto(dictNetwork, connectionDocker, sContainerId, iHubPort)
     return dictNetwork
 
 
@@ -537,16 +537,16 @@ def _fdictAssessContainerState(sContainerId, sFileMode):
     }
 
 
-def _fnDescribeProxyInto(dictNetwork, connectionDocker, sContainerId):
-    """Add the sealed project's proxy state and refusals, or ``unknown``."""
+def _fnDescribeProxyInto(dictNetwork, connectionDocker, sContainerId, iHubPort=0):
+    """Add the sealed project's proxy state, hub pin and refusals, or ``unknown``."""
     from vaibify.config.registryManager import fdictGetProject
-    from vaibify.docker import projectEgress
+    from .. import projectEgressLifecycle
     from ..pipelineServer import fsContainerNameForId
     try:
         dictNetwork["sName"] = fsContainerNameForId(connectionDocker, sContainerId)
         dictProject = fdictGetProject(dictNetwork["sName"]) or {}
-        dictNetwork.update(projectEgress.fdictDescribeProjectEgress(
-            dictProject.get("sProjectUuid") or ""))
+        dictNetwork.update(projectEgressLifecycle.fdictDescribeProjectEgress(
+            dictProject.get("sProjectUuid") or "", iHubPort))
     except Exception:
         dictNetwork["sProxyState"] = "unknown"
 
@@ -625,7 +625,7 @@ def _fconfigForContainerOrNone(connectionDocker, sContainerId):
         return None
 
 
-def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
+def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId, iHubPort=0):
     """Probe readiness, then add the two host-side notices.
 
     The unresolvable secrets ride ``saWarnings`` because the dashboard
@@ -671,7 +671,7 @@ def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
         _flistDescribeResourceAdvisories(connectionDocker, sContainerId)
     )
     dictReadiness["dictNetwork"] = _fdictDescribeNetwork(
-        connectionDocker, sContainerId,
+        connectionDocker, sContainerId, iHubPort,
     )
     listSecretWarnings = _flistDescribeUnresolvableSecrets(
         connectionDocker, sContainerId,
@@ -696,7 +696,7 @@ def _fnRegisterContainerReady(app, dictCtx):
             return _fdictHostReadyResponse()
         return await asyncio.to_thread(
             _fdictReadinessWithSecretWarnings,
-            dictCtx["docker"], sContainerId,
+            dictCtx["docker"], sContainerId, dictCtx.get("iPort", 0),
         )
 
 

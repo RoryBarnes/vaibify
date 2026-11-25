@@ -37,7 +37,17 @@ The script binds ONLY its address on the internal network when told
 that network's subnet (``--bind-cidr``): bound to every interface, it
 would also serve the default bridge, where any container on the daemon
 could use it. Every ``CONNECT`` is logged as one line the hub can read
-back (``vaibify-egress: CONNECT host:port allowed|refused reason``).
+back (``vaibify-egress: CONNECT host:port allowed|refused reason``),
+a refused plain-HTTP request included.
+
+The hub a project container may reach can change while the container
+runs: a different hub can take the container over, and the agent is
+then told that hub's port. So a project's proxy reads the hub PORT,
+per request, from one host-written file mounted read-only
+(``--hub-port-file``), while the hub HOST stays fixed in argv. The
+file holds one port or nothing, and anything else serves no hub. A
+council runner never outlives its hub and keeps the fixed
+``--hub-gateway host:port``.
 
 Name resolution happens in the proxy, on its bridge side. The sealed
 container's own resolver is black-holed (``flistBuildBlackHoleDnsArguments``):
@@ -55,11 +65,16 @@ __all__ = [
     "EgressSetupError",
     "F_PROXY_READY_DEADLINE_SECONDS",
     "F_PROXY_READY_POLL_SECONDS",
+    "I_MAXIMUM_HUB_PORT",
+    "I_MINIMUM_HUB_PORT",
     "I_PROXY_LISTEN_PORT",
     "I_PROXY_MAXIMUM_TUNNELS",
     "S_BLACK_HOLE_NAMESERVER",
     "S_CONNECT_LOG_PREFIX",
     "S_CONNECT_PROXY_SCRIPT",
+    "S_HUB_PORT_BASENAME",
+    "S_HUB_PORT_DIRECTORY",
+    "S_HUB_PORT_FILE_CONTAINER_PATH",
     "S_PROXY_IMAGE",
     "S_PROXY_READY_LINE",
     "S_PROXY_SCRIPT_BASENAME",
@@ -67,6 +82,7 @@ __all__ = [
     "S_PROXY_SCRIPT_DIRECTORY",
     "fdictBuildProxyEnvironment",
     "fdictParseConnectLogLine",
+    "fiParseHubPortText",
     "flistBuildBlackHoleDnsArguments",
     "flistBuildSealedNetworkArguments",
     "flistComposeProxyCommand",
@@ -94,6 +110,14 @@ S_PROXY_SCRIPT_DIRECTORY = "vaibifyEgress"
 S_PROXY_SCRIPT_BASENAME = "vaibifyEgressProxy.py"
 S_PROXY_SCRIPT_CONTAINER_PATH = (
     "/" + S_PROXY_SCRIPT_DIRECTORY + "/" + S_PROXY_SCRIPT_BASENAME)
+# A DIRECTORY is mounted, never the file alone: a file bind pins the
+# inode, so the container would never see a file replaced atomically.
+S_HUB_PORT_DIRECTORY = "vaibifyEgressGateway"
+S_HUB_PORT_BASENAME = "hubPort"
+S_HUB_PORT_FILE_CONTAINER_PATH = (
+    "/" + S_HUB_PORT_DIRECTORY + "/" + S_HUB_PORT_BASENAME)
+I_MINIMUM_HUB_PORT = 1024
+I_MAXIMUM_HUB_PORT = 65535
 
 # RFC 5737 TEST-NET-1: reserved for documentation, never routed, so a
 # resolver forwarding only to it can never receive an answer.
@@ -114,8 +138,10 @@ S_CONNECT_LOG_PREFIX = "vaibify-egress: CONNECT "
 
 # Server-owned constant text, executed inside the proxy container.
 # Parameterized EXCLUSIVELY through argv composed by this module from
-# validated server-owned values; no model- or user-controlled text may
-# ever enter this script or its arguments. Raw string: the \r\n escape
+# validated server-owned values, plus the one hub-port file the hub
+# writes and the script validates again on every read; no model- or
+# user-controlled text may ever enter this script, its arguments or
+# that file. Raw string: the \r\n escape
 # sequences must reach the container as escape sequences in Python
 # source, not as literal line breaks.
 S_CONNECT_PROXY_SCRIPT = r'''"""Allowlisting HTTP CONNECT proxy. Stdlib only. Server-owned text."""
@@ -140,7 +166,13 @@ DICT_STATE = {"iOpenTunnels": 0}
 # entry), exempt from the non-public refusal because the gateway IS
 # non-public, and served for plain HTTP as well as CONNECT because the
 # hub speaks http:// and a client given HTTP_PROXY sends it that way.
-DICT_HUB_GATEWAY = {"sHost": "", "iPort": 0}
+DICT_HUB_GATEWAY = {"sHost": "", "iPort": 0, "sPortFile": ""}
+# A host-side atomic replace of the port file reads as a missing file
+# for a moment through some daemons' file sharing (about 0.3 s on
+# colima, measured), so a missing file is waited for, never read as
+# "no hub". An empty file IS "no hub" and is not waited for.
+F_HUB_PORT_FILE_SETTLE_SECONDS = 2.0
+F_HUB_PORT_FILE_POLL_SECONDS = 0.05
 NETWORK_CARRIER_GRADE_NAT = ipaddress.ip_network("100.64.0.0/10")
 # 6to4 addresses embed an IPv4 address that the checks above never see,
 # private ones included; with any public host allowed, this check is the
@@ -187,8 +219,54 @@ def fsSelectBindAddress(sBindCidr):
 
 
 def fbIsHubGateway(sHost, iPort):
-    return bool(DICT_HUB_GATEWAY["sHost"]) and (sHost, iPort) == (
-        DICT_HUB_GATEWAY["sHost"], DICT_HUB_GATEWAY["iPort"])
+    return bool(DICT_HUB_GATEWAY["sHost"]) and bool(DICT_HUB_GATEWAY["iPort"]) and (
+        sHost, iPort) == (DICT_HUB_GATEWAY["sHost"], DICT_HUB_GATEWAY["iPort"])
+
+
+def fbIsHubHost(sHost):
+    return bool(DICT_HUB_GATEWAY["sHost"]) and sHost == DICT_HUB_GATEWAY["sHost"]
+
+
+def fiParseHubPort(sText):
+    """Return the port the file names, or 0 for anything but one port."""
+    sText = sText.strip()
+    if not sText or any(sCharacter not in "0123456789" for sCharacter in sText):
+        return 0
+    iPort = int(sText)
+    return iPort if 1024 <= iPort <= 65535 else 0
+
+
+async def fnRefreshHubPort():
+    """Re-read the hub port from its file, when the proxy was given one."""
+    sPortFile = DICT_HUB_GATEWAY["sPortFile"]
+    if not sPortFile:
+        return
+    loopRunning = asyncio.get_running_loop()
+    fDeadline = loopRunning.time() + F_HUB_PORT_FILE_SETTLE_SECONDS
+    while True:
+        try:
+            with open(sPortFile, "r", encoding="ascii") as fileHandle:
+                DICT_HUB_GATEWAY["iPort"] = fiParseHubPort(fileHandle.read(16))
+            return
+        except FileNotFoundError:
+            if loopRunning.time() >= fDeadline:
+                DICT_HUB_GATEWAY["iPort"] = 0
+                return
+            await asyncio.sleep(F_HUB_PORT_FILE_POLL_SECONDS)
+        except (OSError, UnicodeDecodeError):
+            DICT_HUB_GATEWAY["iPort"] = 0
+            return
+
+
+def fsDescribeHubPortRefusal(iPort):
+    """Say why a port on the hub's host was refused, naming both ports."""
+    if not DICT_HUB_GATEWAY["iPort"]:
+        return ("only the hub's port is served on the host, and no hub has "
+                "connected to this container, so port " + str(iPort)
+                + " is refused")
+    return ("only the hub's port is served on the host: this container's "
+            "hub is port " + str(DICT_HUB_GATEWAY["iPort"]) + ", not "
+            + str(iPort))
 
 
 def fsSelectBridgeAddress(sBindCidr):
@@ -256,9 +334,10 @@ async def fsResolveAllowlistedHost(sHost, iPort):
 async def fsJudgeTarget(sHostLower, iPort):
     if fbLooksLikeRawAddress(sHostLower):
         return "raw-address CONNECT target refused"
-    if DICT_HUB_GATEWAY["sHost"] and sHostLower == DICT_HUB_GATEWAY["sHost"]:
-        if iPort != DICT_HUB_GATEWAY["iPort"]:
-            return "only the hub's port is served on the host"
+    if fbIsHubHost(sHostLower):
+        await fnRefreshHubPort()
+        if not fbIsHubGateway(sHostLower, iPort):
+            return fsDescribeHubPortRefusal(iPort)
     elif not DICT_ANY_PUBLIC_HOST["bEnabled"] and sHostLower not in SET_ALLOWED_HOSTNAMES:
         return "host not on allowlist"
     elif iPort not in SET_ALLOWED_PORTS:
@@ -297,9 +376,21 @@ def ftParseHubRequestTarget(sUrl):
 async def fnForwardHubRequest(readerClient, writerClient, saParts, listHeaderLines):
     """Serve one plain-HTTP request addressed to the hub, and only the hub."""
     tTarget = ftParseHubRequestTarget(saParts[1])
-    if tTarget is None or not fbIsHubGateway(tTarget[0], tTarget[1]):
+    if tTarget is None:
         await fnRefuse(writerClient, "HTTP/1.1 405 Method Not Allowed",
                        "only CONNECT is served")
+        return
+    if fbIsHubHost(tTarget[0]):
+        await fnRefreshHubPort()
+    if not fbIsHubGateway(tTarget[0], tTarget[1]):
+        if fbIsHubHost(tTarget[0]):
+            sStatus, sReason = ("HTTP/1.1 403 Forbidden",
+                                fsDescribeHubPortRefusal(tTarget[1]))
+        else:
+            sStatus, sReason = ("HTTP/1.1 405 Method Not Allowed",
+                                "only CONNECT is served")
+        fnLogDecision(tTarget[0], tTarget[1], "refused", sReason)
+        await fnRefuse(writerClient, sStatus, sReason)
         return
     sHost, iPort, sOriginForm = tTarget
     try:
@@ -461,6 +552,8 @@ def main():
     parserArguments.add_argument("--address-map", default="")
     parserArguments.add_argument("--bind-cidr", default="")
     parserArguments.add_argument("--hub-gateway", default="")
+    parserArguments.add_argument("--hub-host", default="")
+    parserArguments.add_argument("--hub-port-file", default="")
     parserArguments.add_argument("--forward", default="")
     parserArguments.add_argument("--any-public-host", action="store_true")
     namespaceArguments = parserArguments.parse_args()
@@ -469,6 +562,9 @@ def main():
         sHubHost, _sColon, sHubPort = namespaceArguments.hub_gateway.rpartition(":")
         DICT_HUB_GATEWAY["sHost"] = sHubHost.strip().lower()
         DICT_HUB_GATEWAY["iPort"] = int(sHubPort)
+    if namespaceArguments.hub_port_file:
+        DICT_HUB_GATEWAY["sHost"] = namespaceArguments.hub_host.strip().lower()
+        DICT_HUB_GATEWAY["sPortFile"] = namespaceArguments.hub_port_file
     SET_ALLOWED_HOSTNAMES.update(
         sHost.strip().lower()
         for sHost in namespaceArguments.allowlist.split(",") if sHost.strip())
@@ -534,7 +630,7 @@ def fnValidateAllowlistOrRaise(saAllowedHostnames, iaAllowedPorts,
 def flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
                              dictHostnameAddressMap, sBindCidr="",
                              sHubGateway="", listForwards=(),
-                             bAnyPublicHost=False):
+                             bAnyPublicHost=False, sRepinnableHubHost=""):
     """Compose the argv the proxy container runs, from server-owned values.
 
     ``sBindCidr`` is the internal network's subnet; given, the proxy
@@ -546,7 +642,12 @@ def flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
     from its bridge side, for the container's published ports.
     ``bAnyPublicHost`` lets the proxy tunnel to any public host (a
     web-mode project); only a project's own egress ever passes it.
+    ``sRepinnableHubHost`` names the hub's host while its port is read
+    from ``S_HUB_PORT_FILE_CONTAINER_PATH`` on every request, so the
+    hub that owns the container can change; it excludes ``sHubGateway``.
     """
+    if sHubGateway and sRepinnableHubHost:
+        raise EgressSetupError("a proxy pins its hub one way, not both")
     saCommand = [
         "python", S_PROXY_SCRIPT_CONTAINER_PATH,
         "--listen-port", str(I_PROXY_LISTEN_PORT),
@@ -570,6 +671,11 @@ def flistComposeProxyCommand(saAllowedHostnames, iaAllowedPorts,
         if not _RE_HOSTNAME.match(sHubHost) or not sHubPort.isdigit():
             raise EgressSetupError(f"hub gateway {sHubGateway!r} is not host:port")
         saCommand.extend(["--hub-gateway", f"{sHubHost.lower()}:{int(sHubPort)}"])
+    if sRepinnableHubHost:
+        if not _RE_HOSTNAME.match(sRepinnableHubHost):
+            raise EgressSetupError(f"hub host {sRepinnableHubHost!r} is not a hostname")
+        saCommand.extend(["--hub-host", sRepinnableHubHost.lower(),
+                          "--hub-port-file", S_HUB_PORT_FILE_CONTAINER_PATH])
     if listForwards:
         for iListen, sTargetHost, iTargetPort in listForwards:
             if not _RE_HOSTNAME.match(sTargetHost):
@@ -616,6 +722,20 @@ def flistBuildSealedNetworkArguments(sNetworkName):
     die with ``ENETUNREACH``; then the black-holed resolver.
     """
     return ["--network", sNetworkName] + flistBuildBlackHoleDnsArguments()
+
+
+def fiParseHubPortText(sText):
+    """Return the port a hub-port file names, or 0 for anything but one port.
+
+    The host's reading of the file the proxy reads. The proxy script
+    carries its own copy (``fiParseHubPort``), because it cannot import
+    this module; ``tests/testEgressProxy.py`` holds the two to one table.
+    """
+    sText = sText.strip()
+    if not sText or any(sCharacter not in "0123456789" for sCharacter in sText):
+        return 0
+    iPort = int(sText)
+    return iPort if I_MINIMUM_HUB_PORT <= iPort <= I_MAXIMUM_HUB_PORT else 0
 
 
 def fdictParseConnectLogLine(sLine):

@@ -384,6 +384,10 @@ T_REDIRECTED_STATE_STORES = (
     StateStoreRedirect("vaibify.config.keepAliveManager", "_S_PID_DIRECTORY", "caffeinate"),
     StateStoreRedirect("vaibify.config.operationJournal", "_S_JOURNAL_DIRECTORY", "journal"),
     StateStoreRedirect("vaibify.gui.hostControlChannel", "_S_CONTROL_DIRECTORY", "control"),
+    StateStoreRedirect(
+        "vaibify.gui.routes.sessionRoutes", "_S_SPAWNED_HUB_LOG_DIRECTORY",
+        "spawnedHubs",
+    ),
     StateStoreRedirect("vaibify.gui.cliShellContainment", "_S_CLI_SHELL_DIRECTORY", "cliShells"),
     StateStoreRedirect("vaibify.cli.commandBuild", "_S_BUILD_STAGING_DIRECTORY", "build"),
     StateStoreRedirect("vaibify.cli.commandBuild", "_S_BUILD_HASH_DIRECTORY", "cache"),

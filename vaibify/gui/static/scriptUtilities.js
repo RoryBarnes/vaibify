@@ -357,6 +357,9 @@ var VaibifyUtilities = (function () {
     }
 
     async function fnSpawnNewSession() {
+        /* The new hub runs every start-up check before it answers, which
+           a busy machine stretches past a minute; say it is under way. */
+        VaibifyApp.fnShowToast("Starting a new vaibify window…", "info");
         try {
             var dictResponse = await VaibifyApi.fdictPost(
                 "/api/session/spawn", {});

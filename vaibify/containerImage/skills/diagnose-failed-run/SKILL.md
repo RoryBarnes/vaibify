@@ -53,3 +53,8 @@ answer is usually already recorded.
   is unreachable, that is a "not connected" condition — tell the
   researcher to click the container in the dashboard to reconnect;
   do not attempt workarounds.
+- If `vaibify-do` reports that the container's network proxy refused
+  the call (exit code 6), reconnecting will not help: the request
+  never left the container. Relay the proxy's reason as printed and
+  tell the researcher that the dashboard banner beginning
+  "Network mode:" says what to do.

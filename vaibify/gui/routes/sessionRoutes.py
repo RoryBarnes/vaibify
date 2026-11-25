@@ -4,7 +4,10 @@
 allocator, launches a detached child running ``python -m vaibify
 --port <free>``, and returns the URL the frontend should open in a new
 browser tab. No user-controlled arguments are ever appended to the
-child command line. The URL carries a one-time sign-in capability that
+child command line. The child runs from the directory this process
+imported vaibify from, so ``-m vaibify`` finds the same code the
+parent runs rather than whatever the parent's working directory holds,
+and what it prints lands in a log the refusal names. The URL carries a one-time sign-in capability that
 the child mints over its host control socket, because the child is told
 not to open a browser and so arms none of its own: a bare address would
 reach a dashboard that answers 401 to every call. A child that never
@@ -31,9 +34,10 @@ a browser-origin caller may spawn or quit a hub, and the agent holds no
 browser session whose lifetime it could read.
 """
 
-__all__ = ["fnRegisterAll", "S_SUPPRESS_BROWSER_ENV"]
+__all__ = ["fnRegisterAll", "S_SUPPRESS_BROWSER_ENV", "fsLocateOwnPackageRoot"]
 
 import asyncio
+import logging
 import os
 import socket
 import subprocess
@@ -55,9 +59,50 @@ _F_CHILD_EXIT_TIMEOUT_SECONDS = 10.0
 _F_SHUTDOWN_SIGNAL_DELAY_SECONDS = 0.2
 _S_AGENT_SESSION_HEADER_NAME = "x-vaibify-session"
 _S_BROWSER_CREDENTIAL_HEADER_NAME = "x-session-token"
-_F_READY_TIMEOUT_SECONDS = 30.0
+# Catches a child that hangs; it is not a start-up budget. A child
+# that exits is answered at once, and a busy machine once took a
+# healthy child past the 30 seconds this used to be.
+_F_READY_TIMEOUT_SECONDS = 240.0
 _F_READY_POLL_INTERVAL_SECONDS = 0.05
+_S_SPAWNED_HUB_LOG_DIRECTORY = os.path.expanduser("~/.vaibify/spawnedHubs")
 S_SUPPRESS_BROWSER_ENV = "VAIBIFY_SUPPRESS_BROWSER"
+
+logger = logging.getLogger(__name__)
+
+
+def fsLocateOwnPackageRoot():
+    """Return the directory from which ``python -m vaibify`` imports this vaibify.
+
+    ``-m`` puts the working directory first on the child's import path,
+    so a child launched from a checkout of another version ran THAT
+    version beside a parent running this one. Launched from here, the
+    child imports exactly the package its parent imported, from a
+    checkout, an editable install or a wheel alike.
+    """
+    import vaibify
+    return os.path.dirname(os.path.dirname(os.path.abspath(vaibify.__file__)))
+
+
+def _fsSpawnedHubLogPath(iPort):
+    """Return the file a spawned hub's output is written to."""
+    return os.path.join(_S_SPAWNED_HUB_LOG_DIRECTORY, f"hub-{iPort}.log")
+
+
+def _ffileOpenSpawnedHubLog(iPort):
+    """Open (truncating) the private log a spawned hub writes to."""
+    sLogPath = _fsSpawnedHubLogPath(iPort)
+    try:
+        os.makedirs(os.path.dirname(sLogPath), mode=0o700, exist_ok=True)
+        iDescriptor = os.open(
+            sLogPath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600,
+        )
+    except OSError as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"The new vaibify window was not started: its log "
+            f"{sLogPath} could not be created ({error.strerror}).",
+        ) from error
+    return os.fdopen(iDescriptor, "wb")
 
 
 def _fprocessLaunchDetachedHub(iPort):
@@ -69,14 +114,16 @@ def _fprocessLaunchDetachedHub(iPort):
     without this suppression the user sees two tabs.
     """
     dictChildEnv = {**os.environ, S_SUPPRESS_BROWSER_ENV: "1"}
-    return subprocess.Popen(
-        [sys.executable, "-m", "vaibify", "--port", str(iPort)],
-        start_new_session=True,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env=dictChildEnv,
-    )
+    with _ffileOpenSpawnedHubLog(iPort) as fileLog:
+        return subprocess.Popen(
+            [sys.executable, "-m", "vaibify", "--port", str(iPort)],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=fileLog,
+            stderr=subprocess.STDOUT,
+            cwd=fsLocateOwnPackageRoot(),
+            env=dictChildEnv,
+        )
 
 
 def _fnPruneDeadChildren(listChildren):
@@ -139,6 +186,24 @@ def _fnReapSpawnedChild(listChildren, processChild):
         pass
 
 
+def _fsDescribeSpawnFailure(processChild, iPort, bReady):
+    """Return the sentence saying how a spawned hub failed and where its output is.
+
+    Read before the child is stopped, so an exit of its own is told
+    apart from the stop this hub is about to send.
+    """
+    iExitStatus = processChild.poll()
+    if bReady:
+        sWhat = "started but issued no sign-in link, so it was stopped"
+    elif iExitStatus is not None:
+        sWhat = f"exited with status {iExitStatus} before it was ready"
+    else:
+        sWhat = (f"was not ready after {int(_F_READY_TIMEOUT_SECONDS)} "
+                 f"seconds, so it was stopped")
+    return (f"The new vaibify window {sWhat}. What it printed is in "
+            f"{_fsSpawnedHubLogPath(iPort)}.")
+
+
 async def _fsSignInUrlForSpawnedChild(listChildren, processChild, iPort):
     """Return the URL that signs a browser in to the spawned hub.
 
@@ -150,21 +215,20 @@ async def _fsSignInUrlForSpawnedChild(listChildren, processChild, iPort):
         HubSessionError, fsRequestBootstrapCapability,
     )
     sCapability = ""
-    if await _fbAwaitChildReady(
+    bReady = await _fbAwaitChildReady(
         iPort, _F_READY_TIMEOUT_SECONDS, processChild,
-    ):
+    )
+    if bReady:
         try:
             sCapability = await asyncio.to_thread(
                 fsRequestBootstrapCapability, iPort)
         except HubSessionError:
             sCapability = ""
     if not sCapability:
+        sFailure = _fsDescribeSpawnFailure(processChild, iPort, bReady)
         _fnReapSpawnedChild(listChildren, processChild)
-        raise HTTPException(
-            status_code=502,
-            detail="The new vaibify window did not start. Run "
-            "'vaibify' in a terminal to see why.",
-        )
+        logger.warning(sFailure)
+        raise HTTPException(status_code=502, detail=sFailure)
     return f"http://127.0.0.1:{iPort}/#bootstrap={sCapability}"
 
 

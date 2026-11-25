@@ -7,8 +7,8 @@ sockets and no proxy variables, that it cannot reach the daemon host's
 bridge address at all (``ENETUNREACH``: the isolated gateway mode gives
 it no route), and, through the proxy, that an allowed host tunnels, an
 unlisted host and a raw address are refused, the hub's port is served
-for plain HTTP and CONNECT alike, and another port on the host is
-refused. The negative control shows an ordinary internal network DOES
+for plain HTTP and CONNECT alike, another port on the host is refused,
+and a re-pin moves the hub to another port with no proxy restart. The negative control shows an ordinary internal network DOES
 get a gateway, so the isolated option is what the seal rests on.
 
 Live-daemon convention (``testDockerConnectionLive``): skipped without
@@ -105,7 +105,8 @@ def dictLive():
     # call phase: an error raised here would be a fixture error, which a
     # kill-confirmation does not count as the test catching the mutation.
     try:
-        dictEgress = projectEgress.fdictPrepareProjectEgress(config, sUuid, iHubPort)
+        dictEgress = projectEgress.fdictPrepareProjectEgress(config, sUuid)
+        projectEgress.fsPinProjectEgressHub(sUuid, iHubPort)
     except egressProxy.EgressSetupError as error:
         serverHub.shutdown()
         yield {"errorEgress": error, "sUuid": sUuid}
@@ -123,7 +124,8 @@ def dictLive():
     )
     try:
         yield {"container": containerClient, "iHubPort": iHubPort, "sUuid": sUuid,
-               "clientDocker": clientDocker, "dictEgress": dictEgress}
+               "clientDocker": clientDocker, "dictEgress": dictEgress,
+               "sEgressRoot": projectEgress._fsEgressRoot()}
     finally:
         containerClient.remove(force=True)
         projectEgress.fnReleaseProjectEgressQuietly(sUuid, "live test teardown")
@@ -253,3 +255,73 @@ def testAnEgressNothingUsesIsReleased():
         assert sUuid not in projectEgress.flistDiscoverProjectEgressUuids()
     finally:
         subprocess.run(["docker", "network", "rm", sNetworkName], capture_output=True)
+
+
+def _fnPinUnderTheFixturesRoot(monkeypatch, dictLive):
+    """Write pins where the module's sidecar reads them.
+
+    The state-store redirect gives every TEST its own egress root, but
+    the sidecar was made once for the module and mounts the root that
+    was current then; a pin written under a later test's root would
+    never reach it.
+    """
+    monkeypatch.setattr(projectEgress, "_fsEgressRoot", lambda: dictLive["sEgressRoot"])
+
+
+def _fsProxyContainerId(dictLive):
+    return dictLive["clientDocker"].containers.get(
+        projectEgress.fsProxyName(dictLive["sUuid"])).id
+
+
+@pytest.mark.falsification
+def testATakenOverContainerReachesItsNewHubWithNoProxyRestart(dictLive, monkeypatch):
+    """A second hub takes the container over; the same proxy now serves it.
+
+    A real second stand-in hub on its own port. Before the re-pin its
+    port is refused BY NAME; after it, a plain-HTTP call reaches it, the
+    first hub's port is refused, and the proxy is the same container
+    (a new one could come back at another address, which the
+    container's proxy variables would no longer name).
+
+    Kills: the proxy keeping the first port it read from the pin file.
+    """
+    _fnRequireTheSeal(dictLive)
+    _fnPinUnderTheFixturesRoot(monkeypatch, dictLive)
+    sUuid, iFirstHub = dictLive["sUuid"], dictLive["iHubPort"]
+    serverSecond = http.server.HTTPServer(("0.0.0.0", 0), _HubStandIn)
+    threading.Thread(target=serverSecond.serve_forever, daemon=True).start()
+    iSecondHub = serverSecond.server_address[1]
+    sProxyIdBefore = _fsProxyContainerId(dictLive)
+    try:
+        sBefore = _fsProbe(dictLive, "host.docker.internal:%d:proxy" % iSecondHub)
+        assert sBefore.startswith("HTTP/1.1 403")
+        assert "this container's hub is port %d, not %d" % (iFirstHub, iSecondHub) in sBefore
+        assert projectEgress.fsPinProjectEgressHub(sUuid, iSecondHub) == projectEgress.S_PIN_PINNED
+        assert _fsProbe(dictLive, "hub-http", "http://host.docker.internal:%d/api/ping"
+                        % iSecondHub) == "hub-stand-in /api/ping"
+        sFirst = _fsProbe(dictLive, "host.docker.internal:%d:proxy" % iFirstHub)
+        assert "this container's hub is port %d, not %d" % (iSecondHub, iFirstHub) in sFirst
+        assert _fsProxyContainerId(dictLive) == sProxyIdBefore
+        dictDescribed = projectEgress.fdictDescribeProjectEgress(sUuid)
+        assert dictDescribed["sPin"] == "pinned"
+        assert dictDescribed["iPinnedHubPort"] == iSecondHub
+        listHubRefusals = [(dictEntry["iPort"], dictEntry["bAllowable"])
+                           for dictEntry in dictDescribed["listRefused"]
+                           if dictEntry["sHost"] == "host.docker.internal"]
+        assert (iFirstHub, False) in listHubRefusals
+        assert all(iPort != iSecondHub for iPort, _bAllowable in listHubRefusals)
+    finally:
+        projectEgress.fsPinProjectEgressHub(sUuid, iFirstHub)
+        serverSecond.shutdown()
+
+
+def testAProxyThatNoHubHasPinnedServesNoHub(dictLive, monkeypatch):
+    _fnRequireTheSeal(dictLive)
+    _fnPinUnderTheFixturesRoot(monkeypatch, dictLive)
+    sUuid, iHub = dictLive["sUuid"], dictLive["iHubPort"]
+    projectEgress._fnWriteHubPort(sUuid, 0)
+    try:
+        assert "no hub has connected" in _fsProbe(
+            dictLive, "host.docker.internal:%d:proxy" % iHub)
+    finally:
+        projectEgress.fsPinProjectEgressHub(sUuid, iHub)

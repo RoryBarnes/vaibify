@@ -512,6 +512,42 @@ def testAHoppedPortIsNotPersistedOverAnUnprovableHolder(capsys):
         sockHolder.close()
 
 
+@pytest.mark.falsification
+def testAnotherLiveHubOnTheSavedPortKeepsTheSavedPort(capsys):
+    """A second window beside a live hub never moves the saved hub port.
+
+    Kills: classifying the holder by "accepts connections" alone, which
+    called the researcher's own running hub "another process" and
+    saved the second window's port over the first one's bookmark.
+    """
+    from vaibify.cli import portAllocator
+    iPort, sockHolder = _ftListeningPort()
+    listPersisted = []
+    try:
+        with patch.object(
+            portAllocator, "_fiReadPersistedHubPort", return_value=iPort,
+        ), patch.object(
+            portAllocator, "_fdictReadHubSlot",
+            return_value={"sRole": "hub", "iPort": iPort, "iPid": 1234},
+        ), patch.object(
+            portAllocator, "_fnPersistHubPortSafely",
+            side_effect=listPersisted.append,
+        ), patch.object(
+            portAllocator.time, "sleep",
+        ), patch.object(
+            portAllocator.time, "monotonic", side_effect=[0.0, 100.0],
+        ):
+            iResolved = portAllocator.fiResolveHubPort(iExplicitPort=None)
+        assert iResolved != iPort
+        assert listPersisted == []
+        sErr = capsys.readouterr().err
+        assert "another vaibify window" in sErr
+        assert "for this session only" in sErr
+        assert "another process" not in sErr
+    finally:
+        sockHolder.close()
+
+
 def test_fiResolveHubPort_waits_for_self_zombie_then_binds():
     """A same-role hub zombie that releases mid-wait wins the persisted port."""
     from vaibify.cli import portAllocator

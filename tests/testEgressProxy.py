@@ -246,3 +246,164 @@ def testAnEmptyHostListIsAcceptedOnlyForAnyPublicHost():
     with pytest.raises(egressProxy.EgressSetupError, match="must not be empty"):
         egressProxy.fnValidateAllowlistOrRaise([], [443], {})
     egressProxy.fnValidateAllowlistOrRaise([], [443], {}, bAnyPublicHost=True)
+
+
+S_HUB_HOST = "host.docker.internal"
+
+
+def _fnStartWithAHubPortFile(dictScript, monkeypatch, pathPortFile):
+    _fnStartTheScript(dictScript, monkeypatch, [
+        "--hub-host", S_HUB_HOST, "--hub-port-file", str(pathPortFile)])
+
+
+@pytest.mark.falsification
+def testThePinIsReadAgainOnEveryRequest(dictScript, monkeypatch, tmp_path):
+    """A hub that takes a running container over must be served at once.
+
+    Two distinct ports, 8051 then 8053, so serving the first one read
+    can never pass for serving the current one.
+
+    Kills: the proxy keeping the first port it read from the pin file.
+    """
+    pathPortFile = tmp_path / "hubPort"
+    pathPortFile.write_text("8051")
+    _fnStartWithAHubPortFile(dictScript, monkeypatch, pathPortFile)
+    fsJudge = dictScript["fsJudgeTarget"]
+    assert asyncio.run(fsJudge(S_HUB_HOST, 8051)) == ""
+    assert asyncio.run(fsJudge(S_HUB_HOST, 8053)) == (
+        "only the hub's port is served on the host: this container's hub "
+        "is port 8051, not 8053")
+    pathPortFile.write_text("8053")
+    assert asyncio.run(fsJudge(S_HUB_HOST, 8053)) == ""
+    assert asyncio.run(fsJudge(S_HUB_HOST, 8051)) == (
+        "only the hub's port is served on the host: this container's hub "
+        "is port 8053, not 8051")
+
+
+@pytest.mark.falsification
+def testAPinFileBeingReplacedIsWaitedForNotReadAsNoHub(dictScript, monkeypatch, tmp_path):
+    """A replaced file reads as missing for ~0.3 s through colima's file sharing.
+
+    Kills: treating a missing pin file as "no hub" at once.
+    """
+    pathPortFile = tmp_path / "hubPort"
+    pathPortFile.write_text("8051")
+    _fnStartWithAHubPortFile(dictScript, monkeypatch, pathPortFile)
+    pathPortFile.unlink()
+
+    async def fsJudgeWhileTheFileReturns():
+        async def fnRestoreTheFile():
+            await asyncio.sleep(0.3)
+            pathPortFile.write_text("8053")
+
+        taskRestore = asyncio.ensure_future(fnRestoreTheFile())
+        sVerdict = await dictScript["fsJudgeTarget"](S_HUB_HOST, 8053)
+        await taskRestore
+        return sVerdict
+
+    assert asyncio.run(fsJudgeWhileTheFileReturns()) == ""
+
+
+def testAPinFileThatNeverReturnsServesNoHub(dictScript, monkeypatch, tmp_path):
+    pathPortFile = tmp_path / "hubPort"
+    _fnStartWithAHubPortFile(dictScript, monkeypatch, pathPortFile)
+    monkeypatch.setitem(dictScript, "F_HUB_PORT_FILE_SETTLE_SECONDS", 0.1)
+    assert "no hub has connected" in asyncio.run(
+        dictScript["fsJudgeTarget"](S_HUB_HOST, 8053))
+
+
+# (pin file text, the port it names): one port in 1024..65535, else none.
+T_PIN_TEXTS = (
+    ("8053", 8053), (" 8053\n", 8053), ("1024", 1024), ("65535", 65535),
+    ("", 0), ("0", 0), ("80", 0), ("1023", 0), ("65536", 0), ("70000", 0),
+    ("8053\n8054", 0), ("abc", 0), ("-8053", 0), ("80.53", 0),
+    ("８０５３", 0),  # full-width digits: isdigit() says yes
+)
+
+
+@pytest.mark.parametrize("sText, iExpected", T_PIN_TEXTS)
+def testThePinFileNamesOnePortOrNone(dictScript, sText, iExpected):
+    assert dictScript["fiParseHubPort"](sText) == iExpected
+    assert egressProxy.fiParseHubPortText(sText) == iExpected
+
+
+def testAMalformedPinServesNoHub(dictScript, monkeypatch, tmp_path):
+    pathPortFile = tmp_path / "hubPort"
+    pathPortFile.write_text("8053\n8054")
+    _fnStartWithAHubPortFile(dictScript, monkeypatch, pathPortFile)
+    for iPort in (8053, 8054):
+        assert "no hub has connected" in asyncio.run(
+            dictScript["fsJudgeTarget"](S_HUB_HOST, iPort))
+
+
+class _RecordingWriter:
+    def __init__(self):
+        self.baWritten = b""
+
+    def write(self, baData):
+        self.baWritten += baData
+
+    async def drain(self):
+        return None
+
+
+@pytest.mark.falsification
+def testAPlainHttpRequestForAnotherHubIsRefusedByNameAndLogged(
+        dictScript, monkeypatch, tmp_path, capsys):
+    """The agent's urllib call is plain HTTP, and its refusal went unlogged.
+
+    Kills: refusing a plain-HTTP request for the wrong hub port without
+    logging it, which kept it out of the dashboard's refused list.
+    """
+    pathPortFile = tmp_path / "hubPort"
+    pathPortFile.write_text("8051")
+    _fnStartWithAHubPortFile(dictScript, monkeypatch, pathPortFile)
+    capsys.readouterr()
+    writerClient = _RecordingWriter()
+    asyncio.run(dictScript["fnForwardHubRequest"](
+        None, writerClient,
+        ["GET", "http://host.docker.internal:8053/api/x", "HTTP/1.1"], []))
+    sResponse = writerClient.baWritten.decode("ascii")
+    assert sResponse.startswith("HTTP/1.1 403 Forbidden\r\n")
+    assert sResponse.endswith(
+        "vaibify-egress: only the hub's port is served on the host: this "
+        "container's hub is port 8051, not 8053\n")
+    listLines = capsys.readouterr().out.strip().splitlines()
+    assert [egressProxy.fdictParseConnectLogLine(sLine) for sLine in listLines] == [{
+        "sHost": S_HUB_HOST, "iPort": 8053, "bAllowed": False,
+        "sReason": "only the hub's port is served on the host: this "
+                   "container's hub is port 8051, not 8053",
+    }]
+
+
+def testAPlainHttpRequestForAnotherHostIsStillOnlyConnect(dictScript, monkeypatch, capsys):
+    _fnStartTheScript(dictScript, monkeypatch, [])
+    capsys.readouterr()
+    writerClient = _RecordingWriter()
+    asyncio.run(dictScript["fnForwardHubRequest"](
+        None, writerClient, ["GET", "http://example.org/", "HTTP/1.1"], []))
+    assert writerClient.baWritten.startswith(b"HTTP/1.1 405 Method Not Allowed")
+    assert "only CONNECT is served" in capsys.readouterr().out
+
+
+def testTheComposedCommandPinsTheHubOneWayOnly():
+    listCommand = egressProxy.flistComposeProxyCommand(
+        ["api.example.org"], [443], {}, sRepinnableHubHost="Host.Docker.Internal")
+    assert listCommand[listCommand.index("--hub-host") + 1] == S_HUB_HOST
+    assert listCommand[listCommand.index("--hub-port-file") + 1] == (
+        "/vaibifyEgressGateway/hubPort")
+    assert "--hub-gateway" not in listCommand
+    with pytest.raises(egressProxy.EgressSetupError, match="one way"):
+        egressProxy.flistComposeProxyCommand(
+            ["api.example.org"], [443], {}, sHubGateway=f"{S_HUB_HOST}:8050",
+            sRepinnableHubHost=S_HUB_HOST)
+    with pytest.raises(egressProxy.EgressSetupError, match="not a hostname"):
+        egressProxy.flistComposeProxyCommand(
+            ["api.example.org"], [443], {}, sRepinnableHubHost="bad host")
+
+
+def testTheCouncilKeepsItsFixedHubGateway(dictScript, monkeypatch):
+    _fnStartTheScript(dictScript, monkeypatch, ["--hub-gateway", f"{S_HUB_HOST}:8050"])
+    assert dictScript["DICT_HUB_GATEWAY"] == {
+        "sHost": S_HUB_HOST, "iPort": 8050, "sPortFile": ""}
+    assert asyncio.run(dictScript["fsJudgeTarget"](S_HUB_HOST, 8050)) == ""

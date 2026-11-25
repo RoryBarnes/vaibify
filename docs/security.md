@@ -336,18 +336,27 @@ one way out: an HTTP CONNECT proxy that vaibify runs beside it.
   those operations run on the host.
 - **The hub.** `vaibify-do` reaches the hub through the proxy, which
   pins exactly `host.docker.internal:<hub port>`: no other port on that
-  name, no raw address, and the port is the one the hub recorded when
-  it launched. The container's published ports (`ports`, Jupyter) are
+  name, and no raw address. The port is the one of the hub that
+  connected to the container most recently. That hub writes it into a
+  host file the proxy mounts read-only, before it tells the agent which
+  hub to dial, so a container taken over by a second hub serves that
+  hub without a restart. A freshly launched proxy serves no hub until
+  one connects. The container's published ports (`ports`, Jupyter) are
   published on the sidecar and relayed to the container.
 - **The dashboard** shows the Network row only when there is something
   to act on or to know: a proxy that is down (said in so many words,
   never silent), the destinations the proxy refused recently with their
-  counts, an open container, a container whose network disagrees with
-  its file, or a file that names no mode. A sealed project whose proxy
-  is running with nothing refused shows no row at all. The
-  researcher-only **Allow host** action adds one to `allowedHosts`
-  (also `vaibify do allow-network-host`); it takes effect when the
-  container is created again. Agents cannot extend the allowlist.
+  counts, a proxy serving a different hub than the dashboard you are
+  using (named with both ports, and the remedy), an open container, a
+  container whose network disagrees with its file, or a file that names
+  no mode. A sealed project whose proxy is running with nothing refused
+  shows no row at all. The researcher-only **Allow host** action adds
+  one to `allowedHosts` (also `vaibify do allow-network-host`); it takes
+  effect when the container is created again. It is not offered for a
+  refusal of `host.docker.internal`, which the allowlist never judges.
+  Agents cannot extend the allowlist. When the proxy refuses a call
+  `vaibify-do` makes, `vaibify-do` exits with code 6 and the proxy's
+  reason, and does not tell its agent to reconnect.
 - **What it does not close.** Allowed hosts are multi-tenant: an agent
   can push to its own GitHub fork, or send data to the model API it is
   allowed to use.

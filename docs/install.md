@@ -312,7 +312,8 @@ Docker and Colima are not part of vaibify and stay installed.
 | `.vaibify/projects/project.json` (project repository) | The workflow: steps, commands, tests. See [Environments and Projects](environmentsAndProjects.md) |
 | `~/.vaibify/registry.json` | The registered projects the hub lists |
 | `~/.vaibify/preferences.json` | Host-wide dashboard settings, such as the timeouts below |
-| `~/.vaibify/hub-port.json` | The port the last hub used |
+| `~/.vaibify/hub-port.json` | The port the last hub used. A second window started beside a running hub binds another port for that session only and leaves this file alone |
+| `~/.vaibify/spawnedHubs/hub-<port>.log` | What a hub opened by the dashboard's new-window button printed, rewritten on each launch. A window that fails to open names this file |
 | `~/.vaibify/vaibify.log` | A rotating log (10 MB per file, five backups); each line is tagged `[cid:<container-id>]`. Look here first when something misbehaves |
 
 ### vaibify.yml fields

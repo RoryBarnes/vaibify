@@ -236,12 +236,13 @@ def fiResolveHubPort(iExplicitPort):
        (something accepts TCP connections there and no vaibify hub
        slot claims the port) → scan upward, persist the new port,
        and warn that the old URL is dead.
-    4. Any other conflict — a dying hub still draining, or a socket
-       lingering after the previous hub exited — gets a brief wait
-       for the port to clear. If it clears, the persisted port is
-       kept. If not, the hub binds a scanned port for THIS session
-       only and the persisted port is left alone, so the researcher's
-       bookmarked URL resolves again on the next restart.
+    4. Any other conflict — another vaibify hub still serving it, a
+       dying hub still draining, or a socket lingering after the
+       previous hub exited — gets a brief wait for the port to clear.
+       If it clears, the persisted port is kept. If not, the hub
+       binds a scanned port for THIS session only and the persisted
+       port is left alone, so the researcher's bookmarked URL
+       resolves again on the next restart.
     """
     if iExplicitPort is not None:
         return iExplicitPort
@@ -274,27 +275,45 @@ def _fiResolveContestedHubPort(iPersisted):
     can never disagree about who held the port.
     """
     bLiveListener = _fbPortHasLiveListener(iPersisted)
-    bLiveForeignHolder = bLiveListener and not _fdictReadHubSlot(iPersisted)
+    bVaibifyHubHolds = bool(_fdictReadHubSlot(iPersisted))
+    bLiveForeignHolder = bLiveListener and not bVaibifyHubHolds
     if not bLiveForeignHolder and _fbWaitForHubPortRelease(iPersisted):
         return iPersisted
-    return _fiHopFromContestedPort(iPersisted, bLiveListener)
+    return _fiHopFromContestedPort(
+        iPersisted, bLiveForeignHolder, bLiveListener and bVaibifyHubHolds,
+    )
 
 
-def _fiHopFromContestedPort(iPersisted, bHolderIsLiveListener):
+def _fiHopFromContestedPort(
+    iPersisted, bLiveForeignHolder, bLiveVaibifyHubHolds,
+):
     """Scan a fresh port; persist it only when the old one is truly lost.
 
     A hopped port is persisted only when the persisted port is
-    confirmed held by a live listener — a process that ACCEPTS
-    connections will not release the port, so the bookmark it broke
-    is gone for good and the file should follow reality. An
-    unprovable holder (nothing accepts; the socket is lingering from
-    a dying predecessor) keeps the persisted port on disk so the
-    next restart returns to the researcher's bookmarked URL.
+    confirmed held by a live FOREIGN listener — a process that
+    accepts connections and is no vaibify hub will not release the
+    port, so the bookmark it broke is gone for good and the file
+    should follow reality. Another vaibify hub serving the port is
+    the researcher's own window, whose tabs that bookmark still
+    reaches, so the hop is for this session only: persisting it once
+    moved the bookmark onto the second window and said "another
+    process" held a port the researcher's own hub held. An unprovable
+    holder (nothing accepts; the socket is lingering from a dying
+    predecessor) likewise keeps the persisted port on disk.
     """
     iPort = fiPickFreePort()
     if iPort == iPersisted:
         return iPort
-    if bHolderIsLiveListener:
+    if bLiveVaibifyHubHolds:
+        print(
+            f"Hub port {iPersisted} is in use by another vaibify "
+            f"window; binding {iPort} for this session only. A restart "
+            f"after that window closes will return to port "
+            f"{iPersisted}.",
+            file=sys.stderr,
+        )
+        return iPort
+    if bLiveForeignHolder:
         _fnPersistHubPortSafely(iPort)
         print(
             f"Hub port {iPersisted} is held by another process; "

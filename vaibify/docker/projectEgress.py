@@ -23,7 +23,15 @@ The sidecar runs the shared proxy of :mod:`egressProxy` from a
 read-only bind mount of the script, as an unprivileged user with every
 capability dropped, a read-only root, memory, CPU and PID bounds, and
 the host-gateway entry so it can serve the project's hub as the ONE
-host destination (pinned to ``host.docker.internal:<hub port>``). The
+host destination (``host.docker.internal:<hub port>``). The hub port
+is not fixed at launch: the sidecar starts serving no hub, and the
+hub that connects to the container pins its own port
+(:func:`fsPinProjectEgressHub`), just before it tells the agent which
+URL to dial, by rewriting a file the sidecar mounts read-only. A
+container a different hub later takes over is then pinned to that
+hub, with no restart and no new proxy address. A sidecar started by
+a vaibify older than this pins the launch-time port in its argv and
+cannot be re-pinned; :func:`fdictReadHubPin` reports it as such. The
 project's published ports are published on the sidecar and relayed to
 the container by name (ruling D3). Everything here is a ``docker``
 command on the host; nothing execs into the project container.
@@ -37,9 +45,13 @@ __all__ = [
     "S_PROXY_STATE_ABSENT",
     "S_PROXY_STATE_DOWN",
     "S_PROXY_STATE_RUNNING",
+    "S_PIN_ABSENT",
+    "S_PIN_FIXED",
+    "S_PIN_PINNED",
     "fbEgressIsInUse",
     "fdictDescribeProjectEgress",
     "fdictPrepareProjectEgress",
+    "fdictReadHubPin",
     "fdictReconcileProjectEgress",
     "flistDiscoverProjectEgressUuids",
     "flistNetworkCreateArguments",
@@ -48,6 +60,7 @@ __all__ = [
     "fnReleaseProjectEgressIfUnused",
     "fnReleaseProjectEgressQuietly",
     "fsNetworkName",
+    "fsPinProjectEgressHub",
     "fsProxyName",
     "fsProxyState",
 ]
@@ -84,6 +97,9 @@ S_ENGINE_REQUIREMENT = (
 S_PROXY_STATE_RUNNING = "running"
 S_PROXY_STATE_DOWN = "down"
 S_PROXY_STATE_ABSENT = "absent"
+S_PIN_PINNED = "pinned"
+S_PIN_FIXED = "fixed"
+S_PIN_ABSENT = "absent"
 I_PROXY_USER_ID = 65534
 S_PROXY_MEMORY = "256m"
 S_PROXY_CPUS = "0.5"
@@ -112,6 +128,41 @@ def fsProxyName(sProjectUuid):
 
 def _fsEgressRoot():
     return os.path.join(os.path.expanduser("~"), ".vaibify", "egress")
+
+
+def _fsHubPortDirectory(sProjectUuid):
+    _fnValidateProjectUuid(sProjectUuid)
+    return os.path.join(_fsEgressRoot(), sProjectUuid, egressProxy.S_HUB_PORT_DIRECTORY)
+
+
+def _fsHubPortPath(sProjectUuid):
+    return os.path.join(_fsHubPortDirectory(sProjectUuid), egressProxy.S_HUB_PORT_BASENAME)
+
+
+def _fnWriteHubPort(sProjectUuid, iHubPort):
+    """Write the hub port the sidecar serves; 0 writes "no hub".
+
+    The directory is world-readable because the sidecar's unprivileged
+    user reads it through a bind mount; the port is no secret, and the
+    project directory above it stays private to the host user.
+    """
+    sDirectory = _fsHubPortDirectory(sProjectUuid)
+    os.makedirs(os.path.dirname(sDirectory), mode=0o700, exist_ok=True)
+    os.makedirs(sDirectory, mode=0o755, exist_ok=True)
+    os.chmod(sDirectory, 0o755)
+    fnWriteFileDurably(
+        _fsHubPortPath(sProjectUuid),
+        (str(iHubPort) if iHubPort else "").encode("ascii"), iMode=0o644,
+    )
+
+
+def _fiReadHubPortFile(sProjectUuid):
+    """Return the port the sidecar's file names, or 0."""
+    try:
+        with open(_fsHubPortPath(sProjectUuid), "r", encoding="ascii") as fileHandle:
+            return egressProxy.fiParseHubPortText(fileHandle.read(16))
+    except (OSError, UnicodeDecodeError):
+        return 0
 
 
 def _fsWriteProxyScript(sProjectUuid):
@@ -214,7 +265,7 @@ def _flistForwards(config):
 
 
 def flistProxyRunArguments(
-    config, sProjectUuid, sNetworkName, sScriptPath, sSubnet, iHubPort,
+    config, sProjectUuid, sNetworkName, sScriptPath, sSubnet,
 ):
     """Return the ``docker run`` arguments that create the hardened sidecar."""
     listHosts, listPorts = ftComputeAllowlist(config)
@@ -231,14 +282,17 @@ def flistProxyRunArguments(
         "--mount",
         f"type=bind,source={sScriptPath},"
         f"target={egressProxy.S_PROXY_SCRIPT_CONTAINER_PATH},readonly",
+        "--mount",
+        f"type=bind,source={_fsHubPortDirectory(sProjectUuid)},"
+        f"target=/{egressProxy.S_HUB_PORT_DIRECTORY},readonly",
     ]
     for iListen, _sTarget, _iTarget in listForwards:
         listArguments.extend(["-p", f"127.0.0.1:{iListen}:{iListen}"])
     listArguments.append(egressProxy.S_PROXY_IMAGE)
     listArguments.extend(egressProxy.flistComposeProxyCommand(
-        listHosts, listPorts, {}, sSubnet,
-        f"{S_HUB_HOST}:{iHubPort}" if iHubPort else "", listForwards,
+        listHosts, listPorts, {}, sSubnet, "", listForwards,
         bAnyPublicHost=getattr(config, "sNetworkMode", "") == S_NETWORK_MODE_WEB,
+        sRepinnableHubHost=S_HUB_HOST,
     ))
     return listArguments
 
@@ -273,22 +327,26 @@ def _fsReadProxyAddress(sProxyName, sNetworkName):
     return sAddress
 
 
-def fdictPrepareProjectEgress(config, sProjectUuid, iHubPort):
+def fdictPrepareProjectEgress(config, sProjectUuid):
     """Make the project's sealed network and proxy; return what the launch needs.
 
     Returns ``{"sNetworkName", "sProxyName", "sProxyAddress"}``. A stale
     sidecar from an earlier start is replaced, because its allowlist
-    and hub port may be stale too.
+    may be stale too. The new sidecar serves no hub until one connects
+    and pins its port: the launch does not know which hub the agent
+    will be told to dial, and a guess is how a container came to be
+    pinned to a hub other than the one that owned it.
     """
     sNetworkName = fsNetworkName(sProjectUuid)
     sProxyName = fsProxyName(sProjectUuid)
     _fnEnsureSealedNetwork(sNetworkName, sProjectUuid)
     _fnRemoveProxyLogged(sProxyName, "replaced by a fresh launch")
     sScriptPath = _fsWriteProxyScript(sProjectUuid)
+    _fnWriteHubPort(sProjectUuid, 0)
     sSubnet = _fsReadNetworkSubnet(sNetworkName)
     _fsDockerOrRaise(
         flistProxyRunArguments(
-            config, sProjectUuid, sNetworkName, sScriptPath, sSubnet, iHubPort),
+            config, sProjectUuid, sNetworkName, sScriptPath, sSubnet),
         "could not start the network proxy",
     )
     try:
@@ -408,6 +466,66 @@ def fdictReconcileProjectEgress():
     return dictOutcomes
 
 
+def _flistReadProxyCommand(sProjectUuid):
+    """Return the sidecar's argv, or None when there is no sidecar."""
+    processResult = _fprocessDocker(
+        ["inspect", "--format", "{{json .Config.Cmd}}", fsProxyName(sProjectUuid)])
+    if processResult.returncode != 0:
+        return None
+    try:
+        listCommand = json.loads(processResult.stdout.strip() or "null")
+    except ValueError:
+        raise EgressSetupError(
+            f"could not read the network proxy's command: {processResult.stdout!r}")
+    return [str(sArgument) for sArgument in (listCommand or [])]
+
+
+def _fiFixedHubPortOf(listCommand):
+    """Return the port an older sidecar's ``--hub-gateway`` names, or 0."""
+    if "--hub-gateway" not in listCommand:
+        return 0
+    iIndex = listCommand.index("--hub-gateway") + 1
+    sGateway = listCommand[iIndex] if iIndex < len(listCommand) else ""
+    return egressProxy.fiParseHubPortText(sGateway.rpartition(":")[2])
+
+
+def fdictReadHubPin(sProjectUuid):
+    """Return ``{sPin, iPinnedHubPort}``: which hub port the sidecar serves.
+
+    ``sPin`` is ``pinned`` for a sidecar that reads its port from the
+    file, ``fixed`` for an older one whose argv fixed it at launch, and
+    ``absent`` when there is no sidecar (``iPinnedHubPort`` 0). A port
+    of 0 means the sidecar serves no hub.
+    """
+    listCommand = _flistReadProxyCommand(sProjectUuid)
+    if listCommand is None:
+        return {"sPin": S_PIN_ABSENT, "iPinnedHubPort": 0}
+    if "--hub-port-file" in listCommand:
+        return {"sPin": S_PIN_PINNED, "iPinnedHubPort": _fiReadHubPortFile(sProjectUuid)}
+    return {"sPin": S_PIN_FIXED, "iPinnedHubPort": _fiFixedHubPortOf(listCommand)}
+
+
+def fsPinProjectEgressHub(sProjectUuid, iHubPort):
+    """Point the project's sidecar at hub ``iHubPort``; return the pin kind.
+
+    Called by the hub that connects to the container, BEFORE it writes
+    the agent's session file, so the agent is never told a hub the
+    proxy refuses. An unchanged pin is not rewritten: some daemons'
+    file sharing shows a replaced file as missing for a moment. A
+    sidecar that cannot be re-pinned answers ``fixed`` and is left
+    alone; the dashboard's Network row says what it serves.
+    """
+    if not isinstance(iHubPort, int) or not (
+            egressProxy.I_MINIMUM_HUB_PORT <= iHubPort <= egressProxy.I_MAXIMUM_HUB_PORT):
+        raise EgressSetupError(f"hub port {iHubPort!r} is not a port a hub listens on")
+    dictPin = fdictReadHubPin(sProjectUuid)
+    if dictPin["sPin"] == S_PIN_PINNED and dictPin["iPinnedHubPort"] != iHubPort:
+        _fnWriteHubPort(sProjectUuid, iHubPort)
+        logger.info("network proxy of %s now serves hub port %d (was %d)",
+                    sProjectUuid, iHubPort, dictPin["iPinnedHubPort"])
+    return dictPin["sPin"]
+
+
 def fsProxyState(sProjectUuid):
     """Return running, down or absent for the project's proxy sidecar."""
     processResult = _fprocessDocker(
@@ -436,10 +554,23 @@ def flistReadRefusedDestinations(sProjectUuid, iLimit=20):
 
 
 def fdictDescribeProjectEgress(sProjectUuid):
-    """Return ``{sProxyState, listRefused}`` for the dashboard's Network row."""
+    """Return the Network row's proxy facts: state, hub pin, refusals.
+
+    ``{sProxyState, sPin, iPinnedHubPort, listRefused}``. A refusal of
+    the hub's host carries ``bAllowable`` false: the host is never
+    judged by the allowlist, so allowing it would change nothing. A
+    refusal of the port the sidecar serves NOW is dropped, because it
+    was refused under an earlier pin and would be allowed today.
+    """
     sState = fsProxyState(sProjectUuid)
-    return {
-        "sProxyState": sState,
-        "listRefused": (flistReadRefusedDestinations(sProjectUuid)
-                        if sState != S_PROXY_STATE_ABSENT else []),
-    }
+    if sState == S_PROXY_STATE_ABSENT:
+        return {"sProxyState": sState, "sPin": S_PIN_ABSENT,
+                "iPinnedHubPort": 0, "listRefused": []}
+    dictPin = fdictReadHubPin(sProjectUuid)
+    listRefused = []
+    for dictEntry in flistReadRefusedDestinations(sProjectUuid):
+        bHubHost = dictEntry["sHost"] == S_HUB_HOST
+        if bHubHost and dictEntry["iPort"] == dictPin["iPinnedHubPort"]:
+            continue
+        listRefused.append({**dictEntry, "bAllowable": not bHubHost})
+    return {"sProxyState": sState, **dictPin, "listRefused": listRefused}

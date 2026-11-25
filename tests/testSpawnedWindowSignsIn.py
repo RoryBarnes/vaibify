@@ -149,6 +149,10 @@ def testAChildThatNeverBecomesReadyIsStoppedAndRefused(monkeypatch):
     assert response.status_code == 502
     child.terminate.assert_called_once()
     assert app.state.listSpawnedChildren == []
+    assert response.json()["detail"] == (
+        "The new vaibify window was not ready after 240 seconds, so it "
+        "was stopped. What it printed is in "
+        f"{sessionRoutes._fsSpawnedHubLogPath(8055)}.")
 
 
 def testAChildThatWillNotMintACapabilityIsStoppedAndRefused(monkeypatch):
@@ -157,6 +161,58 @@ def testAChildThatWillNotMintACapabilityIsStoppedAndRefused(monkeypatch):
     assert response.status_code == 502
     child.terminate.assert_called_once()
     assert app.state.listSpawnedChildren == []
+    assert "issued no sign-in link" in response.json()["detail"]
+
+
+@pytest.mark.falsification
+def testARefusalSaysTheChildExitedOnItsOwnAndWhereItsOutputIs():
+    """Kills: reporting a child that exited as one that was stopped.
+
+    The status is read before the stop is sent, so an exit of the
+    child's own is told apart from this hub's terminate.
+    """
+    childExited = MagicMock()
+    childExited.poll.return_value = 3
+    assert sessionRoutes._fsDescribeSpawnFailure(childExited, 8055, False) == (
+        "The new vaibify window exited with status 3 before it was "
+        "ready. What it printed is in "
+        f"{sessionRoutes._fsSpawnedHubLogPath(8055)}.")
+
+
+@pytest.mark.falsification
+def testTheSpawnedHubImportsItsParentsVaibifyNotTheWorkingDirectorys(
+    monkeypatch, tmp_path,
+):
+    """Kills: launching the child from the parent's working directory.
+
+    ``-m`` puts the working directory first on the child's import path,
+    so a parent started inside a checkout of another version spawned a
+    child running THAT version. Here the working directory holds a
+    shadowing ``vaibify`` package, the launch's real arguments run a
+    probe that prints which ``vaibify`` it imported, and the answer is
+    read back from the log a refusal names.
+    """
+    import sys
+    import vaibify
+    pathShadow = tmp_path / "vaibify"
+    pathShadow.mkdir()
+    (pathShadow / "__init__.py").write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    fprocessRealPopen = subprocess.Popen
+
+    def fprocessRunTheProbe(listArgv, **dictKeywords):
+        assert listArgv[1:3] == ["-m", "vaibify"]
+        return fprocessRealPopen(
+            [sys.executable, "-c", "import vaibify; print(vaibify.__file__)"],
+            **dictKeywords)
+
+    with patch.object(subprocess, "Popen", fprocessRunTheProbe):
+        processProbe = sessionRoutes._fprocessLaunchDetachedHub(I_TEST_PORT)
+    assert processProbe.wait(timeout=60) == 0
+    with open(sessionRoutes._fsSpawnedHubLogPath(I_TEST_PORT),
+              encoding="utf-8") as fileLog:
+        sImported = fileLog.read().split()[-1]
+    assert os.path.realpath(sImported) == os.path.realpath(vaibify.__file__)
 
 
 def testTheReadinessWaitStopsWhenTheChildHasAlreadyExited(monkeypatch):

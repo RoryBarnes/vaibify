@@ -90,3 +90,80 @@ def testTheProxyAuthorityIsReadFromEitherSpelling(modCli, monkeypatch):
     assert modCli.ftProxyAuthority() is None
     monkeypatch.setenv("http_proxy", "http://10.9.8.7:9999")
     assert modCli.ftProxyAuthority() == ("10.9.8.7", 9999)
+
+
+S_PROXY_REFUSAL_BODY = (
+    b"vaibify-egress: only the hub's port is served on the host: this "
+    b"container's hub is port 8051, not 8053\n")
+DICT_SESSION = {
+    "VAIBIFY_HOST_URL": "http://host.docker.internal:8053",
+    "VAIBIFY_CONTAINER_ID": "c7f3a90b21de",
+    "VAIBIFY_SESSION_TOKEN": "agent-token",
+}
+
+
+@pytest.mark.falsification
+def testAProxyRefusingTheHubTunnelIsNotCalledALostConnection(modCli, monkeypatch, capsys):
+    """An agent sent a researcher to reconnect when the proxy served another hub.
+
+    Kills: reporting a proxy refusal of the hub tunnel as an unreachable host.
+    """
+    monkeypatch.setenv("HTTP_PROXY", "http://172.30.0.2:8888")
+    _fnFakeConnections(monkeypatch, modCli,
+                       b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n"
+                       + S_PROXY_REFUSAL_BODY)
+    with pytest.raises(SystemExit) as exitRaised:
+        modCli.fiRunWebsocket(DICT_SESSION, {"sAction": "runAll"}, False)
+    assert exitRaised.value.code == 6
+    sError = capsys.readouterr().err
+    assert "this container's hub is port 8051, not 8053" in sError
+    assert "reconnecting from the dashboard will not fix it" in sError
+
+
+def _ferrorHttp(modCli, iCode, baBody):
+    import io
+    return modCli.urllib.error.HTTPError(
+        "http://host.docker.internal:8053/api/x", iCode, "refused", {}, io.BytesIO(baBody))
+
+
+@pytest.mark.falsification
+def testAProxyRefusingAnHttpCallExitsSixWithItsReason(modCli, capsys):
+    """Kills: printing a proxy refusal as if the hub had answered the call."""
+    with pytest.raises(SystemExit) as exitRaised:
+        modCli._fiHandleHttpError(_ferrorHttp(modCli, 403, S_PROXY_REFUSAL_BODY), False)
+    assert exitRaised.value.code == 6
+    sError = capsys.readouterr().err
+    assert "http://host.docker.internal:8053/api/x" in sError
+    assert "this container's hub is port 8051, not 8053" in sError
+
+
+def testTheHubsOwnRefusalIsStillTheHubsAnswer(modCli, capsys):
+    assert modCli._fiHandleHttpError(
+        _ferrorHttp(modCli, 403, b'{"detail": "vaibify-egress: not from the proxy"}'),
+        False) == 1
+    assert "not from the proxy" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("baBody, sExpected", [
+    (S_PROXY_REFUSAL_BODY,
+     "only the hub's port is served on the host: this container's hub is "
+     "port 8051, not 8053"),
+    (b"vaibify-egress: \n", "no reason given"),
+    (b'{"detail": "denied"}', ""),
+    (b"", ""),
+    (None, ""),
+])
+def testOnlyTheProxysOwnBodyIsReadAsItsRefusal(modCli, baBody, sExpected):
+    assert modCli.fsEgressRefusalReason(baBody) == sExpected
+
+
+@pytest.mark.falsification
+def testAProxyRefusalHasItsOwnExitCode(modCli, capsys):
+    """Code 6, as the in-container guidance says; 4 tells an agent to reconnect.
+
+    Kills: a proxy refusal exiting with the unreachable-host code.
+    """
+    with pytest.raises(SystemExit) as exitRaised:
+        modCli.fnFailProxyRefused("http://host.docker.internal:8053", "a reason")
+    assert exitRaised.value.code == 6
+    assert "(a reason)" in capsys.readouterr().err

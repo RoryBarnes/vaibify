@@ -301,10 +301,13 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
             "vaibify itself as a detached host process. Opaque only "
             "because sys.executable is not a constant the scan can "
             "resolve. It spawns the hub, never a container command, and "
-            "the agent lane is refused at the route."
+            "the agent lane is refused at the route. Its working "
+            "directory is the folder this vaibify was imported from, never "
+            "a caller's, and its output goes to a private log file."
         ),
         "listSupportingSymbols": [
             "gui/routes/sessionRoutes.py::_fprocessLaunchDetachedHub",
+            "gui/routes/sessionRoutes.py::fsLocateOwnPackageRoot",
             "gui/routes/sessionRoutes.py::S_SUPPRESS_BROWSER_ENV",
             "gui/routes/sessionRoutes.py::_fnRejectContainerAgentCallers",
         ],
@@ -407,8 +410,13 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     "gui/gitStatus.py::fsRunGit": "a5c585cc9355af34",
     "gui/routes/sessionRoutes.py::S_SUPPRESS_BROWSER_ENV":
         "b0122d40b40d22c0",
+    # Re-read 2026-11-25 and the ruling SURVIVES: the launch gained a
+    # fixed working directory (the folder vaibify was imported from) and
+    # a private log file for its output; the argv is unchanged.
     "gui/routes/sessionRoutes.py::_fprocessLaunchDetachedHub":
-        "e02a6840322d9b13",
+        "7a3e86a3abc370bd",
+    "gui/routes/sessionRoutes.py::fsLocateOwnPackageRoot":
+        "c700b391d944d760",
     "gui/routes/sessionRoutes.py::_fnRejectContainerAgentCallers":
         "7c0e85b8e21ddc5e",
     "gui/syncDispatcher.py::_S_OVERLEAF_HOST": "65054ecdea58cd8f",
