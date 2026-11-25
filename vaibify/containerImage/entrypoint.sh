@@ -1093,10 +1093,9 @@ it yourself — the hub refuses it from this container regardless.
 **This file is rewritten every time the container starts.** Edits to it
 are lost; put lasting instructions in the project context file.
 
-**You are reading vaibify's container guide**, `/workspace/CLAUDE.md`
-(`/workspace/AGENTS.md` and `/workspace/GEMINI.md` point to it). When
-the researcher asks which instructions you are working under, name this
-file along with their own.
+**This is vaibify's container guide**, `/workspace/CLAUDE.md` (also
+`AGENTS.md` and `GEMINI.md`): asked which instructions you work under,
+name it along with the researcher's own.
 
 ## How to refer to steps
 
@@ -1301,33 +1300,24 @@ make the target readable instead.
 
 ## Long-running work
 
-Everything you start from a terminal belongs to that terminal's
-session: a foreground command, a job sent to the background with `&` or
-`nohup`, and your harness's own background tasks. When the terminal
-closes, vaibify stops every process in its session. A terminal closes
-when the researcher closes its browser tab or releases the container,
-when their browser session reaches its maximum lifetime, and when the
-hub shuts down. `nohup` does not protect a job from this. Pipeline steps
-are run by the hub, not by a terminal, and keep running when a tab
-closes.
-
-Before you start anything you expect to run for more than about an hour:
+Everything you start from a terminal, including jobs put in the
+background with `&` or `nohup` and your harness's background tasks,
+stops when that terminal closes: when the researcher closes its tab or
+releases the container, when their browser session reaches its maximum
+lifetime, or when the hub shuts down. Pipeline steps run in the hub and
+survive all of these. Before starting anything you expect to take more
+than about an hour:
 
 - If it belongs in the pipeline, make it a step (the
-  **create-pipeline-step** skill) and run it with `vaibify-do run-step`,
-  so it outlives the tab.
-- Otherwise, tell the researcher before you start: roughly how long it
-  will take, that it stops if this terminal closes, that the dashboard
-  tab holding this terminal must stay open until it finishes, and that
-  the **Session lifetime** setting under the toolbar gear can be set to
-  **Never** while it runs.
-- Either way, have the job write its progress to disk as it goes (a
-  checkpoint, a log of every evaluation), so a run that is stopped can
+  **create-pipeline-step** skill) and run it with `vaibify-do run-step`.
+- Otherwise tell the researcher first how long it will take, that it
+  stops if the tab holding this terminal closes, and that **Session
+  lifetime** under the toolbar gear can be set to **Never** meanwhile.
+- Either way, write progress to disk as it runs, so a stopped run can
   resume instead of starting over.
 
-Do not move a job out of the terminal's session with `setsid` or
-similar: vaibify can then neither see it nor stop it, and can no longer
-tell the researcher whether the container is quiet.
+Never move a job out of the terminal's session with `setsid`: vaibify
+could then neither see nor stop it.
 
 ## Creating New Pipeline Steps
 
