@@ -40172,8 +40172,8 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/browser/testTheNetworkRowShowsOnlyWhatNeedsAttention.py::testANormalSealedOrIsolatedProjectShowsNoRow',
         # Drawing the row for every readiness answer that carries a network.
         source='vaibify/gui/static/scriptContainerManager.js',
-        old='        if (!_fbNetworkNeedsAttention(dictNetwork)) {\n',
-        new='        if (!dictNetwork) {\n',
+        old='        } else if (!_fbNetworkNeedsAttention(dictNetwork) ||\n',
+        new='        } else if (!dictNetwork ||\n',
     ),
     Falsification(
         nodeid='tests/testReachApprovalCommandLine.py::testWithoutATerminalAnUnapprovedConfigurationStopsAndNamesTheFlag',
@@ -40944,5 +40944,171 @@ LIST_FALSIFICATIONS = [
             '    session.fnResize(iRows, iColumns)\n'
         ),
         new='    dictPendingResize.clear()\n',
+    ),
+    # --- 2026-11-24: a token replaces the stored one only after its
+    # service accepted it; the reviewer's sequences, the input refusal,
+    # the never-raise rule, the known-secret scrub, and slot-only GitHub
+    # clearing ---
+    Falsification(
+        nodeid=(
+            'tests/testCredentialReplacement.py::'
+            'testAFailedCheckNeverRemovesATokenAnotherProjectStoredMeanwhile'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # the old cleanup lane: a failed check deletes the slot
+        old=(
+            '    if sClass:\n'
+            '        return _fdictSetupFailure(\n'
+            '            sService, sClass, sZenodoInstance,\n'
+            '            failures.fsScrubKnownSecret(sDetail, sToken),\n'
+        ),
+        new=(
+            '    if sClass:\n'
+            '        credentialReplacement.fnDeleteSlotUnderLock(sSlot)\n'
+            '        return _fdictSetupFailure(\n'
+            '            sService, sClass, sZenodoInstance,\n'
+            '            failures.fsScrubKnownSecret(sDetail, sToken),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCredentialReplacement.py::'
+            'testACheckThatPassesAfterTheSlotMovedIsRefusedNotWritten'
+        ),
+        source='vaibify/config/credentialReplacement.py',
+        # the commit writes whatever the slot holds now
+        old='        if fsFingerprintSlot(sSlot) != sFingerprintBefore:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCredentialReplacement.py::'
+            'testAMalformedProjectIdIsRefusedBeforeAnyCheckOrWrite'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # the project ID's shape is no longer checked first
+        old=(
+            '    if sService == "overleaf" and not '
+            'overleafAuth.fbIsOverleafProjectId(\n'
+        ),
+        new='    if False and not overleafAuth.fbIsOverleafProjectId(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCredentialReplacement.py::'
+            'testACheckThatRaisesIsReportedAndNeverRaisedIntoTheCarrier'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # the check's exception escapes into the carrier
+        old=(
+            '    except Exception as error:  # noqa: BLE001 -- nothing was '
+            'written; reported, never raised\n'
+        ),
+        new=(
+            '    except ZeroDivisionError as error:  # noqa: BLE001 -- nothing '
+            'was written; reported, never raised\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCredentialReplacement.py::'
+            'testTheEnteredTokenNeverComesBackInTheAnswerOrTheLog'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # the service's echo reaches the page unscrubbed
+        old='            failures.fsScrubKnownSecret(sDetail, sToken),\n',
+        new='            sDetail,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCredentialFailureClasses.py::'
+            'testClearingOneRepositorysSlotLeavesTheGhLoginInPlace'
+        ),
+        source='vaibify/reproducibility/githubAuth.py',
+        # naming a slot logs gh out as well
+        old='    if sKeyringSlot:\n        bUpstream, sUpstreamMessage = (\n',
+        new='    if False:\n        bUpstream, sUpstreamMessage = (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCredentialFailureClasses.py::'
+            'testAZenodoCandidateIsAcceptedOnlyWhenZenodoAcceptsIt'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        # every probe answer counts as acceptance
+        old=(
+            '    dictProbe = fdictProbeToken(sService, sCandidateToken)\n'
+            '    if dictProbe["sOutcome"] == S_PROBE_ACCEPTED:\n'
+        ),
+        new=(
+            '    dictProbe = fdictProbeToken(sService, sCandidateToken)\n'
+            '    if True:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCredentialFailureClasses.py::'
+            'testAnOverleafCandidateReachesGitThroughAFileThatIsGoneAfterwards'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # whatever git answered, the candidate is reported accepted
+        old='    if bAccepted:\n        return ("", "")\n',
+        new='    if True:\n        return ("", "")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testATokenStoreNeverDeadEnds.py::'
+            'testAFailedStoreLeavesTheReviewAWayForwardAndSaysWhy'
+        ),
+        source='vaibify/gui/static/scriptRemoteBindings.js',
+        # the old one-prompt cap: no token action after a failed store
+        old='            sTokenAction: _fsTokenActionOf(listActions),\n',
+        new=(
+            '            sTokenAction: dictDialog.sLastStoreFailure ? "" : '
+            '_fsTokenActionOf(listActions),\n'
+        ),
+    ),
+    # --- 2026-11-24: a dismissed notice banner hides what was read,
+    # never what comes next, and hiding a binding notice reaches no
+    # server ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testNoticeBannersExplainAndClear.py::'
+            'testTheNetworkRowReturnsWhenTheServerSaysSomethingNew'
+        ),
+        # a dismissal that holds whatever the server says next
+        source='vaibify/gui/static/scriptNoticeBanners.js',
+        old='                dictDismissal.sContentKey === sContentKey) {\n',
+        new='                true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testNoticeBannersExplainAndClear.py::'
+            'testADismissedRowReturnsOnTheNextOpen'
+        ),
+        # a dismissal that outlives the view it was made in
+        source='vaibify/gui/static/scriptNoticeBanners.js',
+        old=(
+            '        if (dictDismissal.iViewGeneration === '
+            'VaibifyApp.fiGetViewGeneration() &&\n'
+        ),
+        new='        if (true &&\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testNoticeBannersExplainAndClear.py::'
+            'testHidingABindingNoticeSendsNothingAndTheActionIsStillRefused'
+        ),
+        # a dismissal that reaches the server (here, by asking again)
+        source='vaibify/gui/static/scriptRemoteBindings.js',
+        old=(
+            '            _S_BANNER_ID, sContentKey, function () {\n'
+            '                elBanner.style.display = "none";\n'
+        ),
+        new=(
+            '            _S_BANNER_ID, sContentKey, function () {\n'
+            '                fnRefresh(_sContainerId);\n'
+            '                elBanner.style.display = "none";\n'
+        ),
     ),
 ]

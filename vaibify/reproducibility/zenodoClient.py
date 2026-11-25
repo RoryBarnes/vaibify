@@ -178,6 +178,10 @@ __all__ = [
     "fsReadPlainMd5",
     "fdictRevokeZenodoToken",
     "fdictProbeToken",
+    "fsClassifyZenodoFailure",
+    "ftValidateZenodoCandidate",
+    "fsProbeFailureClass",
+    "fdictDescribeZenodoFailure",
     "S_PROBE_ACCEPTED",
     "S_PROBE_REJECTED",
     "S_PROBE_UNDETERMINED",
@@ -648,11 +652,20 @@ def fdictProbeToken(sService, sToken):
     host could not check is retried, never thrown away. The titles are
     what the dashboard shows the researcher so they can recognise whose
     token this is before confirming it.
+
+    A failure also carries ``sClass``, the credential failure class
+    (:func:`fsClassifyZenodoFailure`), which separates a rate limit and
+    a silent service from a rejection. Zenodo answers a 403 to a token
+    it does not know exactly as it answers no token at all (measured
+    against sandbox.zenodo.org, 2026-11-24), so a rejection cannot say
+    whether the token is wrong or merely lacks the deposit scopes.
     """
+    from vaibify.config import credentialFailures
     _fnValidateService(sService)
     if not sToken:
         return {
             "sOutcome": S_PROBE_REJECTED, "sDetail": "no token",
+            "sClass": credentialFailures.S_CLASS_TOKEN_MISSING,
             "listDepositTitles": [],
         }
     try:
@@ -663,18 +676,151 @@ def fdictProbeToken(sService, sToken):
     except ZenodoAuthError as error:
         return {
             "sOutcome": S_PROBE_REJECTED, "sDetail": str(error),
+            "sClass": fsClassifyZenodoFailure(error),
             "listDepositTitles": [],
         }
     except (ZenodoError, requests.RequestException) as error:
         return {
             "sOutcome": S_PROBE_UNDETERMINED,
             "sDetail": f"{type(error).__name__}: {error}",
+            "sClass": fsClassifyZenodoFailure(error),
             "listDepositTitles": [],
         }
     return {
-        "sOutcome": S_PROBE_ACCEPTED, "sDetail": "",
+        "sOutcome": S_PROBE_ACCEPTED, "sDetail": "", "sClass": "",
         "listDepositTitles": _flistDepositTitles(listDeposits),
     }
+
+
+def ftValidateZenodoCandidate(sService, sCandidateToken):
+    """Ask a Zenodo instance whether a token NOT yet stored works.
+
+    Returns ``(sClass, sDetail)`` with ``sClass`` '' when it does.
+    ``sService`` is the ZenodoClient key (``sandbox`` or ``zenodo``).
+    """
+    _fnValidateService(sService)
+    dictProbe = fdictProbeToken(sService, sCandidateToken)
+    if dictProbe["sOutcome"] == S_PROBE_ACCEPTED:
+        return ("", "")
+    return (fsProbeFailureClass(dictProbe), dictProbe.get("sDetail", ""))
+
+
+def fsProbeFailureClass(dictProbe):
+    """Return a failed probe's credential failure class.
+
+    A probe answer from before the class existed (a stand-in, a cached
+    answer) is read by its outcome: rejected is the token's, anything
+    else is no answer.
+    """
+    from vaibify.config import credentialFailures
+    if dictProbe.get("sClass"):
+        return dictProbe["sClass"]
+    if dictProbe.get("sOutcome") == S_PROBE_REJECTED:
+        return credentialFailures.S_CLASS_TOKEN_REJECTED
+    return credentialFailures.S_CLASS_NO_ANSWER
+
+
+def fsClassifyZenodoFailure(error):
+    """Return the credential failure class a Zenodo exception names.
+
+    Read off the exception's CLASS, which :func:`_fnCheckResponse` chose
+    from the status code, never off its message. A 404 on a record the
+    token could otherwise reach is access, not the token; everything the
+    service did not answer -- a timeout, a 5xx, a refused redirect, a
+    connection that never opened -- is no answer.
+    """
+    from vaibify.config import credentialFailures
+    if isinstance(error, ZenodoAuthError):
+        return credentialFailures.S_CLASS_TOKEN_REJECTED
+    if isinstance(error, ZenodoNotFoundError):
+        return credentialFailures.S_CLASS_ACCESS_DENIED
+    if isinstance(error, ZenodoRateLimitError):
+        return credentialFailures.S_CLASS_RATE_LIMITED
+    return credentialFailures.S_CLASS_NO_ANSWER
+
+
+def _fdictZenodoSentences(sService):
+    """Return the fixed sentence for each class a Zenodo check can end in."""
+    from vaibify.config import credentialFailures as failures
+    _fnValidateService(sService)
+    sHost = urlsplit(_SERVICES[sService]).netloc
+    sOther = urlsplit(
+        _SERVICES["sandbox" if sService == "zenodo" else "zenodo"],
+    ).netloc
+    sWhereToMakeOne = (
+        f"Create one on {sHost} (Account, Applications, Personal access "
+        "tokens) with the deposit:write and deposit:actions scopes."
+    )
+    return {
+        failures.S_CLASS_TOKEN_MISSING: (
+            f"No {sHost} token is stored on this computer for this "
+            f"project. Store one. {sWhereToMakeOne}"
+        ),
+        failures.S_CLASS_KEYRING_UNREADABLE: (
+            "vaibify could not read this computer's keychain, so whether "
+            f"a {sHost} token is stored is unknown. Unlock the keychain, "
+            "or allow vaibify to use it, and try again."
+        ),
+        failures.S_CLASS_KEYRING_UNWRITABLE: (
+            f"This computer's keychain did not confirm storing the {sHost} "
+            "token, so it is not treated as stored. Unlock the keychain "
+            "and try again."
+        ),
+        failures.S_CLASS_TOKEN_REJECTED: (
+            f"{sHost} rejected the token. Check that the token was "
+            f"created on {sHost} — not {sOther}; the two instances "
+            "have separate accounts and tokens, and the instance "
+            "selector above chooses which one is tested — and that "
+            "it has the deposit:write and deposit:actions scopes. "
+            "Zenodo answers a token it does not know and one without "
+            "those scopes the same way, so either may be the cause."
+        ),
+        failures.S_CLASS_ACCESS_DENIED: (
+            f"{sHost} accepts the token, but it cannot reach this record. "
+            "The record may belong to another Zenodo account or no longer "
+            "exist; if it belongs to another account, store that "
+            "account's token."
+        ),
+        failures.S_CLASS_RATE_LIMITED: (
+            f"{sHost} is limiting requests from this computer. Wait a few "
+            "minutes and try again; this is not a problem with the token."
+        ),
+        failures.S_CLASS_SERVICE_REFUSED: (
+            f"{sHost} refused the request without rejecting the token. "
+            "Try again; if it persists, check the record on the site."
+        ),
+        failures.S_CLASS_NO_ANSWER: (
+            f"This computer could not get an answer from {sHost} — a "
+            "network or service problem, not a token problem. Nothing "
+            "about the token was decided; try again."
+        ),
+        failures.S_CLASS_INPUT_INVALID: (
+            "That is not a Zenodo instance vaibify knows; choose sandbox "
+            "or production."
+        ),
+        failures.S_CLASS_SLOT_CHANGED: (
+            f"This project's {sHost} token was changed by another window "
+            "or command while this one was being checked, so this one was "
+            "not stored. Check again to replace the newer one."
+        ),
+    }
+
+
+def fdictDescribeZenodoFailure(sClass, sService, sDetail=""):
+    """Return ``{sClass, sMessage, listActions}`` for a Zenodo failure.
+
+    Only a failure to get an answer carries its detail, which names the
+    network error. Every other detail is a Zenodo response body, and a
+    body can echo what was sent to it; the fixed sentence says what to
+    do without it (``testARejectionNamesTheInstanceThatRejectedAndNotTheResponse``).
+    """
+    from vaibify.config import credentialFailures
+    sKeptDetail = (
+        sDetail if sClass == credentialFailures.S_CLASS_NO_ANSWER else ""
+    )
+    return credentialFailures.fdictDescribeFailure(
+        sClass, _fdictZenodoSentences(sService)[sClass], sKeptDetail,
+    )
 
 
 def _flistDepositTitles(listDeposits):
@@ -1500,10 +1646,10 @@ def fdictRevokeZenodoToken(sService, sProjectUuid):
 
 
 def _ftClearLocalZenodoCredential(sSlot):
-    """Delete a single Zenodo keyring slot if it exists."""
-    from vaibify.config.secretManager import fnDeleteSecret
+    """Delete one Zenodo keyring slot, under the slot's host-wide lock."""
+    from vaibify.config.credentialReplacement import fnDeleteSlotUnderLock
     try:
-        fnDeleteSecret(sSlot, "keyring")
+        fnDeleteSlotUnderLock(sSlot)
     except Exception as errorDelete:
         return (
             False,

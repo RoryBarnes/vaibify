@@ -94,12 +94,18 @@ asks for what that service needs:
   personal access token from that instance with the `deposit:write`
   and `deposit:actions` scopes. Sandbox and production are separate
   sites with separate accounts and tokens.
-- **GitHub**: nothing; the dialog does not open for GitHub. Vaibify
-  uses a token stored in the host keyring slot
+- **GitHub**: nothing; vaibify stores no GitHub token of its own, and
+  its GitHub settings item explains this instead of opening the
+  dialog. Vaibify uses a token stored in the host keyring slot
   `github_token:<owner>/<repo>` if there is one, and otherwise your
-  host's `gh auth` login. When neither resolves, or the project
-  repository cannot reach GitHub, the dashboard says "GitHub uses gh
-  auth. Run 'gh auth login' on your host machine."
+  host's `gh auth` login. When neither resolves, the dashboard says to
+  run `gh auth login` in a terminal on this computer. A refusal says
+  which credential it is about: when the repository's own keyring
+  token is the one in use and GitHub rejects it, the refusal names the
+  slot and the command that removes only it,
+  `vaibify credential delete github --keyring-slot <slot>`, which
+  leaves your `gh` login in place. A rate limit is said to be one, not
+  a credential problem.
 
 ### Confirming where a token may be spent
 
@@ -154,9 +160,19 @@ is recorded:
   count and latest commit. Overleaf's Git access gives no title, so the
   review claims none, and links to the project instead.
 
-With no token stored for the site, the review offers to store one and
-then checks again. Evidence that could not be fetched reads "Couldn't
-check", in neutral gray, and **Confirm** stays off until **Retry** succeeds.
+A check that fails says what failed and what to do, in the hub's own
+sentence and in neutral gray, and **Confirm** stays off until a check
+succeeds. The hub tells apart no token stored (the review offers
+**Store your token**), a token the service rejected (**Replace your
+token**), a token that works but cannot reach the record or project,
+a rate limit, a keychain it could not read, and no answer at all
+(**Retry**). Zenodo answers a token it does not know and one without
+the deposit scopes alike, so its sentence names both. **Store** and
+**Replace** open the same token box as **Connect**, as often as
+needed: a store that fails keeps its reason in the box and, once you
+close it, in the review. For Overleaf the box shows the project under
+review, which it does not change, and says that one token serves every
+project on this computer.
 
 **On the host**, `vaibify bindings -p <project>` prints the same review
 and the exact `vaibify do confirm-remote-binding ... sRecordKind=...
@@ -190,11 +206,15 @@ each entry is confirmed again the first time an action needs it. Both refuse wit
 confirmation is never moved, and neither is reachable from inside the
 container.
 
-**Connect** stores the token and immediately tests it against the
-service. If the test fails, vaibify restores the token you had before
-(or removes the new one if there was none), and the message says which
-happened. A connection that cannot be made because the container runs
-with network isolation is refused at once rather than after a timeout.
+**Connect** checks the token with its service first and stores it only
+if the check passes, so a token that fails, or a check that cannot
+finish, leaves the token you had before exactly as it was; the reason
+stays in the dialog beside the field. If another project or window
+changes the same token while yours is being checked, yours is not
+stored and the dialog says so, rather than overwriting a token another
+project has just reported as connected. A connection that cannot be
+made because the container runs with network isolation is refused at
+once rather than after a timeout.
 
 ### Zenodo tokens moved out of an older container
 
@@ -456,7 +476,9 @@ that may have been copied elsewhere.
 
 A Zenodo token belongs to one project, so `vaibify revoke zenodo` and
 `vaibify credential delete zenodo` take `--project` (or run inside the
-project directory) as well as `--instance`.
+project directory) as well as `--instance`. For GitHub, `--keyring-slot`
+clears only that repository's stored token and leaves your `gh` login
+in place; without it, the command logs `gh` out.
 
 ## Working on a remote machine
 

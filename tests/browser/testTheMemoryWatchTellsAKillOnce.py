@@ -184,6 +184,21 @@ def testTheBannerCarriesTheServersSentenceVerbatim(pageDashboard, serverHub):
     assert pageDashboard.listPageErrors == []
 
 
+def testTheBannerSaysWhyItIsShowing(pageDashboard, serverHub):
+    dictHolder = {"dictAnswer": _fdictAnswer(listIncidents=[_fdictKill()])}
+    listRequests = _flistStubMemory(pageDashboard, dictHolder)
+    _fnEnterTheBlankProject(pageDashboard, serverHub)
+    _fnWaitForRequests(pageDashboard, listRequests, 1)
+    sHelp = (f'.memory-incident-banner[data-incident-id="oomKill:{S_CONTAINER_ID}:1"]'
+             " .notice-banner-help")
+    pageDashboard.wait_for_selector(sHelp, timeout=10000)
+    assert "more memory than the container's limit" in (
+        pageDashboard.get_attribute(sHelp, "title"))
+    pageDashboard.click(sHelp)
+    pageDashboard.wait_for_selector("#popupHelp", state="visible", timeout=5000)
+    assert pageDashboard.listPageErrors == []
+
+
 @pytest.mark.falsification
 def testAKillIsToastedOnceAcrossPollsAndAReload(pageDashboard, serverHub):
     """Kills: deciding to toast per poll instead of per incident id."""

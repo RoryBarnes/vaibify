@@ -375,6 +375,10 @@ T_REDIRECTED_STATE_STORES = (
         "pendingConversions",
     ),
     StateStoreRedirect("vaibify.gui.stateWriteLock", "S_STATE_LOCK_DIRECTORY", "stateLocks"),
+    StateStoreRedirect(
+        "vaibify.config.credentialReplacement", "_S_CREDENTIAL_LOCK_DIRECTORY",
+        "credentialLocks",
+    ),
     StateStoreRedirect("vaibify.config.hubPortRegistry", "_S_VAIBIFY_DIRECTORY", ""),
     StateStoreRedirect("vaibify.config.sessionRegistry", "_S_SESSION_DIRECTORY", "sessions"),
     StateStoreRedirect("vaibify.config.keepAliveManager", "_S_PID_DIRECTORY", "caffeinate"),

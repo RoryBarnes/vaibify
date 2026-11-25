@@ -98,6 +98,8 @@ var VaibifyZenodoTokens = (function () {
             elBanner.textContent = "";
         });
         elHeader.appendChild(elHeading);
+        elHeader.appendChild(
+            VaibifyNoticeBanners.felementBuildHelpButton(_S_BANNER_ID));
         elHeader.appendChild(elDismiss);
         return elHeader;
     }

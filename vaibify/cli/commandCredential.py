@@ -74,6 +74,13 @@ def fnCredentialCommand():
 def fnSetCredentialCommand(sService, sProjectName, sProjectId,
                            sZenodoInstance, iPort):
     """Store a token for SERVICE; asked for at a hidden prompt."""
+    if sService.lower() == "github":
+        click.echo(
+            "vaibify stores no GitHub token: it pushes with your gh login. "
+            "Run 'gh auth login' in a terminal on this computer.",
+            err=True,
+        )
+        sys.exit(2)
     sToken = click.prompt("%s token" % sService, hide_input=True)
     try:
         iExitCode = _fiSendUnderLease(
@@ -106,7 +113,9 @@ def fnCredentialStatusCommand(sProjectName, iPort):
 @click.argument("sService", metavar="SERVICE", cls=DeclaredNameArgument,
                 type=click.Choice(_LIST_VALID_SERVICES, case_sensitive=False))
 @click.option("--keyring-slot", "sKeyringSlot", default="",
-              help="GitHub only: per-repo keyring slot to clear.")
+              help="GitHub only: clear this per-repository keyring slot "
+                   "and leave your gh login in place. Without it, "
+                   "'delete github' logs out of gh.")
 @click.option("--instance", "sZenodoInstance",
               type=click.Choice(_LIST_VALID_ZENODO_INSTANCES,
                                 case_sensitive=False),

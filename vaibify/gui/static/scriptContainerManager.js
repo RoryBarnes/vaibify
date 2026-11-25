@@ -25,6 +25,7 @@ var VaibifyContainerManager = (function () {
        project -- or the same project after its container was removed,
        which leaves no container to describe -- must clear them. */
     var _sReadinessBannersContainerId = "";
+    var _S_NETWORK_BANNER_KEY = "networkBanner";
     /* The last Docker status this tab read; the hub-load advice is
        drawn only while it says Docker answers. */
     var _bDockerAnswered = false;
@@ -3141,6 +3142,8 @@ var VaibifyContainerManager = (function () {
                 elBanner.innerHTML = "";
             });
         }
+        VaibifyNoticeBanners.fnAttachHelpButton(
+            elBanner, "configurationDriftBanner");
     }
 
     function _fsNetworkBannerSentence(dictNetwork) {
@@ -3197,29 +3200,46 @@ var VaibifyContainerManager = (function () {
             (dictNetwork.listRefused || []).length > 0;
     }
 
-    function _fnRenderNetworkBanner(dictNetwork) {
+    function _fnRenderNetworkBanner(dictNetwork, bAskedFor) {
         /* The server's facts about the network: the file's mode, the
            container's assessed state (ruling D1 revised: an open
            container is said to be open, whatever the file says now),
            and for a sealed project whether the proxy sidecar is up and
            what it refused (ruling D8). A proxy that is down is said in
            so many words; nothing here is re-derived, and a normal state
-           renders nothing. */
+           renders nothing unless the researcher asked for it through
+           View > Network Status. The x hides exactly the payload it was
+           shown, in this view: a different answer from the server, or
+           the next open, shows the row again. */
         var elBanner = document.getElementById("networkBanner");
         if (!elBanner) return;
-        if (!_fbNetworkNeedsAttention(dictNetwork)) {
+        var sContentKey = VaibifyNoticeBanners.fsBuildContentKey(dictNetwork);
+        if (bAskedFor) {
+            VaibifyNoticeBanners.fnForgetDismissal(_S_NETWORK_BANNER_KEY);
+        } else if (!_fbNetworkNeedsAttention(dictNetwork) ||
+                VaibifyNoticeBanners.fbIsDismissed(
+                    _S_NETWORK_BANNER_KEY, sContentKey)) {
             elBanner.style.display = "none";
             elBanner.innerHTML = "";
             return;
         }
+        elBanner.innerHTML = _fsBuildNetworkBannerMarkup(dictNetwork, bAskedFor);
+        _fnAttachNetworkBannerControls(elBanner, dictNetwork, sContentKey);
+        elBanner.style.display = "block";
+    }
+
+    function _fsNetworkBannerHeader(sText) {
+        return '<div class="build-warnings-banner-header"><span>' +
+            VaibifyUtilities.fnEscapeHtml(sText) + '</span></div>';
+    }
+
+    function _fsBuildNetworkBannerMarkup(dictNetwork, bAskedFor) {
+        if (!dictNetwork) {
+            return _fsNetworkBannerHeader(
+                "This container's network state could not be read just now.");
+        }
         if (dictNetwork.bSealed !== true) {
-            elBanner.innerHTML =
-                '<div class="build-warnings-banner-header"><span>' +
-                VaibifyUtilities.fnEscapeHtml(
-                    _fsNetworkBannerSentence(dictNetwork)) +
-                '</span></div>';
-            elBanner.style.display = "block";
-            return;
+            return _fsNetworkBannerHeader(_fsNetworkBannerSentence(dictNetwork));
         }
         var listRefused = dictNetwork.listRefused || [];
         var sState = dictNetwork.sProxyState || "unknown";
@@ -3234,11 +3254,16 @@ var VaibifyContainerManager = (function () {
               VaibifyUtilities.fnEscapeHtml(
                   _fsNetworkBannerSentence(dictNetwork)) + '</p>'
             : "";
-        elBanner.innerHTML =
-            '<div class="build-warnings-banner-header">' +
-            '<span>Network mode: ' +
-            VaibifyUtilities.fnEscapeHtml(dictNetwork.sMode) + ' (' +
-            VaibifyUtilities.fnEscapeHtml(sStateText) + ')</span></div>' +
+        /* "Nothing refused" is a claim about the proxy's recent log, so
+           it is made only when the proxy is running and the log could
+           be read: an empty list from a proxy that is down proves
+           nothing. */
+        var sNothingRefused = bAskedFor && sState === "running"
+            ? '<p class="build-warnings-banner-list">Nothing refused ' +
+              'recently.</p>'
+            : "";
+        return _fsNetworkBannerHeader(
+                "Network mode: " + dictNetwork.sMode + " (" + sStateText + ")") +
             sDisagreement +
             (listRefused.length
                 ? '<ul class="build-warnings-banner-list">' +
@@ -3252,14 +3277,45 @@ var VaibifyContainerManager = (function () {
                           VaibifyUtilities.fnEscapeHtml(sHost) +
                           '">Allow host</button></li>';
                   }).join("") + '</ul>'
-                : "");
-        elBanner.style.display = "block";
+                : sNothingRefused);
+    }
+
+    function _fnAttachNetworkBannerControls(elBanner, dictNetwork, sContentKey) {
+        var elDismiss = VaibifyNoticeBanners.felementBuildDismissButton(
+            _S_NETWORK_BANNER_KEY, sContentKey, function () {
+                elBanner.style.display = "none";
+                elBanner.innerHTML = "";
+            });
+        elDismiss.id = "btnDismissNetwork";
+        elBanner.querySelector(".build-warnings-banner-header")
+            .appendChild(elDismiss);
+        VaibifyNoticeBanners.fnAttachHelpButton(elBanner, _S_NETWORK_BANNER_KEY);
         elBanner.querySelectorAll(".btn-allow-network-host").forEach(
             function (elButton) {
                 elButton.addEventListener("click", function () {
                     _fnAllowNetworkHost(dictNetwork.sName, elButton.dataset.host);
                 });
             });
+    }
+
+    async function fnShowNetworkStatusOnDemand() {
+        /* Asked of the server now, never replayed from the answer the
+           container gave when it was opened: what the proxy refused
+           since then is exactly what the researcher is asking about. */
+        var sContainerId = _sReadinessBannersContainerId;
+        if (!sContainerId) return;
+        var dictReadiness;
+        try {
+            dictReadiness = await VaibifyApi.fdictGet(
+                "/api/containers/" + encodeURIComponent(sContainerId) +
+                "/ready");
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            return;
+        }
+        if (sContainerId !== _sReadinessBannersContainerId) return;
+        var dictNetwork = (dictReadiness && dictReadiness.dictNetwork) || null;
+        _fnRenderNetworkBanner(dictNetwork, true);
     }
 
     async function _fnAllowNetworkHost(sName, sHost) {
@@ -3343,6 +3399,8 @@ var VaibifyContainerManager = (function () {
             elBanner.textContent = "";
         });
         elHeader.appendChild(elHeading);
+        elHeader.appendChild(
+            VaibifyNoticeBanners.felementBuildHelpButton(sBannerId));
         elHeader.appendChild(elDismiss);
         var elList = document.createElement("ul");
         elList.className = "build-warnings-banner-list";
@@ -3393,6 +3451,8 @@ var VaibifyContainerManager = (function () {
                 elBanner.innerHTML = "";
             });
         }
+        VaibifyNoticeBanners.fnAttachHelpButton(
+            elBanner, "buildWarningsBanner");
     }
 
     function _fnShowStaleImageBanner(dictReadiness) {
@@ -3835,6 +3895,7 @@ var VaibifyContainerManager = (function () {
     }
 
     return {
+        fnShowNetworkStatusOnDemand: fnShowNetworkStatusOnDemand,
         fnLoadContainers: fnLoadContainers,
         fnRefreshContainerHub: fnRefreshContainerHub,
         fnConnectToContainer: fnConnectToContainer,

@@ -40,7 +40,18 @@ var VaibifyRemoteBindings = (function () {
     // The binding names Zenodo by service; the token slots and the
     // credential prompt name the permanent instance "production".
     var _DICT_TOKEN_SLOT_FOR_SERVICE = {zenodo: "production", sandbox: "sandbox"};
+    // The server's evidence says which actions a failure offers
+    // (vaibify.config.credentialFailures); these are their labels.
+    var _S_ACTION_STORE = "store";
+    var _S_ACTION_REPLACE = "replace";
+    var _S_ACTION_RETRY = "retry";
+    var _DICT_TOKEN_ACTION_LABELS = {
+        store: "Store your token", replace: "Replace your token",
+    };
     var _RE_OVERLEAF_PROJECT_ID = /^[A-Za-z0-9]+$/;
+    var _S_NOTHING_TO_REVIEW = "Nothing needs your review now. An action " +
+        "that would spend your Overleaf or Zenodo token on a target nobody " +
+        "has confirmed on this computer asks you first.";
     var _sContainerId = "";
     var _dictDialog = null;
 
@@ -94,23 +105,84 @@ var VaibifyRemoteBindings = (function () {
             });
     }
 
-    function fnRenderNotices(dictDescribed) {
+    function _flistNoticeContent(listNotices) {
+        /* What the banner shows, as the server said it: the key a
+           dismissal holds, so a different set of notices shows again. */
+        return listNotices.map(function (dictNotice) {
+            var dictEntry = dictNotice.dictEntry;
+            return [dictNotice.sNotice, dictEntry ? [
+                dictEntry.sService, dictEntry.sRecordKind,
+                dictEntry.sInstance, dictEntry.sState] : null];
+        });
+    }
+
+    function fnRenderNotices(dictDescribed, bAskedFor) {
+        /* Drawn by itself only when there is a notice, and then until
+           the researcher hides it: the x holds while the notices and
+           the view are the ones it hid. Asked for through the chip, it
+           is drawn whatever the answer, and says so when there is
+           nothing to review. Hiding it authorizes nothing: every
+           token-spending action is refused by the server until its
+           target is confirmed. */
         var elBanner = document.getElementById(_S_BANNER_ID);
         if (!elBanner) return;
         elBanner.textContent = "";
         var listNotices = _flistNotices(dictDescribed);
-        if (!listNotices.length) {
+        var sContentKey = VaibifyNoticeBanners.fsBuildContentKey(
+            _flistNoticeContent(listNotices));
+        if (bAskedFor) {
+            VaibifyNoticeBanners.fnForgetDismissal(_S_BANNER_ID);
+        } else if (!listNotices.length ||
+                VaibifyNoticeBanners.fbIsDismissed(_S_BANNER_ID, sContentKey)) {
             elBanner.style.display = "none";
             return;
         }
-        var elHeader = document.createElement("div");
-        elHeader.className = "build-warnings-banner-header";
-        elHeader.textContent = "Remote bindings to review before a token is spent";
-        elBanner.appendChild(elHeader);
+        elBanner.appendChild(_felementNoticeHeader(elBanner, sContentKey));
+        if (!listNotices.length) {
+            var elNothing = document.createElement("div");
+            elNothing.className = "remote-binding-row remote-binding-nothing";
+            elNothing.textContent = _S_NOTHING_TO_REVIEW;
+            elBanner.appendChild(elNothing);
+        }
         listNotices.forEach(function (dictNotice) {
             elBanner.appendChild(_felementNoticeRow(dictNotice));
         });
         elBanner.style.display = "block";
+    }
+
+    function _felementNoticeHeader(elBanner, sContentKey) {
+        var elHeader = document.createElement("div");
+        elHeader.className = "build-warnings-banner-header";
+        var elHeading = document.createElement("span");
+        elHeading.textContent = "Remote bindings to review before a token is spent";
+        var elDismiss = VaibifyNoticeBanners.felementBuildDismissButton(
+            _S_BANNER_ID, sContentKey, function () {
+                elBanner.style.display = "none";
+                elBanner.textContent = "";
+            });
+        elDismiss.id = "btnDismissRemoteBindings";
+        elHeader.appendChild(elHeading);
+        elHeader.appendChild(
+            VaibifyNoticeBanners.felementBuildHelpButton(_S_BANNER_ID));
+        elHeader.appendChild(elDismiss);
+        return elHeader;
+    }
+
+    async function fnShowNoticesOnDemand() {
+        /* Asked of the server now: the notices rendered at open may
+           describe a project.json that has changed since. */
+        var sContainerId = _sContainerId;
+        if (!sContainerId) return;
+        var dictContext = fdictCaptureContext();
+        var dictDescribed;
+        try {
+            dictDescribed = await VaibifyApi.fdictGet(
+                _fsUrl(sContainerId, "?bFetchEvidence=false"));
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            return;
+        }
+        if (_fbContextIsCurrent(dictContext)) fnRenderNotices(dictDescribed, true);
     }
 
     function _felementNoticeRow(dictNotice) {
@@ -188,7 +260,8 @@ var VaibifyRemoteBindings = (function () {
             _dictDialog = {
                 dictContext: dictContext,
                 listAddress: [sService, sRecordKind || "", sInstance || ""],
-                dictEntry: null, bCredentialAsked: false, bPosting: false,
+                dictEntry: null, bCredentialInFlight: false,
+                sLastStoreFailure: "", bPosting: false,
                 fnResolve: fnResolve,
             };
             _fnShowModal(true);
@@ -318,12 +391,24 @@ var VaibifyRemoteBindings = (function () {
         }
         var dictEvidence = dictEntry.dictEvidence || {};
         elBody.appendChild(_felementEvidence(dictEntry, dictEvidence));
+        if (dictDialog.sLastStoreFailure && !dictEvidence.bSucceeded) {
+            _fnAppendParagraph(elBody, "Your token was not stored: " +
+                dictDialog.sLastStoreFailure, "remote-binding-refusal");
+        }
+        var listActions = dictEvidence.listActions || [];
         _fnRenderButtons(dictDialog, {
             bConfirm: Boolean(dictEvidence.bSucceeded),
-            bRetry: dictEvidence.sState === "unavailable",
-            bStoreToken: dictEvidence.sState === "token-missing" &&
-                !dictDialog.bCredentialAsked,
+            bRetry: listActions.indexOf(_S_ACTION_RETRY) >= 0,
+            sTokenAction: _fsTokenActionOf(listActions),
         });
+    }
+
+    function _fsTokenActionOf(listActions) {
+        /* Store when none is stored, Replace when one is; the server's
+           list decides whether either is offered at all. */
+        if (listActions.indexOf(_S_ACTION_STORE) >= 0) return _S_ACTION_STORE;
+        if (listActions.indexOf(_S_ACTION_REPLACE) >= 0) return _S_ACTION_REPLACE;
+        return "";
     }
 
     function _fsAuthorizationSentence(dictEntry) {
@@ -375,11 +460,11 @@ var VaibifyRemoteBindings = (function () {
         var elEvidence = document.createElement("div");
         elEvidence.className = "remote-binding-evidence";
         if (!dictEvidence.bSucceeded) {
-            /* Couldn't check is never red: nothing about the remote
-               was learned. */
+            /* A failed check is never red: nothing about the remote
+               was learned. The server's sentence says what failed and
+               what to do, so it is shown as written. */
             elEvidence.classList.add("remote-binding-evidence--unchecked");
-            _fnAppendParagraph(elEvidence, (dictEvidence.sState === "token-missing"
-                ? "" : "Couldn't check: ") + (dictEvidence.sMessage || "no answer"));
+            _fnAppendParagraph(elEvidence, dictEvidence.sMessage || "no answer");
             return elEvidence;
         }
         _fnAppendParagraph(elEvidence, _fsDescribeEvidence(dictEntry, dictEvidence));
@@ -423,8 +508,10 @@ var VaibifyRemoteBindings = (function () {
         var listButtons = [["Cancel", "btnRemoteBindingCancel", "", function () {
             _fnSettleDialog(dictDialog, _S_CANCELLED);
         }]];
-        if (dictOffer.bStoreToken) {
-            listButtons.push(["Store your token", "btnRemoteBindingStoreToken", "",
+        if (dictOffer.sTokenAction) {
+            listButtons.push([
+                _DICT_TOKEN_ACTION_LABELS[dictOffer.sTokenAction],
+                "btnRemoteBindingStoreToken", "",
                 function () { _fnStoreToken(dictDialog); }]);
         }
         if (dictOffer.bRetry) {
@@ -443,16 +530,36 @@ var VaibifyRemoteBindings = (function () {
     }
 
     async function _fnStoreToken(dictDialog) {
-        /* One credential prompt per dialog; the evidence is asked again
-           once it resolves, whatever the answer. */
-        if (dictDialog.bCredentialAsked) return;
-        dictDialog.bCredentialAsked = true;
+        /* Offered every time the evidence calls for it: a store that
+           failed, or a box that was cancelled, leaves the researcher a
+           way forward. Only one token box is in flight at a time, and
+           the evidence is asked again once it closes, whatever the
+           answer; a failed store's sentence is kept for the redraw. */
+        if (dictDialog.bCredentialInFlight) return;
+        dictDialog.bCredentialInFlight = true;
         _fnShowModal(false);
-        await VaibifySyncManager.fpromiseConnectZenodoCredentialOnly(
-            _DICT_TOKEN_SLOT_FOR_SERVICE[dictDialog.listAddress[2]] || "sandbox");
+        var dictOutcome;
+        try {
+            dictOutcome = await VaibifySyncManager.fpromiseStoreCredentialForReview(
+                dictDialog.listAddress[0], _fdictTokenTargetOf(dictDialog));
+        } finally {
+            dictDialog.bCredentialInFlight = false;
+        }
         if (_fbDialogIsStale(dictDialog)) return;
+        dictDialog.sLastStoreFailure = (dictOutcome && !dictOutcome.bConnected)
+            ? (dictOutcome.sMessage || "") : "";
         _fnShowModal(true);
         _fnFetchForDialog(dictDialog);
+    }
+
+    function _fdictTokenTargetOf(dictDialog) {
+        /* What the token box needs to store a token for THIS entry: the
+           Zenodo instance, or the Overleaf project under review. */
+        var dictTarget = ((dictDialog.dictEntry || {}).dictReview || {}).dictTarget || {};
+        return {
+            sInstance: _DICT_TOKEN_SLOT_FOR_SERVICE[dictDialog.listAddress[2]] || "sandbox",
+            sProjectId: String(dictTarget.sProjectId || ""),
+        };
     }
 
     async function _fnConfirm(dictDialog, elButton) {
@@ -521,6 +628,7 @@ var VaibifyRemoteBindings = (function () {
     return {
         fnRefresh: fnRefresh,
         fnRenderNotices: fnRenderNotices,
+        fnShowNoticesOnDemand: fnShowNoticesOnDemand,
         fdictCaptureContext: fdictCaptureContext,
         fpromiseReviewAndConfirm: fpromiseReviewAndConfirm,
         fbRefusalNeedsABinding: fbRefusalNeedsABinding,
